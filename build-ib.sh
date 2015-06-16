@@ -24,7 +24,7 @@ Alternatively it possible to specify parameters as envvars:
 
   --software        --> DEFAULT_RECIPE_SW
   --recipe-version  --> DEFAULT_RECIPE_VER
-  --recipe-base-url --> DEFAULT_RECIPE_VER
+  --recipe-base-url --> DEFAULT_RECIPE_BASE_URL
   --recipe-svn-user --> DEFAULT_RECIPE_USER
   --recipe-svn-pass --> DEFAULT_RECIPE_PASS
   --ncores          --> DEFAULT_NCORES
