@@ -34,7 +34,15 @@ while [[ $# -gt 0 ]] ; do
 done
 
 # Mandatory input variables
-[[ "$RecipeVer" == '' || "$RecipeSw" == '' ]] && false
+if [ "X$RecipeSw" = X ]; then
+  echo "Please specifify Software with --software option."
+  exit 1
+fi
+
+if [ "X$RecipeVer" = X ]; then
+  echo "Please specifify Recipes with --recipe-version option."
+  exit 1
+fi
 
 # Other variables
 RecipeUrl="https://svn.cern.ch/guest/aliroot-bits/branches/${RecipeVer}"
