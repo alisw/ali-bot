@@ -3,53 +3,63 @@
 #
 # Build a given version of a software handled by GAR.
 #
-#
 # At the end of the process packages will be stored as tarballs inside two
 # directories, $RegisterTarballsDir and $FinalTarballsDir.
 #
 
-function usage() {
-cat << \EOF
- Usage:
-   wrap-gar-build.sh --software <software_name> \
-                     --recipe-version <recipe_version>
+function PrintUsage() (
+  cat <<'EoF'
+Usage:
+  build-ib.sh.sh --software <software_name> \
+                 --recipe-version <recipe_version> \
+                 [--recipe-base-url <base_svn_url>] \
+                 [--ncores <make_j_cores>]
 
- Example:
-   wrap-gar-build.sh --software root --recipe-version v5-06-25
-EOF
-}
+Example:
+  build-ib.sh.sh --software root --recipe-version v5-06-25
+
+Alternatively it possible to specify parameters as envvars:
+
+  --software        --> DEFAULT_RECIPE_SW
+  --recipe-version  --> DEFAULT_RECIPE_VER
+  --recipe-base-url --> DEFAULT_RECIPE_VER
+  --ncores          --> DEFAULT_NCORES
+
+EoF
+)
 
 cd /
 
+# Get variables from the environment
 RecipeSw="${DEFAULT_RECIPE_SW:-}"
 RecipeVer="${DEFAULT_RECIPE_VER:-}"
+MakeCores=${DEFAULT_NCORES:-$( echo 'scale=2;a='`grep -c bogomips /proc/cpuinfo`'*1.05;scale=0;a/1' | bc )}
+RecipeBaseUrl=${DEFAULT_RECIPE_BASE_URL:-'http://svn.cern.ch/guest/aliroot-bits/branches'}
 
 while [[ $# -gt 0 ]] ; do
   case "$1" in
     --software) RecipeSw="$2" ; shift 2 ;;
     --recipe-version) RecipeVer="$2" ; shift 2 ;;
+    --recipe-base-url) RecipeBaseUrl="$2" ; shift 2 ;;
+    --ncores) MakeCores="$2" ; shift 2 ;;
     *) shift ;;
   esac
 done
 
 # Mandatory input variables
-if [[ "$RecipeSw" == '' ]] ; then
-  usage && exit 1
-fi
-
-if [[ "$RecipeVer" == '' ]] ; then
-  usage && exit 1
+if [[ "$RecipeSw" == '' || "$RecipeVer" == '' ]] ; then
+  PrintUsage
+  exit 1
 fi
 
 # Other variables
-RecipeUrl="http://svn.cern.ch/guest/aliroot-bits/branches/${RecipeVer}"
+RecipeUrl="${RecipeBaseUrl}/${RecipeVer}"
 RecipeDir='/root/recipe'
 BuildScratchDir='/root/scratch'
 WwwDir='/opt/aliroot/www'
 AltWwwDir='/root/www'
 FinalTarballsDir="${WwwDir}/tarballs"  # *all* tarballs created
 RegisterTarballsDir='/packages_spool'  # only tarballs to be registered
-MakeCores=$( echo 'scale=2;a='`grep -c bogomips /proc/cpuinfo`'*1.05;scale=0;a/1' | bc )
 
 # Start from a clean slate (do not touch tarball dirs)
 rm -rf "$BuildScratchDir" "$RecipeDir" "$AltTarballsDir"
@@ -61,8 +71,7 @@ mkdir -p "$RegisterTarballsDir" "$FinalTarballsDir"
 ln -nfs "$WwwDir" "$AltWwwDir"
 
 # Download recipe
-svn checkout "$RecipeUrl" "$RecipeDir" \
-  --non-interactive
+svn checkout "$RecipeUrl" "$RecipeDir" --non-interactive
 
 # Configure GAR, the build recipes handler
 cd "$RecipeDir"
