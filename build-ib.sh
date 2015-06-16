@@ -1,29 +1,28 @@
-#!/bin/bash
+#!/bin/bash -ex
 
 #
 # Build a given version of a software handled by GAR.
 #
-# Usage:
-#   wrap-gar-build.sh --software <software_name> \
-#                     --recipe-version <recipe_version> \
-#                     [--recipe-svn-user <recipe_svn_user>] \
-#                     [--recipe-svn-password <recipe_svn_password>]
-#
-# If credentials are not provided via command-line arguments, they are read from
-# the /recipe-svn-creds.txt file.
-#
-# Example:
-#   wrap-gar-build.sh --software root --recipe-version v5-06-25 \
-#     --recipe-svn-user alibits --recipe-svn-password xxxxxx
 #
 # At the end of the process packages will be stored as tarballs inside two
 # directories, $RegisterTarballsDir and $FinalTarballsDir.
 #
 
-# Exit at first error and make sure we are not inside a specific dir
-set -x
-set -e
+function usage() {
+cat << \EOF
+ Usage:
+   wrap-gar-build.sh --software <software_name> \
+                     --recipe-version <recipe_version>
+
+ Example:
+   wrap-gar-build.sh --software root --recipe-version v5-06-25
+EOF
+}
+
 cd /
+
+RecipeSw="${DEFAULT_RECIPE_SW:-}"
+RecipeVer="${DEFAULT_RECIPE_VER:-}"
 
 while [[ $# -gt 0 ]] ; do
   case "$1" in
@@ -34,18 +33,16 @@ while [[ $# -gt 0 ]] ; do
 done
 
 # Mandatory input variables
-if [ "X$RecipeSw" = X ]; then
-  echo "Please specifify Software with --software option."
-  exit 1
+if [[ "$RecipeSw" == '' ]] ; then
+  usage && exit 1
 fi
 
-if [ "X$RecipeVer" = X ]; then
-  echo "Please specifify Recipes with --recipe-version option."
-  exit 1
+if [[ "$RecipeVer" == '' ]] ; then
+  usage && exit 1
 fi
 
 # Other variables
-RecipeUrl="https://svn.cern.ch/guest/aliroot-bits/branches/${RecipeVer}"
+RecipeUrl="http://svn.cern.ch/guest/aliroot-bits/branches/${RecipeVer}"
 RecipeDir='/root/recipe'
 BuildScratchDir='/root/scratch'
 WwwDir='/opt/aliroot/www'
