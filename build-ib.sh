@@ -29,23 +29,12 @@ while [[ $# -gt 0 ]] ; do
   case "$1" in
     --software) RecipeSw="$2" ; shift 2 ;;
     --recipe-version) RecipeVer="$2" ; shift 2 ;;
-    --recipe-svn-user) RecipeSvnUser="$2" ; shift 2 ;;
-    --recipe-svn-password) RecipeSvnPassword="$2" ; shift 2 ;;
     *) shift ;;
   esac
 done
 
-# Read SVN credentials for accessing GAR from a file [user:password]
-if [[ "$RecipeSvnUser" == '' || "$RecipeSvnPassword" == '' ]] ; then
-  RecipeCredsFile='/recipe-svn-creds.txt'
-  RecipeSvnRaw="$( cat "$RecipeCredsFile" )"
-  RecipeSvnUser=${RecipeSvnRaw%%:*}
-  RecipeSvnPassword=${RecipeSvnRaw#*:}
-fi
-
 # Mandatory input variables
 [[ "$RecipeVer" == '' || "$RecipeSw" == '' ]] && false
-[[ "$RecipeSvnUser" == '' || "$RecipeSvnPassword" == '' ]] && false
 
 # Other variables
 RecipeUrl="https://svn.cern.ch/guest/aliroot-bits/branches/${RecipeVer}"
@@ -68,8 +57,6 @@ ln -nfs "$WwwDir" "$AltWwwDir"
 
 # Download recipe
 svn checkout "$RecipeUrl" "$RecipeDir" \
-  --username "$RecipeSvnUser" \
-  --password "$RecipeSvnPassword" \
   --non-interactive
 
 # Configure GAR, the build recipes handler
