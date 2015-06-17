@@ -4,7 +4,8 @@
 # Build a given version of a software handled by GAR.
 #
 # At the end of the process packages will be stored as tarballs inside two
-# directories, $RegisterTarballsDir and $FinalTarballsDir.
+# directories, $RegisterTarballsDir and $AllTarballsDir. We are interested in
+# the packages created in the latter.
 #
 
 function PrintUsage() (
@@ -66,14 +67,14 @@ RecipeDir='/root/recipe'
 BuildScratchDir='/root/scratch'
 WwwDir='/opt/aliroot/www'
 AltWwwDir='/root/www'
-FinalTarballsDir="${WwwDir}/tarballs"  # *all* tarballs created
+AllTarballsDir="${WwwDir}/tarballs"  # *all* tarballs created
 RegisterTarballsDir='/packages_spool'  # only tarballs to be registered
 
 # Start from a clean slate (do not touch tarball dirs)
 rm -rf "$BuildScratchDir" "$RecipeDir" "$AltTarballsDir"
 
 # Directories expected by the build system
-mkdir -p "$RegisterTarballsDir" "$FinalTarballsDir"
+mkdir -p "$RegisterTarballsDir" "$AllTarballsDir"
 
 # Work around hardcoded paths in recipes
 ln -nfs "$WwwDir" "$AltWwwDir"
