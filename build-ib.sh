@@ -16,7 +16,8 @@ Usage:
                  [--recipe-base-url <base_svn_url>] \
                  [--recipe-svn-user <recipe_svn_user>] \
                  [--recipe-svn-pass <recipe_svn_pass>] \
-                 [--ncores <make_j_cores>]
+                 [--ncores <make_j_cores>] \
+                 [--drop-to-shell]
 
 Example:
   build-ib.sh.sh --software root --recipe-version v5-06-25
@@ -63,6 +64,7 @@ while [[ $# -gt 0 ]] ; do
     --ncores) MakeCores="$2" ; shift 2 ;;
     --recipe-svn-user) RecipeSvnUser="$2" ; shift 2 ;;
     --recipe-svn-pass) RecipeSvnPass="$2" ; shift 2 ;;
+    --drop-to-shell) DropToShell=1 ; shift ;;
     *) shift ;;
   esac
 done
@@ -112,4 +114,10 @@ cd "$RecipeDir"
 
 # Build a specific software on all possible cores (override hardcoded values)
 cd "${RecipeDir}/apps/${RecipeSwGroup}/${RecipeSwComponent}"
-exec time make -j"$MakeCores" install AUTOREGISTER=0 BUILD_ARGS=-j"$MakeCores"
+
+# Drop to shell, or proceed automatically?
+if [[ "$DropToShell" == 1 ]] ; then
+  exec bash
+else
+  exec time make -j"$MakeCores" install AUTOREGISTER=0 BUILD_ARGS=-j"$MakeCores"
+fi
