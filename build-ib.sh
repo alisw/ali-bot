@@ -11,7 +11,7 @@
 function PrintUsage() (
   cat <<'EoF'
 Usage:
-  build-ib.sh.sh --software <software_name> \
+  build-ib.sh.sh --software <[software_group:]software_name> \
                  --recipe-version <recipe_version> \
                  [--recipe-base-url <base_svn_url>] \
                  [--recipe-svn-user <recipe_svn_user>] \
@@ -29,6 +29,18 @@ Alternatively it possible to specify parameters as envvars:
   --recipe-svn-user --> DEFAULT_RECIPE_USER
   --recipe-svn-pass --> DEFAULT_RECIPE_PASS
   --ncores          --> DEFAULT_NCORES
+
+Software name can take two different forms:
+
+  sw_group:sw_name  # e.g. geant4:geant4_vmc
+
+or simply:
+
+  sw_name  # e.g. root
+
+The latter will assume that software group is equal to software name:
+
+  sw_name:sw_name
 
 EoF
 )
@@ -60,6 +72,11 @@ if [[ "$RecipeSw" == '' || "$RecipeVer" == '' ]] ; then
   PrintUsage
   exit 1
 fi
+
+# Separate group:component with ':'. If not provided, group and component will
+# be identical
+RecipeSwGroup=${RecipeSw%%:*}
+RecipeSwComponent=${RecipeSw#*:}
 
 # Other variables
 RecipeUrl="${RecipeBaseUrl}/${RecipeVer}"
@@ -94,5 +111,5 @@ cd "$RecipeDir"
 ./configure --prefix="$BuildScratchDir"
 
 # Build a specific software on all possible cores (override hardcoded values)
-cd "${RecipeDir}/apps/${RecipeSw}/${RecipeSw}"
+cd "${RecipeDir}/apps/${RecipeSwGroup}/${RecipeSwComponent}"
 exec time make -j"$MakeCores" install AUTOREGISTER=0 BUILD_ARGS=-j"$MakeCores"
