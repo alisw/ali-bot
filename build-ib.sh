@@ -11,12 +11,13 @@
 function PrintUsage() (
   cat <<'EoF'
 Usage:
-  build-ib.sh.sh --software <software_name> \
+  build-ib.sh.sh --software <[software_group:]software_name> \
                  --recipe-version <recipe_version> \
                  [--recipe-base-url <base_svn_url>] \
                  [--recipe-svn-user <recipe_svn_user>] \
                  [--recipe-svn-pass <recipe_svn_pass>] \
-                 [--ncores <make_j_cores>]
+                 [--ncores <make_j_cores>] \
+                 [--drop-to-shell]
 
 Example:
   build-ib.sh.sh --software root --recipe-version v5-06-25
@@ -29,6 +30,18 @@ Alternatively it possible to specify parameters as envvars:
   --recipe-svn-user --> DEFAULT_RECIPE_USER
   --recipe-svn-pass --> DEFAULT_RECIPE_PASS
   --ncores          --> DEFAULT_NCORES
+
+Software name can take two different forms:
+
+  sw_group:sw_name  # e.g. geant4:geant4_vmc
+
+or simply:
+
+  sw_name  # e.g. root
+
+The latter will assume that software group is equal to software name:
+
+  sw_name:sw_name
 
 EoF
 )
@@ -51,6 +64,7 @@ while [[ $# -gt 0 ]] ; do
     --ncores) MakeCores="$2" ; shift 2 ;;
     --recipe-svn-user) RecipeSvnUser="$2" ; shift 2 ;;
     --recipe-svn-pass) RecipeSvnPass="$2" ; shift 2 ;;
+    --drop-to-shell) DropToShell=1 ; shift ;;
     *) shift ;;
   esac
 done
@@ -60,6 +74,11 @@ if [[ "$RecipeSw" == '' || "$RecipeVer" == '' ]] ; then
   PrintUsage
   exit 1
 fi
+
+# Separate group:component with ':'. If not provided, group and component will
+# be identical
+RecipeSwGroup=${RecipeSw%%:*}
+RecipeSwComponent=${RecipeSw#*:}
 
 # Other variables
 RecipeUrl="${RecipeBaseUrl}/${RecipeVer}"
@@ -94,5 +113,11 @@ cd "$RecipeDir"
 ./configure --prefix="$BuildScratchDir"
 
 # Build a specific software on all possible cores (override hardcoded values)
-cd "${RecipeDir}/apps/${RecipeSw}/${RecipeSw}"
-exec time make -j"$MakeCores" install AUTOREGISTER=0 BUILD_ARGS=-j"$MakeCores"
+cd "${RecipeDir}/apps/${RecipeSwGroup}/${RecipeSwComponent}"
+
+# Drop to shell, or proceed automatically?
+if [[ "$DropToShell" == 1 ]] ; then
+  exec bash
+else
+  exec time make -j"$MakeCores" install AUTOREGISTER=0 BUILD_ARGS=-j"$MakeCores"
+fi
