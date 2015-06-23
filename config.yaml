@@ -47,6 +47,6 @@
 -
   name: aliroot
   include: v5-.*
-  architecture: ubuntu_x86-64
+  architecture: slc7_x86-64
   env:
     TEST: all
