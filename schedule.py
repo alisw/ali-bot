@@ -111,6 +111,7 @@ if __name__ == "__main__":
   # We create the spec in a subdirectory "specs", so that we can always know
   # what were the options used to build a given release. We then copy them in
   # the local area, so that jenkins can use it to schedule other jobs.
+  getstatusoutput("rm -fr *.ini")
   for s in specs:
     getstatusoutput("mkdir -p %s/data/scheduled" % args.alisw)
     p = format("%(alisw)s/data/scheduled/%(architecture)s-%(tag)s.ini",
@@ -120,5 +121,4 @@ if __name__ == "__main__":
     f = file(p, "w")
     f.write("ARCHITECTURE=%s\n" % s["architecture"])
     f.close()
-    unlink(basename(p))
     symlink(p, basename(p))
