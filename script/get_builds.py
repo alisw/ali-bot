@@ -19,6 +19,14 @@ if __name__ == "__main__":
   for x in response:
     bv = x["data"]["buildVariables"]
     data = x["data"]
+    sources = x.get("sources", {"hash": [], "repo": [], "tag": []})
+    if not "tag" in sources:
+      sources["tag"] = sources["hash"]
+    if not type(sources["hash"]) == list:
+      sources["hash"] = [sources["hash"]]
+      sources["repo"] = [sources["repo"]]
+      sources["tag"] = [sources["tag"]]
+
     obj = {
       "architecture": str(bv["ARCHITECTURE"]),
       "alibuild": str(bv["ALIBUILD_REPO"]),
@@ -26,7 +34,8 @@ if __name__ == "__main__":
       "package": str(bv.get("PACKAGE_NAME", "")),
       "jenkins_build_nr": int(data["id"]),
       "result": str(data["result"]),
-      "timestamp": str(data["timestamp"])
+      "timestamp": str(data["timestamp"]),
+      "sources": sources
     }
     results.append(obj)
   print dump(results)
