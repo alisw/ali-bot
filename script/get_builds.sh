@@ -3,25 +3,25 @@ curl -X POST http://elasticsearch.marathon.mesos:9200/_search/ -d'
 {
   "size": 0,
   "aggs": {
-    "2": {
+    "3": {
       "terms": {
-        "field": "data.buildNum",
-        "size": 50,
+        "field": "main.name.raw",
+        "size": 10,
         "order": {
-          "2-orderAgg": "desc"
+          "_count": "desc"
         }
       },
       "aggs": {
-        "7": {
+        "2": {
           "terms": {
-            "field": "data.buildVariables.PACKAGE_NAME.raw",
+            "field": "main.hash.raw",
             "size": 5,
             "order": {
               "_count": "desc"
             }
           },
           "aggs": {
-            "6": {
+            "4": {
               "terms": {
                 "field": "data.buildVariables.ARCHITECTURE.raw",
                 "size": 5,
@@ -30,30 +30,63 @@ curl -X POST http://elasticsearch.marathon.mesos:9200/_search/ -d'
                 }
               },
               "aggs": {
-                "3": {
+                "10": {
                   "terms": {
-                    "field": "sources.tag",
-                    "size": 50,
+                    "field": "data.id",
+                    "size": 5,
                     "order": {
                       "_count": "desc"
                     }
                   },
                   "aggs": {
-                    "4": {
+                    "5": {
                       "terms": {
-                        "field": "sources.hash",
+                        "field": "data.buildVariables.ALIDIST_REPO.raw",
                         "size": 5,
                         "order": {
                           "_count": "desc"
                         }
                       },
                       "aggs": {
-                        "5": {
+                        "9": {
                           "terms": {
-                            "field": "sources.repo.raw",
+                            "field": "message_type.raw",
                             "size": 5,
                             "order": {
                               "_count": "desc"
+                            }
+                          },
+                          "aggs": {
+                            "6": {
+                              "terms": {
+                                "field": "sources.repo.raw",
+                                "size": 5,
+                                "order": {
+                                  "_count": "desc"
+                                }
+                              },
+                              "aggs": {
+                                "7": {
+                                  "terms": {
+                                    "field": "sources.tag.raw",
+                                    "size": 5,
+                                    "order": {
+                                      "_count": "desc"
+                                    }
+                                  },
+                                  "aggs": {
+                                    "8": {
+                                      "terms": {
+                                        "field": "sources.hash.raw",
+                                        "size": 5,
+                                        "order": {
+                                          "_count": "desc"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
                             }
                           }
                         }
@@ -64,36 +97,6 @@ curl -X POST http://elasticsearch.marathon.mesos:9200/_search/ -d'
               }
             }
           }
-        },
-        "2-orderAgg": {
-          "avg": {
-            "field": "data.buildNum"
-          }
-        }
-      }
-    }
-  },
-  "query": {
-    "filtered": {
-      "query": {
-        "query_string": {
-          "query": "*",
-          "analyze_wildcard": true
-        }
-      },
-      "filter": {
-        "bool": {
-          "must": [
-            {
-              "range": {
-                "@timestamp": {
-                  "gte": 1436194259883,
-                  "lte": 1436799059883
-                }
-              }
-            }
-          ],
-          "must_not": []
         }
       }
     }
@@ -109,6 +112,31 @@ curl -X POST http://elasticsearch.marathon.mesos:9200/_search/ -d'
       "*": {}
     },
     "fragment_size": 2147483647
+  },
+  "query": {
+    "filtered": {
+      "query": {
+        "query_string": {
+          "query": "main.name:*",
+          "analyze_wildcard": true
+        }
+      },
+      "filter": {
+        "bool": {
+          "must": [
+            {
+              "range": {
+                "@timestamp": {
+                  "gte": 1436946723509,
+                  "lte": 1436947623510
+                }
+              }
+            }
+          ],
+          "must_not": []
+        }
+      }
+    }
   }
 }
 '
