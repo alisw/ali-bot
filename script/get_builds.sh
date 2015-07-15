@@ -127,8 +127,7 @@ curl -X POST http://elasticsearch.marathon.mesos:9200/_search/ -d'
             {
               "range": {
                 "@timestamp": {
-                  "gte": 1436946723509,
-                  "lte": 1436947623510
+                  "gte": "now-1w",
                 }
               }
             }
