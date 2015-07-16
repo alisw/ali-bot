@@ -1,0 +1,94 @@
+{
+  "query": {
+    "filtered": {
+      "query": {
+        "query_string": {
+          "analyze_wildcard": true,
+          "query": "*"
+        }
+      },
+      "filter": {
+        "bool": {
+          "must": [
+            {
+              "range": {
+                "@timestamp": {
+                  "gte": 1436652000000,
+                  "lte": 1437256799999
+                }
+              }
+            }
+          ],
+          "must_not": []
+        }
+      }
+    }
+  },
+  "size": 0,
+  "aggs": {
+    "by_package": {
+      "terms": {
+        "field": "main.name",
+        "size": 5,
+        "order": {
+          "_count": "desc"
+        }
+      },
+      "aggs": {
+        "by_commit": {
+          "terms": {
+            "field": "main.hash.raw",
+            "size": 5,
+            "order": {
+              "_count": "desc"
+            }
+          },
+          "aggs": {
+            "build_id": {
+              "terms": {
+                "field": "data.id",
+                "size": 5,
+                "order": {
+                  "_count": "desc"
+                }
+              },
+              "aggs": {
+                "architecture": {
+                  "terms": {
+                    "field": "data.buildVariables.ARCHITECTURE.raw",
+                    "size": 5,
+                    "order": {
+                      "_count": "desc"
+                    }
+                  },
+                  "aggs": {
+                    "alidist_repo": {
+                      "terms": {
+                        "field": "data.buildVariables.ALIDIST_REPO.raw",
+                        "size": 5,
+                        "order": {
+                          "_count": "desc"
+                        }
+                      },
+                      "aggs": {
+                        "alidist_branch": {
+                          "terms": {
+                            "field": "data.buildVariables.ALIDIST_BRANCH.raw",
+                            "size": 5,
+                            "order": {
+                              "_count": "desc"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
