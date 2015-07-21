@@ -4,7 +4,7 @@
     "by_build": {
       "terms": {
         "field": "data.id",
-        "size": 5,
+        "size": 50,
         "order": {
           "_count": "desc"
         }
@@ -13,7 +13,7 @@
         "by_message": {
           "terms": {
             "field": "what.raw",
-            "size": 5,
+            "size": 50,
             "order": {
               "_count": "desc"
             }
@@ -22,7 +22,7 @@
             "filename": {
               "terms": {
                 "field": "filename.raw",
-                "size": 5,
+                "size": 50,
                 "order": {
                   "_count": "desc"
                 }
@@ -31,7 +31,7 @@
                 "line": {
                   "terms": {
                     "field": "line",
-                    "size": 5,
+                    "size": 10,
                     "order": {
                       "_count": "desc"
                     }
