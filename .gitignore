@@ -2,3 +2,4 @@
 /recipe-svn-creds.txt
 _site
 .python-version
+*.ini

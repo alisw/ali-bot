@@ -25,7 +25,7 @@ from glob import glob
 def format(s, **kwds):
   return s % kwds
 
-def decide(done_tags, all_tags, rules):
+def decide_releases(done_tags, all_tags, rules):
   to_be_processed = []
   for tag in all_tags:
     if tag in done_tags:
@@ -55,7 +55,7 @@ def decide(done_tags, all_tags, rules):
 
 def extractTuples(name):
   possible_archs = ["(slc.*_x86-64)-(.*)[.]ini",
-                    "(ubuntu_x86-64)-(.*)[.]ini",
+                    "(ubt.*_x86-64)-(.*)[.]ini",
                     "(osx.*_x86-64)-(.*)[.]ini"]
   for attempt in possible_archs:
     m = re.match(attempt, name)
@@ -96,9 +96,21 @@ if __name__ == "__main__":
   done_tags = set(str(extractTuples(basename(x))) for x in done_tags)
   print done_tags
   all_tags = out.split("\n")
-  rules = yaml.load(file("config.yaml"))
+  config = yaml.load(file("config.yaml"))
+  rules = config["release_rules"]
 
-  specs = decide(done_tags, all_tags, rules)
+  # Decide which releases need to be built.
+  specs = decide_releases(done_tags, all_tags, rules)
+  # Now we process the integration build part. We simply create the ini files
+  # for each one of them.
+  ibs = config["integration_rules"]
+  for ib in ibs:
+    payload = {
+      "tag": ib["branch"],
+      "architecture": ib["architecture"]
+    }
+    specs.append(payload)
+  
   if not specs:
     print "No tags to be processed"
     exit(0)
@@ -120,5 +132,6 @@ if __name__ == "__main__":
                tag=s["tag"])
     f = file(p, "w")
     f.write("ARCHITECTURE=%s\n" % s["architecture"])
+    f.write("OVERRIDE_TAGS=aliroot=%s\n" % s["tag"])
     f.close()
     symlink(p, basename(p))
