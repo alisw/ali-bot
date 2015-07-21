@@ -7,6 +7,23 @@
 #   to be done, and evaluation continues.
 
 # Do not build old releases, we do not care about them, at least for now.
+integration_rules:
+-
+  branch: master
+  architecture: slc7_x86-64
+  alidist: master
+  alibuild: master
+-
+  branch: master
+  architecture: slc6_x86-64
+  alidist: master
+  alibuild: master
+-
+  branch: master
+  architecture: ubt14_x86-64
+  alidist: master
+  alibuild: master
+release_rules:
 - 
   name: aliroot
   exclude: v[01234].*
