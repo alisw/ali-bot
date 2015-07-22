@@ -41,7 +41,8 @@ def decide_releases(done_tags, all_tags, rules):
         m = re.match(rule["include"], tag)
         payload = {
            "tag": tag,
-           "architecture": rule["architecture"]
+           "architecture": rule["architecture"],
+           "package": "aliroot"
         }
         if not m:
           continue
@@ -54,14 +55,16 @@ def decide_releases(done_tags, all_tags, rules):
   return to_be_processed
 
 def extractTuples(name):
-  possible_archs = ["(slc.*_x86-64)-(.*)[.]ini",
-                    "(ubt.*_x86-64)-(.*)[.]ini",
-                    "(osx.*_x86-64)-(.*)[.]ini"]
+  possible_archs = ["(.*)(slc.*_x86-64)-(.*)[.]ini",
+                    "(.*)(ubt.*_x86-64)-(.*)[.]ini",
+                    "(.*)(osx.*_x86-64)-(.*)[.]ini"]
   for attempt in possible_archs:
     m = re.match(attempt, name)
     if not m:
       continue
-    return dict(zip(["architecture", "tag"], m.groups()))
+    result = dict(zip(["package", "architecture", "tag"], m.groups()))
+    result["package"] = result.get("package", "aliroot").strip("-")
+    return result
 
 if __name__ == "__main__":
   logging.basicConfig()
@@ -107,7 +110,8 @@ if __name__ == "__main__":
   for ib in ibs:
     payload = {
       "tag": ib["branch"],
-      "architecture": ib["architecture"]
+      "architecture": ib["architecture"],
+      "package": ib["package"]
     }
     specs.append(payload)
   
@@ -126,12 +130,14 @@ if __name__ == "__main__":
   getstatusoutput("rm -fr *.ini")
   for s in specs:
     getstatusoutput("mkdir -p %s/data/scheduled" % args.alisw)
-    p = format("%(alisw)s/data/scheduled/%(architecture)s-%(tag)s.ini",
+    p = format("%(alisw)s/data/scheduled/%(package)s-%(architecture)s-%(tag)s.ini",
                alisw=args.alisw,
                architecture=s["architecture"],
+               package=s["package"],
                tag=s["tag"])
     f = file(p, "w")
     f.write("ARCHITECTURE=%s\n" % s["architecture"])
     f.write("OVERRIDE_TAGS=aliroot=%s\n" % s["tag"])
+    f.write("PACKAGE_NAME=%s\n" % s["package"])
     f.close()
     symlink(p, basename(p))
