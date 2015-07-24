@@ -1,0 +1,149 @@
+{
+  "logs" : {
+    "properties" : {
+      "@timestamp" : {
+        "type" : "date",
+        "format" : "dateOptionalTime"
+      },
+      "@version" : {
+        "type" : "long"
+      },
+      "column" : {
+        "type" : "long"
+      },
+      "data" : {
+        "properties" : {
+          "buildDuration" : {
+            "type" : "long"
+          },
+          "buildHost" : {
+            "type" : "string"
+          },
+          "buildLabel" : {
+            "type" : "string"
+          },
+          "buildNum" : {
+            "type" : "long"
+          },
+          "buildVariables" : {
+            "properties" : {
+              "ALIBUILD_BRANCH" : {
+                "type" : "string",
+                "index" : "not_analyzed"
+              },
+              "ALIBUILD_REPO" : {
+                "type" : "string",
+                "index" : "not_analyzed"
+              },
+              "ALIDIST_BRANCH" : {
+                "type" : "string",
+                "index" : "not_analyzed"
+              },
+              "ALIDIST_REPO" : {
+                "type" : "string",
+                "index" : "not_analyzed"
+              },
+              "ARCHITECTURE" : {
+                "type" : "string",
+                "index" : "not_analyzed"
+              },
+              "OVERRIDE_TAGS" : {
+                "type" : "string",
+                "index" : "not_analyzed"
+              },
+              "PACKAGE_NAME" : {
+                "type" : "string",
+                "index" : "not_analyzed"
+              }
+            }
+          },
+          "displayName" : {
+            "type" : "string"
+          },
+          "fullDisplayName" : {
+            "type" : "string"
+          },
+          "id" : {
+            "type" : "string"
+          },
+          "projectName" : {
+            "type" : "string",
+            "index" : "not_analyzed"
+          },
+          "rootBuildNum" : {
+            "type" : "long"
+          },
+          "rootProjectDisplayName" : {
+            "type" : "string"
+          },
+          "rootProjectName" : {
+            "type" : "string"
+          },
+          "timestamp" : {
+            "type" : "date",
+            "format" : "dateOptionalTime"
+          },
+          "url" : {
+            "type" : "string",
+            "index" : "not_analyzed"
+          }
+        }
+      },
+      "filename" : {
+        "type" : "string",
+        "index" : "not_analyzed"
+      },
+      "line" : {
+        "type" : "long"
+      },
+      "main" : {
+        "properties" : {
+          "hash" : {
+            "type" : "string",
+            "index" : "not_analyzed"
+          },
+          "name" : {
+            "type" : "string",
+            "index" : "not_analyzed"
+          }
+        }
+      },
+      "message_type" : {
+        "type" : "string",
+        "index" : "not_analyzed"
+      },
+      "source" : {
+        "type" : "string",
+        "index" : "not_analyzed"
+      },
+      "source_host" : {
+        "type" : "string",
+        "index" : "not_analyzed"
+      },
+      "sources" : {
+        "properties" : {
+          "hash" : {
+            "type" : "string",
+            "index" : "not_analyzed"
+          },
+          "repo" : {
+            "type" : "string",
+            "index" : "not_analyzed"
+          },
+          "tag" : {
+            "type" : "string",
+            "index" : "not_analyzed"
+          }
+        }
+      },
+      "status" : {
+        "type" : "string",
+        "index" : "not_analyzed"
+      },
+      "what" : {
+        "type" : "string",
+        "index" : "not_analyzed"
+      }
+    }
+  }
+}
