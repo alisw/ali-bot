@@ -1,0 +1,81 @@
+{
+  "size": 500,
+  "sort": [
+    {
+      "@timestamp": {
+        "order": "desc",
+        "unmapped_type": "boolean"
+      }
+    }
+  ],
+  "query": {
+    "filtered": {
+      "query": {
+        "query_string": {
+          "query": "message_type:tools_info",
+          "analyze_wildcard": true
+        }
+      },
+      "filter": {
+        "bool": {
+          "must": [
+            {
+              "query": {
+                "match": {
+                  "message_type": {
+                    "query": "tools_info",
+                    "type": "phrase"
+                  }
+                }
+              }
+            },
+            {
+              "range": {
+                "@timestamp": {
+                  "gte": "now-1w"
+                }
+              }
+            }
+          ],
+          "must_not": []
+        }
+      }
+    }
+  },
+  "highlight": {
+    "pre_tags": [
+      "@kibana-highlighted-field@"
+    ],
+    "post_tags": [
+      "@/kibana-highlighted-field@"
+    ],
+    "fields": {
+      "*": {}
+    },
+    "fragment_size": 2147483647
+  },
+  "aggs": {
+    "2": {
+      "date_histogram": {
+        "field": "@timestamp",
+        "interval": "30s",
+        "pre_zone": "+02:00",
+        "pre_zone_adjust_large_interval": true,
+        "min_doc_count": 0,
+        "extended_bounds": {
+          "min": 1437747263390,
+          "max": 1437748163390
+        }
+      }
+    }
+  },
+  "fields": [
+    "*",
+    "_source"
+  ],
+  "script_fields": {},
+  "fielddata_fields": [
+    "data.timestamp",
+    "@timestamp"
+  ]
+}
