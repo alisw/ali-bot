@@ -27,8 +27,8 @@
   "aggs": {
     "by_package": {
       "terms": {
-        "field": "main.name",
-        "size": 5,
+        "field": "main.name.raw",
+        "size": 15,
         "order": {
           "_count": "desc"
         }
@@ -37,7 +37,7 @@
         "by_commit": {
           "terms": {
             "field": "main.hash.raw",
-            "size": 5,
+            "size": 50,
             "order": {
               "_count": "desc"
             }
@@ -46,7 +46,7 @@
             "build_id": {
               "terms": {
                 "field": "data.id",
-                "size": 5,
+                "size": 50,
                 "order": {
                   "_count": "desc"
                 }
