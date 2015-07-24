@@ -7,4 +7,5 @@ curl -X POST "http://$ES_HOST/_search/?pretty=true&filter_path=**.key" -d@es/bui
 curl -X POST "http://$ES_HOST/_search/?pretty=true&filter_path=**.key" -d@es/build_errors.json > $TARGET/_data/errors.json
 curl -X POST "http://$ES_HOST/_search/?pretty=true&filter_path=**.key" -d@es/build_warnings.json > $TARGET/_data/warnings.json
 curl -X POST "http://$ES_HOST/_search/?pretty=true&filter_path=**.key" -d@es/build_status.json > $TARGET/_data/status.json
+curl -X POST "http://$ES_HOST/_search/?pretty=true&filter_path=**.key" -d@es/build_tests_status.json > $TARGET/_data/tests_status.json
 curl -X POST "http://$ES_HOST/_search/?pretty=true" -d@es/build_tools_info.json > $TARGET/_data/tools.json
