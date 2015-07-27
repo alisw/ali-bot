@@ -48,7 +48,7 @@
                 "field": "data.id",
                 "size": 50,
                 "order": {
-                  "_count": "desc"
+                  "_term": "desc"
                 }
               },
               "aggs": {
