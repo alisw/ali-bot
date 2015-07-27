@@ -1,0 +1,60 @@
+{
+  "size": 0,
+  "query": {
+    "filtered": {
+      "query": {
+        "query_string": {
+          "query": "message_type:test_status",
+          "analyze_wildcard": true
+        }
+      },
+      "filter": {
+        "bool": {
+          "must": [
+            {
+              "range": {
+                "@timestamp": {
+                  "gte": "now-1w"
+                }
+              }
+            }
+          ],
+          "must_not": []
+        }
+      }
+    }
+  },
+  "aggs": {
+    "by_id": {
+      "terms": {
+        "field": "data.id",
+        "size": 50,
+        "order": {
+          "_count": "desc"
+        }
+      },
+      "aggs": {
+        "by_name": {
+          "terms": {
+            "field": "test.name",
+            "size": 15,
+            "order": {
+              "_count": "desc"
+            }
+          },
+          "aggs": {
+            "status": {
+              "terms": {
+                "field": "test.status.raw",
+                "size": 5,
+                "order": {
+                  "_count": "desc"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
