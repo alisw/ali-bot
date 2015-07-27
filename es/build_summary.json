@@ -37,7 +37,7 @@
         "by_commit": {
           "terms": {
             "field": "main.hash.raw",
-            "size": 50,
+            "size": 150,
             "order": {
               "_count": "desc"
             }
@@ -46,7 +46,7 @@
             "build_id": {
               "terms": {
                 "field": "data.id",
-                "size": 50,
+                "size": 150,
                 "order": {
                   "_term": "desc"
                 }
