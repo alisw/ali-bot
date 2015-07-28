@@ -30,7 +30,7 @@
         "field": "main.name.raw",
         "size": 15,
         "order": {
-          "_term": "desc"
+          "_term": "asc"
         }
       },
       "aggs": {
@@ -39,7 +39,7 @@
             "field": "main.hash.raw",
             "size": 150,
             "order": {
-              "_term": "desc"
+              "_term": "asc"
             }
           },
           "aggs": {
@@ -57,7 +57,7 @@
                     "field": "data.buildVariables.ARCHITECTURE.raw",
                     "size": 5,
                     "order": {
-                      "_term": "desc"
+                      "_term": "asc"
                     }
                   },
                   "aggs": {
@@ -66,7 +66,7 @@
                         "field": "data.buildVariables.ALIDIST_REPO.raw",
                         "size": 5,
                         "order": {
-                          "_term": "desc"
+                          "_term": "asc"
                         }
                       },
                       "aggs": {
@@ -75,7 +75,7 @@
                             "field": "data.buildVariables.ALIDIST_BRANCH.raw",
                             "size": 5,
                             "order": {
-                              "_term": "desc"
+                              "_term": "asc"
                             }
                           }
                         }
