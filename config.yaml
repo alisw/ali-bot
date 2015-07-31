@@ -12,7 +12,7 @@ integration_rules:
   architecture: slc7_x86-64
   alidist: IB/master/root6
   alibuild: master
-  package: aliroot-test
+  package: aliroot
 -
   branch: master
   architecture: slc7_x86-64
