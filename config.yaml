@@ -8,6 +8,11 @@
 
 # Do not build old releases, we do not care about them, at least for now.
 integration_rules:
+- branch: master
+  architecture: slc7_x86-64
+  alidist: IB/master/root6
+  alibuild: master
+  package: aliroot-test
 -
   branch: master
   architecture: slc7_x86-64
