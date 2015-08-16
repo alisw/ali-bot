@@ -8,6 +8,10 @@ from json import loads, dumps
 from yaml import safe_load, YAMLError
 from requests import get
 from re import search, escape
+from os.path import isdir
+from os import chmod, remove
+from tempfile import NamedTemporaryFile
+from subprocess import Popen, PIPE
 
 def format(s, **kwds):
   return s % kwds
@@ -36,6 +40,26 @@ def filter(name, include_rules, exclude_rules, include_first):
       else:
         return search_many(name, include_rules)
 
+def unpack_script(script, **kwsub):
+  with NamedTemporaryFile(delete=False) as fp:
+    fn = fp.name
+    fp.write(format(script, **kwsub))
+  chmod(fn, 0700)
+  debug(format("Created: %(file)s", file=fn))
+  rv = execute(fn)
+  remove(fn)
+  return rv
+
+def execute(command):
+  popen = Popen(command, shell=False, stdout=PIPE)
+  lines_iterator = iter(popen.stdout.readline, "")
+  for line in lines_iterator:
+    debug(line.strip("\n"))  # yield line
+  output = popen.communicate()[0]
+  debug(output)
+  exitCode = popen.returncode
+  return exitCode
+
 def sync():
   for arch in conf["architectures"]:
     url = conf["base_url"] + "/" + arch
@@ -52,18 +76,34 @@ def sync():
         if v["type"] != "file": continue
         vmatch = search(vre, v["name"])
         if vmatch is None: continue
-        pkgname = p["name"]
         pkgver = vmatch.group(1)
-        ft = filter(pkgver,
-                    conf["include"].get(p["name"], None),
-                    conf["exclude"].get(p["name"], None),
-                    include_first)
-        debug(format("[include=%(include)s] %(arch)s: package %(pack)s, version %(ver)s, file %(file)s",
-                     arch=arch,
-                     pack=p["name"],
-                     file=v["name"],
-                     ver=pkgver,
-                     include=ft))
+        if not filter(pkgver,
+                  conf["include"].get(p["name"], None),
+                  conf["exclude"].get(p["name"], None),
+                  include_first):
+          debug(format("%(arch)s: excluded package %(pack)s version %(ver)s",
+                       arch=arch,
+                       pack=p["name"],
+                       ver=pkgver))
+          continue
+        pkgdir = format(conf["dest_dir"],
+                        repo=conf["cvmfs_repository"],
+                        arch=arch,
+                        package=p["name"],
+                        version=pkgver)
+        debug(format("%(arch)s: package %(pack)s version %(ver)s to be published to %(pkgdir)s",
+                    arch=arch,
+                    pack=p["name"],
+                    ver=pkgver,
+                    pkgdir=pkgdir))
+        if isdir(pkgdir):
+          debug("==> skipping, already installed")
+        else:
+          full_url = vurl+"/"+v["name"]
+          debug(format("!!! we need to get %(url)s !!!", url=full_url))
+          rv = unpack_script(conf["unpack_script"],
+                        url=full_url, arch=arch, package=p["name"], ver=pkgver,
+                        repo=conf["cvmfs_repository"], pkgdir=pkgdir) 
 
 if __name__ == "__main__":
   parser = ArgumentParser()
