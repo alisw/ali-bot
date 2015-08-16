@@ -6,12 +6,64 @@ import logging, sys
 from logging import debug, error, info
 from json import loads, dumps
 from yaml import safe_load, YAMLError
+from requests import get
+from re import search, escape
 
 def format(s, **kwds):
   return s % kwds
 
+def search_many(name, exprs):
+  if isinstance(exprs, list):
+    for e in exprs:
+      if search(e, name): return True
+  elif exprs == True:
+    return True
+  return False
+
+def filter(name, include_rules, exclude_rules, include_first):
+  if include_first:
+    if search_many(name, include_rules):
+      return not search_many(name, exclude_rules)
+    else:
+      return False
+  else:
+    if search_many(name, exclude_rules):
+      return False
+    else:
+      if include_rules is None:
+        # process exclude first, and no explicit include rule: keep it
+        return True
+      else:
+        return search_many(name, include_rules)
+
 def sync():
-  info("here")
+  for arch in conf["architectures"]:
+    url = conf["base_url"] + "/" + arch
+    debug(format("Getting packages for architecture %(arch)s from %(url)s", arch=arch, url=url))
+    packs = loads(get(url).text)  # nginx json: type, mtime, name
+    for p in packs:
+      if p["type"] != "directory" or p["name"] in [ "dist", "store" ]: continue
+      debug(format("%(arch)s: listing versions for %(pack)s",
+                   arch=arch,
+                   pack=p["name"]))
+      vurl = url + "/" + p["name"]
+      vre = format("^%(pack)s-(.*?)\.%(arch)s\.tar\.gz$", pack=escape(p["name"]), arch=escape(arch))
+      for v in loads(get(vurl).text):
+        if v["type"] != "file": continue
+        vmatch = search(vre, v["name"])
+        if vmatch is None: continue
+        pkgname = p["name"]
+        pkgver = vmatch.group(1)
+        ft = filter(pkgver,
+                    conf["include"].get(p["name"], None),
+                    conf["exclude"].get(p["name"], None),
+                    include_first)
+        debug(format("[include=%(include)s] %(arch)s: package %(pack)s, version %(ver)s, file %(file)s",
+                     arch=arch,
+                     pack=p["name"],
+                     file=v["name"],
+                     ver=pkgver,
+                     include=ft))
 
 if __name__ == "__main__":
   parser = ArgumentParser()
@@ -31,6 +83,8 @@ if __name__ == "__main__":
   else:
     logger.setLevel(logging.INFO)
 
+  logging.getLogger("requests").setLevel(logging.WARNING)
+
   try:
     with open(args.configFile, "r") as cf:
       conf = safe_load(cf.read())
@@ -38,7 +92,16 @@ if __name__ == "__main__":
     error( format("While reading %(configFile)s: " + str(e), configFile=args.configFile) )
     sys.exit(1)
 
+  if conf.get("include", None) is None: conf["include"] = {}
+  if conf.get("exclude", None) is None: conf["exclude"] = {}
+
   debug("Configuration: "+dumps(conf, indent=2))
+  incexc = conf.get("filter_order", "include,exclude")
+  if incexc == "include,exclude": include_first = True
+  elif incexc == "exclude,include": include_first = False
+  else:
+    error("filter_order can be include,exclude or exclude,include")
+    sys.exit(1)
 
   if args.action == "sync":
     sync()
