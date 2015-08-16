@@ -9,7 +9,7 @@ from yaml import safe_load, YAMLError
 from requests import get
 from re import search, escape
 from os.path import isdir
-from os import chmod, remove
+from os import chmod, remove, chdir
 from tempfile import NamedTemporaryFile
 from subprocess import Popen, PIPE
 
@@ -60,6 +60,47 @@ def execute(command):
   exitCode = popen.returncode
   return exitCode
 
+def cvmfs_server_transaction(repo):
+  global in_cvmfs_transaction
+  if in_cvmfs_transaction:
+    debug("Already in a transaction")
+    return True
+  else:
+    if execute([ "cvmfs_server", "transaction", repo ]) == 0:
+      info("Created a CVMFS transaction")
+      in_cvmfs_transaction = True
+      return True
+    error("Cannot create CVMFS transaction. Maybe another transaction is in progress?")
+    return False
+
+def cvmfs_server_abort(repo, force=False):
+  global in_cvmfs_transaction
+  if not in_cvmfs_transaction and not force:
+    debug("No owned transaction to abort")
+    return True
+  rv = execute([ "cvmfs_server", "abort", "-f", repo ])
+  if rv == 0:
+    info("Our CVMFS transaction aborted")
+    in_cvmfs_transaction = False
+    return True
+  error("Cannot abort CVMFS transaction")
+  return False
+
+def cvmfs_server_publish(repo):
+  global in_cvmfs_transaction
+  if not in_cvmfs_transaction:
+    debug("No change to publish")
+    return True
+  rv = execute([ "cvmfs_server", "publish", repo ])
+  if rv == 0:
+    info("Our CVMFS transaction published!")
+    in_cvmfs_transaction = False
+    return True
+  else:
+    error("Cannot publish CVMFS transaction, calling abort to clean up")
+    cvmfs_server_abort(repo)
+    return False
+
 def sync():
   for arch in conf["architectures"]:
     url = conf["base_url"] + "/" + arch
@@ -99,11 +140,18 @@ def sync():
         if isdir(pkgdir):
           debug("==> skipping, already installed")
         else:
+          if not cvmfs_server_transaction(conf["cvmfs_repository"]):
+            sys.exit(2)  # fatal
           full_url = vurl+"/"+v["name"]
           debug(format("!!! we need to get %(url)s !!!", url=full_url))
           rv = unpack_script(conf["unpack_script"],
                         url=full_url, arch=arch, package=p["name"], ver=pkgver,
-                        repo=conf["cvmfs_repository"], pkgdir=pkgdir) 
+                        repo=conf["cvmfs_repository"], pkgdir=pkgdir)
+          if rv != 0:
+            cvmfs_server_abort(conf["cvmfs_repository"])
+
+  # Publish eventually
+  return cvmfs_server_publish(conf["cvmfs_repository"])
 
 if __name__ == "__main__":
   parser = ArgumentParser()
@@ -111,6 +159,7 @@ if __name__ == "__main__":
   parser.add_argument("--config", "-c", dest="configFile", default="aliCvmfsPublish.conf",
                       help="Configuration file.")
   parser.add_argument("--debug", "-d", dest="debug", action="store_true", default=False)
+  parser.add_argument("--abort-at-start", dest="abort", action="store_true", default=False)
   args = parser.parse_args()
   
   logger = logging.getLogger()
@@ -143,5 +192,10 @@ if __name__ == "__main__":
     error("filter_order can be include,exclude or exclude,include")
     sys.exit(1)
 
+  in_cvmfs_transaction = False
+
   if args.action == "sync":
+    chdir("/")
+    if args.abort:
+      cvmfs_server_abort(conf["cvmfs_repository"], force=True)
     sync()
