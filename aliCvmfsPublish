@@ -62,9 +62,10 @@ def execute(command):
 
 class CvmfsServer(object):
 
-  def __init__(self, repository):
+  def __init__(self, repository, dryRun=False):
     self._in_cvmfs_transaction = False
     self._repository = repository
+    self._dryRun = dryRun
 
   @property
   def repository(self):
@@ -73,6 +74,9 @@ class CvmfsServer(object):
   def transaction(self):
     if self._in_cvmfs_transaction:
       debug(format("%(repo)s: already in a transaction", repo=self._repository))
+      return True
+    elif self._dryRun:
+      debug(format("%(repo)s: started transaction (dry run)", repo=self._repository))
       return True
     else:
       if execute([ "cvmfs_server", "transaction", self._repository ]) == 0:
@@ -87,6 +91,9 @@ class CvmfsServer(object):
     if not self._in_cvmfs_transaction and not force:
       debug(format("%(repo)s: no transaction to abort", repo=self._repository))
       return True
+    if self._dryRun:
+      info(format("%(repo)s: transaction aborted (dry run)", repo=self._repository))
+      return True
     rv = execute([ "cvmfs_server", "abort", "-f", self._repository ])
     if rv == 0:
       info(format("%(repo)s: transaction aborted", repo=self._repository))
@@ -98,6 +105,9 @@ class CvmfsServer(object):
   def publish(self):
     if not self._in_cvmfs_transaction:
       debug(format("%(repo)s: no change to publish", repo=self._repository))
+      return True
+    if self._dryRun:
+      info(format("%(repo)s: transaction published (dry run)", repo=self._repository))
       return True
     rv = execute([ "cvmfs_server", "publish", self._repository ])
     if rv == 0:
@@ -111,7 +121,7 @@ class CvmfsServer(object):
       return False
 
 def sync(cvmfs, architectures, base_url, include_rules, exclude_rules, include_first,
-         dest_dir_tpl, unpack_script_tpl):
+         dest_dir_tpl, unpack_script_tpl, dry_run):
   for arch in architectures:
     url = base_url + "/" + arch
     debug(format("Getting packages for architecture %(arch)s from %(url)s", arch=arch, url=url))
@@ -154,9 +164,13 @@ def sync(cvmfs, architectures, base_url, include_rules, exclude_rules, include_f
             sys.exit(2)  # fatal
           full_url = vurl+"/"+v["name"]
           debug(format("!!! we need to get %(url)s !!!", url=full_url))
-          rv = unpack_script(unpack_script_tpl,
-                             url=full_url, arch=arch, package=p["name"], ver=pkgver,
-                             repo=cvmfs.repository, pkgdir=pkgdir)
+          if dry_run:
+            debug("Unpack script: not running, dry run")
+            rv = 0
+          else:
+            rv = unpack_script(unpack_script_tpl,
+                               url=full_url, arch=arch, package=p["name"], ver=pkgver,
+                               repo=cvmfs.repository, pkgdir=pkgdir)
           if rv != 0:
             cvmfs.abort()
 
@@ -206,7 +220,7 @@ def main():
     sys.exit(1)
 
   if args.action == "sync":
-    cvmfs = CvmfsServer(conf["cvmfs_repository"])
+    cvmfs = CvmfsServer(conf["cvmfs_repository"], args.dryRun)
     chdir("/")
     if args.abort:
       cvmfs.abort(force=True)
@@ -217,7 +231,8 @@ def main():
          exclude_rules=conf["exclude"],
          include_first=include_first,
          dest_dir_tpl=conf["dest_dir"],
-         unpack_script_tpl=conf["unpack_script"])
+         unpack_script_tpl=conf["unpack_script"],
+         dry_run=args.dryRun)
 
 if __name__ == "__main__":
   main()
