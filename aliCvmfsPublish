@@ -72,39 +72,41 @@ class CvmfsServer(object):
 
   def transaction(self):
     if self._in_cvmfs_transaction:
-      debug("Already in a transaction")
+      debug(format("%(repo)s: already in a transaction", repo=self._repository))
       return True
     else:
       if execute([ "cvmfs_server", "transaction", self._repository ]) == 0:
-        info("Created a CVMFS transaction")
+        info(format("%(repo)s: started transaction", repo=self._repository))
         self._in_cvmfs_transaction = True
         return True
-      error("Cannot create CVMFS transaction. Maybe another transaction is in progress?")
+      error(format("%(repo)s: cannot commence transaction: maybe another one is in progress?",
+                   repo=self._repository))
       return False
 
   def abort(self, force=False):
     if not self._in_cvmfs_transaction and not force:
-      debug("No transaction to abort")
+      debug(format("%(repo)s: no transaction to abort", repo=self._repository))
       return True
     rv = execute([ "cvmfs_server", "abort", "-f", self._repository ])
     if rv == 0:
-      info("CVMFS transaction aborted")
+      info(format("%(repo)s: transaction aborted", repo=self._repository))
       self._in_cvmfs_transaction = False
       return True
-    error("Cannot abort CVMFS transaction")
+    error(format("%(repo)s: cannot abort transaction", repo=self._repository))
     return False
 
   def publish(self):
     if not self._in_cvmfs_transaction:
-      debug("No change to publish")
+      debug(format("%(repo)s: no change to publish", repo=self._repository))
       return True
     rv = execute([ "cvmfs_server", "publish", self._repository ])
     if rv == 0:
-      info("Our CVMFS transaction published!")
+      info(format("%(repo)s: transaction published!", repo=self._repository))
       self._in_cvmfs_transaction = False
       return True
     else:
-      error("Cannot publish CVMFS transaction, calling abort to clean up")
+      error(format("%(repo)s: cannot publish CVMFS transaction, aborting",
+            repo=self._repository))
       self.abort()
       return False
 
