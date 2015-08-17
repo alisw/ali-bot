@@ -76,7 +76,7 @@ class CvmfsServer(object):
       debug(format("%(repo)s: already in a transaction", repo=self._repository))
       return True
     elif self._dryRun:
-      debug(format("%(repo)s: started transaction (dry run)", repo=self._repository))
+      info(format("%(repo)s: started transaction (dry run)", repo=self._repository))
       return True
     else:
       if execute([ "cvmfs_server", "transaction", self._repository ]) == 0:
@@ -106,6 +106,7 @@ class CvmfsServer(object):
     if not self._inCvmfsTransaction:
       debug(format("%(repo)s: no change to publish", repo=self._repository))
       return True
+    info(format("%(repo)s: publishing transaction", repo=self._repository))
     if self._dryRun:
       info(format("%(repo)s: transaction published (dry run)", repo=self._repository))
       return True
@@ -128,7 +129,7 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
     packs = loads(get(url).text)  # nginx json: type, mtime, name
     for p in packs:
       if p["type"] != "directory" or p["name"] in [ "dist", "store" ]: continue
-      debug(format("%(arch)s: listing versions for %(pack)s",
+      debug(format("%(arch)s / %(pack)s: listing versions",
                    arch=arch,
                    pack=p["name"]))
       vurl = url + "/" + p["name"]
@@ -142,7 +143,7 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
                       includeRules.get(p["name"], None),
                       excludeRules.get(p["name"], None),
                       includeFirst):
-          debug(format("%(arch)s: excluded package %(pack)s version %(ver)s",
+          debug(format("%(arch)s / %(pack)s / %(ver)s: excluded",
                        arch=arch,
                        pack=p["name"],
                        ver=pkgver))
@@ -152,18 +153,22 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
                         arch=arch,
                         package=p["name"],
                         version=pkgver)
-        debug(format("%(arch)s: package %(pack)s version %(ver)s to be published to %(pkgdir)s",
-                    arch=arch,
-                    pack=p["name"],
-                    ver=pkgver,
-                    pkgdir=pkgdir))
         if isdir(pkgdir):
-          debug("==> skipping, already installed")
+          debug(format("%(arch)s / %(pack)s / %(ver)s: already installed in %(pkgdir)s: skipping",
+                       arch=arch,
+                       pack=p["name"],
+                       ver=pkgver,
+                       pkgdir=pkgdir))
         else:
+          fullUrl = vurl + "/" + v["name"]
+          info(format("%(arch)s / %(pack)s / %(ver)s: getting package",
+                      arch=arch,
+                      pack=p["name"],
+                      ver=pkgver))
+          info(format(" * Source: %(url)s", url=fullUrl))
+          info(format(" * Destination: %(pkgdir)s", pkgdir=pkgdir))
           if not cvmfs.transaction():
             sys.exit(2)  # fatal
-          fullUrl = vurl+"/"+v["name"]
-          debug(format("!!! we need to get %(url)s !!!", url=fullUrl))
           if dryRun:
             debug("Unpack script: not running, dry run")
             rv = 0
@@ -182,9 +187,10 @@ def main():
   parser.add_argument("action")
   parser.add_argument("--config", "-c", dest="configFile", default="aliCvmfsPublish.conf",
                       help="Configuration file")
-  parser.add_argument("--debug", "-d", dest="debug", action="store_true", default=False)
+  parser.add_argument("--debug", "-d", dest="debug", action="store_true", default=False,
+                      help="Debug output")
   parser.add_argument("--abort-at-start", dest="abort", action="store_true", default=False,
-                      help="Abort any CVMFS transaction at start")
+                      help="Abort any pending CVMFS transaction at start")
   parser.add_argument("--dry-run", "-n", dest="dryRun", action="store_true", default=False,
                       help="Do not write or publish anything")
   args = parser.parse_args()
@@ -193,11 +199,9 @@ def main():
   loggerHandler = logging.StreamHandler()
   logger.addHandler(loggerHandler)
 
-  if args.debug:
-    loggerHandler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
-    logger.setLevel(logging.DEBUG)
-  else:
-    logger.setLevel(logging.INFO)
+  loggerHandler.setFormatter(logging.Formatter('%(levelname)-5s: %(message)s'))
+  if args.debug: logger.setLevel(logging.DEBUG)
+  else: logger.setLevel(logging.INFO)
 
   logging.getLogger("requests").setLevel(logging.WARNING)
 
