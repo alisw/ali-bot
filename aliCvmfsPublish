@@ -77,6 +77,7 @@ class CvmfsServer(object):
       return True
     elif self._dryRun:
       info(format("%(repo)s: started transaction (dry run)", repo=self._repository))
+      self._inCvmfsTransaction = True
       return True
     else:
       if execute([ "cvmfs_server", "transaction", self._repository ]) == 0:
@@ -93,6 +94,7 @@ class CvmfsServer(object):
       return True
     if self._dryRun:
       info(format("%(repo)s: transaction aborted (dry run)", repo=self._repository))
+      self._inCvmfsTransaction = False
       return True
     rv = execute([ "cvmfs_server", "abort", "-f", self._repository ])
     if rv == 0:
