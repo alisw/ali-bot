@@ -121,7 +121,7 @@ class CvmfsServer(object):
       return False
 
 def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst,
-         destDirTpl, unpackScriptTpl, dryRun):
+         packDirTpl, unpackScriptTpl, dryRun):
   for arch in architectures:
     url = baseUrl + "/" + arch
     debug(format("Getting packages for architecture %(arch)s from %(url)s", arch=arch, url=url))
@@ -147,7 +147,7 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
                        pack=p["name"],
                        ver=pkgver))
           continue
-        pkgdir = format(destDirTpl,
+        pkgdir = format(packDirTpl,
                         repo=cvmfs.repository,
                         arch=arch,
                         package=p["name"],
@@ -208,10 +208,32 @@ def main():
     error( format("While reading %(configFile)s: " + str(e), configFile=args.configFile) )
     sys.exit(1)
 
+  if conf is None: conf = {}
   if conf.get("include", None) is None: conf["include"] = {}
   if conf.get("exclude", None) is None: conf["exclude"] = {}
 
-  debug("Configuration: "+dumps(conf, indent=2))
+  if conf.get("package_dir", None) is None:
+    conf["package_dir"] = "/cvmfs/%(repo)s/%(arch)s/%(package)s/%(version)s"
+
+  doExit = False
+  if not isinstance(conf.get("cvmfs_repository", None), basestring):
+    error("cvmfs_repository must be a string")
+    doExit = True
+  if not isinstance(conf.get("architectures", None), list):
+    error("architectures must be a list of strings")
+    doExit = True
+  if not isinstance(conf.get("base_url", None), basestring):
+    error("base_url must be a string")
+    doExit = True
+  if not isinstance(conf.get("package_dir", None), basestring):
+    error("package_dir must be a string")
+    doExit = True
+  if not isinstance(conf.get("unpack_script", None), basestring):
+    error("unpack_script must be a string")
+    doExit = True
+  if doExit: sys.exit(1)
+
+  debug("Configuration: " + dumps(conf, indent=2))
   incexc = conf.get("filter_order", "include,exclude")
   if incexc == "include,exclude": includeFirst = True
   elif incexc == "exclude,include": includeFirst = False
@@ -230,7 +252,7 @@ def main():
          includeRules=conf["include"],
          excludeRules=conf["exclude"],
          includeFirst=includeFirst,
-         destDirTpl=conf["dest_dir"],
+         packDirTpl=conf["package_dir"],
          unpackScriptTpl=conf["unpack_script"],
          dryRun=args.dryRun)
 
