@@ -16,7 +16,7 @@ from subprocess import Popen, PIPE
 def format(s, **kwds):
   return s % kwds
 
-def search_many(name, exprs):
+def searchMany(name, exprs):
   if isinstance(exprs, list):
     for e in exprs:
       if search(e, name): return True
@@ -24,23 +24,23 @@ def search_many(name, exprs):
     return True
   return False
 
-def filter(name, include_rules, exclude_rules, include_first):
-  if include_first:
-    if search_many(name, include_rules):
-      return not search_many(name, exclude_rules)
+def filter(name, includeRules, excludeRules, includeFirst):
+  if includeFirst:
+    if searchMany(name, includeRules):
+      return not searchMany(name, excludeRules)
     else:
       return False
   else:
-    if search_many(name, exclude_rules):
+    if searchMany(name, excludeRules):
       return False
     else:
-      if include_rules is None:
+      if includeRules is None:
         # process exclude first, and no explicit include rule: keep it
         return True
       else:
-        return search_many(name, include_rules)
+        return searchMany(name, includeRules)
 
-def unpack_script(script, **kwsub):
+def runUnpackScript(script, **kwsub):
   with NamedTemporaryFile(delete=False) as fp:
     fn = fp.name
     fp.write(format(script, **kwsub))
@@ -52,8 +52,8 @@ def unpack_script(script, **kwsub):
 
 def execute(command):
   popen = Popen(command, shell=False, stdout=PIPE)
-  lines_iterator = iter(popen.stdout.readline, "")
-  for line in lines_iterator:
+  linesIterator = iter(popen.stdout.readline, "")
+  for line in linesIterator:
     debug(line.strip("\n"))  # yield line
   output = popen.communicate()[0]
   debug(output)
@@ -63,7 +63,7 @@ def execute(command):
 class CvmfsServer(object):
 
   def __init__(self, repository, dryRun=False):
-    self._in_cvmfs_transaction = False
+    self._inCvmfsTransaction = False
     self._repository = repository
     self._dryRun = dryRun
 
@@ -72,7 +72,7 @@ class CvmfsServer(object):
     return self._repository
 
   def transaction(self):
-    if self._in_cvmfs_transaction:
+    if self._inCvmfsTransaction:
       debug(format("%(repo)s: already in a transaction", repo=self._repository))
       return True
     elif self._dryRun:
@@ -81,14 +81,14 @@ class CvmfsServer(object):
     else:
       if execute([ "cvmfs_server", "transaction", self._repository ]) == 0:
         info(format("%(repo)s: started transaction", repo=self._repository))
-        self._in_cvmfs_transaction = True
+        self._inCvmfsTransaction = True
         return True
       error(format("%(repo)s: cannot commence transaction: maybe another one is in progress?",
                    repo=self._repository))
       return False
 
   def abort(self, force=False):
-    if not self._in_cvmfs_transaction and not force:
+    if not self._inCvmfsTransaction and not force:
       debug(format("%(repo)s: no transaction to abort", repo=self._repository))
       return True
     if self._dryRun:
@@ -97,13 +97,13 @@ class CvmfsServer(object):
     rv = execute([ "cvmfs_server", "abort", "-f", self._repository ])
     if rv == 0:
       info(format("%(repo)s: transaction aborted", repo=self._repository))
-      self._in_cvmfs_transaction = False
+      self._inCvmfsTransaction = False
       return True
     error(format("%(repo)s: cannot abort transaction", repo=self._repository))
     return False
 
   def publish(self):
-    if not self._in_cvmfs_transaction:
+    if not self._inCvmfsTransaction:
       debug(format("%(repo)s: no change to publish", repo=self._repository))
       return True
     if self._dryRun:
@@ -112,7 +112,7 @@ class CvmfsServer(object):
     rv = execute([ "cvmfs_server", "publish", self._repository ])
     if rv == 0:
       info(format("%(repo)s: transaction published!", repo=self._repository))
-      self._in_cvmfs_transaction = False
+      self._inCvmfsTransaction = False
       return True
     else:
       error(format("%(repo)s: cannot publish CVMFS transaction, aborting",
@@ -120,10 +120,10 @@ class CvmfsServer(object):
       self.abort()
       return False
 
-def sync(cvmfs, architectures, base_url, include_rules, exclude_rules, include_first,
-         dest_dir_tpl, unpack_script_tpl, dry_run):
+def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst,
+         destDirTpl, unpackScriptTpl, dryRun):
   for arch in architectures:
-    url = base_url + "/" + arch
+    url = baseUrl + "/" + arch
     debug(format("Getting packages for architecture %(arch)s from %(url)s", arch=arch, url=url))
     packs = loads(get(url).text)  # nginx json: type, mtime, name
     for p in packs:
@@ -139,15 +139,15 @@ def sync(cvmfs, architectures, base_url, include_rules, exclude_rules, include_f
         if vmatch is None: continue
         pkgver = vmatch.group(1)
         if not filter(pkgver,
-                      include_rules.get(p["name"], None),
-                      exclude_rules.get(p["name"], None),
-                      include_first):
+                      includeRules.get(p["name"], None),
+                      excludeRules.get(p["name"], None),
+                      includeFirst):
           debug(format("%(arch)s: excluded package %(pack)s version %(ver)s",
                        arch=arch,
                        pack=p["name"],
                        ver=pkgver))
           continue
-        pkgdir = format(dest_dir_tpl,
+        pkgdir = format(destDirTpl,
                         repo=cvmfs.repository,
                         arch=arch,
                         package=p["name"],
@@ -162,15 +162,15 @@ def sync(cvmfs, architectures, base_url, include_rules, exclude_rules, include_f
         else:
           if not cvmfs.transaction():
             sys.exit(2)  # fatal
-          full_url = vurl+"/"+v["name"]
-          debug(format("!!! we need to get %(url)s !!!", url=full_url))
-          if dry_run:
+          fullUrl = vurl+"/"+v["name"]
+          debug(format("!!! we need to get %(url)s !!!", url=fullUrl))
+          if dryRun:
             debug("Unpack script: not running, dry run")
             rv = 0
           else:
-            rv = unpack_script(unpack_script_tpl,
-                               url=full_url, arch=arch, package=p["name"], ver=pkgver,
-                               repo=cvmfs.repository, pkgdir=pkgdir)
+            rv = runUnpackScript(unpackScriptTpl,
+                                 url=fullUrl, arch=arch, package=p["name"], ver=pkgver,
+                                 repo=cvmfs.repository, pkgdir=pkgdir)
           if rv != 0:
             cvmfs.abort()
 
@@ -190,11 +190,11 @@ def main():
   args = parser.parse_args()
   
   logger = logging.getLogger()
-  logger_handler = logging.StreamHandler()
-  logger.addHandler(logger_handler)
+  loggerHandler = logging.StreamHandler()
+  logger.addHandler(loggerHandler)
 
   if args.debug:
-    logger_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+    loggerHandler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
     logger.setLevel(logging.DEBUG)
   else:
     logger.setLevel(logging.INFO)
@@ -213,8 +213,8 @@ def main():
 
   debug("Configuration: "+dumps(conf, indent=2))
   incexc = conf.get("filter_order", "include,exclude")
-  if incexc == "include,exclude": include_first = True
-  elif incexc == "exclude,include": include_first = False
+  if incexc == "include,exclude": includeFirst = True
+  elif incexc == "exclude,include": includeFirst = False
   else:
     error("filter_order can be include,exclude or exclude,include")
     sys.exit(1)
@@ -226,13 +226,13 @@ def main():
       cvmfs.abort(force=True)
     sync(cvmfs=cvmfs,
          architectures=conf["architectures"],
-         base_url=conf["base_url"],
-         include_rules=conf["include"],
-         exclude_rules=conf["exclude"],
-         include_first=include_first,
-         dest_dir_tpl=conf["dest_dir"],
-         unpack_script_tpl=conf["unpack_script"],
-         dry_run=args.dryRun)
+         baseUrl=conf["base_url"],
+         includeRules=conf["include"],
+         excludeRules=conf["exclude"],
+         includeFirst=includeFirst,
+         destDirTpl=conf["dest_dir"],
+         unpackScriptTpl=conf["unpack_script"],
+         dryRun=args.dryRun)
 
 if __name__ == "__main__":
   main()
