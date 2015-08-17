@@ -60,50 +60,58 @@ def execute(command):
   exitCode = popen.returncode
   return exitCode
 
-def cvmfs_server_transaction(repo):
-  global in_cvmfs_transaction
-  if in_cvmfs_transaction:
-    debug("Already in a transaction")
-    return True
-  else:
-    if execute([ "cvmfs_server", "transaction", repo ]) == 0:
-      info("Created a CVMFS transaction")
-      in_cvmfs_transaction = True
+class CvmfsServer(object):
+
+  def __init__(self, repository):
+    self._in_cvmfs_transaction = False
+    self._repository = repository
+
+  @property
+  def repository(self):
+    return self._repository
+
+  def transaction(self):
+    if self._in_cvmfs_transaction:
+      debug("Already in a transaction")
       return True
-    error("Cannot create CVMFS transaction. Maybe another transaction is in progress?")
+    else:
+      if execute([ "cvmfs_server", "transaction", self._repository ]) == 0:
+        info("Created a CVMFS transaction")
+        self._in_cvmfs_transaction = True
+        return True
+      error("Cannot create CVMFS transaction. Maybe another transaction is in progress?")
+      return False
+
+  def abort(self, force=False):
+    if not self._in_cvmfs_transaction and not force:
+      debug("No transaction to abort")
+      return True
+    rv = execute([ "cvmfs_server", "abort", "-f", self._repository ])
+    if rv == 0:
+      info("CVMFS transaction aborted")
+      self._in_cvmfs_transaction = False
+      return True
+    error("Cannot abort CVMFS transaction")
     return False
 
-def cvmfs_server_abort(repo, force=False):
-  global in_cvmfs_transaction
-  if not in_cvmfs_transaction and not force:
-    debug("No owned transaction to abort")
-    return True
-  rv = execute([ "cvmfs_server", "abort", "-f", repo ])
-  if rv == 0:
-    info("Our CVMFS transaction aborted")
-    in_cvmfs_transaction = False
-    return True
-  error("Cannot abort CVMFS transaction")
-  return False
+  def publish(self):
+    if not self._in_cvmfs_transaction:
+      debug("No change to publish")
+      return True
+    rv = execute([ "cvmfs_server", "publish", self._repository ])
+    if rv == 0:
+      info("Our CVMFS transaction published!")
+      self._in_cvmfs_transaction = False
+      return True
+    else:
+      error("Cannot publish CVMFS transaction, calling abort to clean up")
+      self.abort()
+      return False
 
-def cvmfs_server_publish(repo):
-  global in_cvmfs_transaction
-  if not in_cvmfs_transaction:
-    debug("No change to publish")
-    return True
-  rv = execute([ "cvmfs_server", "publish", repo ])
-  if rv == 0:
-    info("Our CVMFS transaction published!")
-    in_cvmfs_transaction = False
-    return True
-  else:
-    error("Cannot publish CVMFS transaction, calling abort to clean up")
-    cvmfs_server_abort(repo)
-    return False
-
-def sync():
-  for arch in conf["architectures"]:
-    url = conf["base_url"] + "/" + arch
+def sync(cvmfs, architectures, base_url, include_rules, exclude_rules, include_first,
+         dest_dir_tpl, unpack_script_tpl):
+  for arch in architectures:
+    url = base_url + "/" + arch
     debug(format("Getting packages for architecture %(arch)s from %(url)s", arch=arch, url=url))
     packs = loads(get(url).text)  # nginx json: type, mtime, name
     for p in packs:
@@ -119,16 +127,16 @@ def sync():
         if vmatch is None: continue
         pkgver = vmatch.group(1)
         if not filter(pkgver,
-                  conf["include"].get(p["name"], None),
-                  conf["exclude"].get(p["name"], None),
-                  include_first):
+                      include_rules.get(p["name"], None),
+                      exclude_rules.get(p["name"], None),
+                      include_first):
           debug(format("%(arch)s: excluded package %(pack)s version %(ver)s",
                        arch=arch,
                        pack=p["name"],
                        ver=pkgver))
           continue
-        pkgdir = format(conf["dest_dir"],
-                        repo=conf["cvmfs_repository"],
+        pkgdir = format(dest_dir_tpl,
+                        repo=cvmfs.repository,
                         arch=arch,
                         package=p["name"],
                         version=pkgver)
@@ -140,26 +148,29 @@ def sync():
         if isdir(pkgdir):
           debug("==> skipping, already installed")
         else:
-          if not cvmfs_server_transaction(conf["cvmfs_repository"]):
+          if not cvmfs.transaction():
             sys.exit(2)  # fatal
           full_url = vurl+"/"+v["name"]
           debug(format("!!! we need to get %(url)s !!!", url=full_url))
-          rv = unpack_script(conf["unpack_script"],
-                        url=full_url, arch=arch, package=p["name"], ver=pkgver,
-                        repo=conf["cvmfs_repository"], pkgdir=pkgdir)
+          rv = unpack_script(unpack_script_tpl,
+                             url=full_url, arch=arch, package=p["name"], ver=pkgver,
+                             repo=cvmfs.repository, pkgdir=pkgdir)
           if rv != 0:
-            cvmfs_server_abort(conf["cvmfs_repository"])
+            cvmfs.abort()
 
   # Publish eventually
-  return cvmfs_server_publish(conf["cvmfs_repository"])
+  return cvmfs.publish()
 
-if __name__ == "__main__":
+def main():
   parser = ArgumentParser()
   parser.add_argument("action")
   parser.add_argument("--config", "-c", dest="configFile", default="aliCvmfsPublish.conf",
-                      help="Configuration file.")
+                      help="Configuration file")
   parser.add_argument("--debug", "-d", dest="debug", action="store_true", default=False)
-  parser.add_argument("--abort-at-start", dest="abort", action="store_true", default=False)
+  parser.add_argument("--abort-at-start", dest="abort", action="store_true", default=False,
+                      help="Abort any CVMFS transaction at start")
+  parser.add_argument("--dry-run", "-n", dest="dryRun", action="store_true", default=False,
+                      help="Do not write or publish anything")
   args = parser.parse_args()
   
   logger = logging.getLogger()
@@ -192,10 +203,19 @@ if __name__ == "__main__":
     error("filter_order can be include,exclude or exclude,include")
     sys.exit(1)
 
-  in_cvmfs_transaction = False
-
   if args.action == "sync":
+    cvmfs = CvmfsServer(conf["cvmfs_repository"])
     chdir("/")
     if args.abort:
-      cvmfs_server_abort(conf["cvmfs_repository"], force=True)
-    sync()
+      cvmfs.abort(force=True)
+    sync(cvmfs=cvmfs,
+         architectures=conf["architectures"],
+         base_url=conf["base_url"],
+         include_rules=conf["include"],
+         exclude_rules=conf["exclude"],
+         include_first=include_first,
+         dest_dir_tpl=conf["dest_dir"],
+         unpack_script_tpl=conf["unpack_script"])
+
+if __name__ == "__main__":
+  main()
