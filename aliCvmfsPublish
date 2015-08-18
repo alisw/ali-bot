@@ -176,7 +176,7 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
             rv = 0
           else:
             rv = runUnpackScript(unpackScriptTpl,
-                                 url=fullUrl, arch=arch, package=p["name"], ver=pkgver,
+                                 url=fullUrl, arch=arch, package=p["name"], version=pkgver,
                                  repo=cvmfs.repository, pkgdir=pkgdir)
           if rv != 0:
             cvmfs.abort()
