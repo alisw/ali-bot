@@ -11,7 +11,7 @@ from re import search, escape
 from os.path import isdir
 from os import chmod, remove, chdir
 from tempfile import NamedTemporaryFile
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, STDOUT
 
 def format(s, **kwds):
   return s % kwds
@@ -45,13 +45,14 @@ def runUnpackScript(script, **kwsub):
     fn = fp.name
     fp.write(format(script, **kwsub))
   chmod(fn, 0700)
-  debug(format("Created: %(file)s", file=fn))
+  debug(format("Created unpack script: %(file)s", file=fn))
   rv = execute(fn)
   remove(fn)
+  debug(format("Unpack script %(file)s returned %(rv)d", file=fn, rv=rv))
   return rv
 
 def execute(command):
-  popen = Popen(command, shell=False, stdout=PIPE)
+  popen = Popen(command, shell=False, stdout=PIPE, stderr=STDOUT)
   linesIterator = iter(popen.stdout.readline, "")
   for line in linesIterator:
     debug(line.strip("\n"))  # yield line
@@ -153,6 +154,7 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
         pkgdir = format(packDirTpl,
                         repo=cvmfs.repository,
                         arch=arch,
+                        archDir=architectures[arch],
                         package=p["name"],
                         version=pkgver)
         if isdir(pkgdir):
@@ -177,8 +179,11 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
           else:
             rv = runUnpackScript(unpackScriptTpl,
                                  url=fullUrl, arch=arch, package=p["name"], version=pkgver,
-                                 repo=cvmfs.repository, pkgdir=pkgdir)
+                                 repo=cvmfs.repository, pkgdir=pkgdir,
+                                 archDir=architectures[arch])
           if rv != 0:
+            error(format("%(arch)s / %(pack)s / %(ver)s: unpack script failed with %(rv)d",
+                         arch=arch, pack=p["name"], ver=pkgver, rv=rv))
             cvmfs.abort()
 
   # Publish eventually
@@ -247,13 +252,21 @@ def main():
     error("filter_order can be include,exclude or exclude,include")
     sys.exit(1)
 
+  architectures = {}
+  for arch in conf["architectures"]:
+    try:
+      (k,v) = arch.split(":", 2)
+      architectures[k] = v
+    except ValueError as e:
+      architectures[arch] = arch
+
   if args.action == "sync":
     cvmfs = CvmfsServer(conf["cvmfs_repository"], args.dryRun)
     chdir("/")
     if args.abort:
       cvmfs.abort(force=True)
     sync(cvmfs=cvmfs,
-         architectures=conf["architectures"],
+         architectures=architectures,
          baseUrl=conf["base_url"],
          includeRules=conf["include"],
          excludeRules=conf["exclude"],
