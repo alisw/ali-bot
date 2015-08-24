@@ -25,13 +25,15 @@ from glob import glob
 def format(s, **kwds):
   return s % kwds
 
-def decide_releases(done_tags, all_tags, rules):
+def decide_releases(done_tags, all_tags, rules, package):
   to_be_processed = []
   for tag in all_tags:
     if tag in done_tags:
       print "Tag %s was already processed. Skipping" % tag
       continue
     for rule in rules:
+      if rule["name"] != package:
+        continue
       if "exclude" in rule:
         m = re.match(rule["exclude"], tag)
         if m:
@@ -42,7 +44,7 @@ def decide_releases(done_tags, all_tags, rules):
         payload = {
            "tag": tag,
            "architecture": rule["architecture"],
-           "package": "aliroot"
+           "package": package
         }
         if not m:
           continue
@@ -67,53 +69,75 @@ def extractTuples(name):
     return result
 
 if __name__ == "__main__":
-  logging.basicConfig()
-  debug("foo")
-
   parser = ArgumentParser()
-  parser.add_argument("--aliroot-repo", dest="aliroot", help="Location of aliroot checkout area")
-  parser.add_argument("--alisw-repo", dest="alisw", help="Location of alisw.github.io checkout area")
-  parser.add_argument("--dry-run", "-n", action="store_true", dest="dryRun", default=False,
+  parser.add_argument("--aliroot-repo", dest="aliroot",
+                      help="Location of aliroot checkout area")
+  parser.add_argument("--debug", dest="debug", action="store_true",
+                      help="Print debug output")
+  parser.add_argument("--aliphysics-repo", dest="aliphysics",
+                      help="Location of aliphysics checkout area")
+  parser.add_argument("--alisw-repo", dest="alisw",
+                      help="Location of alisw.github.io checkout area")
+  parser.add_argument("--dry-run", "-n", action="store_true", dest="dryRun",
+                      default=False,
                       help="Just print out what you will do. Do not execute.")
   args = parser.parse_args()
+
+  logger = logging.getLogger()
+  logger_handler = logging.StreamHandler()
+  logger.addHandler(logger_handler)
+
+  if args.debug:
+    logger.setLevel(logging.DEBUG)
+    logger_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+  else:
+    logger.setLevel(logging.INFO)
+
   if not args.aliroot or not exists(args.aliroot):
     parser.error("Please specify where to find aliroot")
+  if not args.aliphysics or not exists(args.aliphysics):
+    parser.error("Please specify where to find aliphysics")
   if not args.alisw or not exists(args.alisw):
     parser.error("Please specify where to find alisw.github.io")
 
-  cmd = format("(cd %(repo)s && git tag 2>&1)",
-               repo=args.aliroot)
-  err, out = getstatusoutput(cmd)
-  if err:
-    print "Unable to get ALIROOT tags"
-    print out
-    exit(1)
+  repoInfos = [ { "repo": args.aliroot, "name": "AliRoot"},
+                { "repo": args.aliphysics, "name": "AliPhysics"} ]
+  specs = []
+  for repoInfo in repoInfos:
+    cmd = format("(cd %(repo)s && git tag 2>&1)",
+                 repo=repoInfo["repo"])
+    err, out = getstatusoutput(cmd)
+    if err:
+      print "Unable to get %s tags" % repoInfo["name"]
+      print out
+      exit(1)
 
-  # There are three entries in the script:
-  #
-  # done_tags: the tags which have already been scheduled for build.
-  # all_tags: all the tags available
-  # rules: the rules which specify which tags need to be scheduled and using
-  #        which version of the recipes.
-  done_tags = glob("%s/data/scheduled/*.ini" % args.alisw)
-  done_tags = set(str(extractTuples(basename(x))) for x in done_tags)
-  print done_tags
-  all_tags = out.split("\n")
-  config = yaml.load(file("config.yaml"))
-  rules = config["release_rules"]
+    # There are three entries in the script:
+    #
+    # done_tags: the tags which have already been scheduled for build.
+    # all_tags: all the tags available
+    # rules: the rules which specify which tags need to be scheduled and using
+    #        which version of the recipes.
+    done_tags = glob(format("%(alisw)s/data/scheduled/%(name)s-*.ini",
+                     alisw=args.alisw, name=repoInfo["name"]))
+    done_tags = set(str(extractTuples(basename(x))) for x in done_tags)
+    print done_tags
+    all_tags = out.split("\n")
+    config = yaml.load(file("config.yaml"))
+    rules = config["release_rules"]
 
-  # Decide which releases need to be built.
-  specs = decide_releases(done_tags, all_tags, rules)
-  # Now we process the integration build part. We simply create the ini files
-  # for each one of them.
-  ibs = config["integration_rules"]
-  for ib in ibs:
-    payload = {
-      "tag": ib["branch"],
-      "architecture": ib["architecture"],
-      "package": ib["package"]
-    }
-    specs.append(payload)
+    # Decide which releases need to be built.
+    specs += decide_releases(done_tags, all_tags, rules, repoInfo["name"])
+    # Now we process the integration build part. We simply create the ini files
+    # for each one of them.
+    ibs = config["integration_rules"]
+    for ib in ibs:
+      payload = {
+        "tag": ib["branch"],
+        "architecture": ib["architecture"],
+        "package": ib["package"]
+      }
+      specs.append(payload)
   
   if not specs:
     print "No tags to be processed"
@@ -128,8 +152,8 @@ if __name__ == "__main__":
   # what were the options used to build a given release. We then copy them in
   # the local area, so that jenkins can use it to schedule other jobs.
   getstatusoutput("rm -fr *.ini")
+  getstatusoutput("mkdir -p %s/data/scheduled" % args.alisw)
   for s in specs:
-    getstatusoutput("mkdir -p %s/data/scheduled" % args.alisw)
     p = format("%(alisw)s/data/scheduled/%(package)s-%(architecture)s-%(tag)s.ini",
                alisw=args.alisw,
                architecture=s["architecture"],
@@ -137,7 +161,7 @@ if __name__ == "__main__":
                tag=s["tag"])
     f = file(p, "w")
     f.write("ARCHITECTURE=%s\n" % s["architecture"])
-    f.write("OVERRIDE_TAGS=aliroot=%s\n" % s["tag"])
+    f.write("OVERRIDE_TAGS=%s=%s\n" % (s["package"], s["tag"]))
     f.write("PACKAGE_NAME=%s\n" % s["package"])
     f.close()
     symlink(p, basename(p))
