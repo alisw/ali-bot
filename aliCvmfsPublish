@@ -2,13 +2,12 @@
 
 from argparse import ArgumentParser
 from commands import getstatusoutput
-import logging, sys
+import logging, sys, json, yaml
+from yaml import YAMLError
 from logging import debug, error, info
-from json import loads, dumps
-from yaml import safe_load, YAMLError
 from requests import get
 from re import search, escape
-from os.path import isdir
+from os.path import isdir, isfile
 from os import chmod, remove, chdir
 from tempfile import NamedTemporaryFile
 from subprocess import Popen, PIPE, STDOUT
@@ -125,11 +124,11 @@ class CvmfsServer(object):
       return False
 
 def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst,
-         packDirTpl, unpackScriptTpl, dryRun):
+         packDirTpl, moduleFileTpl, unpackScriptTpl, dryRun):
   for arch in architectures:
     url = baseUrl + "/" + arch
     debug(format("Getting packages for architecture %(arch)s from %(url)s", arch=arch, url=url))
-    packs = loads(get(url).text)  # nginx json: type, mtime, name
+    packs = json.loads(get(url).text)  # nginx json: type, mtime, name
     for p in packs:
       if p["type"] != "directory" or p["name"] in [ "dist", "store" ]: continue
       debug(format("%(arch)s / %(pack)s: listing versions",
@@ -137,7 +136,7 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
                    pack=p["name"]))
       vurl = url + "/" + p["name"]
       vre = format("^%(pack)s-(.*?)\.%(arch)s\.tar\.gz$", pack=escape(p["name"]), arch=escape(arch))
-      for v in loads(get(vurl).text):
+      for v in json.loads(get(vurl).text):
         if v["type"] != "file": continue
         vmatch = search(vre, v["name"])
         if vmatch is None: continue
@@ -157,8 +156,14 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
                         archDir=architectures[arch],
                         package=p["name"],
                         version=pkgver)
-        if isdir(pkgdir):
-          debug(format("%(arch)s / %(pack)s / %(ver)s: already installed in %(pkgdir)s: skipping",
+        modulefile = format(moduleFileTpl,
+                            repo=cvmfs.repository,
+                            arch=arch,
+                            archDir=architectures[arch],
+                            package=p["name"],
+                            version=pkgver)
+        if isdir(pkgdir) or isfile(modulefile):
+          debug(format("%(arch)s / %(pack)s / %(ver)s: already installed: skipping",
                        arch=arch,
                        pack=p["name"],
                        ver=pkgver,
@@ -179,7 +184,7 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
           else:
             rv = runUnpackScript(unpackScriptTpl,
                                  url=fullUrl, arch=arch, package=p["name"], version=pkgver,
-                                 repo=cvmfs.repository, pkgdir=pkgdir,
+                                 repo=cvmfs.repository, pkgdir=pkgdir, modulefile=modulefile,
                                  archDir=architectures[arch])
           if rv != 0:
             error(format("%(arch)s / %(pack)s / %(ver)s: unpack script failed with %(rv)d",
@@ -214,7 +219,7 @@ def main():
 
   try:
     with open(args.configFile, "r") as cf:
-      conf = safe_load(cf.read())
+      conf = yaml.safe_load(cf.read())
   except (IOError, YAMLError) as e:
     error( format("While reading %(configFile)s: " + str(e), configFile=args.configFile) )
     sys.exit(1)
@@ -239,12 +244,15 @@ def main():
   if not isinstance(conf.get("package_dir", None), basestring):
     error("package_dir must be a string")
     doExit = True
+  if not isinstance(conf.get("modulefile", None), basestring):
+    error("modulefile must be a string")
+    doExit = True
   if not isinstance(conf.get("unpack_script", None), basestring):
     error("unpack_script must be a string")
     doExit = True
   if doExit: sys.exit(1)
 
-  debug("Configuration: " + dumps(conf, indent=2))
+  debug("Configuration: " + json.dumps(conf, indent=2))
   incexc = conf.get("filter_order", "include,exclude")
   if incexc == "include,exclude": includeFirst = True
   elif incexc == "exclude,include": includeFirst = False
@@ -272,6 +280,7 @@ def main():
          excludeRules=conf["exclude"],
          includeFirst=includeFirst,
          packDirTpl=conf["package_dir"],
+         moduleFileTpl=conf["modulefile"],
          unpackScriptTpl=conf["unpack_script"],
          dryRun=args.dryRun)
 
