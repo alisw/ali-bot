@@ -9,11 +9,22 @@ from requests import get
 from re import search, escape
 from os.path import isdir, isfile
 from os import chmod, remove, chdir
+from shutil import rmtree
 from tempfile import NamedTemporaryFile
 from subprocess import Popen, PIPE, STDOUT
 
 def format(s, **kwds):
   return s % kwds
+
+def rmrf(path):
+  try:
+    if isdir(path):
+      rmtree(path)
+    elif isfile(path):
+      remove(path)
+  except OSError as e:
+    debug(format("When deleting %(path)s: %(msg)s (ignored)",
+                 path=path, msg=str(e)))
 
 def searchMany(name, exprs):
   if isinstance(exprs, list):
@@ -66,10 +77,14 @@ class CvmfsServer(object):
     self._inCvmfsTransaction = False
     self._repository = repository
     self._dryRun = dryRun
+    self._countChanges = 0
 
   @property
   def repository(self):
     return self._repository
+
+  def updated(self):
+    self._countChanges += 1
 
   def transaction(self):
     if self._inCvmfsTransaction:
@@ -92,7 +107,7 @@ class CvmfsServer(object):
     if not self._inCvmfsTransaction and not force:
       debug(format("%(repo)s: no transaction to abort", repo=self._repository))
       return True
-    if self._dryRun:
+    if self._dryRun and not force:
       info(format("%(repo)s: transaction aborted (dry run)", repo=self._repository))
       self._inCvmfsTransaction = False
       return True
@@ -106,9 +121,13 @@ class CvmfsServer(object):
 
   def publish(self):
     if not self._inCvmfsTransaction:
-      debug(format("%(repo)s: no change to publish", repo=self._repository))
+      debug(format("%(repo)s: not in a transaction", repo=self._repository))
       return True
-    info(format("%(repo)s: publishing transaction", repo=self._repository))
+    if not self._countChanges:
+      debug(format("%(repo)s: nothing to publish, cancelling transaction", repo=self._repository))
+      return self.abort()
+    info(format("%(repo)s: publishing transaction, %(npkg)d new package(s)",
+                repo=self._repository, npkg=self._countChanges))
     if self._dryRun:
       info(format("%(repo)s: transaction published (dry run)", repo=self._repository))
       return True
@@ -176,6 +195,7 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
                       ver=pkgver))
           info(format(" * Source: %(url)s", url=fullUrl))
           info(format(" * Destination: %(pkgdir)s", pkgdir=pkgdir))
+          info(format(" * Modulefile: %(modulefile)s", modulefile=modulefile))
           if not cvmfs.transaction():
             sys.exit(2)  # fatal
           if dryRun:
@@ -186,10 +206,13 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
                                  url=fullUrl, arch=arch, package=p["name"], version=pkgver,
                                  repo=cvmfs.repository, pkgdir=pkgdir, modulefile=modulefile,
                                  archDir=architectures[arch])
-          if rv != 0:
+          if rv == 0:
+            cvmfs.updated()
+          else:
             error(format("%(arch)s / %(pack)s / %(ver)s: unpack script failed with %(rv)d",
                          arch=arch, pack=p["name"], ver=pkgver, rv=rv))
-            cvmfs.abort()
+            rmrf(pkgdir)
+            rmrf(modulefile)
 
   # Publish eventually
   return cvmfs.publish()
