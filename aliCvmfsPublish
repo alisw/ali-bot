@@ -2,10 +2,10 @@
 
 from argparse import ArgumentParser
 from commands import getstatusoutput
-import logging, sys, json, yaml
+import logging, sys, json, yaml, requests
+from requests import RequestException
 from yaml import YAMLError
 from logging import debug, error, info
-from requests import get
 from re import search, escape
 from os.path import isdir, isfile
 from os import chmod, remove, chdir
@@ -70,6 +70,13 @@ def execute(command):
   debug(output)
   exitCode = popen.returncode
   return exitCode
+
+def jget(url):
+  try:
+    return requests.get(url).json()
+  except (RequestException, ValueError) as e:
+    error(format("Getting %(url)s gave %(msg)s", url=url, msg=str(e)))
+    return {}
 
 class CvmfsServer(object):
 
@@ -147,15 +154,14 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
   for arch in architectures:
     url = baseUrl + "/" + arch
     debug(format("Getting packages for architecture %(arch)s from %(url)s", arch=arch, url=url))
-    packs = json.loads(get(url).text)  # nginx json: type, mtime, name
-    for p in packs:
+    for p in jget(url):
       if p["type"] != "directory" or p["name"] in [ "dist", "store" ]: continue
       debug(format("%(arch)s / %(pack)s: listing versions",
                    arch=arch,
                    pack=p["name"]))
       vurl = url + "/" + p["name"]
       vre = format("^%(pack)s-(.*?)\.%(arch)s\.tar\.gz$", pack=escape(p["name"]), arch=escape(arch))
-      for v in json.loads(get(vurl).text):
+      for v in jget(vurl):
         if v["type"] != "file": continue
         vmatch = search(vre, v["name"])
         if vmatch is None: continue
