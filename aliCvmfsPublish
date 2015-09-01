@@ -159,6 +159,7 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
     for p in jget(packsUrl):
       if p["type"] == "directory":
         distPackages.append(p["name"])
+    distPackages.sort(key=lambda item: -len(item))
     for pkgName in distPackages:
       verUrl = packsUrl + "/" + pkgName
       debug(format("%(arch)s / %(pack)s: listing versions under %(url)s",
@@ -207,9 +208,21 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
                       arch=arch,
                       pack=pkgName,
                       ver=pkgver))
-          info(format(" * Source: %(url)s", url=fullUrl))
-          info(format(" * Destination: %(pkgdir)s", pkgdir=pkgdir))
-          info(format(" * Modulefile: %(modulefile)s", modulefile=modulefile))
+          deps = []
+          for dep in jget(depsUrl):
+            for pkg in distPackages:
+              dre = format("^%(pack)s-(.*?)\.%(arch)s\.tar\.gz$",
+                           pack=escape(pkg), arch=escape(arch))
+              dmatch = search(dre, dep["name"])
+              if dmatch:
+                if pkg != pkgName:
+                  deps.append({"name": pkg, "version": dmatch.group(1)})
+                break
+          info(" * Source: %s" % fullUrl)
+          info(" * Destination: %s", pkgdir)
+          info(" * Modulefile: %s" % modulefile)
+          info(" * Dependencies: %s" % ", ".join([i["name"]+" "+i["version"] for i in deps]))
+
           if not cvmfs.transaction():
             sys.exit(2)  # fatal
           if dryRun:
