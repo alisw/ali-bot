@@ -50,7 +50,10 @@ def filter(name, includeRules, excludeRules, includeFirst):
       else:
         return searchMany(name, includeRules)
 
-def runUnpackScript(script, **kwsub):
+def runInstallScript(script, dryRun, **kwsub):
+  if dryRun:
+    debug(format("Dry run: publish script follows:\n" + script, **kwsub))
+    return 0
   with NamedTemporaryFile(delete=False) as fp:
     fn = fp.name
     fp.write(format(script, **kwsub))
@@ -80,9 +83,12 @@ def jget(url):
 
 class CvmfsServer(object):
 
-  def __init__(self, repository, dryRun=False):
+  def __init__(self, repository, modulefileTpl, pkgdirTpl, publishScriptTpl, dryRun=False):
     self._inCvmfsTransaction = False
     self._repository = repository
+    self._modulefileTpl = modulefileTpl
+    self._pkgdirTpl = pkgdirTpl
+    self._publishScriptTpl = publishScriptTpl
     self._dryRun = dryRun
     self._countChanges = 0
 
@@ -90,8 +96,32 @@ class CvmfsServer(object):
   def repository(self):
     return self._repository
 
-  def updated(self):
-    self._countChanges += 1
+  def _kw(self, url, arch, pkgName, pkgVer):
+    kw =  { "url": url, "package": pkgName, "version": pkgVer, "repo": self._repository,
+            "arch": arch }
+    kw.update({ "pkgdir": format(self._pkgdirTpl, **kw) })
+    kw.update({ "modulefile": format(self._modulefileTpl, **kw) })
+    return kw
+
+  def installed(self, arch, pkgName, pkgVer):
+    kw = self._kw(None, arch, pkgName, pkgVer)
+    debug(format("%(repo)s: checking if %(package)s %(version)s is installed for %(arch)s", **kw))
+    return isdir(kw["pkgdir"]) or isfile(kw["modulefile"])
+
+  def install(self, url, arch, pkgName, pkgVer):
+    kw = self._kw(url, arch, pkgName, pkgVer)
+    rv = runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
+    if rv == 0:
+      self._countChanges += 1
+    else:
+      self._cleanup(arch, pkgName, pkgVer)
+    return rv
+
+  def _cleanup(self, arch, pkgName, pkgVer):
+    kw = self._kw(None, arch, pkgName, pkgVer)
+    debug(format("%(repo)s: cleaning up %(pkgdir)s and %(modulefile)s", **kw))
+    rmrf(kw["pkgdir"])
+    rmrf(kw["modulefile"])
 
   def transaction(self):
     if self._inCvmfsTransaction:
@@ -149,8 +179,7 @@ class CvmfsServer(object):
       self.abort()
       return False
 
-def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst,
-         packDirTpl, moduleFileTpl, unpackScriptTpl, dryRun):
+def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, dryRun):
   for arch in architectures:
     packsUrl = baseUrl + "/" + arch + "/dist-direct"
     debug(format("Getting packages for architecture %(arch)s from %(url)s",
@@ -171,43 +200,31 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
         if v["type"] != "directory": continue
         vmatch = search(vre, v["name"])
         if vmatch is None: continue
-        pkgver = vmatch.group(1)
-        if not filter(pkgver,
+        pkgVer = vmatch.group(1)
+        if not filter(pkgVer,
                       includeRules.get(pkgName, None),
                       excludeRules.get(pkgName, None),
                       includeFirst):
           debug(format("%(arch)s / %(pack)s / %(ver)s: excluded",
                        arch=arch,
                        pack=pkgName,
-                       ver=pkgver))
+                       ver=pkgVer))
           continue
-        pkgdir = format(packDirTpl,
-                        repo=cvmfs.repository,
-                        arch=arch,
-                        archDir=architectures[arch],
-                        package=pkgName,
-                        version=pkgver)
-        modulefile = format(moduleFileTpl,
-                            repo=cvmfs.repository,
-                            arch=arch,
-                            archDir=architectures[arch],
-                            package=pkgName,
-                            version=pkgver)
-        if isdir(pkgdir) or isfile(modulefile):
+
+        if pub.installed(architectures[arch], pkgName, pkgVer):
           debug(format("%(arch)s / %(pack)s / %(ver)s: already installed: skipping",
                        arch=arch,
                        pack=pkgName,
-                       ver=pkgver,
-                       pkgdir=pkgdir))
+                       ver=pkgVer))
         else:
           depsUrl = format("%(url)s/%(pack)s-%(ver)s",
-                           url=verUrl, pack=pkgName, ver=pkgver)
+                           url=verUrl, pack=pkgName, ver=pkgVer)
           fullUrl = format("%(depsUrl)s/%(pack)s-%(ver)s.%(arch)s.tar.gz",
-                           depsUrl=depsUrl, pack=pkgName, ver=pkgver, arch=arch)
+                           depsUrl=depsUrl, pack=pkgName, ver=pkgVer, arch=arch)
           info(format("%(arch)s / %(pack)s / %(ver)s: getting package",
                       arch=arch,
                       pack=pkgName,
-                      ver=pkgver))
+                      ver=pkgVer))
           deps = []
           for dep in jget(depsUrl):
             for pkg in distPackages:
@@ -219,35 +236,23 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
                   deps.append({"name": pkg, "version": dmatch.group(1)})
                 break
           info(" * Source: %s" % fullUrl)
-          info(" * Destination: %s", pkgdir)
-          info(" * Modulefile: %s" % modulefile)
           info(" * Dependencies: %s" % ", ".join([i["name"]+" "+i["version"] for i in deps]))
 
-          if not cvmfs.transaction():
+          if not pub.transaction():
             sys.exit(2)  # fatal
-          if dryRun:
-            debug("Unpack script: not running, dry run")
-            rv = 0
           else:
-            rv = runUnpackScript(unpackScriptTpl,
-                                 url=fullUrl, arch=arch, package=pkgName, version=pkgver,
-                                 repo=cvmfs.repository, pkgdir=pkgdir, modulefile=modulefile,
-                                 archDir=architectures[arch])
-          if rv == 0:
-            cvmfs.updated()
-          else:
-            error(format("%(arch)s / %(pack)s / %(ver)s: unpack script failed with %(rv)d",
-                         arch=arch, pack=pkgName, ver=pkgver, rv=rv))
-            rmrf(pkgdir)
-            rmrf(modulefile)
+            rv = pub.install(fullUrl, architectures[arch], pkgName, pkgVer)
+          if rv != 0:
+            error(format("%(arch)s / %(pack)s / %(ver)s: publish script failed with %(rv)d",
+                         arch=arch, pack=pkgName, ver=pkgVer, rv=rv))
 
   # Publish eventually
-  return cvmfs.publish()
+  return pub.publish()
 
 def main():
   parser = ArgumentParser()
   parser.add_argument("action")
-  parser.add_argument("--config", "-c", dest="configFile", default="aliCvmfsPublish.conf",
+  parser.add_argument("--config", "-c", dest="configFile", default="aliPublish.conf",
                       help="Configuration file")
   parser.add_argument("--debug", "-d", dest="debug", action="store_true", default=False,
                       help="Debug output")
@@ -318,21 +323,29 @@ def main():
     except ValueError as e:
       architectures[arch] = arch
 
-  if args.action == "sync":
-    cvmfs = CvmfsServer(conf["cvmfs_repository"], args.dryRun)
+  if args.action in [ "sync-cvmfs", "sync-alien" ]:
     chdir("/")
+    if args.action == "sync-cvmfs":
+      pub = CvmfsServer(repository=conf["cvmfs_repository"],
+                        modulefileTpl=conf["modulefile"],
+                        pkgdirTpl=conf["package_dir"],
+                        publishScriptTpl=conf["unpack_script"],
+                        dryRun=args.dryRun)
+    else:
+      error("AliEn publisher not yet implemented")
+      sys.exit(1)
     if args.abort:
-      cvmfs.abort(force=True)
-    sync(cvmfs=cvmfs,
+      pub.abort(force=True)
+    sync(pub=pub,
          architectures=architectures,
          baseUrl=conf["base_url"],
          includeRules=conf["include"],
          excludeRules=conf["exclude"],
          includeFirst=includeFirst,
-         packDirTpl=conf["package_dir"],
-         moduleFileTpl=conf["modulefile"],
-         unpackScriptTpl=conf["unpack_script"],
          dryRun=args.dryRun)
+  else:
+    error("Wrong action, use sync-cvmfs or sync-alien")
+    sys.exit(1)
 
 if __name__ == "__main__":
   main()
