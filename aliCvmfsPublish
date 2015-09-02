@@ -152,56 +152,77 @@ class CvmfsServer(object):
 def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst,
          packDirTpl, moduleFileTpl, unpackScriptTpl, dryRun):
   for arch in architectures:
-    url = baseUrl + "/" + arch
-    debug(format("Getting packages for architecture %(arch)s from %(url)s", arch=arch, url=url))
-    for p in jget(url):
-      if p["type"] != "directory" or p["name"] in [ "dist", "store" ]: continue
-      debug(format("%(arch)s / %(pack)s: listing versions",
+    packsUrl = baseUrl + "/" + arch + "/dist-direct"
+    debug(format("Getting packages for architecture %(arch)s from %(url)s",
+                 arch=arch, url=packsUrl))
+    distPackages = []
+    for p in jget(packsUrl):
+      if p["type"] == "directory":
+        distPackages.append(p["name"])
+    distPackages.sort(key=lambda item: -len(item))
+    for pkgName in distPackages:
+      verUrl = packsUrl + "/" + pkgName
+      debug(format("%(arch)s / %(pack)s: listing versions under %(url)s",
                    arch=arch,
-                   pack=p["name"]))
-      vurl = url + "/" + p["name"]
-      vre = format("^%(pack)s-(.*?)\.%(arch)s\.tar\.gz$", pack=escape(p["name"]), arch=escape(arch))
-      for v in jget(vurl):
-        if v["type"] != "file": continue
+                   pack=pkgName,
+                   url=verUrl))
+      vre = format("^%(pack)s-(.*?)$", pack=escape(pkgName))
+      for v in jget(verUrl):
+        if v["type"] != "directory": continue
         vmatch = search(vre, v["name"])
         if vmatch is None: continue
         pkgver = vmatch.group(1)
         if not filter(pkgver,
-                      includeRules.get(p["name"], None),
-                      excludeRules.get(p["name"], None),
+                      includeRules.get(pkgName, None),
+                      excludeRules.get(pkgName, None),
                       includeFirst):
           debug(format("%(arch)s / %(pack)s / %(ver)s: excluded",
                        arch=arch,
-                       pack=p["name"],
+                       pack=pkgName,
                        ver=pkgver))
           continue
         pkgdir = format(packDirTpl,
                         repo=cvmfs.repository,
                         arch=arch,
                         archDir=architectures[arch],
-                        package=p["name"],
+                        package=pkgName,
                         version=pkgver)
         modulefile = format(moduleFileTpl,
                             repo=cvmfs.repository,
                             arch=arch,
                             archDir=architectures[arch],
-                            package=p["name"],
+                            package=pkgName,
                             version=pkgver)
         if isdir(pkgdir) or isfile(modulefile):
           debug(format("%(arch)s / %(pack)s / %(ver)s: already installed: skipping",
                        arch=arch,
-                       pack=p["name"],
+                       pack=pkgName,
                        ver=pkgver,
                        pkgdir=pkgdir))
         else:
-          fullUrl = vurl + "/" + v["name"]
+          depsUrl = format("%(url)s/%(pack)s-%(ver)s",
+                           url=verUrl, pack=pkgName, ver=pkgver)
+          fullUrl = format("%(depsUrl)s/%(pack)s-%(ver)s.%(arch)s.tar.gz",
+                           depsUrl=depsUrl, pack=pkgName, ver=pkgver, arch=arch)
           info(format("%(arch)s / %(pack)s / %(ver)s: getting package",
                       arch=arch,
-                      pack=p["name"],
+                      pack=pkgName,
                       ver=pkgver))
-          info(format(" * Source: %(url)s", url=fullUrl))
-          info(format(" * Destination: %(pkgdir)s", pkgdir=pkgdir))
-          info(format(" * Modulefile: %(modulefile)s", modulefile=modulefile))
+          deps = []
+          for dep in jget(depsUrl):
+            for pkg in distPackages:
+              dre = format("^%(pack)s-(.*?)\.%(arch)s\.tar\.gz$",
+                           pack=escape(pkg), arch=escape(arch))
+              dmatch = search(dre, dep["name"])
+              if dmatch:
+                if pkg != pkgName:
+                  deps.append({"name": pkg, "version": dmatch.group(1)})
+                break
+          info(" * Source: %s" % fullUrl)
+          info(" * Destination: %s", pkgdir)
+          info(" * Modulefile: %s" % modulefile)
+          info(" * Dependencies: %s" % ", ".join([i["name"]+" "+i["version"] for i in deps]))
+
           if not cvmfs.transaction():
             sys.exit(2)  # fatal
           if dryRun:
@@ -209,14 +230,14 @@ def sync(cvmfs, architectures, baseUrl, includeRules, excludeRules, includeFirst
             rv = 0
           else:
             rv = runUnpackScript(unpackScriptTpl,
-                                 url=fullUrl, arch=arch, package=p["name"], version=pkgver,
+                                 url=fullUrl, arch=arch, package=pkgName, version=pkgver,
                                  repo=cvmfs.repository, pkgdir=pkgdir, modulefile=modulefile,
                                  archDir=architectures[arch])
           if rv == 0:
             cvmfs.updated()
           else:
             error(format("%(arch)s / %(pack)s / %(ver)s: unpack script failed with %(rv)d",
-                         arch=arch, pack=p["name"], ver=pkgver, rv=rv))
+                         arch=arch, pack=pkgName, ver=pkgver, rv=rv))
             rmrf(pkgdir)
             rmrf(modulefile)
 
