@@ -290,8 +290,8 @@ def main():
   if not isinstance(conf.get("cvmfs_repository", None), basestring):
     error("cvmfs_repository must be a string")
     doExit = True
-  if not isinstance(conf.get("architectures", None), list):
-    error("architectures must be a list of strings")
+  if not isinstance(conf.get("architectures", None), dict):
+    error("architectures must be a dict of dicts")
     doExit = True
   if not isinstance(conf.get("base_url", None), basestring):
     error("base_url must be a string")
@@ -315,27 +315,28 @@ def main():
     error("filter_order can be include,exclude or exclude,include")
     sys.exit(1)
 
-  architectures = {}
-  for arch in conf["architectures"]:
-    try:
-      (k,v) = arch.split(":", 2)
-      architectures[k] = v
-    except ValueError as e:
-      architectures[arch] = arch
-
   if args.action in [ "sync-cvmfs", "sync-alien" ]:
     chdir("/")
     if args.action == "sync-cvmfs":
+      archKey = "CVMFS"
       pub = CvmfsServer(repository=conf["cvmfs_repository"],
                         modulefileTpl=conf["modulefile"],
                         pkgdirTpl=conf["package_dir"],
                         publishScriptTpl=conf["unpack_script"],
                         dryRun=args.dryRun)
     else:
+      archKey = "AliEn"
       error("AliEn publisher not yet implemented")
       sys.exit(1)
     if args.abort:
       pub.abort(force=True)
+
+    architectures = {}
+    for arch,maps in conf["architectures"].iteritems():
+      architectures[arch] = isinstance(maps, dict) and maps.get(archKey, arch) or arch
+      debug(format("Arch %(arch)s is called %(archPub)s on %(pub)s",
+                   arch=arch, archPub=architectures[arch], pub=archKey))
+
     sync(pub=pub,
          architectures=architectures,
          baseUrl=conf["base_url"],
