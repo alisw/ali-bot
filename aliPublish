@@ -74,6 +74,10 @@ def execute(command):
   exitCode = popen.returncode
   return exitCode
 
+def grabOutput(command):
+  popen = Popen(command, shell=False, stdout=PIPE, stderr=STDOUT)
+  return (popen.returncode, popen.communicate()[0])
+
 def jget(url):
   try:
     return requests.get(url).json()
