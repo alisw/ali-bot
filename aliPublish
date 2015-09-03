@@ -183,6 +183,55 @@ class CvmfsServer(object):
       self.abort()
       return False
 
+class AliEnPackMan(object):
+
+  def __init__(self, publishScriptTpl, dryRun=False):
+    self._dryRun = dryRun
+    self._publishScriptTpl = publishScriptTpl
+    self._packs = None
+
+  def _kw(self, url, arch, pkgName, pkgVer):
+    kw =  { "url": url, "package": pkgName, "version": pkgVer, "arch": arch }
+    return kw
+
+  def installed(self, arch, pkgName, pkgVer):
+    kw = self._kw(None, arch, pkgName, pkgVer)
+    debug(format("PackMan: checking if %(package)s %(version)s is installed for %(arch)s", **kw))
+
+    if self._packs is None:
+      self._packs = {}
+      for line in grabOutput([ "alien", "-exec", "packman", "list" ])[1].split("\n"):
+        m = search(r"VO_ALICE@(.+?)::([^\s]+)", line)
+        if not m: continue
+        pkg = m.group(1)
+        ver = m.group(2)
+        if not pkg in self._packs:
+          self._packs[pkg] = {}
+        self._packs[pkg].update({ver: []})
+
+    platf = self._packs.get(pkgName, {}).get(pkgVer, [])
+    if len(platf) == 0:
+      _,out = grabOutput([ "alien", "-exec", "ls",
+                           format("/alice/packages/%(package)s/%(version)s", **kw) ])
+      for line in out.split("\n"):
+        if search(r"^[A-Za-z0-9]+-[A-Za-z0-9-_]+$", line):
+          platf.append(line)
+
+    return arch in platf
+
+  def install(self, url, arch, pkgName, pkgVer):
+    kw = self._kw(url, arch, pkgName, pkgVer)
+    return runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
+
+  def transaction(self):
+    return True
+
+  def abort(self, force=False):
+    return True
+
+  def publish(self):
+    return True
+
 def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, dryRun):
   for arch in architectures:
     packsUrl = baseUrl + "/" + arch + "/dist-direct"
@@ -330,8 +379,8 @@ def main():
                         dryRun=args.dryRun)
     else:
       archKey = "AliEn"
-      error("AliEn publisher not yet implemented")
-      sys.exit(1)
+      pub = AliEnPackMan(publishScriptTpl=conf["alien_script"],
+                         dryRun=args.dryRun)
     if args.abort:
       pub.abort(force=True)
 
