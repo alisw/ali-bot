@@ -74,6 +74,10 @@ def execute(command):
   exitCode = popen.returncode
   return exitCode
 
+def grabOutput(command):
+  popen = Popen(command, shell=False, stdout=PIPE, stderr=STDOUT)
+  return (popen.returncode, popen.communicate()[0])
+
 def jget(url):
   try:
     return requests.get(url).json()
@@ -108,7 +112,7 @@ class CvmfsServer(object):
     debug(format("%(repo)s: checking if %(package)s %(version)s is installed for %(arch)s", **kw))
     return isdir(kw["pkgdir"]) or isfile(kw["modulefile"])
 
-  def install(self, url, arch, pkgName, pkgVer):
+  def install(self, url, arch, pkgName, pkgVer, deps):
     kw = self._kw(url, arch, pkgName, pkgVer)
     rv = runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
     if rv == 0:
@@ -179,6 +183,56 @@ class CvmfsServer(object):
       self.abort()
       return False
 
+class AliEnPackMan(object):
+
+  def __init__(self, publishScriptTpl, dryRun=False):
+    self._dryRun = dryRun
+    self._publishScriptTpl = publishScriptTpl
+    self._packs = None
+
+  def _kw(self, url, arch, pkgName, pkgVer, deps):
+    kw =  { "url": url, "package": pkgName, "version": pkgVer, "arch": arch, "dependencies": deps }
+    return kw
+
+  def installed(self, arch, pkgName, pkgVer):
+    kw = self._kw(None, arch, pkgName, pkgVer, None)
+    debug(format("PackMan: checking if %(package)s %(version)s is installed for %(arch)s", **kw))
+
+    if self._packs is None:
+      self._packs = {}
+      for line in grabOutput([ "alien", "-exec", "packman", "list" ])[1].split("\n"):
+        m = search(r"VO_ALICE@(.+?)::([^\s]+)", line)
+        if not m: continue
+        pkg = m.group(1)
+        ver = m.group(2)
+        if not pkg in self._packs:
+          self._packs[pkg] = {}
+        self._packs[pkg].update({ver: []})
+
+    platf = self._packs.get(pkgName, {}).get(pkgVer, [])
+    if len(platf) == 0:
+      _,out = grabOutput([ "alien", "-exec", "ls",
+                           format("/alice/packages/%(package)s/%(version)s", **kw) ])
+      for line in out.split("\n"):
+        if search(r"^[A-Za-z0-9]+-[A-Za-z0-9-_]+$", line):
+          platf.append(line)
+
+    return arch in platf
+
+  def install(self, url, arch, pkgName, pkgVer, deps):
+    kw = self._kw(url, arch, pkgName, pkgVer,
+                  ",".join(["VO_ALICE@"+x["name"]+"::"+x["version"] for x in deps]))
+    return runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
+
+  def transaction(self):
+    return True
+
+  def abort(self, force=False):
+    return True
+
+  def publish(self):
+    return True
+
 def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, dryRun):
   for arch in architectures:
     packsUrl = baseUrl + "/" + arch + "/dist-direct"
@@ -241,7 +295,7 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
           if not pub.transaction():
             sys.exit(2)  # fatal
           else:
-            rv = pub.install(fullUrl, architectures[arch], pkgName, pkgVer)
+            rv = pub.install(fullUrl, architectures[arch], pkgName, pkgVer, deps)
           if rv != 0:
             error(format("%(arch)s / %(pack)s / %(ver)s: publish script failed with %(rv)d",
                          arch=arch, pack=pkgName, ver=pkgVer, rv=rv))
@@ -271,6 +325,7 @@ def main():
   else: logger.setLevel(logging.INFO)
 
   logging.getLogger("requests").setLevel(logging.WARNING)
+  logging.getLogger("urllib3").setLevel(logging.WARNING)
 
   try:
     with open(args.configFile, "r") as cf:
@@ -290,8 +345,8 @@ def main():
   if not isinstance(conf.get("cvmfs_repository", None), basestring):
     error("cvmfs_repository must be a string")
     doExit = True
-  if not isinstance(conf.get("architectures", None), list):
-    error("architectures must be a list of strings")
+  if not isinstance(conf.get("architectures", None), dict):
+    error("architectures must be a dict of dicts")
     doExit = True
   if not isinstance(conf.get("base_url", None), basestring):
     error("base_url must be a string")
@@ -302,8 +357,8 @@ def main():
   if not isinstance(conf.get("modulefile", None), basestring):
     error("modulefile must be a string")
     doExit = True
-  if not isinstance(conf.get("unpack_script", None), basestring):
-    error("unpack_script must be a string")
+  if not isinstance(conf.get("cvmfs_script", None), basestring):
+    error("cvmfs_script must be a string")
     doExit = True
   if doExit: sys.exit(1)
 
@@ -315,27 +370,28 @@ def main():
     error("filter_order can be include,exclude or exclude,include")
     sys.exit(1)
 
-  architectures = {}
-  for arch in conf["architectures"]:
-    try:
-      (k,v) = arch.split(":", 2)
-      architectures[k] = v
-    except ValueError as e:
-      architectures[arch] = arch
-
   if args.action in [ "sync-cvmfs", "sync-alien" ]:
     chdir("/")
     if args.action == "sync-cvmfs":
+      archKey = "CVMFS"
       pub = CvmfsServer(repository=conf["cvmfs_repository"],
                         modulefileTpl=conf["modulefile"],
                         pkgdirTpl=conf["package_dir"],
-                        publishScriptTpl=conf["unpack_script"],
+                        publishScriptTpl=conf["cvmfs_script"],
                         dryRun=args.dryRun)
     else:
-      error("AliEn publisher not yet implemented")
-      sys.exit(1)
+      archKey = "AliEn"
+      pub = AliEnPackMan(publishScriptTpl=conf["alien_script"],
+                         dryRun=args.dryRun)
     if args.abort:
       pub.abort(force=True)
+
+    architectures = {}
+    for arch,maps in conf["architectures"].iteritems():
+      architectures[arch] = isinstance(maps, dict) and maps.get(archKey, arch) or arch
+      debug(format("Arch %(arch)s is called %(archPub)s on %(pub)s",
+                   arch=arch, archPub=architectures[arch], pub=archKey))
+
     sync(pub=pub,
          architectures=architectures,
          baseUrl=conf["base_url"],
