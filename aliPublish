@@ -324,6 +324,7 @@ def main():
   else: logger.setLevel(logging.INFO)
 
   logging.getLogger("requests").setLevel(logging.WARNING)
+  logging.getLogger("urllib3").setLevel(logging.WARNING)
 
   try:
     with open(args.configFile, "r") as cf:
