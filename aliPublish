@@ -112,7 +112,7 @@ class CvmfsServer(object):
     debug(format("%(repo)s: checking if %(package)s %(version)s is installed for %(arch)s", **kw))
     return isdir(kw["pkgdir"]) or isfile(kw["modulefile"])
 
-  def install(self, url, arch, pkgName, pkgVer):
+  def install(self, url, arch, pkgName, pkgVer, deps):
     kw = self._kw(url, arch, pkgName, pkgVer)
     rv = runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
     if rv == 0:
@@ -190,12 +190,12 @@ class AliEnPackMan(object):
     self._publishScriptTpl = publishScriptTpl
     self._packs = None
 
-  def _kw(self, url, arch, pkgName, pkgVer):
-    kw =  { "url": url, "package": pkgName, "version": pkgVer, "arch": arch }
+  def _kw(self, url, arch, pkgName, pkgVer, deps):
+    kw =  { "url": url, "package": pkgName, "version": pkgVer, "arch": arch, "dependencies": deps }
     return kw
 
   def installed(self, arch, pkgName, pkgVer):
-    kw = self._kw(None, arch, pkgName, pkgVer)
+    kw = self._kw(None, arch, pkgName, pkgVer, None)
     debug(format("PackMan: checking if %(package)s %(version)s is installed for %(arch)s", **kw))
 
     if self._packs is None:
@@ -219,8 +219,9 @@ class AliEnPackMan(object):
 
     return arch in platf
 
-  def install(self, url, arch, pkgName, pkgVer):
-    kw = self._kw(url, arch, pkgName, pkgVer)
+  def install(self, url, arch, pkgName, pkgVer, deps):
+    kw = self._kw(url, arch, pkgName, pkgVer,
+                  ",".join(["VO_ALICE@"+x["name"]+"::"+x["version"] for x in deps]))
     return runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
 
   def transaction(self):
@@ -294,7 +295,7 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
           if not pub.transaction():
             sys.exit(2)  # fatal
           else:
-            rv = pub.install(fullUrl, architectures[arch], pkgName, pkgVer)
+            rv = pub.install(fullUrl, architectures[arch], pkgName, pkgVer, deps)
           if rv != 0:
             error(format("%(arch)s / %(pack)s / %(ver)s: publish script failed with %(rv)d",
                          arch=arch, pack=pkgName, ver=pkgVer, rv=rv))
@@ -356,8 +357,8 @@ def main():
   if not isinstance(conf.get("modulefile", None), basestring):
     error("modulefile must be a string")
     doExit = True
-  if not isinstance(conf.get("unpack_script", None), basestring):
-    error("unpack_script must be a string")
+  if not isinstance(conf.get("cvmfs_script", None), basestring):
+    error("cvmfs_script must be a string")
     doExit = True
   if doExit: sys.exit(1)
 
@@ -376,7 +377,7 @@ def main():
       pub = CvmfsServer(repository=conf["cvmfs_repository"],
                         modulefileTpl=conf["modulefile"],
                         pkgdirTpl=conf["package_dir"],
-                        publishScriptTpl=conf["unpack_script"],
+                        publishScriptTpl=conf["cvmfs_script"],
                         dryRun=args.dryRun)
     else:
       archKey = "AliEn"
