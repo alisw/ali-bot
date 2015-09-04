@@ -163,7 +163,12 @@ do
        shift 1
        args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'` 
        before=`printenv`
-       Eval $moduleenv $modulecmd bash load $alien$alien_version $args || exit 1
+       # Load AliEn only if no AliEn-Runtime is there
+       toload="$args"
+       ( Eval $moduleenv $modulecmd bash load $args || exit 1;
+         $moduleenv $modulecmd bash list 2>&1 | grep -q AliEn-Runtime ) || \
+         toload="$alien$alien_version $args"
+       Eval $moduleenv $modulecmd bash load $toload || exit 1
        after=`printenv | grep -v LS_COLORS=`
        _LM_ENV=""
        for var in $after
@@ -185,7 +190,12 @@ do
      setenv)
        shift 1
        args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'` 
-       Eval $moduleenv $modulecmd bash load $alien$alien_version $args || exit 1
+       # Load AliEn only if no AliEn-Runtime is there
+       toload="$args"
+       ( Eval $moduleenv $modulecmd bash load $args || exit 1;
+         $moduleenv $modulecmd bash list 2>&1 | grep -q AliEn-Runtime ) || \
+         toload="$alien$alien_version $args"
+       Eval $moduleenv $modulecmd bash load $toload || exit 1
        shift 1
        ;;
      printenv)
@@ -195,7 +205,12 @@ do
           echo $_LM_ENV
        fi
        args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'` 
-       $moduleenv $modulecmd bash load $alien$alien_version $args || exit 1
+       # Load AliEn only if no AliEn-Runtime is there
+       toload="$args"
+       ( Eval $moduleenv $modulecmd bash load $args || exit 1;
+         $moduleenv $modulecmd bash list 2>&1 | grep -q AliEn-Runtime ) || \
+         toload="$alien$alien_version $args"
+       $moduleenv $modulecmd bash load $toload || exit 1
        exit
        ;;
      -print)
