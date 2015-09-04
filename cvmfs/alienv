@@ -1,0 +1,245 @@
+#!/bin/bash
+
+version=3.2.10
+cvmfsdir=/cvmfs/alice.cern.ch
+path=`dirname $0`
+printvar=""
+
+Eval(){
+   cmd=$*
+   ret=`$cmd`
+   if [ "x$ret" != x ]
+   then
+      eval $ret
+   else
+      return 1 
+   fi
+}
+
+os_release=/etc/os-release
+which lsb_release > /dev/null 2>&1
+if [[ $? == 0 ]] ; then 
+  distro_name=`lsb_release -i | sed -e 's/.*://' -e 's/[ \t]*//g'`
+  distro_release=`lsb_release -r | awk '{print $NF}'`
+elif [[ -r "$os_release" ]] ; then
+  distro_name=`source "$os_release" ; echo $NAME`
+  distro_release=`source "$os_release" ; echo $VERSION_ID`
+else
+  distro_name='<unknown>'
+  distro_release='<unknown>'
+fi
+
+case $distro_name in
+     Scientific*|CentOS*|RedHatEnterprise*)
+        distro_dir="Scientific"
+        uname_m=`uname -m`
+        arch=${uname_m}-2.6-gnu-4.1.2
+        case $distro_release in
+           5.*)
+              distro_xrelease=5.x
+              ;;
+           6.*)
+              distro_xrelease=6.x
+              ;;
+        esac
+        ;;
+     Fedora*)
+        distro_dir="Scientific"
+        uname_m=`uname -m`
+        arch=${uname_m}-2.6-gnu-4.1.2
+        case $distro_release in
+           *)
+              distro_xrelease=6.x
+              ;;
+        esac
+        ;;
+     SUSE*)
+        distro_dir="Scientific"
+        uname_m=`uname -m`
+        arch=${uname_m}-2.6-gnu-4.1.2
+        case $distro_release in
+           *)
+              distro_xrelease=6.x
+              ;;
+        esac
+        ;;
+     Debian*)
+        distro_dir="Scientific"
+        uname_m=`uname -m`
+        arch=${uname_m}-2.6-gnu-4.1.2
+        case $distro_release in
+           6.*|7.*|8.*)
+              distro_xrelease=6.x
+              ;;
+        esac
+        ;;
+     Ubuntu*)
+        distro_dir="Scientific"
+        uname_m=`uname -m`
+        arch=${uname_m}-2.6-gnu-4.1.2
+        case $distro_release in
+           13.*|14.*|15.*)
+              distro_xrelease=6.x
+              ;;
+        esac
+        ;;
+     *)
+      echo "Unknown distribution: $distro_name $distro_release"
+      exit 1
+     ;;
+esac
+
+modules=$cvmfsdir/$arch/Modules
+
+if [  ! -d $modules ] 
+then
+   echo "Platform $distro_dir,$arch not supported"
+   exit 1
+fi
+
+unset MODULESHOME
+
+moduledirs="                                                                                                      $modulepath                                                                                                       $cvmfsdir/x86_64-2.6-gnu-4.1.2                                                                                    $cvmfsdir/x86_64-2.6-gnu-4.7.2                                                                                    $cvmfsdir/x86_64-2.6-gnu-4.8.3                                                                                    $cvmfsdir/x86_64-2.6-gnu-4.8.4                                                                                    "
+
+function modulepath {
+  local dir
+  local colon
+  local subdir
+  subdir=$1; shift 1 
+  for dir in $MODULEPATH $*
+  do
+    if [ -d $dir/Modules/$subdir ]
+    then 
+       printf "${colon}${dir}/Modules/${subdir}"
+       colon=":"
+    fi
+  done
+  printf "\n" 
+}
+
+export MODULEPATH=$(modulepath modulefiles $moduledirs)
+
+export PATH=$PATH:$path
+
+if [  -d $modules/$version/$distro_dir/$distro_release ] 
+then
+   moduleenv="env LD_LIBRARY_PATH=$modules/$version/$distro_dir/$distro_release/lib"
+   modulecmd="$modules/$version/$distro_dir/$distro_release/bin/modulecmd"
+else
+   moduleenv="env LD_LIBRARY_PATH=$modules/$version/$distro_dir/$distro_xrelease/lib"
+   modulecmd="$modules/$version/$distro_dir/$distro_xrelease/bin/modulecmd"
+fi
+
+if [ ! -f $modulecmd ]
+then
+      echo "Unknown distribution release: $distro_name $distro_release"
+      exit 1
+fi
+ 
+tclsh<<EOF>/dev/null 2>&1
+EOF
+
+if [ $? -eq 0 ]
+then
+  moduleenv=""
+fi
+
+command=""
+
+if [ "x$ALIEN_VERSION" = "x" ]
+then
+  alien_version=""
+else
+  alien_version="/$ALIEN_VERSION"
+fi
+alien="AliEn"
+
+export ALIEN_ORGANISATION=$(tr "[:lower:]" "[:upper:]" <<< "${ALIEN_ORGANISATION:=ALICE}")
+
+while [ $# -gt 0 ]
+do
+  case $1 in
+     enter)
+       shift 1
+       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'` 
+       before=`printenv`
+       Eval $moduleenv $modulecmd bash load $alien$alien_version $args || exit 1
+       after=`printenv | grep -v LS_COLORS=`
+       _LM_ENV=""
+       for var in $after
+       do
+         if [[ ! "$before"  =~ "$var" ]]
+         then
+            _LM_ENV="$var;$_LM_ENV"
+         fi
+       done
+       export _LM_ENV
+       if [ -f  $HOME/.alienvrc ]
+       then
+          alienvrc="--init-file $HOME/.alienvrc"
+       else
+          alienvrc=""
+       fi
+       exec env PS1="[$args] \W > " bash --norc $alienvrc -i
+       ;;
+     setenv)
+       shift 1
+       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'` 
+       Eval $moduleenv $modulecmd bash load $alien$alien_version $args || exit 1
+       shift 1
+       ;;
+     printenv)
+       shift 1
+       if [ x$1 = x ]
+       then
+          echo $_LM_ENV
+       fi
+       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'` 
+       $moduleenv $modulecmd bash load $alien$alien_version $args || exit 1
+       exit
+       ;;
+     -print)
+       shift 1
+       var=$1
+       echo ${!var}
+       shift 1
+       ;;
+     -a|--archive)
+       shift 1
+       export MODULEPATH=$MODULEPATH:$(modulepath archive $moduledirs)
+       ;;
+     -c)
+       shift 1
+       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'` 
+       exec env PS1="[$args] \W > " bash -c "$*" 
+       ;;
+     -alien-version|--alien-version)
+       shift 1
+       alien_version="/$1"
+       shift 1
+       ;;
+     -alien|--alien)
+       shift 1
+       Eval $moduleenv $modulecmd bash load $alien$alien_version || exit 1
+       ;;
+     -alien-services|--alien-services)
+       shift 1
+       alien_environment=`echo $1 | sed -e 's%,%; %g'` 
+       eval $alien_environment
+       alien_services=`echo $2 | sed -e 's%,% %g'` 
+       Eval $modulecmd bash load $alien$alien_version || exit 1
+       mkdir -p $HOME/.alien
+       echo $alien_environment > $HOME/.alien/Environment
+       echo "AliEnServices=$alien_services" > $HOME/.alien/etc/aliend/startup.conf
+       exec  $ALIEN_ROOT/etc/rc.d/init.d/aliend start
+       ;;
+     q|query)
+       $modulecmd bash -t avail  2>&1 | grep -v : | awk -v org=$ALIEN_ORGANISATION -F/ '{printf("VO_%s@%s::%s\n",org,$1,$2)}'
+       exit $?
+       ;; 
+     *)
+       $modulecmd bash $*
+       exit
+     ;;
+    esac
+done  
