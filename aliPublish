@@ -239,6 +239,7 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
     debug(format("Getting packages for architecture %(arch)s from %(url)s",
                  arch=arch, url=packsUrl))
     distPackages = []
+    newPackages = []
     for p in jget(packsUrl):
       if p["type"] == "directory":
         distPackages.append(p["name"])
@@ -296,12 +297,32 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
             sys.exit(2)  # fatal
           else:
             rv = pub.install(fullUrl, architectures[arch], pkgName, pkgVer, deps)
-          if rv != 0:
+            newPackages.append({ "name": pkgName+" "+pkgVer, "success": (rv==0) })
+          if rv == 0:
+            info(format("%(arch)s / %(pack)s / %(ver)s: installed successfully",
+                         arch=arch, pack=pkgName, ver=pkgVer))
+          else:
             error(format("%(arch)s / %(pack)s / %(ver)s: publish script failed with %(rv)d",
                          arch=arch, pack=pkgName, ver=pkgVer, rv=rv))
 
   # Publish eventually
-  return pub.publish()
+  if pub.publish():
+    nSuccess = sum([1 for x in newPackages if x["success"]])
+    nFail = len(newPackages)-nSuccess
+    info(format("%(arch)s: %(nSuccess)d out of %(nPacks)d package(s) installed successfully: %(successPacks)s",
+         arch=arch,
+         nSuccess=nSuccess,
+         nPacks=len(newPackages),
+         successPacks=", ".join([x["name"] for x in newPackages if x["success"]])))
+    if nFail:
+      error(format("%(arch)s: install failed for %(nFail)d out of %(nPacks)d package(s): %(failedPacks)s",
+            arch=arch,
+            nFail=nFail,
+            nPacks=len(newPackages),
+            failedPacks=", ".join([x["name"] for x in newPackages if not x["success"]])))
+    return True
+
+  return False
 
 def main():
   parser = ArgumentParser()
