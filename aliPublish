@@ -309,13 +309,13 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
   if pub.publish():
     nSuccess = sum([1 for x in newPackages if x["success"]])
     nFail = len(newPackages)-nSuccess
-    info(format("%(arch)s: %(nSuccess)d out of %(nPacks)d package(s) installed successfully: %(successPacks)s",
+    info(format("%(arch)s: install OK for %(nSuccess)d/%(nPacks)d package(s): %(successPacks)s",
          arch=arch,
          nSuccess=nSuccess,
          nPacks=len(newPackages),
          successPacks=", ".join([x["name"] for x in newPackages if x["success"]])))
     if nFail:
-      error(format("%(arch)s: install failed for %(nFail)d out of %(nPacks)d package(s): %(failedPacks)s",
+      error(format("%(arch)s: install failed for %(nFail)d/%(nPacks)d package(s): %(failedPacks)s",
             arch=arch,
             nFail=nFail,
             nPacks=len(newPackages),
