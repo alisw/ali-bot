@@ -96,10 +96,6 @@ class CvmfsServer(object):
     self._dryRun = dryRun
     self._countChanges = 0
 
-  @property
-  def repository(self):
-    return self._repository
-
   def _kw(self, url, arch, pkgName, pkgVer):
     kw =  { "url": url, "package": pkgName, "version": pkgVer, "repo": self._repository,
             "arch": arch }
@@ -221,7 +217,7 @@ class AliEnPackMan(object):
 
   def install(self, url, arch, pkgName, pkgVer, deps):
     kw = self._kw(url, arch, pkgName, pkgVer,
-                  ",".join(["VO_ALICE@"+x["name"]+"::"+x["version"] for x in deps]))
+                  ",".join(["VO_ALICE@"+x["name"]+"::"+x["ver"] for x in deps]))
     return runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
 
   def transaction(self):
@@ -233,93 +229,158 @@ class AliEnPackMan(object):
   def publish(self):
     return True
 
-def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, dryRun):
+def nameVerFromTar(tar, arch, validPacks):
+  for pkgName in validPacks:
+    vre = format("^(%(pack)s)-(.*?)(\.%(arch)s\.tar\.gz)?$", pack=escape(pkgName), arch=arch)
+    vm = search(vre, tar)
+    if vm:
+      return vm.group(1),vm.group(2)
+  return None,None
+
+def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, autoIncludeDeps,
+         dryRun):
+
+  newPackages = {}
+
+  # Template URLs
+  packNamesUrlTpl = "%(baseUrl)s/%(arch)s/dist-direct"
+  distUrlTpl = "%(baseUrl)s/%(arch)s/dist/%(pack)s/%(pack)s-%(ver)s"
+  distDirectUrlTpl = "%(baseUrl)s/%(arch)s/dist-direct/%(pack)s/%(pack)s-%(ver)s"
+  verUrlTpl = "%(baseUrl)s/%(arch)s/dist-direct/%(pack)s"
+  getPackUrlTpl = distDirectUrlTpl + "/%(pack)s-%(ver)s.%(arch)s.tar.gz"
+
+  # Prepare the list of packages to install
   for arch in architectures:
-    packsUrl = baseUrl + "/" + arch + "/dist-direct"
+    newPackages[arch] = []
+    packNamesUrl = format(packNamesUrlTpl,
+                          baseUrl=baseUrl, arch=arch)
+
+    # Get valid package names for this architecture
     debug(format("Getting packages for architecture %(arch)s from %(url)s",
-                 arch=arch, url=packsUrl))
-    distPackages = []
-    newPackages = []
-    for p in jget(packsUrl):
-      if p["type"] == "directory":
-        distPackages.append(p["name"])
-    distPackages.sort(key=lambda item: -len(item))
+                 arch=arch, url=packNamesUrl))
+    distPackages = [ p["name"] for p in jget(packNamesUrl) if p["type"] == "directory" ]
+    distPackages.sort(key=lambda p: -len(p))
+    debug("Packages found: %s" % ", ".join([p for p in distPackages]))
+
+    # Packages to publish
+    pubPackages = []
+
+    # Get versions for all valid packages and filter them according to the rules
     for pkgName in distPackages:
-      verUrl = packsUrl + "/" + pkgName
+      verUrl = format(verUrlTpl,
+                      baseUrl=baseUrl, arch=arch, pack=pkgName)
       debug(format("%(arch)s / %(pack)s: listing versions under %(url)s",
-                   arch=arch,
-                   pack=pkgName,
-                   url=verUrl))
-      vre = format("^%(pack)s-(.*?)$", pack=escape(pkgName))
-      for v in jget(verUrl):
-        if v["type"] != "directory": continue
-        vmatch = search(vre, v["name"])
-        if vmatch is None: continue
-        pkgVer = vmatch.group(1)
+                   arch=arch, pack=pkgName, url=verUrl))
+      for pkgTar in jget(verUrl):
+        if pkgTar["type"] != "directory":
+          continue
+        _,pkgVer = nameVerFromTar(pkgTar["name"], arch, [pkgName])
+        if pkgVer is None:
+          continue
+        # Here we decide whether to include/exclude it
         if not filter(pkgVer,
                       includeRules.get(pkgName, None),
                       excludeRules.get(pkgName, None),
                       includeFirst):
           debug(format("%(arch)s / %(pack)s / %(ver)s: excluded",
-                       arch=arch,
-                       pack=pkgName,
-                       ver=pkgVer))
+                arch=arch, pack=pkgName, ver=pkgVer))
           continue
 
-        if pub.installed(architectures[arch], pkgName, pkgVer):
-          debug(format("%(arch)s / %(pack)s / %(ver)s: already installed: skipping",
-                       arch=arch,
-                       pack=pkgName,
-                       ver=pkgVer))
-        else:
-          depsUrl = format("%(url)s/%(pack)s-%(ver)s",
-                           url=verUrl, pack=pkgName, ver=pkgVer)
-          fullUrl = format("%(depsUrl)s/%(pack)s-%(ver)s.%(arch)s.tar.gz",
-                           depsUrl=depsUrl, pack=pkgName, ver=pkgVer, arch=arch)
-          info(format("%(arch)s / %(pack)s / %(ver)s: getting package",
-                      arch=arch,
-                      pack=pkgName,
-                      ver=pkgVer))
-          deps = []
-          for dep in jget(depsUrl):
-            for pkg in distPackages:
-              dre = format("^%(pack)s-(.*?)\.%(arch)s\.tar\.gz$",
-                           pack=escape(pkg), arch=escape(arch))
-              dmatch = search(dre, dep["name"])
-              if dmatch:
-                if pkg != pkgName:
-                  deps.append({"name": pkg, "version": dmatch.group(1)})
-                break
-          info(" * Source: %s" % fullUrl)
-          info(" * Dependencies: %s" % ", ".join([i["name"]+" "+i["version"] for i in deps]))
+        if not autoIncludeDeps:
+          # Not automatically including dependencies, add this package only.
+          # Not checking for dups because we can't have any
+          pubPackages.append({ "name": pkgName, "ver": pkgVer })
+          continue
 
-          if not pub.transaction():
-            sys.exit(2)  # fatal
-          else:
-            rv = pub.install(fullUrl, architectures[arch], pkgName, pkgVer, deps)
-            newPackages.append({ "name": pkgName+" "+pkgVer, "success": (rv==0) })
-          if rv == 0:
-            info(format("%(arch)s / %(pack)s / %(ver)s: installed successfully",
-                         arch=arch, pack=pkgName, ver=pkgVer))
-          else:
-            error(format("%(arch)s / %(pack)s / %(ver)s: publish script failed with %(rv)d",
-                         arch=arch, pack=pkgName, ver=pkgVer, rv=rv))
+        # At this point we have filtered in the package: let's see its dependencies!
+        # Note that a package depends on itself
+        distUrl = format(distUrlTpl, 
+                         baseUrl=baseUrl, arch=arch, pack=pkgName, ver=pkgVer)
+        debug(format("%(arch)s / %(pack)s / %(ver)s: listing all dependencies under %(url)s",
+                     arch=arch, pack=pkgName, ver=pkgVer, url=distUrl))
+        for depTar in jget(distUrl):
+          if depTar["type"] != "file":
+            continue
+          depName,depVer = nameVerFromTar(depTar["name"], arch, distPackages)
+          if depName is None:
+            continue
+          # Append only if it does not exist yet
+          if len([p for p in pubPackages if p["name"]==depName and p["ver"]==depVer]) == 0:
+            debug(format("%(arch)s / %(pack)s / %(ver)s: adding %(depName)s %(depVer)s to publish",
+                  arch=arch, pack=pkgName, ver=pkgVer, url=distUrl,
+                  depName=depName, depVer=depVer))
+            pubPackages.append({ "name": depName, "ver": depVer })
+
+    pubPackages.sort(key=lambda itm: itm["name"])
+    debug(format("%(arch)s: %(npacks)d package(s) candidate for publication: %(packs)s",
+                 arch=arch, npacks=len(pubPackages),
+                 packs=", ".join([p["name"]+" "+p["ver"] for p in pubPackages])))
+
+    # Packages installation
+    for pack in pubPackages:
+      pkgUrl = format(getPackUrlTpl,
+                       baseUrl=baseUrl, arch=arch, pack=pack["name"], ver=pack["ver"])
+
+      if pub.installed(architectures[arch], pack["name"], pack["ver"]):
+        debug(format("%(arch)s / %(pack)s / %(ver)s: already installed: skipping",
+                     arch=arch, pack=pack["name"], ver=pack["ver"]))
+        continue
+
+      # Get direct dependencies
+      distDirectUrl = format(distDirectUrlTpl,
+                             baseUrl=baseUrl, arch=arch, pack=pack["name"], ver=pack["ver"])
+      debug(format("%(arch)s / %(pack)s / %(ver)s: listing direct dependencies from %(url)s",
+                   arch=arch, pack=pack["name"], ver=pack["ver"], url=distDirectUrl))
+      jdeps = jget(distDirectUrl)
+      if not jdeps:
+        error(format("%(arch)s / %(pack)s / %(ver)s: cannot get direct dependencies: skipping",
+                     arch=arch, pack=pack["name"], ver=pack["ver"]))
+        newPackages[arch].append({ "name": pack["name"]+" "+pack["ver"], "success": False })
+        continue
+
+      deps = []
+      for depTar in jdeps:
+        if depTar["type"] != "file":
+          continue
+        depName,depVer = nameVerFromTar(depTar["name"], arch, distPackages)
+        if depName is None or depName == pack["name"]:
+          continue
+        deps.append({ "name": depName, "ver": depVer })
+
+      # Here we can attempt the installation
+      info(format("%(arch)s / %(pack)s / %(ver)s: getting and installing",
+                  arch=arch, pack=pack["name"], ver=pack["ver"]))
+      info(" * Source: %s" % pkgUrl)
+      info(" * Dependencies: %s" % ", ".join([i["name"]+" "+i["ver"] for i in deps]))
+
+      if not pub.transaction():
+        sys.exit(2)  # fatal
+      else:
+        rv = pub.install(pkgUrl, architectures[arch], pack["name"], pack["ver"], deps)
+        newPackages[arch].append({ "name": pack["name"]+" "+pack["ver"], "success": (rv==0) })
+      if rv == 0:
+        info(format("%(arch)s / %(pack)s / %(ver)s: installed successfully",
+                     arch=arch, pack=pack["name"], ver=pack["ver"]))
+      else:
+        error(format("%(arch)s / %(pack)s / %(ver)s: publish script failed with %(rv)d",
+                     arch=arch, pack=pack["name"], ver=pack["ver"], rv=rv))
 
   # Publish eventually
   if pub.publish():
-    nSuccess = sum([1 for x in newPackages if x["success"]])
-    nFail = len(newPackages)-nSuccess
-    info(format("%(arch)s: install OK for %(nSuccess)d/%(nPacks)d package(s): %(successPacks)s",
-         arch=arch,
-         nSuccess=nSuccess,
-         nPacks=len(newPackages),
-         successPacks=", ".join([x["name"] for x in newPackages if x["success"]])))
-    if nFail:
-      error(format("%(arch)s: install failed for %(nFail)d/%(nPacks)d package(s): %(failedPacks)s",
-            arch=arch,
-            nFail=nFail,
-            nPacks=len(newPackages),
-            failedPacks=", ".join([x["name"] for x in newPackages if not x["success"]])))
+    for arch,packStatus in newPackages.iteritems():
+      nSuccess = sum([1 for x in packStatus if x["success"]])
+      nFail = len(packStatus)-nSuccess
+      info(format("%(arch)s: install OK for %(nSuccess)d/%(nPacks)d package(s): %(successPacks)s",
+           arch=arch,
+           nSuccess=nSuccess,
+           nPacks=len(packStatus),
+           successPacks=", ".join([x["name"] for x in packStatus if x["success"]])))
+      if nFail:
+        error(format("%(arch)s: install failed for %(nFail)d/%(nPacks)d package(s): %(failedPacks)s",
+              arch=arch,
+              nFail=nFail,
+              nPacks=len(packStatus),
+              failedPacks=", ".join([x["name"] for x in packStatus if not x["success"]])))
     return True
 
   return False
@@ -381,6 +442,10 @@ def main():
   if not isinstance(conf.get("cvmfs_script", None), basestring):
     error("cvmfs_script must be a string")
     doExit = True
+  conf["auto_include_deps"] = conf.get("auto_include_deps", False)
+  if not isinstance(conf["auto_include_deps"], bool):
+    error("auto_include_deps must be a boolean")
+    doExit = True
   if doExit: sys.exit(1)
 
   debug("Configuration: " + json.dumps(conf, indent=2))
@@ -419,6 +484,7 @@ def main():
          includeRules=conf["include"],
          excludeRules=conf["exclude"],
          includeFirst=includeFirst,
+         autoIncludeDeps=conf["auto_include_deps"],
          dryRun=args.dryRun)
   else:
     error("Wrong action, use sync-cvmfs or sync-alien")
