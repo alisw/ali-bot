@@ -12,6 +12,7 @@ from os import chmod, remove, chdir
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
 from subprocess import Popen, PIPE, STDOUT
+from smtplib import SMTP
 
 def format(s, **kwds):
   return s % kwds
@@ -238,7 +239,7 @@ def nameVerFromTar(tar, arch, validPacks):
   return None,None
 
 def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, autoIncludeDeps,
-         dryRun):
+         notifEmail, dryRun):
 
   newPackages = {}
 
@@ -335,7 +336,7 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
       if not jdeps:
         error(format("%(arch)s / %(pack)s / %(ver)s: cannot get direct dependencies: skipping",
                      arch=arch, pack=pack["name"], ver=pack["ver"]))
-        newPackages[arch].append({ "name": pack["name"]+" "+pack["ver"], "success": False })
+        newPackages[arch].append({ "name": pack["name"], "ver": pack["ver"], "success": False })
         continue
 
       deps = []
@@ -357,7 +358,10 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
         sys.exit(2)  # fatal
       else:
         rv = pub.install(pkgUrl, architectures[arch], pack["name"], pack["ver"], deps)
-        newPackages[arch].append({ "name": pack["name"]+" "+pack["ver"], "success": (rv==0) })
+        newPackages[arch].append({ "name": pack["name"],
+                                   "ver": pack["ver"],
+                                   "success": (rv==0),
+                                   "deps": deps })
       if rv == 0:
         info(format("%(arch)s / %(pack)s / %(ver)s: installed successfully",
                      arch=arch, pack=pack["name"], ver=pack["ver"]))
@@ -374,16 +378,59 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
            arch=arch,
            nSuccess=nSuccess,
            nPacks=len(packStatus),
-           successPacks=", ".join([x["name"] for x in packStatus if x["success"]])))
+           successPacks=", ".join([x["name"]+" "+x["ver"] for x in packStatus if x["success"]])))
       if nFail:
         error(format("%(arch)s: install failed for %(nFail)d/%(nPacks)d package(s): %(failedPacks)s",
               arch=arch,
               nFail=nFail,
               nPacks=len(packStatus),
-              failedPacks=", ".join([x["name"] for x in packStatus if not x["success"]])))
+              failedPacks=", ".join([x["name"]+" "+x["ver"] for x in packStatus if not x["success"]])))
+    if notifEmail:
+      notify(notifEmail, architectures, newPackages, dryRun)
+    else:
+      debug("No email notification configured")
     return True
 
   return False
+
+def notify(conf, archs, pack, dryRun):
+  if not "server" in conf:
+    return
+  try:
+    mailer = SMTP(conf["server"], conf.get("port", 25))
+  except Exception as e:
+    error("Email notification: cannot connect to %s" % conf["server"])
+    return
+  for arch,packs in pack.iteritems():
+    for p in packs:
+      key = "success" if p["success"] else "failure"
+      deps_fmt = "".join([ format(conf.get("package_format", "%(package)s %(version)s "),
+                                   package=x["name"],
+                                   version=x["ver"],
+                                   arch=archs[arch]) for x in p.get("deps", []) ])
+      kw =  { "package": p["name"], "version": p["ver"], "arch": archs[arch],
+              "dependencies_fmt": "".join([format(conf.get("package_format", "%(package)s %(version)s "),
+                                           package=x["name"], version=x["ver"], arch=archs[arch])
+                                          for x in p.get("deps", [])]) }
+      body = format(conf.get(key, {}).get("body", ""), **kw)
+      subj = format(conf.get(key, {}).get("subject", "%(package)s %(version)s: "+key), **kw)
+      to = isinstance(conf.get(key, {}).get("to", []), basestring) and \
+           [conf.get(key, {})["to"]] or conf.get(key, {}).get("to", [])
+      sender = format(conf.get(key, {}).get("from", "noreply@localhost"), **kw)
+      if body == "" or not to:
+        continue
+      body = ("Subject: %s\nFrom: %s\nTo: %s\n\n" % (subj, sender, ", ".join(to))) + body
+      if dryRun:
+        debug(format("Notification email for %(package)s %(version)s (%(arch)s) follows:\n%(body)s",
+                     package=p["name"], version=p["ver"], arch=archs[arch], body=body))
+      else:
+        try:
+          mailer.sendmail(sender, to, body)
+          debug(format("Sent email notification for %(package)s %(version)s (%(arch)s)",
+                       package=p["name"], version=p["ver"], arch=archs[arch]))
+        except Exception as e:
+          error(format("Cannot send email notification for %(package)s %(version)s (%(arch)s)",
+                       package=p["name"], version=p["ver"], arch=archs[arch]))
 
 def main():
   parser = ArgumentParser()
@@ -394,6 +441,8 @@ def main():
                       help="Debug output")
   parser.add_argument("--abort-at-start", dest="abort", action="store_true", default=False,
                       help="Abort any pending CVMFS transaction at start")
+  parser.add_argument("--no-notification", dest="notify", action="store_false", default=True,
+                      help="Do not send any notification (ignore configuration)")
   parser.add_argument("--dry-run", "-n", dest="dryRun", action="store_true", default=False,
                       help="Do not write or publish anything")
   args = parser.parse_args()
@@ -446,6 +495,10 @@ def main():
   if not isinstance(conf["auto_include_deps"], bool):
     error("auto_include_deps must be a boolean")
     doExit = True
+  conf["notification_email"] = conf.get("notification_email", {}) if args.notify else {}
+  if not isinstance(conf["notification_email"], dict):
+    error("notification_email must be a dict of dicts")
+    doExit = True
   if doExit: sys.exit(1)
 
   debug("Configuration: " + json.dumps(conf, indent=2))
@@ -485,6 +538,7 @@ def main():
          excludeRules=conf["exclude"],
          includeFirst=includeFirst,
          autoIncludeDeps=conf["auto_include_deps"],
+         notifEmail=conf["notification_email"],
          dryRun=args.dryRun)
   else:
     error("Wrong action, use sync-cvmfs or sync-alien")
