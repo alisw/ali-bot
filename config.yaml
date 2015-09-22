@@ -105,3 +105,11 @@ release_rules:
   architecture: slc7_x86-64
   env:
     TEST: all
+-
+  name: aliroot
+  include: v5-05.*
+  alibuild: master
+  alidist: IB/v5-05/prod
+  architecture: slc5_x86-64
+  env:
+    TEST: all

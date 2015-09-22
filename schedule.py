@@ -27,6 +27,7 @@ def format(s, **kwds):
 
 def decide_releases(done_tags, all_tags, rules):
   to_be_processed = []
+  
   for tag in all_tags:
     if tag in done_tags:
       print "Tag %s was already processed. Skipping" % tag
@@ -65,6 +66,12 @@ def extractTuples(name):
     if not m:
       continue
     result = dict(zip(["package", "architecture", "tag"], m.groups()))
+    print name
+    if not result["package"]:
+      result["package"] = "aliroot"
+    assert(result["package"])
+    assert(result["architecture"])
+    assert(result["tag"])
     result["package"] = result.get("package", "aliroot").strip("-")
     return result
 
@@ -98,8 +105,7 @@ if __name__ == "__main__":
   # rules: the rules which specify which tags need to be scheduled and using
   #        which version of the recipes.
   done_tags = glob("%s/data/scheduled/*.ini" % args.alisw)
-  done_tags = set(str(extractTuples(basename(x))) for x in done_tags)
-  print done_tags
+  done_tags = set(str(extractTuples(basename(x))["tag"]) for x in done_tags)
   all_tags = out.split("\n")
   config = yaml.load(file("config.yaml"))
   rules = config["release_rules"]
