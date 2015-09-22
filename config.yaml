@@ -16,43 +16,43 @@ integration_rules:
 -
   branch: master
   architecture: slc7_x86-64
-  alidist: master
+  alidist: IB/v5-06/prod
   alibuild: master
   package: aliroot-test
 -
   branch: master
   architecture: slc6_x86-64
-  alidist: master
+  alidist: IB/v5-06/prod
   alibuild: master
   package: aliroot-test
 -
   branch: master
   architecture: slc5_x86-64
-  alidist: master
+  alidist: IB/v5-06/prod
   alibuild: master
   package: aliroot-test
 -
   branch: master
   architecture: ubt14_x86-64
-  alidist: master
+  alidist: IB/v5-06/prod
   alibuild: master
   package: aliroot-test
 -
   branch: master
   architecture: slc7_x86-64
-  alidist: master
+  alidist: IB/v5-06/prod
   alibuild: master
   package: o2
 -
   branch: master
   architecture: slc6_x86-64
-  alidist: master
+  alidist: IB/v5-06/prod
   alibuild: master
   package: o2
 -
   branch: master
   architecture: ubt14_x86-64
-  alidist: master
+  alidist: IB/v5-06/prod
   alibuild: master
   package: o2
 release_rules:
