@@ -36,4 +36,5 @@ fi
 
 git fetch origin
 
-(updateBranch master IB/master/root6) || true
+(updateBranch IB/v5-06/prod IB/master/root6) || true
+(updateBranch IB/v5-06/prod IB/v5-06/next) || true
