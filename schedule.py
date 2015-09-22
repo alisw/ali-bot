@@ -42,7 +42,9 @@ def decide_releases(done_tags, all_tags, rules):
         payload = {
            "tag": tag,
            "architecture": rule["architecture"],
-           "package": "aliroot"
+           "package": "aliroot",
+           "alidist": rule["alidist"],
+           "alibuild": rule["alibuild"]
         }
         if not m:
           continue
@@ -111,7 +113,9 @@ if __name__ == "__main__":
     payload = {
       "tag": ib["branch"],
       "architecture": ib["architecture"],
-      "package": ib["package"]
+      "package": ib["package"],
+      "alibuild": ib["alibuild"],
+      "alidist": ib["alidist"]
     }
     specs.append(payload)
   
@@ -122,22 +126,29 @@ if __name__ == "__main__":
 
   if args.dryRun:
     print "Dry run specified, not running."
-    exit(0)
 
   # We create the spec in a subdirectory "specs", so that we can always know
   # what were the options used to build a given release. We then copy them in
   # the local area, so that jenkins can use it to schedule other jobs.
   getstatusoutput("rm -fr *.ini")
   for s in specs:
-    getstatusoutput("mkdir -p %s/data/scheduled" % args.alisw)
+    ini = format("ALIDIST_BRANCH=%(alidist)s\n"
+                 "ALIBUILD_BRANCH=%(alibuild)s\n"
+                 "ARCHITECTURE=%(architecture)s\n"
+                 "OVERRIDE_TAGS=aliroot=%(tag)s\n"
+                 "PACKAGE_NAME=%(package)s\n",
+                 **s)
+    if args.dryRun:
+      print ini
+      continue
+
     p = format("%(alisw)s/data/scheduled/%(package)s-%(architecture)s-%(tag)s.ini",
                alisw=args.alisw,
                architecture=s["architecture"],
                package=s["package"],
                tag=s["tag"])
+    getstatusoutput("mkdir -p %s/data/scheduled" % args.alisw)
     f = file(p, "w")
-    f.write("ARCHITECTURE=%s\n" % s["architecture"])
-    f.write("OVERRIDE_TAGS=aliroot=%s\n" % s["tag"])
-    f.write("PACKAGE_NAME=%s\n" % s["package"])
+    f.write(ini)
     f.close()
     symlink(p, basename(p))

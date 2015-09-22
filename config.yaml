@@ -83,19 +83,25 @@ release_rules:
 # Build recent releases for slc5, slc6
 -
   name: aliroot
-  include: v5-.*
+  include: v5-06.*
+  alibuild: master
+  alidist: IB/v5-06/prod
   architecture: slc5_x86-64
   env:
     TEST: all
 -
   name: aliroot
-  include: v5-.*
+  include: v5-06.*
+  alibuild: master
+  alidist: IB/v5-06/prod
   architecture: slc6_x86-64
   env:
     TEST: all
 -
   name: aliroot
-  include: v5-.*
+  include: v5-06.*
+  alibuild: master
+  alidist: IB/v5-06/prod
   architecture: slc7_x86-64
   env:
     TEST: all
