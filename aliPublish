@@ -222,7 +222,15 @@ class AliEnPackMan(object):
     return runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
 
   def transaction(self):
-    return True
+    # Not actually opening a "transaction", but failing if AliEn appears down.
+    # If we don't fail here, package list appears empty and we'll attempt to
+    # publish *every* package, and failing...
+    _,out = grabOutput([ "alien", "-exec", "ls", "/alice/packages" ])
+    if "AliRoot" in out.split("\n"):
+      debug("PackMan: AliEn connection and APIs appear to work")
+      return True
+    error("PackMan: API response incorrect, assuming AliEn is not working at the moment")
+    return False
 
   def abort(self, force=False):
     return True
