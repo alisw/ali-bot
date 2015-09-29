@@ -40,19 +40,19 @@ integration_rules:
 -
   branch: master
   architecture: slc7_x86-64
-  alidist: IB/v5-06/prod
+  alidist: IB/v5-06/next
   alibuild: master
   package: o2
 -
   branch: master
   architecture: slc6_x86-64
-  alidist: IB/v5-06/prod
+  alidist: IB/v5-06/next
   alibuild: master
   package: o2
 -
   branch: master
   architecture: ubt14_x86-64
-  alidist: IB/v5-06/prod
+  alidist: IB/v5-06/next
   alibuild: master
   package: o2
 release_rules:
