@@ -464,6 +464,8 @@ def notify(conf, archs, pack, dryRun):
 def main():
   parser = ArgumentParser()
   parser.add_argument("action")
+  parser.add_argument("--pkgname", dest="pkgName")
+  parser.add_argument("--pkgver", dest="pkgVer")
   parser.add_argument("--config", "-c", dest="configFile", default="aliPublish.conf",
                       help="Configuration file")
   parser.add_argument("--debug", "-d", dest="debug", action="store_true", default=False,
@@ -569,8 +571,20 @@ def main():
          autoIncludeDeps=conf["auto_include_deps"],
          notifEmail=conf["notification_email"],
          dryRun=args.dryRun)
+  elif args.action == "test-rules":
+    if not args.pkgName or not args.pkgVer:
+      error("Please specify a package name and version")
+      sys.exit(1)
+    matches = applyFilter(args.pkgVer,
+                          conf["include"].get(args.pkgName, None),
+                          conf["exclude"].get(args.pkgName, None),
+                          includeFirst)
+    info(format(matches and "%(package)s version %(version)s matches filters"
+                        or "%(package)s version %(version)s does NOT match filters",
+                package=args.pkgName, version=args.pkgVer))
+    sys.exit(not matches)
   else:
-    error("Wrong action, use sync-cvmfs or sync-alien")
+    error("Wrong action, use: sync-cvmfs, sync-alien, test-rules")
     sys.exit(1)
 
 if __name__ == "__main__":
