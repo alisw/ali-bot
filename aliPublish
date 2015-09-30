@@ -35,7 +35,7 @@ def searchMany(name, exprs):
     return True
   return False
 
-def filter(name, includeRules, excludeRules, includeFirst):
+def applyFilter(name, includeRules, excludeRules, includeFirst):
   if includeFirst:
     if searchMany(name, includeRules):
       return not searchMany(name, excludeRules)
@@ -109,7 +109,7 @@ class CvmfsServer(object):
     debug(format("%(repo)s: checking if %(package)s %(version)s is installed for %(arch)s", **kw))
     return isdir(kw["pkgdir"]) or isfile(kw["modulefile"])
 
-  def install(self, url, arch, pkgName, pkgVer, deps):
+  def install(self, url, arch, pkgName, pkgVer, deps, allDeps):
     kw = self._kw(url, arch, pkgName, pkgVer)
     rv = runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
     if rv == 0:
@@ -216,7 +216,7 @@ class AliEnPackMan(object):
 
     return arch in platf
 
-  def install(self, url, arch, pkgName, pkgVer, deps):
+  def install(self, url, arch, pkgName, pkgVer, deps, allDeps):
     kw = self._kw(url, arch, pkgName, pkgVer,
                   ",".join(["VO_ALICE@"+x["name"]+"::"+x["ver"] for x in deps]))
     return runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
@@ -243,8 +243,8 @@ def nameVerFromTar(tar, arch, validPacks):
     vre = format("^(%(pack)s)-(.*?)(\.%(arch)s\.tar\.gz)?$", pack=escape(pkgName), arch=arch)
     vm = search(vre, tar)
     if vm:
-      return vm.group(1),vm.group(2)
-  return None,None
+      return { "name": vm.group(1), "ver": vm.group(2) }
+  return None
 
 def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, autoIncludeDeps,
          notifEmail, dryRun):
@@ -283,14 +283,15 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
       for pkgTar in jget(verUrl):
         if pkgTar["type"] != "directory":
           continue
-        _,pkgVer = nameVerFromTar(pkgTar["name"], arch, [pkgName])
-        if pkgVer is None:
+        nameVer = nameVerFromTar(pkgTar["name"], arch, [pkgName])
+        if nameVer is None:
           continue
+        pkgVer = nameVer["ver"]
         # Here we decide whether to include/exclude it
-        if not filter(pkgVer,
-                      includeRules.get(pkgName, None),
-                      excludeRules.get(pkgName, None),
-                      includeFirst):
+        if not applyFilter(pkgVer,
+                           includeRules.get(pkgName, None),
+                           excludeRules.get(pkgName, None),
+                           includeFirst):
           debug(format("%(arch)s / %(pack)s / %(ver)s: excluded",
                 arch=arch, pack=pkgName, ver=pkgVer))
           continue
@@ -310,9 +311,11 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
         for depTar in jget(distUrl):
           if depTar["type"] != "file":
             continue
-          depName,depVer = nameVerFromTar(depTar["name"], arch, distPackages)
-          if depName is None:
+          depNameVer = nameVerFromTar(depTar["name"], arch, distPackages)
+          if depNameVer is None:
             continue
+          depName = depNameVer["name"]
+          depVer = depNameVer["ver"]
           # Append only if it does not exist yet
           if len([p for p in pubPackages if p["name"]==depName and p["ver"]==depVer]) == 0:
             debug(format("%(arch)s / %(pack)s / %(ver)s: adding %(depName)s %(depVer)s to publish",
@@ -335,41 +338,46 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
                      arch=arch, pack=pack["name"], ver=pack["ver"]))
         continue
 
-      # Get direct dependencies
-      distDirectUrl = format(distDirectUrlTpl,
-                             baseUrl=baseUrl, arch=arch, pack=pack["name"], ver=pack["ver"])
-      debug(format("%(arch)s / %(pack)s / %(ver)s: listing direct dependencies from %(url)s",
-                   arch=arch, pack=pack["name"], ver=pack["ver"], url=distDirectUrl))
-      jdeps = jget(distDirectUrl)
-      if not jdeps:
-        error(format("%(arch)s / %(pack)s / %(ver)s: cannot get direct dependencies: skipping",
-                     arch=arch, pack=pack["name"], ver=pack["ver"]))
-        newPackages[arch].append({ "name": pack["name"], "ver": pack["ver"], "success": False })
+      # Get direct and indirect dependencies
+      deps = {}
+      depUrlTpls = { "dist": distUrlTpl,
+                     "dist-direct": distDirectUrlTpl }
+      depFail = False
+      for key,depsUrlTpl in depUrlTpls.iteritems():
+        depsUrl = format(depsUrlTpl,
+                         baseUrl=baseUrl, arch=arch, pack=pack["name"], ver=pack["ver"])
+        debug(format("%(arch)s / %(pack)s / %(ver)s: listing %(key)s dependencies from %(url)s",
+                     arch=arch, pack=pack["name"], ver=pack["ver"], key=key, url=depsUrl))
+        jdeps = jget(depsUrl)
+        if not jdeps:
+          error(format("%(arch)s / %(pack)s / %(ver)s: cannot get dependencies: skipping",
+                       arch=arch, pack=pack["name"], ver=pack["ver"]))
+          newPackages[arch].append({ "name": pack["name"], "ver": pack["ver"], "success": False })
+          depFail = True
+          continue
+        deps[key] = [ nameVerFromTar(x["name"], arch, distPackages)
+                      for x in jdeps if x["type"] == "file" ]
+        deps[key] = [ x for x in deps[key] if x is not None ]
+      if depFail:
         continue
-
-      deps = []
-      for depTar in jdeps:
-        if depTar["type"] != "file":
-          continue
-        depName,depVer = nameVerFromTar(depTar["name"], arch, distPackages)
-        if depName is None or depName == pack["name"]:
-          continue
-        deps.append({ "name": depName, "ver": depVer })
 
       # Here we can attempt the installation
       info(format("%(arch)s / %(pack)s / %(ver)s: getting and installing",
                   arch=arch, pack=pack["name"], ver=pack["ver"]))
       info(" * Source: %s" % pkgUrl)
-      info(" * Dependencies: %s" % ", ".join([i["name"]+" "+i["ver"] for i in deps]))
+      info(" * Direct deps: %s" % ", ".join([i["name"]+" "+i["ver"] for i in deps["dist-direct"]]))
+      info(" * All deps: %s" % ", ".join([i["name"]+" "+i["ver"] for i in deps["dist"]]))
 
       if not pub.transaction():
         sys.exit(2)  # fatal
       else:
-        rv = pub.install(pkgUrl, architectures[arch], pack["name"], pack["ver"], deps)
+        rv = pub.install(pkgUrl, architectures[arch], pack["name"], pack["ver"],
+                         deps["dist-direct"], deps["dist"])
         newPackages[arch].append({ "name": pack["name"],
                                    "ver": pack["ver"],
                                    "success": (rv==0),
-                                   "deps": deps })
+                                   "deps": deps["dist-direct"],
+                                   "alldeps": deps["dist"] })
       if rv == 0:
         info(format("%(arch)s / %(pack)s / %(ver)s: installed successfully",
                      arch=arch, pack=pack["name"], ver=pack["ver"]))
@@ -415,11 +423,24 @@ def notify(conf, archs, pack, dryRun):
       deps_fmt = "".join([ format(conf.get("package_format", "%(package)s %(version)s "),
                                    package=x["name"],
                                    version=x["ver"],
-                                   arch=archs[arch]) for x in p.get("deps", []) ])
-      kw =  { "package": p["name"], "version": p["ver"], "arch": archs[arch],
-              "dependencies_fmt": "".join([format(conf.get("package_format", "%(package)s %(version)s "),
-                                           package=x["name"], version=x["ver"], arch=archs[arch])
-                                          for x in p.get("deps", [])]) }
+                                   arch=archs[arch]) for x in p.get("alldeps", []) ])
+      kw =  { "package": p["name"],
+              "version": p["ver"],
+              "arch": archs[arch],
+              "dependencies_fmt":
+                "".join([
+                          format(conf.get("package_format", "%(package)s %(version)s "),
+                                 package=x["name"], version=x["ver"], arch=archs[arch])
+                          for x in p.get("deps", [])
+                 ]),
+              "alldependencies_fmt":
+                "".join([
+                          format(conf.get("package_format", "%(package)s %(version)s "),
+                                 package=x["name"], version=x["ver"], arch=archs[arch])
+                          for x in p.get("alldeps", [])
+                ])
+            }
+
       body = format(conf.get(key, {}).get("body", ""), **kw)
       subj = format(conf.get(key, {}).get("subject", "%(package)s %(version)s: "+key), **kw)
       to = isinstance(conf.get(key, {}).get("to", []), basestring) and \
