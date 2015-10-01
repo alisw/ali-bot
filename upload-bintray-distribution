@@ -66,7 +66,7 @@ if __name__ == "__main__":
                            o=config["organization"],
                            l=config["level"])
   create_repo_payload = json.dumps({
-    "type": "rpm", 
+    "type": config["format"], 
     "private": False, 
     "premium": False, 
     "desc": config["description"],
@@ -109,7 +109,17 @@ if __name__ == "__main__":
                                 n=package["name"],
                                 v=package["version"],
                                 f=basename(package["file"]))
+    headers = {}
+    if config["format"] == "deb":
+      headers = {
+        "X-Bintray-Debian-Distribution": "trusty",
+        "X-Bintray-Debian-Component": "main",
+        "X-Bintray-Debian-Architecture": "amd64"
+      }
     print upload_package_url
-    result = requests.put(upload_package_url, data=open(package["file"], "rb"), auth=(args.user, secret))
+    result = requests.put(upload_package_url,
+                          data=open(package["file"], "rb"), 
+                          auth=(args.user, secret),
+                          headers=headers)
     print result.status_code
     print result.content
