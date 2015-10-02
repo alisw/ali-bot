@@ -48,4 +48,4 @@ alibuild/aliBuild --reference-sources $MIRROR \
                   build aliroot-test || BUILDERR=$?
 
 rm -f $WORKAREA/$WORKAREA_INDEX/current_slave
-[[ "$BUILDERR" != '' ]] && exit $BUILDERR
+echo "Test exited with code $BUILDERR"
