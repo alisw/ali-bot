@@ -17,13 +17,13 @@ integration_rules:
   branch: master
   architecture: slc7_x86-64
   alidist: IB/v5-06/next
-  alibuild: master
+  alibuild: next
   package: aliroot-test
 -
   branch: master
   architecture: slc6_x86-64
   alidist: IB/v5-06/next
-  alibuild: master
+  alibuild: next
   package: aliroot-test
 -
   branch: master
@@ -35,25 +35,25 @@ integration_rules:
   branch: master
   architecture: ubt14_x86-64
   alidist: IB/v5-06/next
-  alibuild: master
+  alibuild: next
   package: aliroot-test
 -
   branch: master
   architecture: slc7_x86-64
   alidist: IB/v5-06/next
-  alibuild: master
+  alibuild: next
   package: o2
 -
   branch: master
   architecture: slc6_x86-64
   alidist: IB/v5-06/next
-  alibuild: master
+  alibuild: next
   package: o2
 -
   branch: master
   architecture: ubt14_x86-64
   alidist: IB/v5-06/next
-  alibuild: master
+  alibuild: next
   package: o2
 release_rules:
 - 
