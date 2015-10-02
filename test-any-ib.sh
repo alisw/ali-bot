@@ -14,6 +14,13 @@ WORKAREA_INDEX=0
 git clone -b $ALIBUILD_BRANCH https://github.com/$ALIBUILD_REPO/alibuild
 git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO/alidist
 
+pushd alibuild
+  git checkout $ALIBUILD_HASH
+popd
+pushd alidist
+  git checkout $ALIDIST_HASH
+popd
+
 CURRENT_SLAVE=0
 while [[ $CURRENT_SLAVE ]]; do
   CURRENT_SLAVE=$(cat $WORKAREA/$WORKAREA_INDEX/current_slave || true)
@@ -30,6 +37,8 @@ for x in $OVERRIDE_TAGS; do
   perl -p -i -e "s|tag: .*|tag: $OVERRIDE_TAG|" alidist/$OVERRIDE_PACKAGE.sh
 done
 
+export ALI_CI_TESTS=$TEST_TO_RUN
+
 RWOPT='::rw'
 [[ "$PUBLISH_BUILDS" == "false" ]] && RWOPT=''
 alibuild/aliBuild --reference-sources $MIRROR \
@@ -38,28 +47,7 @@ alibuild/aliBuild --reference-sources $MIRROR \
                   --architecture $ARCHITECTURE \
                   --jobs 16 \
                   --remote-store rsync://repo.marathon.mesos/store/$RWOPT \
-                  build $PACKAGE_NAME || BUILDERR=$?
+                  build aliroot-test || BUILDERR=$?
 
 rm -f $WORKAREA/$WORKAREA_INDEX/current_slave
 [[ "$BUILDERR" != '' ]] && exit $BUILDERR
-
-echo ALIROOT_BUILD_NR=$BUILD_NUMBER >> results.props
-echo PACKAGE_NAME=$PACKAGE_NAME >> results.props
-
-ALIDIST_HASH=$(cd $WORKSPACE/alidist && git show-ref HEAD | cut -f1 -d\ )
-ALIBUILD_HASH=$(cd $WORKSPACE/alibuild && git show-ref HEAD | cut -f1 -d\ )
-
-case $PACKAGE_NAME in
-  aliroot*|zlib*)
-for x in gun ppbench; do
-cat << EOF > $x-tests.props
-ALIROOT_BUILD_NR=$BUILD_NUMBER
-PACKAGE_NAME=$PACKAGE_NAME
-ALIDIST_HASH=$ALIDIST_HASH
-ALIBUILD_HASH=$ALIBUILD_HASH
-TEST_TO_RUN=$x
-BUILD_DATE=$BUILD_DATE
-EOF
-done
-  ;;
-esac
