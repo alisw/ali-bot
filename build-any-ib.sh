@@ -16,9 +16,9 @@ git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO/alidist
 
 CURRENT_SLAVE=unknown
 while [[ "$CURRENT_SLAVE" != '' ]]; do
-  CURRENT_SLAVE=$(cat $WORKAREA/$WORKAREA_INDEX/current_slave || true)
-  [[ "$CURRENT_SLAVE" == "$NODE_NAME" ]] && CURRENT_SLAVE=
   WORKAREA_INDEX=$((WORKAREA_INDEX+1))
+  CURRENT_SLAVE=$(cat $WORKAREA/$WORKAREA_INDEX/current_slave 2> /dev/null || true)
+  [[ "$CURRENT_SLAVE" == "$NODE_NAME" ]] && CURRENT_SLAVE=
 done
 
 mkdir -p $WORKAREA/$WORKAREA_INDEX
