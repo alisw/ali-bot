@@ -11,8 +11,8 @@ MIRROR=/build/mirror
 WORKAREA=/build/workarea/sw/$BUILD_DATE
 WORKAREA_INDEX=0
 
-git clone -b $ALIBUILD_BRANCH https://github.com/$ALIBUILD_REPO/alibuild
-git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO/alidist
+git clone https://github.com/$ALIBUILD_REPO/alibuild
+git clone https://github.com/$ALIDIST_REPO/alidist
 
 pushd alibuild
   git checkout $ALIBUILD_HASH
