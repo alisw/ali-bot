@@ -51,7 +51,7 @@ ALIBUILD_HASH=$(cd $WORKSPACE/alibuild && git show-ref HEAD | cut -f1 -d\ )
 
 case $PACKAGE_NAME in
   aliroot*|zlib*)
-for x in gun ppbench; do
+for x in gun ppbench PbPbbench; do
 cat << EOF > $x-tests.props
 ALIROOT_BUILD_NR=$BUILD_NUMBER
 PACKAGE_NAME=$PACKAGE_NAME
