@@ -14,10 +14,10 @@ WORKAREA_INDEX=0
 git clone -b $ALIBUILD_BRANCH https://github.com/$ALIBUILD_REPO/alibuild
 git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO/alidist
 
-CURRENT_SLAVE=0
-while [[ $CURRENT_SLAVE ]]; do
+CURRENT_SLAVE=unknown
+while [[ "$CURRENT_SLAVE" != '' ]]; do
   CURRENT_SLAVE=$(cat $WORKAREA/$WORKAREA_INDEX/current_slave || true)
-  [[ $CURRENT_SLAVE == $NODE_NAME ]] && CURRENT_SLAVE=
+  [[ "$CURRENT_SLAVE" == "$NODE_NAME" ]] && CURRENT_SLAVE=
   WORKAREA_INDEX=$((WORKAREA_INDEX+1))
 done
 

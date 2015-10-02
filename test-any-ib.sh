@@ -21,10 +21,10 @@ pushd alidist
   git checkout $ALIDIST_HASH
 popd
 
-CURRENT_SLAVE=0
-while [[ $CURRENT_SLAVE ]]; do
+CURRENT_SLAVE=unknown
+while [[ "$CURRENT_SLAVE" != '' ]]; do
   CURRENT_SLAVE=$(cat $WORKAREA/$WORKAREA_INDEX/current_slave || true)
-  [[ $CURRENT_SLAVE == $NODE_NAME ]] && CURRENT_SLAVE=
+  [[ "$CURRENT_SLAVE" == "$NODE_NAME" ]] && CURRENT_SLAVE=
   WORKAREA_INDEX=$((WORKAREA_INDEX+1))
 done
 
