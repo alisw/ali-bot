@@ -46,8 +46,8 @@ rm -f $WORKAREA/$WORKAREA_INDEX/current_slave
 echo ALIROOT_BUILD_NR=$BUILD_NUMBER >> results.props
 echo PACKAGE_NAME=$PACKAGE_NAME >> results.props
 
-ALIDIST_HASH=$(cd $WORKSPACE/alidist && git show-ref HEAD | cut -f1 -d\ )
-ALIBUILD_HASH=$(cd $WORKSPACE/alibuild && git show-ref HEAD | cut -f1 -d\ )
+ALIDIST_HASH=$(cd $WORKSPACE/alidist && git rev-parse HEAD)
+ALIBUILD_HASH=$(cd $WORKSPACE/alibuild && git rev-parse HEAD)
 
 case $PACKAGE_NAME in
   aliroot*|zlib*)
