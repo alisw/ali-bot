@@ -357,7 +357,8 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
           continue
         deps[key] = [ nameVerFromTar(x["name"], arch, distPackages)
                       for x in jdeps if x["type"] == "file" ]
-        deps[key] = [ x for x in deps[key] if x is not None ]
+        deps[key] = [ x for x in deps[key] if (x is not None and
+                                               x["name"] != pack["name"]) ]
       if depFail:
         continue
 
