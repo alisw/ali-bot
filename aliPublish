@@ -305,11 +305,16 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
 
         # At this point we have filtered in the package: let's see its dependencies!
         # Note that a package depends on itself
-        distUrl = format(distUrlTpl, 
+        distUrl = format(distRuntimeUrlTpl,
                          baseUrl=baseUrl, arch=arch, pack=pkgName, ver=pkgVer)
+        runtimeDeps = jget(distUrl)
+        if not runtimeDeps and isinstance(runtimeDeps, dict):
+          distUrl = format(distUrlTpl,
+                           baseUrl=baseUrl, arch=arch, pack=pkgName, ver=pkgVer)
+          runtimeDeps = jget(distUrl)
         debug(format("%(arch)s / %(pack)s / %(ver)s: listing all dependencies under %(url)s",
                      arch=arch, pack=pkgName, ver=pkgVer, url=distUrl))
-        for depTar in jget(distUrl):
+        for depTar in runtimeDeps:
           if depTar["type"] != "file":
             continue
           depNameVer = nameVerFromTar(depTar["name"], arch, distPackages)
