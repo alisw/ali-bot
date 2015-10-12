@@ -255,6 +255,7 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
   packNamesUrlTpl = "%(baseUrl)s/%(arch)s/dist-direct"
   distUrlTpl = "%(baseUrl)s/%(arch)s/dist/%(pack)s/%(pack)s-%(ver)s"
   distDirectUrlTpl = "%(baseUrl)s/%(arch)s/dist-direct/%(pack)s/%(pack)s-%(ver)s"
+  distRuntimeUrlTpl = "%(baseUrl)s/%(arch)s/dist-runtime/%(pack)s/%(pack)s-%(ver)s"
   verUrlTpl = "%(baseUrl)s/%(arch)s/dist-direct/%(pack)s"
   getPackUrlTpl = distDirectUrlTpl + "/%(pack)s-%(ver)s.%(arch)s.tar.gz"
 
@@ -341,7 +342,8 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
       # Get direct and indirect dependencies
       deps = {}
       depUrlTpls = { "dist": distUrlTpl,
-                     "dist-direct": distDirectUrlTpl }
+                     "dist-direct": distDirectUrlTpl,
+                     "dist-runtime": distRuntimeUrlTpl }
       depFail = False
       for key,depsUrlTpl in depUrlTpls.iteritems():
         depsUrl = format(depsUrlTpl,
@@ -349,7 +351,10 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
         debug(format("%(arch)s / %(pack)s / %(ver)s: listing %(key)s dependencies from %(url)s",
                      arch=arch, pack=pack["name"], ver=pack["ver"], key=key, url=depsUrl))
         jdeps = jget(depsUrl)
-        if not jdeps:
+        if not jdeps and key == "dist-runtime":
+          deps[key] = None
+          continue
+        elif not jdeps:
           error(format("%(arch)s / %(pack)s / %(ver)s: cannot get dependencies: skipping",
                        arch=arch, pack=pack["name"], ver=pack["ver"]))
           newPackages[arch].append({ "name": pack["name"], "ver": pack["ver"], "success": False })
@@ -361,6 +366,14 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
                                                x["name"] != pack["name"]) ]
       if depFail:
         continue
+      if deps["dist-runtime"] is None:
+        deps["dist-runtime"] = deps["dist"]
+        deps["dist-direct-runtime"] = deps["dist-direct"]
+      else:
+        # dist-direct-runtime: all entries in dist-direct but not in dist-runtime
+        deps["dist-direct-runtime"] = [ x for x in deps["dist-direct"]
+                                        if [ 1 for y in deps["dist-runtime"]
+                                             if x["name"] == y["name"] ] ]
 
       # Here we can attempt the installation
       info(format("%(arch)s / %(pack)s / %(ver)s: getting and installing",
@@ -368,12 +381,14 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
       info(" * Source: %s" % pkgUrl)
       info(" * Direct deps: %s" % ", ".join([i["name"]+" "+i["ver"] for i in deps["dist-direct"]]))
       info(" * All deps: %s" % ", ".join([i["name"]+" "+i["ver"] for i in deps["dist"]]))
+      info(" * Direct runtime deps: %s" % ", ".join([i["name"]+" "+i["ver"] for i in deps["dist-direct-runtime"]]))
+      info(" * Runtime deps: %s" % ", ".join([i["name"]+" "+i["ver"] for i in deps["dist-runtime"]]))
 
       if not pub.transaction():
         sys.exit(2)  # fatal
       else:
         rv = pub.install(pkgUrl, architectures[arch], pack["name"], pack["ver"],
-                         deps["dist-direct"], deps["dist"])
+                         deps["dist-direct-runtime"], deps["dist-runtime"])
         newPackages[arch].append({ "name": pack["name"],
                                    "ver": pack["ver"],
                                    "success": (rv==0),
