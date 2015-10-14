@@ -10,7 +10,7 @@ from re import search, escape
 from os.path import isdir, isfile
 from os import chmod, remove, chdir
 from shutil import rmtree
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, mkdtemp
 from subprocess import Popen, PIPE, STDOUT
 from smtplib import SMTP
 
@@ -236,6 +236,59 @@ class AliEnPackMan(object):
     return True
 
   def publish(self):
+    return True
+
+class RPM(object):
+
+  def __init__(self, repoDir, publishScriptTpl, dryRun=False):
+    self._dryRun = dryRun
+    self._repoDir = repoDir
+    self._publishScriptTpl = publishScriptTpl
+    self._countChanges = 0
+
+  def _kw(self, url, arch, pkgName, pkgVer, workDir=None, deps=None):
+    kw =  { "url": url, "package": pkgName, "version": pkgVer, "arch": arch, "dependencies": deps,
+            "repodir": self._repoDir, "workdir": workDir }
+    kw.update({ "rpm": format("alisw-%(package)s+%(version)s-1-1.%(arch)s.rpm", **kw) })
+    return kw
+
+  def installed(self, arch, pkgName, pkgVer):
+    kw = self._kw(None, arch, pkgName, pkgVer)
+    debug(format("RPM: checking if %(rpm)s exists for %(package)s %(version)s on %(arch)s", **kw))
+    return isfile(format("%(repodir)s/%(rpm)s", **kw))
+
+  def install(self, url, arch, pkgName, pkgVer, deps, allDeps):
+    workDir = mkdtemp(prefix="aliPublish-RPM-")
+    kw = self._kw(url, arch, pkgName, pkgVer, workDir,
+                  " ".join(["alisw-%s+%s" % (x["name"], x["ver"]) for x in deps]))
+    debug(format("RPM: created temporary working directory %(workdir)s", **kw))
+    rv = runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
+    if rv == 0:
+      self._countChanges += 1
+    debug(format("RPM: removing temporary working directory %(workdir)s", **kw))
+    rmrf(workDir)
+    return rv
+
+  def transaction(self):
+    return True
+
+  def abort(self, force=False):
+    return True
+
+  def publish(self):
+    if self._countChanges > 0:
+      info(format("RPM: updating repository data, %(npkgs)s new package(s)",
+           npkgs=self._countChanges))
+      if not self._dryRun and execute([ "createrepo", self._repoDir ]) == 0:
+        info("RPM: repository updated")
+        return True
+      elif self._dryRun:
+        info("RPM: not updating repository, dry run")
+        return True
+      else:
+        error("RPM: error updating repository")
+        return False
+    debug("RPM: nothing new to publish")
     return True
 
 def nameVerFromTar(tar, arch, validPacks):
@@ -561,7 +614,7 @@ def main():
     error("filter_order can be include,exclude or exclude,include")
     sys.exit(1)
 
-  if args.action in [ "sync-cvmfs", "sync-alien" ]:
+  if args.action in [ "sync-cvmfs", "sync-alien", "sync-rpm" ]:
     chdir("/")
     if args.action == "sync-cvmfs":
       archKey = "CVMFS"
@@ -570,10 +623,15 @@ def main():
                         pkgdirTpl=conf["package_dir"],
                         publishScriptTpl=conf["cvmfs_script"],
                         dryRun=args.dryRun)
-    else:
+    elif args.action == "sync-alien":
       archKey = "AliEn"
       pub = AliEnPackMan(publishScriptTpl=conf["alien_script"],
                          dryRun=args.dryRun)
+    else:
+      archKey = "RPM"
+      pub = RPM(repoDir=conf["rpm_repo_dir"],
+                publishScriptTpl=conf["rpm_script"],
+                dryRun=args.dryRun)
     if args.abort:
       pub.abort(force=True)
 
@@ -605,7 +663,7 @@ def main():
                 package=args.pkgName, version=args.pkgVer))
     sys.exit(not matches)
   else:
-    error("Wrong action, use: sync-cvmfs, sync-alien, test-rules")
+    error("Wrong action, use: sync-cvmfs, sync-alien, sync-rpm, test-rules")
     sys.exit(1)
 
 if __name__ == "__main__":
