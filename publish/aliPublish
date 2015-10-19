@@ -650,6 +650,7 @@ def main():
          autoIncludeDeps=conf["auto_include_deps"],
          notifEmail=conf["notification_email"],
          dryRun=args.dryRun)
+    sys.exit(0)
   elif args.action == "test-rules":
     if not args.pkgName or not args.pkgVer:
       error("Please specify a package name and version")
