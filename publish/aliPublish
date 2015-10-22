@@ -248,10 +248,11 @@ class RPM(object):
     self._repoDir = repoDir
     self._publishScriptTpl = publishScriptTpl
     self._countChanges = 0
+    self._archs = []
 
   def _kw(self, url, arch, pkgName, pkgVer, workDir=None, deps=None):
     kw =  { "url": url, "package": pkgName, "version": pkgVer, "arch": arch, "dependencies": deps,
-            "repodir": self._repoDir, "workdir": workDir }
+            "repodir": self._repoDir+"/"+arch, "workdir": workDir }
     kw.update({ "rpm": format("alisw-%(package)s+%(version)s-1-1.%(arch)s.rpm", **kw) })
     return kw
 
@@ -267,6 +268,8 @@ class RPM(object):
     debug(format("RPM: created temporary working directory %(workdir)s", **kw))
     rv = runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
     if rv == 0:
+      if not arch in self._archs:
+        self._archs.append(arch)
       self._countChanges += 1
     debug(format("RPM: removing temporary working directory %(workdir)s", **kw))
     rmrf(workDir)
@@ -282,8 +285,13 @@ class RPM(object):
     if self._countChanges > 0:
       info(format("RPM: updating repository data, %(npkgs)s new package(s)",
            npkgs=self._countChanges))
-      if not self._dryRun and execute([ "createrepo", self._repoDir ]) == 0:
-        info("RPM: repository updated")
+      if not self._dryRun:
+        for arch in self._archs:
+          if execute([ "createrepo", self._repoDir+"/"+arch ]) == 0:
+            info(format("RPM: repository updated for %(arch)s", arch=arch))
+          else:
+            error(format("RPM: error updating repository for %(arch)s", arch=arch))
+            return False
         return True
       elif self._dryRun:
         info("RPM: not updating repository, dry run")
@@ -617,7 +625,7 @@ def main():
     error("filter_order can be include,exclude or exclude,include")
     sys.exit(1)
 
-  if args.action in [ "sync-cvmfs", "sync-alien", "sync-rpm" ]:
+  if args.action in [ "sync-cvmfs", "sync-alien", "sync-rpms" ]:
     chdir("/")
     if args.action == "sync-cvmfs":
       archKey = "CVMFS"
@@ -667,7 +675,7 @@ def main():
                 package=args.pkgName, version=args.pkgVer))
     sys.exit(not matches)
   else:
-    error("Wrong action, use: sync-cvmfs, sync-alien, sync-rpm, test-rules")
+    error("Wrong action, use: sync-cvmfs, sync-alien, sync-rpms, test-rules")
     sys.exit(1)
 
 if __name__ == "__main__":
