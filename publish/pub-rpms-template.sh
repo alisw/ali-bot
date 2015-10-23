@@ -12,7 +12,7 @@ cd $TMPDIR
 curl --silent -L "%(url)s" | tar --strip-components=2 -xzf -
 DEPS=()
 DEPS+=("--depends" "environment-modules")
-for D in "%(dependencies)s"; do
+for D in %(dependencies)s; do
   DEPS+=("--depends" "$D = 1-1.$FLAVOUR")
 done
 AFTER_INSTALL=$TMPDIR/after_install.sh
@@ -60,7 +60,7 @@ fpm -s dir \
     --name alisw-%(package)s+%(version)s \
     --after-install $AFTER_INSTALL \
     --after-remove $AFTER_REMOVE \
-    %(package)s/
+    "%(package)s/"
 RPM="alisw-%(package)s+%(version)s-1-1.%(arch)s.rpm"
 [[ -e $RPM ]]
 mkdir -vp %(repodir)s
