@@ -461,8 +461,8 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
         newPackages[arch].append({ "name": pack["name"],
                                    "ver": pack["ver"],
                                    "success": (rv==0),
-                                   "deps": deps["dist-direct"],
-                                   "alldeps": deps["dist"] })
+                                   "deps": deps["dist-direct-runtime"],
+                                   "alldeps": deps["dist-runtime"] })
       if rv == 0:
         info(format("%(arch)s / %(pack)s / %(ver)s: installed successfully",
                      arch=arch, pack=pack["name"], ver=pack["ver"]))
