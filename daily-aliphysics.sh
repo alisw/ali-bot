@@ -38,7 +38,15 @@ pushd $AUTOTAG_CLONE
     echo "Tag $AUTOTAG_TAG exists already as $AUTOTAG_HASH"
   else
     # Tag does not exist. Create release candidate branch, if not existing.
+
     AUTOTAG_HASH=$( (git ls-remote | grep refs/heads/$AUTOTAG_BRANCH || true) | tail -n1 | awk '{print $1}' )
+
+    if [[ "$AUTOTAG_HASH" != '' && "$REMOVE_RC_BRANCH_FIRST" == true ]]; then
+      # Remove branch first if requested. Error is fatal.
+      git push origin :refs/heads/$AUTOTAG_BRANCH
+      AUTOTAG_HASH=
+    fi
+
     if [[ "$AUTOTAG_HASH" == '' ]]; then
       AUTOTAG_HASH=$( (git ls-remote | grep refs/heads/master || true) | tail -n1 | awk '{print $1}' )
       [[ "$AUTOTAG_HASH" != '' ]]
