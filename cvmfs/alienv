@@ -38,7 +38,7 @@ case $distro_name in
            5.*)
               distro_xrelease=5.x
               ;;
-           6.*)
+           6.*|7*)
               distro_xrelease=6.x
               ;;
         esac
