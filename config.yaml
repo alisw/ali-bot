@@ -42,19 +42,19 @@ integration_rules:
   architecture: slc7_x86-64
   alidist: IB/v5-06/next
   alibuild: next
-  package: o2
+  package: O2
 -
   branch: master
   architecture: slc6_x86-64
   alidist: IB/v5-06/next
   alibuild: next
-  package: o2
+  package: O2
 -
   branch: master
   architecture: ubt14_x86-64
   alidist: IB/v5-06/next
   alibuild: next
-  package: o2
+  package: O2
 release_rules:
 - 
   name: aliroot
