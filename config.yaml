@@ -39,6 +39,12 @@ integration_rules:
   package: aliroot-test
 -
   branch: master
+  architecture: osx_x86-64
+  alidist: IB/v5-06/next
+  alibuild: next
+  package: aliroot-test
+-
+  branch: master
   architecture: slc7_x86-64
   alidist: IB/v5-06/next
   alibuild: next
