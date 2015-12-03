@@ -25,6 +25,11 @@ from glob import glob
 def format(s, **kwds):
   return s % kwds
 
+def dieIf(exitCode, msg, *args):
+  if exitCode:
+    print msg % args
+    exit(exitCode)
+
 def decide_releases(done_tags, all_tags, rules):
   to_be_processed = []
   
@@ -45,7 +50,8 @@ def decide_releases(done_tags, all_tags, rules):
            "architecture": rule["architecture"],
            "package": "aliroot",
            "alidist": rule["alidist"],
-           "alibuild": rule["alibuild"]
+           "alibuild": rule["alibuild"],
+           "defaults": rule.get("defaults", "release")
         }
         if not m:
           continue
@@ -53,22 +59,26 @@ def decide_releases(done_tags, all_tags, rules):
           continue
         to_be_processed.append(payload)
       else:
-        print "Bad rule found. Exiting"
-        exit(1)
+        dieIf(1, "Bad rule found. Exiting.")
   return to_be_processed
 
+# Extracts the previously scheduled packages from the git repository.
+# This is done by parsing the filename which has the following structure:
+#
+# <package>[+<defaults>]-<architecture>-<tag>.ini
 def extractTuples(name):
-  possible_archs = ["(.*)(slc.*_x86-64)-(.*)[.]ini",
-                    "(.*)(ubt.*_x86-64)-(.*)[.]ini",
-                    "(.*)(osx.*_x86-64)-(.*)[.]ini"]
+  possible_archs = ["([^+]*)[+]?(.*)(slc.*_x86-64)-(.*)[.]ini",
+                    "([^+]*)[+]?(.*)(ubt.*_x86-64)-(.*)[.]ini",
+                    "([^+]*)[+]?(.*)(osx.*_x86-64)-(.*)[.]ini"]
   for attempt in possible_archs:
     m = re.match(attempt, name)
     if not m:
       continue
-    result = dict(zip(["package", "architecture", "tag"], m.groups()))
-    print name
+    result = dict(zip(["package", "defaults", "architecture", "tag"], m.groups()))
     if not result["package"]:
       result["package"] = "aliroot"
+    if not result["defaults"]:
+      result["defaults"] = "release"
     assert(result["package"])
     assert(result["architecture"])
     assert(result["tag"])
@@ -93,10 +103,7 @@ if __name__ == "__main__":
   cmd = format("(cd %(repo)s && git tag 2>&1)",
                repo=args.aliroot)
   err, out = getstatusoutput(cmd)
-  if err:
-    print "Unable to get ALIROOT tags"
-    print out
-    exit(1)
+  dieIf(err, "Unable to get ALIROOT tags\n%s", "\n".join(out.split("\n")[0:10]))
 
   # There are three entries in the script:
   #
@@ -121,12 +128,13 @@ if __name__ == "__main__":
       "architecture": ib["architecture"],
       "package": ib["package"],
       "alibuild": ib["alibuild"],
-      "alidist": ib["alidist"]
+      "alidist": ib["alidist"],
+      "defaults": ib.get("defaults", "release")
     }
     specs.append(payload)
   
   if not specs:
-    print "No tags to be processed"
+    print "No tags to be processed."
     exit(0)
   print "Tags to be scheduled:\n" + "\n".join(str(x) for x in specs)
 
@@ -142,7 +150,8 @@ if __name__ == "__main__":
                  "ALIBUILD_BRANCH=%(alibuild)s\n"
                  "ARCHITECTURE=%(architecture)s\n"
                  "OVERRIDE_TAGS=aliroot=%(tag)s\n"
-                 "PACKAGE_NAME=%(package)s\n",
+                 "PACKAGE_NAME=%(package)s\n"
+                 "DEFAULTS=%(defaults)s\n",
                  **s)
     if args.dryRun:
       print ini
