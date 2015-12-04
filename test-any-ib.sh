@@ -39,12 +39,13 @@ done
 
 export ALI_CI_TESTS=$TEST_TO_RUN
 
-alibuild/aliBuild --reference-sources $MIRROR \
-                  --debug \
-                  --work-dir $WORKAREA/$WORKAREA_INDEX \
-                  --architecture $ARCHITECTURE \
-                  --jobs 16 \
-                  --remote-store rsync://repo.marathon.mesos/store/ \
+alibuild/aliBuild --reference-sources $MIRROR                        \
+                  --debug                                            \
+                  --work-dir $WORKAREA/$WORKAREA_INDEX               \
+                  ${DEFAULTS:+--defaults $DEFAULTS}                  \
+                  --architecture $ARCHITECTURE                       \
+                  --jobs 16                                          \
+                  --remote-store rsync://repo.marathon.mesos/store/  \
                   build aliroot-test || BUILDERR=$?
 
 rm -f $WORKAREA/$WORKAREA_INDEX/current_slave

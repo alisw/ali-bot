@@ -13,6 +13,7 @@ integration_rules:
   alidist: IB/master/root6
   alibuild: master
   package: aliroot
+  defaults: root6
 -
   branch: master
   architecture: slc7_x86-64
