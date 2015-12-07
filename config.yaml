@@ -12,8 +12,14 @@ integration_rules:
   architecture: slc7_x86-64
   alidist: IB/master/root6
   alibuild: master
-  package: aliroot
+  package: aliphysics
   defaults: root6
+- branch: master
+  architecture: slc7_x86-64
+  alidist: IB/master/next
+  alibuild: master
+  package: aliroot-test
+  defaults: coverage
 -
   branch: master
   architecture: slc7_x86-64
