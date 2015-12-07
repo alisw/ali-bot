@@ -8,6 +8,7 @@ REVISION=${FULLVER##*-}
 FULLARCH="%(arch)s"
 FLAVOUR=${FULLARCH%%.*}
 ARCHITECTURE=${FULLARCH##*.}
+which fpm
 cd $TMPDIR
 curl --silent -L "%(url)s" | tar --strip-components=2 -xzf -
 DEPS=()
