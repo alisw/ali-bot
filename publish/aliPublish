@@ -198,7 +198,8 @@ class AliEnPackMan(object):
 
     if self._packs is None:
       self._packs = {}
-      for line in grabOutput([ "alien", "-exec", "packman", "list" ])[1].split("\n"):
+      for line in grabOutput([ "alien", "-exec",
+                               "packman", "list", "-all", "-force" ])[1].split("\n"):
         m = search(r"VO_ALICE@(.+?)::([^\s]+)", line)
         if not m: continue
         pkg = m.group(1)
