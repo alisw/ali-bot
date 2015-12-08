@@ -16,7 +16,7 @@ integration_rules:
   defaults: root6
 - branch: master
   architecture: slc7_x86-64
-  alidist: IB/master/next
+  alidist: IB/v5-06/next
   alibuild: master
   package: aliroot-test
   defaults: coverage
