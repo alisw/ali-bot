@@ -157,9 +157,10 @@ if __name__ == "__main__":
       print ini
       continue
 
-    p = format("%(alisw)s/data/scheduled/%(package)s-%(architecture)s-%(tag)s.ini",
+    p = format("%(alisw)s/data/scheduled/%(package)s+%(defaults)s-%(architecture)s-%(tag)s.ini",
                alisw=args.alisw,
                architecture=s["architecture"],
+               defaults=s["defaults"],
                package=s["package"],
                tag=s["tag"])
     getstatusoutput("mkdir -p %s/data/scheduled" % args.alisw)
@@ -167,3 +168,4 @@ if __name__ == "__main__":
     f.write(ini)
     f.close()
     symlink(p, basename(p))
+    
