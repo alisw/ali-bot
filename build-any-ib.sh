@@ -1,6 +1,7 @@
 #!/bin/bash -ex
 
 hostname
+echo $RIEMANN_HOST
 which lsb_release > /dev/null 2>&1 && lsb_release -a
 uname -a
 date
