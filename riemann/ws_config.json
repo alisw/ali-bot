@@ -1,0 +1,309 @@
+{
+    "server": "riemann.marathon.mesos:5556",
+    "server_type": "ws",
+    "workspaces": [
+        {
+            "id": "cf07aba9e88bfe5ec430eb8cae85f65601e77cb5",
+            "name": "Slaves",
+            "view": {
+                "child": {
+                    "children": [
+                        {
+                            "children": [
+                                {
+                                    "graphType": "line",
+                                    "id": "a0ab49177fad2b98887731a013a1ed01ad6f052e",
+                                    "max": null,
+                                    "min": null,
+                                    "query": "service = \"cpu\"",
+                                    "stackMode": "false",
+                                    "timeRange": 300,
+                                    "title": "CPU",
+                                    "type": "Flot",
+                                    "version": 5,
+                                    "weight": 1
+                                },
+                                {
+                                    "children": [
+                                        {
+                                            "graphType": "line",
+                                            "id": "a34af6d411ed2542cea6f9a20c48648857278bdc",
+                                            "max": "1.1",
+                                            "min": "0",
+                                            "query": "service = \"disk /build\" and metric > 0.5",
+                                            "stackMode": "false",
+                                            "timeRange": 300,
+                                            "title": "Disk /build more than 50% full",
+                                            "type": "Flot",
+                                            "version": 7,
+                                            "weight": 1
+                                        }
+                                    ],
+                                    "id": "ce410a2025e7a22e9c3396c1321f2a8a413674de",
+                                    "type": "VStack",
+                                    "version": 4,
+                                    "weight": 1
+                                },
+                                {
+                                    "graphType": "line",
+                                    "id": "1d17031829004c53431378e9558a58a960bf7215",
+                                    "max": "1.1",
+                                    "min": "0",
+                                    "query": "service = \"memory\" and metric > 0.7",
+                                    "stackMode": "false",
+                                    "timeRange": 300,
+                                    "title": "Memory more than 70% used",
+                                    "type": "Flot",
+                                    "version": 3,
+                                    "weight": 1
+                                },
+                                {
+                                    "graphType": "bar",
+                                    "id": "e285d25388d17c967651b2bb65623def7267c691",
+                                    "max": null,
+                                    "min": "0",
+                                    "query": "service = \"cpu\"",
+                                    "stackMode": "true",
+                                    "timeRange": 300,
+                                    "title": "Total cluster usage",
+                                    "type": "Flot",
+                                    "version": 5,
+                                    "weight": 1
+                                }
+                            ],
+                            "id": "a6c095459ea6c0e38f143cb94d989e2dea95e679",
+                            "type": "HStack",
+                            "version": 18,
+                            "weight": 1
+                        },
+                        {
+                            "children": [
+                                {
+                                    "id": "ca7ab86cdb953d0088dbc8d76dfae24c0c32a77c",
+                                    "query": "true",
+                                    "title": "elasticsearch",
+                                    "type": "List",
+                                    "version": 8,
+                                    "weight": 1
+                                }
+                            ],
+                            "id": "dd45d09b9b27556f5828fd34fcb4965d50c389ac",
+                            "type": "HStack",
+                            "version": 8,
+                            "weight": 1
+                        }
+                    ],
+                    "id": "2b26111c1d169f9c4778c8a09ed7e65106433275",
+                    "type": "VStack",
+                    "version": 31,
+                    "weight": 1
+                },
+                "id": "3216c0764c912e9be5592d240423b0ecfaba5925",
+                "type": "Balloon",
+                "version": 31,
+                "weight": 1
+            }
+        },
+        {
+            "id": "cf07aba9e88bfe5ec430eb8cae85f65601e77cb5",
+            "name": "Riemann",
+            "view": {
+                "child": {
+                    "children": [
+                        {
+                            "children": [
+                                {
+                                    "graphType": "line",
+                                    "id": "a0ab49177fad2b98887731a013a1ed01ad6f052e",
+                                    "max": null,
+                                    "min": null,
+                                    "query": "service = \"load\"",
+                                    "stackMode": "false",
+                                    "timeRange": 300,
+                                    "title": "Load",
+                                    "type": "Flot",
+                                    "version": 4,
+                                    "weight": 1
+                                },
+                                {
+                                    "graphType": "line",
+                                    "id": "a34af6d411ed2542cea6f9a20c48648857278bdc",
+                                    "max": "1.1",
+                                    "min": "0",
+                                    "query": "service = \"disk /build\"",
+                                    "stackMode": "false",
+                                    "timeRange": 300,
+                                    "title": "Disk /build",
+                                    "type": "Flot",
+                                    "version": 3,
+                                    "weight": 1
+                                },
+                                {
+                                    "graphType": "line",
+                                    "id": "1d17031829004c53431378e9558a58a960bf7215",
+                                    "max": "1.1",
+                                    "min": "0",
+                                    "query": "service = \"memory\"",
+                                    "stackMode": "false",
+                                    "timeRange": 300,
+                                    "title": "Memory",
+                                    "type": "Flot",
+                                    "version": 1,
+                                    "weight": 1
+                                }
+                            ],
+                            "id": "a6c095459ea6c0e38f143cb94d989e2dea95e679",
+                            "type": "HStack",
+                            "version": 5,
+                            "weight": 1
+                        },
+                        {
+                            "children": [
+                                {
+                                    "id": "ca7ab86cdb953d0088dbc8d76dfae24c0c32a77c",
+                                    "lines": "1000",
+                                    "query": "host = \"alibuild09.cern.ch\"",
+                                    "title": "alibuild09",
+                                    "type": "Log",
+                                    "version": 2,
+                                    "weight": 1
+                                },
+                                {
+                                    "id": "bf0958eea9a79d67c8ce69d08805fc1eac93a8f1",
+                                    "lines": "100",
+                                    "query": "true",
+                                    "title": "Events",
+                                    "type": "Log",
+                                    "version": 2,
+                                    "weight": 1
+                                }
+                            ],
+                            "id": "dd45d09b9b27556f5828fd34fcb4965d50c389ac",
+                            "type": "HStack",
+                            "version": 2,
+                            "weight": 1
+                        }
+                    ],
+                    "id": "2b26111c1d169f9c4778c8a09ed7e65106433275",
+                    "type": "VStack",
+                    "version": 12,
+                    "weight": 1
+                },
+                "id": "3216c0764c912e9be5592d240423b0ecfaba5925",
+                "type": "Balloon",
+                "version": 12,
+                "weight": 1
+            }
+        },
+        {
+            "id": "8508a3674a537cab6cbc5b3e5ea25ce71b236033",
+            "name": "Elasticsearch",
+            "view": {
+                "child": {
+                    "children": [
+                        {
+                            "children": [
+                                {
+                                    "children": [
+                                        {
+                                            "id": "de6567535d6f3241dafd8380d313e4f86eb3f216",
+                                            "query": "service = \"elasticsearch number_of_data_nodes\"",
+                                            "title": "Data nodes",
+                                            "type": "Gauge",
+                                            "version": 13,
+                                            "weight": 1
+                                        },
+                                        {
+                                            "id": "bf1f8eb5964981e036b9e10d412e44cb0efab111",
+                                            "query": "service = \"elasticsearch number_of_nodes\"",
+                                            "title": "All nodes",
+                                            "type": "Gauge",
+                                            "version": 2,
+                                            "weight": 1
+                                        }
+                                    ],
+                                    "id": "a3796e9ee37f39ad6aec7eea09513ea1b0fbf5b3",
+                                    "type": "VStack",
+                                    "version": 5,
+                                    "weight": 0.125
+                                },
+                                {
+                                    "id": "4fb6538d3bcba1aee056841cfe11d6edf3ca7b96",
+                                    "query": "service = \"elasticsearch health\"",
+                                    "title": "health",
+                                    "type": "Gauge",
+                                    "version": 2,
+                                    "weight": 1
+                                },
+                                {
+                                    "graphType": "line",
+                                    "id": "986d523c0deb5a0fc2aff1d7a4f922538a05bb32",
+                                    "max": null,
+                                    "min": "0",
+                                    "query": "service = \"elasticsearch number_of_pending_tasks\" or service = \"elasticsearch relocating_shards\" or service = \"elasticsearch initializing_shards\" or service = \"elasticsearch timed_out\"",
+                                    "stackMode": "false",
+                                    "timeRange": 300,
+                                    "title": "Pending stuff",
+                                    "type": "Flot",
+                                    "version": 6,
+                                    "weight": 1
+                                }
+                            ],
+                            "id": "69eac39502bb5574148d6468a2279c66d7afd2e6",
+                            "type": "HStack",
+                            "version": 24,
+                            "weight": 1
+                        },
+                        {
+                            "id": "2ad012edcad08bd59748649906fa3314a182088e",
+                            "query": "host = \"elasticsearch-client.marathon.mesos\"",
+                            "title": "Elasticsearch logs",
+                            "type": "List",
+                            "version": 4,
+                            "weight": 1
+                        }
+                    ],
+                    "id": "25826ab718e396af5127b0a3003ac2619c22ebae",
+                    "type": "VStack",
+                    "version": 27,
+                    "weight": 1
+                },
+                "id": "780f114f49f910e03ef199ddefdfe1a943cb53de",
+                "type": "Balloon",
+                "version": 27,
+                "weight": 1
+            }
+        },
+        {
+            "id": "36c8a3aca6b78516715d06ce51e4e1107387c251",
+            "name": "Integration Builds",
+            "view": {
+                "child": {
+                    "children": [
+                        {
+                            "col_sort": "lexical",
+                            "cols": "architecture",
+                            "id": "bd1382a99ef69bb83960842e9ad77a6162bfddd8",
+                            "max": "",
+                            "query": "true",
+                            "row_sort": "lexical",
+                            "rows": "package",
+                            "title": "Packages being built",
+                            "type": "Grid",
+                            "version": 3,
+                            "weight": 1
+                        }
+                    ],
+                    "id": "25e3a5a9ebabe92399cd7c12e5b0929b3cb7ad07",
+                    "type": "VStack",
+                    "version": 3,
+                    "weight": 1
+                },
+                "id": "164ec13bb7f4d9d7b444cced3105efc23134ab16",
+                "type": "Balloon",
+                "version": 3,
+                "weight": 1
+            }
+        }
+    ]
+}

@@ -1,0 +1,17 @@
+riemann:
+  image: alisw/riemann
+  net: host
+  volumes:
+  - .:/config
+#  expose:
+#  - 5555
+#  - 5556
+dashboard:
+  image: alisw/riemann-dash
+  net: host
+  volumes:
+  - .:/config
+#  expose: 
+#  - 4567 
+#  links:
+#  - riemann
