@@ -311,8 +311,7 @@ def nameVerFromTar(tar, arch, validPacks):
       return { "name": vm.group(1), "ver": vm.group(2) }
   return None
 
-def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, autoIncludeDeps,
-         notifEmail, dryRun):
+def sync(pub, architectures, baseUrl, rules, includeFirst, autoIncludeDeps, notifEmail, dryRun):
 
   newPackages = {}
 
@@ -355,8 +354,8 @@ def sync(pub, architectures, baseUrl, includeRules, excludeRules, includeFirst, 
         pkgVer = nameVer["ver"]
         # Here we decide whether to include/exclude it
         if not applyFilter(pkgVer,
-                           includeRules.get(pkgName, None),
-                           excludeRules.get(pkgName, None),
+                           rules["include"][arch].get(pkgName, None),
+                           rules["exclude"][arch].get(pkgName, None),
                            includeFirst):
           debug(format("%(arch)s / %(pack)s / %(ver)s: excluded",
                 arch=arch, pack=pkgName, ver=pkgVer))
@@ -651,16 +650,27 @@ def main():
       pub.abort(force=True)
 
     architectures = {}
+    rules = { "include": {}, "exclude": {} }
+    superRules = {}
     for arch,maps in conf["architectures"].iteritems():
+      # Architecture names mapping
       architectures[arch] = isinstance(maps, dict) and maps.get(archKey, arch) or arch
+      # Architecture-specific package overrides
+      for r in rules.keys():
+        rules[r][arch] = isinstance(maps, dict) and maps.get(r, {}) or {}
+        for uk in set(conf[r].keys()+rules[r][arch].keys()):
+          a = rules[r][arch].get(uk, [])
+          b = conf[r].get(uk, [])
+          rules[r][arch][uk] = (a == True or b == True) or (a + b)
+
       debug(format("Arch %(arch)s is called %(archPub)s on %(pub)s",
                    arch=arch, archPub=architectures[arch], pub=archKey))
+    debug("Per architecture include/exclude rules: %s" % json.dumps(rules, indent=2))
 
     sync(pub=pub,
          architectures=architectures,
          baseUrl=conf["base_url"],
-         includeRules=conf["include"],
-         excludeRules=conf["exclude"],
+         rules=rules,
          includeFirst=includeFirst,
          autoIncludeDeps=conf["auto_include_deps"],
          notifEmail=conf["notification_email"],
