@@ -1,0 +1,47 @@
+zookeeper:
+  image: alisw/zookeeper
+  net: host
+slave:
+  image: alisw/mesos-slave:0.24.0
+  net: host
+  pid: host
+  privileged: true
+  volumes:
+    - /sys:/sys
+    - /usr/local/bin/docker:/usr/bin/docker
+    - /var/run/docker.sock:/var/run/docker.sock
+  environment:
+    MESOS_IP: 192.168.99.100
+master:
+  image: alisw/mesos-master
+  net: host
+  environment:
+    MESOS_IP: 192.168.99.100
+riemann:
+  image: alisw/riemann
+  net: host
+  volumes:
+  - .:/config
+  environment:
+    DEBUG: 1
+    ELASTICSEARCH_HOST: http://localhost:9200
+#  expose:
+#  - 5555
+#  - 5556
+dashboard:
+  image: alisw/riemann-dash
+  net: host
+  volumes:
+  - .:/config
+elasticsearch:
+  image: alisw/elasticsearch:1.7
+  net: host
+kibana:
+  image: alisw/kibana:4.1.1
+  net: host
+  environment:
+    "KIBANA_ES": "http://192.168.99.100:9200"
+#  expose: 
+#  - 4567 
+#  links:
+#  - riemann
