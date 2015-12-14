@@ -551,6 +551,7 @@ def main():
   parser.add_argument("action")
   parser.add_argument("--pkgname", dest="pkgName")
   parser.add_argument("--pkgver", dest="pkgVer")
+  parser.add_argument("--pkgarch", dest="pkgArch")
   parser.add_argument("--config", "-c", dest="configFile", default="aliPublish.conf",
                       help="Configuration file")
   parser.add_argument("--debug", "-d", dest="debug", action="store_true", default=False,
@@ -615,6 +616,16 @@ def main():
     error("filter_order can be include,exclude or exclude,include")
     sys.exit(1)
 
+  rules = { "include": {}, "exclude": {} }
+  for arch,maps in conf["architectures"].iteritems():
+    for r in rules.keys():
+      rules[r][arch] = isinstance(maps, dict) and maps.get(r, {}) or {}
+      for uk in set(conf[r].keys()+rules[r][arch].keys()):
+        a = rules[r][arch].get(uk, [])
+        b = conf[r].get(uk, [])
+        rules[r][arch][uk] = (a == True or b == True) or (a + b)
+  debug("Per architecture include/exclude rules: %s" % json.dumps(rules, indent=2))
+
   if args.action in [ "sync-cvmfs", "sync-alien", "sync-rpms" ]:
     chdir("/")
     if args.action == "sync-cvmfs":
@@ -649,24 +660,9 @@ def main():
     if args.abort:
       pub.abort(force=True)
 
-    architectures = {}
-    rules = { "include": {}, "exclude": {} }
-    superRules = {}
-    for arch,maps in conf["architectures"].iteritems():
-      # Architecture names mapping
-      architectures[arch] = isinstance(maps, dict) and maps.get(archKey, arch) or arch
-      # Architecture-specific package overrides
-      for r in rules.keys():
-        rules[r][arch] = isinstance(maps, dict) and maps.get(r, {}) or {}
-        for uk in set(conf[r].keys()+rules[r][arch].keys()):
-          a = rules[r][arch].get(uk, [])
-          b = conf[r].get(uk, [])
-          rules[r][arch][uk] = (a == True or b == True) or (a + b)
-
-      debug(format("Arch %(arch)s is called %(archPub)s on %(pub)s",
-                   arch=arch, archPub=architectures[arch], pub=archKey))
-    debug("Per architecture include/exclude rules: %s" % json.dumps(rules, indent=2))
-
+    architectures = dict((arch, isinstance(maps, dict) and maps.get(archKey, arch) or arch)
+                         for (arch,maps) in conf["architectures"].iteritems())
+    debug("Architecture names mappings: %s" % json.dumps(architectures, indent=2))
     sync(pub=pub,
          architectures=architectures,
          baseUrl=conf["base_url"],
@@ -681,8 +677,8 @@ def main():
       error("Please specify a package name and version")
       sys.exit(1)
     matches = applyFilter(args.pkgVer,
-                          conf["include"].get(args.pkgName, None),
-                          conf["exclude"].get(args.pkgName, None),
+                          rules["include"].get(args.pkgArch, {}).get(args.pkgName, None),
+                          rules["exclude"].get(args.pkgArch, {}).get(args.pkgName, None),
                           includeFirst)
     info(format(matches and "%(package)s version %(version)s matches filters"
                         or "%(package)s version %(version)s does NOT match filters",
