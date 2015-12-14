@@ -22,6 +22,7 @@ riemann:
   net: host
   volumes:
   - .:/config
+  - ~/.riemann-slack-key:/secrets/riemann-slack-key
   environment:
     DEBUG: 1
     ELASTICSEARCH_HOST: http://localhost:9200
