@@ -3,7 +3,7 @@
   "server_type": "ws",
   "workspaces": [
     {
-      "id": "cf07aba9e88bfe5ec430eb8cae85f65601e77cb5",
+      "id": "cf07ab8bfe5ec430eb8cae85f65601e77cb5",
       "name": "Slaves",
       "view": {
         "type": "Balloon",
@@ -105,7 +105,126 @@
       }
     },
     {
-      "id": "cf07aba9e88bfe5ec430eb8cae85f65601e77cb5",
+      "id": "8508a3674a537cab6cbc5b3e5ea25ce71b236033",
+      "name": "Elasticsearch",
+      "view": {
+        "type": "Balloon",
+        "weight": 1,
+        "id": "780f114f49f910e03ef199ddefdfe1a943cb53de",
+        "version": 27,
+        "child": {
+          "type": "VStack",
+          "weight": 1,
+          "id": "25826ab718e396af5127b0a3003ac2619c22ebae",
+          "version": 27,
+          "children": [
+            {
+              "type": "HStack",
+              "weight": 1,
+              "id": "69eac39502bb5574148d6468a2279c66d7afd2e6",
+              "version": 24,
+              "children": [
+                {
+                  "type": "VStack",
+                  "weight": 0.125,
+                  "id": "a3796e9ee37f39ad6aec7eea09513ea1b0fbf5b3",
+                  "version": 5,
+                  "children": [
+                    {
+                      "type": "Gauge",
+                      "weight": 1,
+                      "id": "de6567535d6f3241dafd8380d313e4f86eb3f216",
+                      "version": 13,
+                      "title": "Data nodes",
+                      "query": "service = \"elasticsearch number_of_data_nodes\""
+                    },
+                    {
+                      "type": "Gauge",
+                      "weight": 1,
+                      "id": "bf1f8eb5964981e036b9e10d412e44cb0efab111",
+                      "version": 2,
+                      "title": "All nodes",
+                      "query": "service = \"elasticsearch number_of_nodes\""
+                    }
+                  ]
+                },
+                {
+                  "type": "Gauge",
+                  "weight": 1,
+                  "id": "4fb6538d3bcba1aee056841cfe11d6edf3ca7b96",
+                  "version": 2,
+                  "title": "health",
+                  "query": "service = \"elasticsearch health\""
+                },
+                {
+                  "type": "Flot",
+                  "weight": 1,
+                  "id": "986d523c0deb5a0fc2aff1d7a4f922538a05bb32",
+                  "version": 6,
+                  "title": "Pending stuff",
+                  "query": "service = \"elasticsearch number_of_pending_tasks\" or service = \"elasticsearch relocating_shards\" or service = \"elasticsearch initializing_shards\" or service = \"elasticsearch timed_out\"",
+                  "min": "0",
+                  "max": null,
+                  "timeRange": 300,
+                  "graphType": "line",
+                  "stackMode": "false"
+                }
+              ]
+            },
+            {
+              "type": "List",
+              "weight": 1,
+              "id": "2ad012edcad08bd59748649906fa3314a182088e",
+              "version": 4,
+              "title": "Elasticsearch logs",
+              "query": "host = \"elasticsearch-client.marathon.mesos\""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "36c8a3aca6b78516715d06ce51e4e1107387c251",
+      "name": "Integration Builds",
+      "view": {
+        "type": "Balloon",
+        "weight": 1,
+        "id": "164ec13bb7f4d9d7b444cced3105efc23134ab16",
+        "version": 10,
+        "child": {
+          "type": "VStack",
+          "weight": 1,
+          "id": "25e3a5a9ebabe92399cd7c12e5b0929b3cb7ad07",
+          "version": 10,
+          "children": [
+            {
+              "type": "Grid",
+              "weight": 1,
+              "id": "bd1382a99ef69bb83960842e9ad77a6162bfddd8",
+              "version": 4,
+              "title": "Packages being built",
+              "query": "true",
+              "max": "",
+              "rows": "package",
+              "cols": "architecture",
+              "row_sort": "lexical",
+              "col_sort": "lexical"
+            },
+            {
+              "type": "Log",
+              "weight": 1,
+              "id": "29305bbe574db3e99c1fe61f7ce71518be962d2f",
+              "version": 6,
+              "title": "Logs",
+              "query": "service = \"build_warning\" or service = \"build_error\"",
+              "lines": "5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "cf0ba9e88bfe5ec430eb8cae85f65601e77cb5",
       "name": "Riemann",
       "view": {
         "child": {
@@ -193,125 +312,6 @@
         "type": "Balloon",
         "version": 12,
         "weight": 1
-      }
-    },
-    {
-      "id": "8508a3674a537cab6cbc5b3e5ea25ce71b236033",
-      "name": "Elasticsearch",
-      "view": {
-        "child": {
-          "children": [
-            {
-              "children": [
-                {
-                  "children": [
-                    {
-                      "id": "de6567535d6f3241dafd8380d313e4f86eb3f216",
-                      "query": "service = \"elasticsearch number_of_data_nodes\"",
-                      "title": "Data nodes",
-                      "type": "Gauge",
-                      "version": 13,
-                      "weight": 1
-                    },
-                    {
-                      "id": "bf1f8eb5964981e036b9e10d412e44cb0efab111",
-                      "query": "service = \"elasticsearch number_of_nodes\"",
-                      "title": "All nodes",
-                      "type": "Gauge",
-                      "version": 2,
-                      "weight": 1
-                    }
-                  ],
-                  "id": "a3796e9ee37f39ad6aec7eea09513ea1b0fbf5b3",
-                  "type": "VStack",
-                  "version": 5,
-                  "weight": 0.125
-                },
-                {
-                  "id": "4fb6538d3bcba1aee056841cfe11d6edf3ca7b96",
-                  "query": "service = \"elasticsearch health\"",
-                  "title": "health",
-                  "type": "Gauge",
-                  "version": 2,
-                  "weight": 1
-                },
-                {
-                  "graphType": "line",
-                  "id": "986d523c0deb5a0fc2aff1d7a4f922538a05bb32",
-                  "max": null,
-                  "min": "0",
-                  "query": "service = \"elasticsearch number_of_pending_tasks\" or service = \"elasticsearch relocating_shards\" or service = \"elasticsearch initializing_shards\" or service = \"elasticsearch timed_out\"",
-                  "stackMode": "false",
-                  "timeRange": 300,
-                  "title": "Pending stuff",
-                  "type": "Flot",
-                  "version": 6,
-                  "weight": 1
-                }
-              ],
-              "id": "69eac39502bb5574148d6468a2279c66d7afd2e6",
-              "type": "HStack",
-              "version": 24,
-              "weight": 1
-            },
-            {
-              "id": "2ad012edcad08bd59748649906fa3314a182088e",
-              "query": "host = \"elasticsearch-client.marathon.mesos\"",
-              "title": "Elasticsearch logs",
-              "type": "List",
-              "version": 4,
-              "weight": 1
-            }
-          ],
-          "id": "25826ab718e396af5127b0a3003ac2619c22ebae",
-          "type": "VStack",
-          "version": 27,
-          "weight": 1
-        },
-        "id": "780f114f49f910e03ef199ddefdfe1a943cb53de",
-        "type": "Balloon",
-        "version": 27,
-        "weight": 1
-      }
-    },
-    {
-      "id": "36c8a3aca6b78516715d06ce51e4e1107387c251",
-      "name": "Integration Builds",
-      "view": {
-        "type": "Balloon",
-        "weight": 1,
-        "id": "164ec13bb7f4d9d7b444cced3105efc23134ab16",
-        "version": 8,
-        "child": {
-          "type": "VStack",
-          "weight": 1,
-          "id": "25e3a5a9ebabe92399cd7c12e5b0929b3cb7ad07",
-          "version": 8,
-          "children": [
-            {
-              "type": "Grid",
-              "weight": 1,
-              "id": "bd1382a99ef69bb83960842e9ad77a6162bfddd8",
-              "version": 4,
-              "title": "Packages being built",
-              "query": "true",
-              "max": "",
-              "rows": "package",
-              "cols": "architecture",
-              "row_sort": "lexical",
-              "col_sort": "lexical"
-            },
-            {
-              "type": "Log",
-              "weight": 1,
-              "id": "29305bbe574db3e99c1fe61f7ce71518be962d2f",
-              "version": 4,
-              "title": "Logs",
-              "query": "state = \"warning\"",
-              "lines": "5"
-            }
-          ]
-        }
       }
     }
   ]
