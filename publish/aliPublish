@@ -673,8 +673,8 @@ def main():
          dryRun=args.dryRun)
     sys.exit(0)
   elif args.action == "test-rules":
-    if not args.pkgName or not args.pkgVer:
-      error("Please specify a package name and version")
+    if not args.pkgName or not args.pkgVer or not args.pkgArch:
+      error("Please specify a package name, version and architecture")
       sys.exit(1)
     matches = applyFilter(args.pkgVer,
                           rules["include"].get(args.pkgArch, {}).get(args.pkgName, None),
