@@ -1,6 +1,11 @@
 zookeeper:
   image: alisw/zookeeper
   net: host
+master:
+  image: alisw/mesos-master
+  net: host
+  environment:
+    MESOS_IP: 192.168.99.100
 slave:
   image: alisw/mesos-slave:0.24.0
   net: host
@@ -10,11 +15,6 @@ slave:
     - /sys:/sys
     - /usr/local/bin/docker:/usr/bin/docker
     - /var/run/docker.sock:/var/run/docker.sock
-  environment:
-    MESOS_IP: 192.168.99.100
-master:
-  image: alisw/mesos-master
-  net: host
   environment:
     MESOS_IP: 192.168.99.100
 riemann:
@@ -29,6 +29,21 @@ riemann:
 #  expose:
 #  - 5555
 #  - 5556
+marathon:
+  image: alisw/marathon:0.10.1
+  net: host
+  environment:
+    - MARATHON_ZK=zk://192.168.99.100:2181/marathon
+    - MESOS_MASTER=zk://192.168.99.100:2181/mesos
+    - MARATHON_WEBUI_URL=http://192.168.99.100:8080
+riemannelasticsearch:
+  image: alisw/riemann-tools
+  net: host
+  command: riemann-elasticsearch -s localhost -h localhost
+riemannhealth:
+  image: alisw/riemann-tools
+  net: host
+  command: riemann-health -h localhost
 dashboard:
   image: alisw/riemann-dash
   net: host
@@ -42,7 +57,14 @@ kibana:
   net: host
   environment:
     "KIBANA_ES": "http://192.168.99.100:9200"
-#  expose: 
-#  - 4567 
-#  links:
-#  - riemann
+logstash:
+  image: alisw/logstash
+  net: host
+  environment:
+#    "MONALISA_HOST": "localhost"
+#    "MONALISA_PORT": "8889"
+    "MESOS_HOST": "192.168.99.100"
+    "RIEMANN_HOST": "192.168.99.100"
+    "DEBUG": 1
+  volumes:
+  - logstash:/config-ro/logstash
