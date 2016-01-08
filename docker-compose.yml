@@ -40,6 +40,18 @@ riemannelasticsearch:
   image: alisw/riemann-tools
   net: host
   command: riemann-elasticsearch -s localhost -h localhost
+riemannmesos:
+  image: alisw/riemann-tools
+  net: host
+  command: riemann-mesos -s 192.168.99.100 -h localhost
+  environment:
+    - REPO=ktf/riemann-tools
+riemannmarathon:
+  image: alisw/riemann-tools
+  net: host
+  command: riemann-marathon -n 192.168.99.100 -h localhost
+  environment:
+    - REPO=ktf/riemann-tools
 riemannhealth:
   image: alisw/riemann-tools
   net: host
