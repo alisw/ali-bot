@@ -2,9 +2,9 @@
 set -o pipefail
 if [[ -x /home/monalisa/bin/alien ]]; then
   export PATH="/home/monalisa/bin:$PATH"
-  CMD="--no-notification sync-alien"
+  CMD=sync-alien
 elif [[ -d /cvmfs ]]; then
-  CMD="sync-cvmfs"
+  CMD=sync-cvmfs
 else
   false
 fi
@@ -28,7 +28,11 @@ popd
 ln -nfs $(basename $LOG.error) log/latest
 ( cd $DEST/publish
   echo "Running version $(git rev-parse HEAD)"
-  ./aliPublish --debug ${DRYRUN:+--dry-run} ${CMD} ) 2>&1 | tee -a $LOG.error
+  ./aliPublish --debug \
+               ${DRYRUN:+--dry-run} \
+               ${NO_NOTIF:+--no-notification} \
+               ${CONF:+--config "$CONF"} \
+               $CMD ) 2>&1 | tee -a $LOG.error
 mv -v $LOG.error $LOG
 ln -nfs $(basename $LOG) log/latest
 echo "All went right, self-updating now"
