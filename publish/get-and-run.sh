@@ -23,7 +23,7 @@ pushd $DEST
   git remote update -p
   git fetch
   git fetch --tags
-  git reset --hard origin/master
+  git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)
 popd
 ln -nfs $(basename $LOG.error) log/latest
 ( cd $DEST/publish
