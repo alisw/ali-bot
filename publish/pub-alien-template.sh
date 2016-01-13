@@ -7,6 +7,7 @@ mkdir -p "$TMPDIR"
 cd "$TMPDIR"
 curl --silent -L "%(url)s" | tar --strip-components=3 -xzf -
 TAR="$(echo "%(package)s"|tr '[:upper:]' '[:lower:]')_%(version)s.%(arch)s.tar.gz"
+[[ -e "%(version)s/etc/modulefiles/%(package)s" ]]
 tar czf "$TAR" "%(version)s/"
 rm -rf "%(version)s/"
 DEPS="%(dependencies)s"
