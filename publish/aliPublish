@@ -472,9 +472,13 @@ def sync(pub, architectures, baseUrl, rules, includeFirst, autoIncludeDeps, noti
 
   # Publish eventually
   if pub.publish():
+    totSuccess = 0
+    totFail = 0
     for arch,packStatus in newPackages.iteritems():
       nSuccess = sum([1 for x in packStatus if x["success"]])
-      nFail = len(packStatus)-nSuccess
+      nFail = len(packStatus) - nSuccess
+      totSuccess = totSuccess + nSuccess
+      totFail = totFail + nFail
       info(format("%(arch)s: install OK for %(nSuccess)d/%(nPacks)d package(s): %(successPacks)s",
            arch=arch,
            nSuccess=nSuccess,
@@ -490,7 +494,7 @@ def sync(pub, architectures, baseUrl, rules, includeFirst, autoIncludeDeps, noti
       notify(notifEmail, architectures, newPackages, dryRun)
     else:
       debug("No email notification configured")
-    return True
+    return totFail == 0 or totSuccess > 0
 
   return False
 
@@ -670,8 +674,7 @@ def main():
          includeFirst=includeFirst,
          autoIncludeDeps=conf["auto_include_deps"],
          notifEmail=conf["notification_email"],
-         dryRun=args.dryRun)
-    sys.exit(0)
+         dryRun=args.dryRun) and sys.exit(0) or sys.exit(1)
   elif args.action == "test-rules":
     if not args.pkgName or not args.pkgVer or not args.pkgArch:
       error("Please specify a package name, version and architecture")
