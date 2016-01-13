@@ -11,6 +11,7 @@ ARCHITECTURE=${FULLARCH##*.}
 which fpm
 cd $TMPDIR
 curl --silent -L "%(url)s" | tar --strip-components=2 -xzf -
+[[ -e "%(package)s/%(version)s/etc/modulefiles/%(package)s" ]]
 DEPS=()
 DEPS+=("--depends" "environment-modules")
 for D in %(dependencies)s; do
