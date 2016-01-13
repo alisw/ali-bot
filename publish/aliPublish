@@ -13,6 +13,7 @@ from shutil import rmtree
 from tempfile import NamedTemporaryFile, mkdtemp
 from subprocess import Popen, PIPE, STDOUT
 from smtplib import SMTP
+from socket import getfqdn
 
 def format(s, **kwds):
   return s % kwds
@@ -85,6 +86,37 @@ def jget(url):
   except (RequestException, ValueError) as e:
     error(format("Getting %(url)s gave %(msg)s", url=url, msg=str(e)))
     return {}
+
+class RiemannPkgNotify(object):
+
+  def __init__(self, host, port):
+    self._currentHost = getfqdn()
+    self._host = host
+    self._port = int(port)
+    self._ttl = 86400 * 2  # 2 days
+    try:
+      import bernhard
+      self.client = bernhard.Client(host=host, port=port)
+      self.client.send({ "host": self._currentHost,
+                         "state": "ok",
+                         "service": "aliPublish started",
+                         "ttl": self._ttl,
+                         "metric": 1 })
+      debug("Sending notifications to Riemann on %s:%d" % (self._host, self._port))
+    except Exception as e:
+      error("Cannot initialize Riemann connection to %s:%d: %s" % (self._host, self._port, e))
+      self._host = None
+
+  def notify(self, state, arch, pkgname, pkgver):
+    if not self._host:
+      return
+    if state not in [ "ok", "warning", "critical" ]:
+      raise Exception("RiemannPkgNotify only supports ok, warning, critical states")
+    self.client.send({ "host": self._currentHost,
+                       "state": state,
+                       "service": "aliPublish publish %s %s %s" % (arch, pkgname, pkgver),
+                       "ttl": self._ttl,
+                       "metric": state == "critical" and 1 or 0 })
 
 class CvmfsServer(object):
 
@@ -311,7 +343,8 @@ def nameVerFromTar(tar, arch, validPacks):
       return { "name": vm.group(1), "ver": vm.group(2) }
   return None
 
-def sync(pub, architectures, baseUrl, rules, includeFirst, autoIncludeDeps, notifEmail, dryRun):
+def sync(pub, architectures, baseUrl, rules, includeFirst, autoIncludeDeps,
+         notifEmail, riemann, dryRun):
 
   newPackages = {}
 
@@ -456,6 +489,7 @@ def sync(pub, architectures, baseUrl, rules, includeFirst, autoIncludeDeps, noti
       if not pub.transaction():
         sys.exit(2)  # fatal
       else:
+        riemann.notify("warning", arch, pack["name"], pack["ver"])
         rv = pub.install(pkgUrl, architectures[arch], pack["name"], pack["ver"],
                          deps["dist-direct-runtime"], deps["dist-runtime"])
         newPackages[arch].append({ "name": pack["name"],
@@ -466,9 +500,11 @@ def sync(pub, architectures, baseUrl, rules, includeFirst, autoIncludeDeps, noti
       if rv == 0:
         info(format("%(arch)s / %(pack)s / %(ver)s: installed successfully",
                      arch=arch, pack=pack["name"], ver=pack["ver"]))
+        riemann.notify("ok", arch, pack["name"], pack["ver"])
       else:
         error(format("%(arch)s / %(pack)s / %(ver)s: publish script failed with %(rv)d",
                      arch=arch, pack=pack["name"], ver=pack["ver"], rv=rv))
+        riemann.notify("critical", arch, pack["name"], pack["ver"])
 
   # Publish eventually
   if pub.publish():
@@ -596,6 +632,15 @@ def main():
 
   doExit = False
 
+  conf["riemann_host"] = conf.get("riemann_host", "").split(":", 1)
+  conf["riemann_port"] = len(conf["riemann_host"]) == 2 and conf["riemann_host"][1] or 5555
+  conf["riemann_host"] = conf["riemann_host"][0]
+  try:
+    conf["riemann_port"] = int(conf["riemann_port"])
+  except ValueError:
+    error("Port specification in riemann_host must be an integer")
+    doExit = True
+
   if not isinstance(conf.get("architectures", None), dict):
     error("architectures must be a dict of dicts")
     doExit = True
@@ -667,6 +712,7 @@ def main():
     architectures = dict((arch, isinstance(maps, dict) and maps.get(archKey, arch) or arch)
                          for (arch,maps) in conf["architectures"].iteritems())
     debug("Architecture names mappings: %s" % json.dumps(architectures, indent=2))
+    riemann = RiemannPkgNotify(conf["riemann_host"], conf["riemann_port"])
     sync(pub=pub,
          architectures=architectures,
          baseUrl=conf["base_url"],
@@ -674,6 +720,7 @@ def main():
          includeFirst=includeFirst,
          autoIncludeDeps=conf["auto_include_deps"],
          notifEmail=conf["notification_email"],
+         riemann=riemann,
          dryRun=args.dryRun) and sys.exit(0) or sys.exit(1)
   elif args.action == "test-rules":
     if not args.pkgName or not args.pkgVer or not args.pkgArch:
