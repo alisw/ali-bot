@@ -489,7 +489,7 @@ def sync(pub, architectures, baseUrl, rules, includeFirst, autoIncludeDeps,
       if not pub.transaction():
         sys.exit(2)  # fatal
       else:
-        riemann.notify("warning", arch, pack["name"], pack["ver"])
+        if riemann: riemann.notify("warning", arch, pack["name"], pack["ver"])
         rv = pub.install(pkgUrl, architectures[arch], pack["name"], pack["ver"],
                          deps["dist-direct-runtime"], deps["dist-runtime"])
         newPackages[arch].append({ "name": pack["name"],
@@ -500,11 +500,11 @@ def sync(pub, architectures, baseUrl, rules, includeFirst, autoIncludeDeps,
       if rv == 0:
         info(format("%(arch)s / %(pack)s / %(ver)s: installed successfully",
                      arch=arch, pack=pack["name"], ver=pack["ver"]))
-        riemann.notify("ok", arch, pack["name"], pack["ver"])
+        if riemann: riemann.notify("ok", arch, pack["name"], pack["ver"])
       else:
         error(format("%(arch)s / %(pack)s / %(ver)s: publish script failed with %(rv)d",
                      arch=arch, pack=pack["name"], ver=pack["ver"], rv=rv))
-        riemann.notify("critical", arch, pack["name"], pack["ver"])
+        if riemann: riemann.notify("critical", arch, pack["name"], pack["ver"])
 
   # Publish eventually
   if pub.publish():
@@ -712,7 +712,9 @@ def main():
     architectures = dict((arch, isinstance(maps, dict) and maps.get(archKey, arch) or arch)
                          for (arch,maps) in conf["architectures"].iteritems())
     debug("Architecture names mappings: %s" % json.dumps(architectures, indent=2))
-    riemann = RiemannPkgNotify(conf["riemann_host"], conf["riemann_port"])
+    debug(args.dryRun)
+    riemann = None if args.dryRun \
+              else RiemannPkgNotify(conf["riemann_host"], conf["riemann_port"])
     sync(pub=pub,
          architectures=architectures,
          baseUrl=conf["base_url"],
