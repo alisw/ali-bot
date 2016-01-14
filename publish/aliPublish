@@ -568,10 +568,18 @@ def notify(conf, archs, pack, dryRun):
 
       body = format(conf.get(key, {}).get("body", ""), **kw)
       subj = format(conf.get(key, {}).get("subject", "%(package)s %(version)s: "+key), **kw)
-      to = isinstance(conf.get(key, {}).get("to", []), basestring) and \
-           [conf.get(key, {})["to"]] or conf.get(key, {}).get("to", [])
+
+      to = conf.get(key, {}).get("to", "")
+      if isinstance(to, dict):
+        to = to.get(p["name"], to.get("default", ""))
+      if isinstance(to, list):
+        to = ",".join(to)
+      to = [ x.strip() for x in to.split(",") ] if to else []
+
       sender = format(conf.get(key, {}).get("from", "noreply@localhost"), **kw)
       if body == "" or not to:
+        debug(format("Not sending email notification for %(package)s %(version)s (%(arch)s)",
+                     package=p["name"], version=p["ver"], arch=archs[arch]))
         continue
       body = ("Subject: %s\nFrom: %s\nTo: %s\n\n" % (subj, sender, ", ".join(to))) + body
       if dryRun:
