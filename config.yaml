@@ -10,7 +10,7 @@
 integration_rules:
 - branch: master
   architecture: slc7_x86-64
-  alidist: IB/v5-06/master
+  alidist: IB/v5-06/next
   alibuild: master
   package: thepeg-test
 - branch: master
