@@ -222,6 +222,115 @@
           ]
         }
       }
+    },
+    {
+      "id": "239554133565a24c733dff97f4d0f7b934f119d5",
+      "name": "Publishing",
+      "view": {
+        "child": {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "col_sort": "lexical",
+                          "cols": "state",
+                          "id": "644bcb410eb033fcfe2a5f83b3e8d2e1174afabc",
+                          "max": "",
+                          "query": "service =~ \"aliPublish publish%\" and host =~ \"alimonitor%\"",
+                          "row_sort": "lexical",
+                          "rows": "service",
+                          "title": "aliPublish AliEn",
+                          "type": "Grid",
+                          "version": 32,
+                          "weight": 1
+                        },
+                        {
+                          "children": [
+                            {
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "children": [
+                                        {
+                                          "col_sort": "lexical",
+                                          "cols": "state",
+                                          "id": "8a5a98671bf0f7f6db7690c5afed779d4ea1f35c",
+                                          "max": "",
+                                          "query": "service =~ \"aliPublish publish%\" and host =~ \"%lxcvmfs%\"",
+                                          "row_sort": "lexical",
+                                          "rows": "service",
+                                          "title": "aliPublish CVMFS",
+                                          "type": "Grid",
+                                          "version": 18,
+                                          "weight": 1
+                                        }
+                                      ],
+                                      "id": "3867dfd8599315fc3e1c72971fd3d9e4d49be131",
+                                      "type": "HStack",
+                                      "version": 2,
+                                      "weight": 1
+                                    }
+                                  ],
+                                  "id": "9921b8b8b09b7887643ef4c276c310040b9559d5",
+                                  "type": "VStack",
+                                  "version": 8,
+                                  "weight": 1
+                                }
+                              ],
+                              "id": "136057dcc744b98d21beac3d23cf6fcee34e9a7a",
+                              "type": "HStack",
+                              "version": 12,
+                              "weight": 1
+                            }
+                          ],
+                          "id": "75aa7fd02dae111a3004571ad99bb02ebc81f5d6",
+                          "type": "VStack",
+                          "version": 25,
+                          "weight": 1
+                        }
+                      ],
+                      "id": "51dcc3b86c748349809ce32d75400b395b0d07f5",
+                      "type": "HStack",
+                      "version": 60,
+                      "weight": 1
+                    },
+                    {
+                      "id": "e38a5d5fcf1350d8b6af03aa633da3eb4870b2b1",
+                      "lines": "10",
+                      "query": "service =~ \"aliPublish%\"",
+                      "title": "aliPublish log",
+                      "type": "Log",
+                      "version": 16,
+                      "weight": 1
+                    }
+                  ],
+                  "id": "224be2b3446645fbbe1d2bb50545d3e8bce5bec3",
+                  "type": "VStack",
+                  "version": 69,
+                  "weight": 1
+                }
+              ],
+              "id": "c080144397e2868030098564b8f0ef2e169dd1bb",
+              "type": "HStack",
+              "version": 69,
+              "weight": 1
+            }
+          ],
+          "id": "40e4b306bd76230b815a1ba0ae3045e0e182b57a",
+          "type": "VStack",
+          "version": 69,
+          "weight": 1
+        },
+        "id": "c25c72ee39a56cf0124814e51c132845a8dc0c46",
+        "type": "Balloon",
+        "version": 69,
+        "weight": 1
+      }
     }
   ]
 }
