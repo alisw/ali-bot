@@ -1,5 +1,5 @@
 {
-  "server": "riemann.marathon.mesos:5556",
+  "server": "aliriemann.cern.ch",
   "server_type": "ws",
   "workspaces": [
     {
