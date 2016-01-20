@@ -14,6 +14,8 @@ from tempfile import NamedTemporaryFile, mkdtemp
 from subprocess import Popen, PIPE, STDOUT
 from smtplib import SMTP
 from socket import getfqdn
+from random import random, choice
+from urlparse import urlsplit, urlunsplit
 
 def format(s, **kwds):
   return s % kwds
@@ -594,6 +596,23 @@ def notify(conf, archs, pack, dryRun):
           error(format("Cannot send email notification for %(package)s %(version)s (%(arch)s)",
                        package=p["name"], version=p["ver"], arch=archs[arch]))
 
+def hostport(s, defaultPort):
+  host = s.split(":", 1)
+  try:
+    port = len(host) == 2 and int(host[1]) or defaultPort
+  except ValueError:
+    port = defaultPort
+  host = host[0]
+  return host,port
+
+def mesos_resolve(host, dns):
+  for d in sorted(dns, key=lambda k: random()):
+    ips = [ x["ip"] for x in jget(format("http://%(dns)s/v1/hosts/%(host)s", dns=d, host=host))
+                    if x.get("ip", None) ]
+    if ips:
+      return ips
+  return [host]  # fallback to input on error
+
 def main():
   parser = ArgumentParser()
   parser.add_argument("action")
@@ -640,14 +659,12 @@ def main():
 
   doExit = False
 
-  conf["riemann_host"] = conf.get("riemann_host", "").split(":", 1)
-  conf["riemann_port"] = len(conf["riemann_host"]) == 2 and conf["riemann_host"][1] or 5555
-  conf["riemann_host"] = conf["riemann_host"][0]
-  try:
-    conf["riemann_port"] = int(conf["riemann_port"])
-  except ValueError:
-    error("Port specification in riemann_host must be an integer")
-    doExit = True
+  conf["mesos_dns"] = [ ":".join(map(str, hostport(x, 8123))) for x in conf.get("mesos_dns", []) ]
+  conf["riemann_host"],conf["riemann_port"] = hostport(conf.get("riemann_host", ""), 5555)
+
+  # Resolve Riemann name via Mesos
+  if conf["riemann_host"].endswith(".mesos") and conf["mesos_dns"]:
+    conf["riemann_host"] = choice(mesos_resolve(conf["riemann_host"], conf["mesos_dns"]))
 
   if not isinstance(conf.get("architectures", None), dict):
     error("architectures must be a dict of dicts")
@@ -663,7 +680,14 @@ def main():
   if not isinstance(conf["notification_email"], dict):
     error("notification_email must be a dict of dicts")
     doExit = True
-  if doExit: sys.exit(1)
+
+  if doExit: exit(1)
+
+  # Resolve base_url name via Mesos
+  us = urlsplit(conf["base_url"])
+  if us.netloc.endswith(".mesos") and conf["mesos_dns"]:
+    us = us._replace( netloc=choice(mesos_resolve(us.netloc, conf["mesos_dns"])) )
+    conf["base_url"] = urlunsplit(us)
 
   debug("Configuration: " + json.dumps(conf, indent=2))
   incexc = conf.get("filter_order", "include,exclude")
