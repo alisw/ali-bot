@@ -2,10 +2,18 @@ zookeeper:
   image: alisw/zookeeper
   net: host
 master:
-  image: alisw/mesos-master
+  image: alisw/mesos-master:0.24.0
   net: host
   environment:
     MESOS_IP: 192.168.99.100
+    SSL_KEY_FILE: /etc/grid-security/hostkey.pem
+    SSL_CERT_FILE: /etc/grid-security/hostcert.pem
+    SSL_VERIFY_CERT: true
+    SSL_SUPPORT_DOWNGRADE: true
+    SSL_ENABLED: true
+  volumes:
+    - ./dummy-secrets/cert.pem:/etc/grid-security/hostcert.pem
+    - ./dummy-secrets/key.pem:/etc/grid-security/hostkey.pem
 slave:
   image: alisw/mesos-slave:0.24.0
   net: host
@@ -15,8 +23,15 @@ slave:
     - /sys:/sys
     - /usr/local/bin/docker:/usr/bin/docker
     - /var/run/docker.sock:/var/run/docker.sock
+    - ./dummy-secrets/cert.pem:/etc/grid-security/hostcert.pem
+    - ./dummy-secrets/key.pem:/etc/grid-security/hostkey.pem
   environment:
     MESOS_IP: 192.168.99.100
+    SSL_KEY_FILE: /etc/grid-security/hostkey.pem
+    SSL_CERT_FILE: /etc/grid-security/hostcert.pem
+    SSL_VERIFY_CERT: true
+    SSL_SUPPORT_DOWNGRADE: true
+    SSL_ENABLED: true
 riemann:
   image: alisw/riemann
   net: host
