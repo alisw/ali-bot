@@ -47,7 +47,7 @@ riemann:
 #  - 5555
 #  - 5556
 marathon:
-  image: alisw/marathon:0.10.1
+  image: alisw/marathon:0.14.0
   net: host
   environment:
     - MARATHON_ZK=zk://192.168.99.100:2181/marathon
