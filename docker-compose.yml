@@ -2,12 +2,20 @@ zookeeper:
   image: alisw/zookeeper
   net: host
 master:
-  image: alisw/mesos-master
+  image: alisw/mesos-master:0.26.0
   net: host
   environment:
     MESOS_IP: 192.168.99.100
+    SSL_KEY_FILE: /etc/grid-security/hostkey.pem
+    SSL_CERT_FILE: /etc/grid-security/hostcert.pem
+    SSL_VERIFY_CERT: true
+    SSL_SUPPORT_DOWNGRADE: true
+    SSL_ENABLED: true
+  volumes:
+    - ./dummy-secrets/cert.pem:/etc/grid-security/hostcert.pem
+    - ./dummy-secrets/key.pem:/etc/grid-security/hostkey.pem
 slave:
-  image: alisw/mesos-slave:0.24.0
+  image: alisw/mesos-slave:0.26.0
   net: host
   pid: host
   privileged: true
@@ -15,8 +23,17 @@ slave:
     - /sys:/sys
     - /usr/local/bin/docker:/usr/bin/docker
     - /var/run/docker.sock:/var/run/docker.sock
+    - ./dummy-secrets/cert.pem:/etc/grid-security/hostcert.pem
+    - ./dummy-secrets/key.pem:/etc/grid-security/hostkey.pem
   environment:
     MESOS_IP: 192.168.99.100
+    SSL_KEY_FILE: /etc/grid-security/hostkey.pem
+    SSL_CERT_FILE: /etc/grid-security/hostcert.pem
+    SSL_VERIFY_CERT: true
+    SSL_SUPPORT_DOWNGRADE: true
+    SSL_ENABLED: true
+    MESOS_LAUNCHER: posix
+    MESOS_HOSTNAME: 192.168.99.100
 riemann:
   image: alisw/riemann
   net: host
@@ -30,7 +47,7 @@ riemann:
 #  - 5555
 #  - 5556
 marathon:
-  image: alisw/marathon:0.10.1
+  image: alisw/marathon:0.14.0
   net: host
   environment:
     - MARATHON_ZK=zk://192.168.99.100:2181/marathon
@@ -40,6 +57,8 @@ riemannelasticsearch:
   image: alisw/riemann-tools
   net: host
   command: riemann-elasticsearch -s localhost -h localhost
+  environment:
+    - REPO=ktf/riemann-tools
 riemannmesos:
   image: alisw/riemann-tools
   net: host
@@ -80,3 +99,10 @@ logstash:
     "DEBUG": 1
   volumes:
   - logstash:/config-ro/logstash
+vault:
+  image: alisw/vault
+  net: host
+  privileged: true
+  environment:
+    "ZOOKEEPER_ADDRESS": "zk://192.168.99.100:2181"
+    "DEBUG1": "0"
