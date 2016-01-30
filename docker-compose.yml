@@ -99,3 +99,10 @@ logstash:
     "DEBUG": 1
   volumes:
   - logstash:/config-ro/logstash
+vault:
+  image: alisw/vault
+  net: host
+  privileged: true
+  environment:
+    "ZOOKEEPER_ADDRESS": "zk://192.168.99.100:2181"
+    "DEBUG1": "0"
