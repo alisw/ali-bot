@@ -11,10 +11,14 @@ TAR="$(echo "%(package)s"|tr '[:upper:]' '[:lower:]')_%(version)s.%(arch)s.tar.g
 tar czf "$TAR" "%(version)s/"
 rm -rf "%(version)s/"
 DEPS="%(dependencies)s"
+SE=$(curl -L 'http://alimonitor.cern.ch/services/getBestSE.jsp?count=1' | \
+     head -n1 | grep -E '^[^: ]+::[^: ]+::[^: ]+$')
+[[ "$SE" != '' ]] || SE="ALICE::CERN::EOS"
+echo "Using SE $SE"
 alien -exec packman define "%(package)s" "%(version)s" \
             "$TMPDIR/$TAR" \
             ${DEPS:+dependencies=$DEPS} \
-            -vo -platform %(arch)s -se ALICE::CERN::EOS
+            -vo -platform %(arch)s -se $SE
 cp -f "$TMPDIR/$TAR" "$TORDIR/$TAR"
 chmod a=rw "$TORDIR/$TAR"
 touch "$TORNOTIFY"
