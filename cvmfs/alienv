@@ -3,6 +3,7 @@
 version=3.2.10
 cvmfsdir=/cvmfs/alice.cern.ch
 path=`dirname $0`
+[[ "${path:0:7}" == /cvmfs/ && `basename "$path"` == bin ]] && cvmfsdir=`dirname "$path"`
 printvar=""
 
 Eval(){
