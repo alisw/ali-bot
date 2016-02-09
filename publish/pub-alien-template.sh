@@ -11,7 +11,7 @@ TAR="$(echo "%(package)s"|tr '[:upper:]' '[:lower:]')_%(version)s.%(arch)s.tar.g
 tar czf "$TAR" "%(version)s/"
 rm -rf "%(version)s/"
 DEPS="%(dependencies)s"
-SE=$(curl -L 'http://alimonitor.cern.ch/services/getBestSE.jsp?count=1' | \
+SE=$(curl -L 'http://alimonitor.cern.ch/services/getBestSE.jsp?count=1&op=0' | \
      head -n1 | grep -E '^[^: ]+::[^: ]+::[^: ]+$')
 [[ "$SE" != '' ]] || SE="ALICE::CERN::EOS"
 echo "Using SE $SE"
