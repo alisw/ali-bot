@@ -3,6 +3,9 @@ set -o pipefail
 if [[ -x /home/monalisa/bin/alien ]]; then
   export PATH="/home/monalisa/bin:$PATH"
   CMD=sync-alien
+elif [[ -d /cvmfs/alice-test.cern.ch ]]; then
+  CONF=aliPublish-test.conf
+  CMD=sync-cvmfs
 elif [[ -d /cvmfs ]]; then
   CMD=sync-cvmfs
 else
