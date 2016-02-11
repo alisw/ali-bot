@@ -1,0 +1,52 @@
+{
+  "metrics": {
+    "properties": {
+      "@timestamp": {
+        "type": "date",
+        "format": "dateOptionalTime"
+      },
+      "@version": {
+        "type": "string"
+      },
+      "description": {
+        "type": "multi_field",
+        "fields": {
+          "description": {"type": "string"},
+          "raw": {"type": "string", "index": "not_analyzed"}
+        }
+      },
+      "host": {
+        "type": "multi_field",
+        "fields": {
+          "host": {"type": "string"},
+          "raw": {"type": "string", "index": "not_analyzed"}
+        }
+      },
+      "index": {
+        "type": "string"
+      },
+      "metric": {
+        "type": "long"
+      },
+      "service": {
+        "type": "multi_field",
+        "fields": {
+          "service": {"type": "string"},
+          "raw": {"type": "string", "index": "not_analyzed"}
+        }
+      },
+      "state": {
+        "type": "string"
+      },
+      "tags": {
+        "type": "string"
+      },
+      "ttl": {
+        "type": "double"
+      },
+      "type": {
+        "type": "string"
+      }
+    }
+  }
+}
