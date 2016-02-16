@@ -1,0 +1,11 @@
+#!/usr/bin/env python
+import requests
+from argparse import ArgumentParser 
+
+if __name__ == "__main__":
+  parser = ArgumentParser()
+  parser.add_argument(dest="url", help="Marathon URL")
+  args = parser.parse_args()
+  r = requests.get("%s/v2/apps" % args.url)
+  apps = r.json()
+  print apps
