@@ -2,7 +2,7 @@ zookeeper:
   image: alisw/zookeeper
   net: host
 master:
-  image: alisw/mesos-master:0.25.0
+  image: alisw/mesos-master:0.26.0
   net: host
   environment:
     MESOS_IP: 192.168.99.100
@@ -15,7 +15,7 @@ master:
     - ./dummy-secrets/cert.pem:/etc/grid-security/hostcert.pem
     - ./dummy-secrets/key.pem:/etc/grid-security/hostkey.pem
 slave:
-  image: alisw/mesos-slave:0.25.0
+  image: alisw/mesos-slave:0.26.0
   net: host
   pid: host
   privileged: true
@@ -47,7 +47,7 @@ riemann:
 #  - 5555
 #  - 5556
 marathon:
-  image: alisw/marathon:0.14.0
+  image: alisw/marathon:0.15.2
   net: host
   environment:
     - MARATHON_ZK=zk://192.168.99.100:2181/marathon
