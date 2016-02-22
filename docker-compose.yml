@@ -106,3 +106,18 @@ vault:
   environment:
     "ZOOKEEPER_ADDRESS": "zk://192.168.99.100:2181"
     "DEBUG1": "0"
+mesos-dns:
+  image: alisw/mesos-dns:0.5.1
+  net: host
+  environment:
+    "MESOS_MASTER_ZK": "192.168.99.100:2181"
+    "MESOS_DNS_RESOLVERS": "137.138.17.5"
+    "MESOS_DNS_MASTERS": "192.168.99.100:5050"
+aurora-scheduler:
+  image: alisw/aurora-scheduler:0.11.0
+  net: host
+  privileged: true
+  command: bash -ex /run.sh
+  environment:
+    "AURORA_MESOS_MASTERS": zk://192.168.99.100:2181/mesos
+    "ZK_ENDPOINTS": 192.168.99.100:2181
