@@ -403,14 +403,14 @@ def sync(pub, architectures, baseUrl, rules, includeFirst, autoIncludeDeps,
           continue
 
         # At this point we have filtered in the package: let's see its dependencies!
-        # Note that a package depends on itself
+        # Note that a package always depends on itself (list cannot be empty).
         distUrl = format(distRuntimeUrlTpl,
                          baseUrl=baseUrl, arch=arch, pack=pkgName, ver=pkgVer)
         runtimeDeps = jget(distUrl)
-        if not runtimeDeps and isinstance(runtimeDeps, dict):
-          distUrl = format(distUrlTpl,
-                           baseUrl=baseUrl, arch=arch, pack=pkgName, ver=pkgVer)
-          runtimeDeps = jget(distUrl)
+        if not runtimeDeps:
+          error(format("%(arch)s / %(pack)s / %(ver)s: cannot list dependencies from %(url)s: skipping",
+                       arch=arch, pack=pkgName, ver=pkgVer, url=distUrl))
+          continue
         debug(format("%(arch)s / %(pack)s / %(ver)s: listing all dependencies under %(url)s",
                      arch=arch, pack=pkgName, ver=pkgVer, url=distUrl))
         for depTar in runtimeDeps:
@@ -455,29 +455,22 @@ def sync(pub, architectures, baseUrl, rules, includeFirst, autoIncludeDeps,
         debug(format("%(arch)s / %(pack)s / %(ver)s: listing %(key)s dependencies from %(url)s",
                      arch=arch, pack=pack["name"], ver=pack["ver"], key=key, url=depsUrl))
         jdeps = jget(depsUrl)
-        if not jdeps and key == "dist-runtime":
-          deps[key] = None
-          continue
-        elif not jdeps:
-          error(format("%(arch)s / %(pack)s / %(ver)s: cannot get dependencies: skipping",
-                       arch=arch, pack=pack["name"], ver=pack["ver"]))
+        if not jdeps:
+          error(format("%(arch)s / %(pack)s / %(ver)s: cannot get %(dtype) dependencies: skipping",
+                       arch=arch, pack=pack["name"], ver=pack["ver"], dtype=key))
           newPackages[arch].append({ "name": pack["name"], "ver": pack["ver"], "success": False })
           depFail = True
-          continue
+          break
         deps[key] = [ nameVerFromTar(x["name"], arch, distPackages)
                       for x in jdeps if x["type"] == "file" ]
         deps[key] = [ x for x in deps[key] if (x is not None and
                                                x["name"] != pack["name"]) ]
       if depFail:
         continue
-      if deps["dist-runtime"] is None:
-        deps["dist-runtime"] = deps["dist"]
-        deps["dist-direct-runtime"] = deps["dist-direct"]
-      else:
-        # dist-direct-runtime: all entries in dist-direct but not in dist-runtime
-        deps["dist-direct-runtime"] = [ x for x in deps["dist-direct"]
-                                        if [ 1 for y in deps["dist-runtime"]
-                                             if x["name"] == y["name"] ] ]
+      # dist-direct-runtime: all entries in dist-direct but not in dist-runtime
+      deps["dist-direct-runtime"] = [ x for x in deps["dist-direct"]
+                                      if [ 1 for y in deps["dist-runtime"]
+                                           if x["name"] == y["name"] ] ]
 
       # Here we can attempt the installation
       info(format("%(arch)s / %(pack)s / %(ver)s: getting and installing",
