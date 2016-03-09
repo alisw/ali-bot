@@ -734,10 +734,10 @@ def main():
     if args.abort:
       pub.abort(force=True)
 
-    architectures = dict((arch, isinstance(maps, dict) and maps.get(archKey, arch) or arch)
+    architectures = dict((arch, maps.get(archKey, arch) if isinstance(maps, dict) else arch)
                          for (arch,maps) in conf["architectures"].iteritems())
+    architectures = dict((k,v) for (k,v) in architectures.iteritems() if v)
     debug("Architecture names mappings: %s" % json.dumps(architectures, indent=2))
-    debug(args.dryRun)
     riemann = None if args.dryRun \
               else RiemannPkgNotify(conf["riemann_host"], conf["riemann_port"])
     sync(pub=pub,
