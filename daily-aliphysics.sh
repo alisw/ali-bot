@@ -17,7 +17,7 @@ git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO/alidist
 set -o pipefail
 AUTOTAG_REMOTE=https://git.cern.ch/reps/AliPhysics
 AUTOTAG_MIRROR=$MIRROR/aliphysics
-AUTOTAG_TAG=vAN-$(LANG=C date +%Y%m%d)
+AUTOTAG_TAG=vAN-$(LANG=C date +%Y%m%d)${DEFAULTS:+_${DEFAULTS}}
 [[ "$TEST_TAG" == "true" ]] && AUTOTAG_TAG=TEST-IGNORE-$AUTOTAG_TAG
 AUTOTAG_BRANCH=rc/$AUTOTAG_TAG
 AUTOTAG_REF=$AUTOTAG_BRANCH
