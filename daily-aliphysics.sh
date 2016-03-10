@@ -17,7 +17,7 @@ git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO/alidist
 set -o pipefail
 AUTOTAG_REMOTE=https://git.cern.ch/reps/AliPhysics
 AUTOTAG_MIRROR=$MIRROR/aliphysics
-AUTOTAG_TAG=vAN-$(LANG=C date +%Y%m%d)${DEFAULTS:+_${DEFAULTS}}
+AUTOTAG_TAG=vAN-$(LANG=C date +%Y%m%d)
 [[ "$TEST_TAG" == "true" ]] && AUTOTAG_TAG=TEST-IGNORE-$AUTOTAG_TAG
 AUTOTAG_BRANCH=rc/$AUTOTAG_TAG
 AUTOTAG_REF=$AUTOTAG_BRANCH
@@ -73,7 +73,7 @@ for x in $OVERRIDE_TAGS; do
 done
 
 # Extra override for AliPhysics
-perl -p -i -e "s|version: .*|version: $AUTOTAG_TAG|" alidist/aliphysics.sh
+perl -p -i -e "s|version: .*|version: ${AUTOTAG_TAG}${DEFAULTS:+_${DEFAULTS}}|" alidist/aliphysics.sh
 perl -p -i -e "s|tag: .*|tag: $AUTOTAG_REF|" alidist/aliphysics.sh
 
 RWOPT='::rw'
