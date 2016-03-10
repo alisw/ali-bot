@@ -73,7 +73,7 @@ for x in $OVERRIDE_TAGS; do
 done
 
 # Extra override for AliPhysics
-perl -p -i -e "s|version: .*|version: ${AUTOTAG_TAG}${DEFAULTS:+_${DEFAULTS}}|" alidist/aliphysics.sh
+perl -p -i -e "s|version: .*|version: ${AUTOTAG_TAG}${DEFAULTS:+_$(echo ${DEFAULTS} | tr '[:lower:]' '[:upper:]')}|" alidist/aliphysics.sh
 perl -p -i -e "s|tag: .*|tag: $AUTOTAG_REF|" alidist/aliphysics.sh
 
 RWOPT='::rw'
