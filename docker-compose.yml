@@ -1,123 +1,140 @@
-zookeeper:
-  image: alisw/zookeeper
-  net: host
-master:
-  image: alisw/mesos-master:0.26.0
-  net: host
-  environment:
-    MESOS_IP: 192.168.99.100
-    SSL_KEY_FILE: /etc/grid-security/hostkey.pem
-    SSL_CERT_FILE: /etc/grid-security/hostcert.pem
-    SSL_VERIFY_CERT: "true"
-    SSL_SUPPORT_DOWNGRADE: "true"
-    SSL_ENABLED: "true"
-  volumes:
-    - ./dummy-secrets/cert.pem:/etc/grid-security/hostcert.pem
-    - ./dummy-secrets/key.pem:/etc/grid-security/hostkey.pem
-slave:
-  image: alisw/mesos-slave:0.26.0
-  net: host
-  pid: host
-  privileged: true
-  volumes:
-    - /sys:/sys
-    - /usr/local/bin/docker:/usr/bin/docker
-    - /var/run/docker.sock:/var/run/docker.sock
-    - ./dummy-secrets/cert.pem:/etc/grid-security/hostcert.pem
-    - ./dummy-secrets/key.pem:/etc/grid-security/hostkey.pem
-  environment:
-    MESOS_IP: 192.168.99.100
-    SSL_KEY_FILE: /etc/grid-security/hostkey.pem
-    SSL_CERT_FILE: /etc/grid-security/hostcert.pem
-    SSL_VERIFY_CERT: "true"
-    SSL_SUPPORT_DOWNGRADE: "true"
-    SSL_ENABLED: "true"
-    MESOS_LAUNCHER: posix
-    MESOS_HOSTNAME: 192.168.99.100
-riemann:
-  image: alisw/riemann
-  net: host
-  volumes:
-  - .:/config
-  - ~/.riemann-slack-key:/secrets/riemann-slack-key
-  environment:
-    DEBUG: 1
-    ELASTICSEARCH_HOST: http://localhost:9200
-#  expose:
-#  - 5555
-#  - 5556
-marathon:
-  image: alisw/marathon:0.15.2
-  net: host
-  environment:
-    - MARATHON_ZK=zk://192.168.99.100:2181/marathon
-    - MESOS_MASTER=zk://192.168.99.100:2181/mesos
-    - MARATHON_WEBUI_URL=http://192.168.99.100:8080
-riemannelasticsearch:
-  image: alisw/riemann-tools
-  net: host
-  command: riemann-elasticsearch -s localhost -h localhost
-  environment:
-    - REPO=ktf/riemann-tools
-riemannmesos:
-  image: alisw/riemann-tools
-  net: host
-  command: riemann-mesos -s 192.168.99.100 -h localhost
-  environment:
-    - REPO=ktf/riemann-tools
-riemannmarathon:
-  image: alisw/riemann-tools
-  net: host
-  command: riemann-marathon -n 192.168.99.100 -h localhost
-  environment:
-    - REPO=ktf/riemann-tools
-riemannhealth:
-  image: alisw/riemann-tools
-  net: host
-  command: riemann-health -h localhost
-dashboard:
-  image: alisw/riemann-dash
-  net: host
-  volumes:
-  - .:/config
-elasticsearch:
-  image: alisw/elasticsearch:1.7
-  net: host
-kibana:
-  image: alisw/kibana:4.1.1
-  net: host
-  environment:
-    "KIBANA_ES": "http://192.168.99.100:9200"
-logstash:
-  image: alisw/logstash
-  net: host
-  environment:
-#    "MONALISA_HOST": "localhost"
-#    "MONALISA_PORT": "8889"
-    "MESOS_HOST": "192.168.99.100"
-    "RIEMANN_HOST": "192.168.99.100"
-    "DEBUG": 1
-  volumes:
-  - logstash:/config-ro/logstash
-vault:
-  image: alisw/vault
-  net: host
-  privileged: true
-  environment:
-    "ZOOKEEPER_ADDRESS": "zk://192.168.99.100:2181"
-    "DEBUG1": "0"
-mesos-dns:
-  image: alisw/mesos-dns:0.5.1
-  net: host
-  environment:
-    "MESOS_MASTER_ZK": "192.168.99.100:2181"
-    "MESOS_DNS_RESOLVERS": "137.138.17.5"
-    "MESOS_DNS_MASTERS": "192.168.99.100:5050"
-aurora-scheduler:
-  image: alisw/aurora-scheduler:0.11.0
-  net: host
-  privileged: true
-  command: bash -ex /run.sh
-  environment:
-    "AURORA_MESOS_MASTERS": zk://192.168.99.100:2181/mesos
-    "ZK_ENDPOINTS": 192.168.99.100:2181
+version: '2'
+networks:
+  back:
+services:
+  zookeeper:
+    image: alisw/zookeeper
+    networks:
+      - back
+    ports:
+    - "2181:2181"
+  master:
+    image: alisw/mesos-master:0.26.0
+    environment:
+      MESOS_MASTER_ZK: zk://zookeeper:2181/mesos
+      SSL_KEY_FILE: /etc/grid-security/hostkey.pem
+      SSL_CERT_FILE: /etc/grid-security/hostcert.pem
+      SSL_VERIFY_CERT: "true"
+      SSL_SUPPORT_DOWNGRADE: "true"
+      SSL_ENABLED: "true"
+    volumes:
+      - ./dummy-secrets/cert.pem:/etc/grid-security/hostcert.pem
+      - ./dummy-secrets/key.pem:/etc/grid-security/hostkey.pem
+    ports:
+    - "5050:5050"
+    networks:
+      - back
+  slave:
+    image: alisw/mesos-slave:0.26.0
+    pid: host
+    privileged: true
+    volumes:
+      - /sys:/sys
+      - /usr/local/bin/docker:/usr/bin/docker
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./dummy-secrets/cert.pem:/etc/grid-security/hostcert.pem
+      - ./dummy-secrets/key.pem:/etc/grid-security/hostkey.pem
+    environment:
+      MESOS_MASTER_ZK: zk://zookeeper:2181/mesos
+      SSL_KEY_FILE: /etc/grid-security/hostkey.pem
+      SSL_CERT_FILE: /etc/grid-security/hostcert.pem
+      SSL_VERIFY_CERT: "true"
+      SSL_SUPPORT_DOWNGRADE: "true"
+      SSL_ENABLED: "true"
+      MESOS_LAUNCHER: posix
+    ports:
+    - "5051:5051"
+    networks:
+      - back
+  riemann:
+    image: alisw/riemann
+    volumes:
+    - .:/config
+    - ~/.riemann-slack-key:/secrets/riemann-slack-key
+    environment:
+      DEBUG: 1
+      ELASTICSEARCH_HOST: http://localhost:9200
+  #  expose:
+  #  - 5555
+  #  - 5556
+  marathon:
+    image: alisw/marathon:0.15.2
+    environment:
+      - MARATHON_ZK=zk://zookeeper:2181/marathon
+      - MESOS_MASTER=zk://zookeeper:2181/mesos
+      - MARATHON_WEBUI_URL=http://192.168.99.100:8080
+    networks:
+      - back
+    ports:
+      - "8080:8080"
+  riemannelasticsearch:
+    image: alisw/riemann-tools
+    command: riemann-elasticsearch -s localhost -h localhost
+    environment:
+      - REPO=ktf/riemann-tools
+  riemannmesos:
+    image: alisw/riemann-tools
+    command: riemann-mesos -s 192.168.99.100 -h localhost
+    environment:
+      - REPO=ktf/riemann-tools
+  riemannmarathon:
+    image: alisw/riemann-tools
+    command: riemann-marathon -n 192.168.99.100 -h localhost
+    environment:
+      - REPO=ktf/riemann-tools
+  riemannhealth:
+    image: alisw/riemann-tools
+    command: riemann-health -h localhost
+  dashboard:
+    image: alisw/riemann-dash
+    volumes:
+    - .:/config
+  elasticsearch:
+    image: alisw/elasticsearch:1.7
+    ports:
+    - "9200:9200"
+  kibana:
+    image: alisw/kibana:4.1.1
+    networks:
+      - default
+    links:
+      - elasticsearch
+    ports:
+      - "5601:5601"
+    environment:
+      "KIBANA_ES": "http://elasticsearch:9200"
+  logstash:
+    image: alisw/logstash
+    environment:
+  #    "MONALISA_HOST": "localhost"
+  #    "MONALISA_PORT": "8889"
+      "MESOS_HOST": master
+      "RIEMANN_HOST": riemann
+      "DEBUG": 1
+    volumes:
+    - ./logstash:/config-ro/logstash
+    networks:
+      - back
+  vault:
+    image: alisw/vault
+    privileged: true
+    environment:
+      "ZOOKEEPER_ADDRESS": "zk://zookeeper:2181"
+      "DEBUG1": "0"
+    networks:
+      - back
+  mesos-dns:
+    image: alisw/mesos-dns:0.5.1
+    environment:
+      "MESOS_MASTER_ZK": "zookeeper:2181"
+      "MESOS_DNS_RESOLVERS": "137.138.17.5"
+      "MESOS_DNS_MASTERS": "master:5050"
+    networks:
+      - back
+  aurora-scheduler:
+    image: alisw/aurora-scheduler:0.11.0
+    privileged: true
+    command: bash -ex /run.sh
+    environment:
+      "AURORA_MESOS_MASTERS": zk://192.168.99.100:2181/mesos
+      "ZK_ENDPOINTS": 192.168.99.100:2181
