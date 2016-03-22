@@ -8,83 +8,88 @@
 
 # Do not build old releases, we do not care about them, at least for now.
 integration_rules:
+
 - branch: master
   architecture: slc7_x86-64
-  alidist: IB/v5-06/next
+  alidist: IB/v5-08/next
   alibuild: master
   package: thepeg-test
+
 - branch: master
   architecture: slc7_x86-64
   alidist: IB/master/root6
   alibuild: master
   package: aliphysics
   defaults: root6
+
 - branch: master
   architecture: osx_x86-64
   alidist: IB/master/root6
   alibuild: master
   package: aliphysics
   defaults: root6
+
 - branch: master
   architecture: slc7_x86-64
-  alidist: IB/v5-06/next
+  alidist: IB/v5-08/next
   alibuild: master
   package: aliroot-test
   defaults: coverage
--
-  branch: master
+
+- branch: master
   architecture: slc7_x86-64
-  alidist: IB/v5-06/next
+  alidist: IB/v5-08/next
   alibuild: next
   package: aliroot-test
--
-  branch: master
+
+- branch: master
   architecture: slc6_x86-64
-  alidist: IB/v5-06/next
+  alidist: IB/v5-08/next
   alibuild: next
   package: aliroot-test
--
-  branch: master
+
+- branch: master
   architecture: slc5_x86-64
-  alidist: IB/v5-06/prod
+  alidist: IB/v5-08/prod
   alibuild: master
   package: aliroot-test
--
-  branch: master
+
+- branch: master
   architecture: ubt14_x86-64
-  alidist: IB/v5-06/next
+  alidist: IB/v5-08/next
   alibuild: next
   package: aliroot-test
--
-  branch: master
+
+- branch: master
   architecture: ubt1510_x86-64
-  alidist: IB/v5-06/next
+  alidist: IB/v5-08/next
   alibuild: next
   package: aliroot-test
--
-  branch: master
+
+- branch: master
   architecture: osx_x86-64
-  alidist: IB/v5-06/next
+  alidist: IB/v5-08/next
   alibuild: next
   package: aliroot-test
--
-  branch: master
+
+- branch: master
   architecture: slc7_x86-64
-  alidist: IB/v5-06/next
+  alidist: IB/v5-08/next
   alibuild: next
   package: O2
--
-  branch: master
+
+- branch: master
   architecture: slc6_x86-64
-  alidist: IB/v5-06/next
+  alidist: IB/v5-08/next
   alibuild: next
   package: O2
--
-  branch: master
+
+- branch: master
   architecture: ubt14_x86-64
-  alidist: IB/v5-06/next
+  alidist: IB/v5-08/next
   alibuild: next
   package: O2
+
 release_rules:
 - 
   name: aliroot
