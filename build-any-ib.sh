@@ -42,6 +42,7 @@ alibuild/aliBuild --reference-sources $MIRROR                    \
                   --jobs 16                                      \
                   ${REMOTE_STORE:+--remote-store $REMOTE_STORE}  \
                   ${DEFAULTS:+--defaults $DEFAULTS}              \
+                  ${DISABLE:+--disable $DISABLE}                 \
                   build $PACKAGE_NAME || BUILDERR=$?
 
 rm -f $WORKAREA/$WORKAREA_INDEX/current_slave
