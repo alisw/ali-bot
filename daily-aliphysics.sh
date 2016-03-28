@@ -80,13 +80,14 @@ RWOPT='::rw'
 [[ "$PUBLISH_BUILDS" == "false" ]] && RWOPT=
 REMOTE_STORE="rsync://repo.marathon.mesos/store/$RWOPT"
 [[ "$USE_REMOTE_STORE" == "false" ]] && REMOTE_STORE=
-alibuild/aliBuild --reference-sources $MIRROR \
-                  --debug \
-                  --work-dir $WORKAREA/$WORKAREA_INDEX \
-                  --architecture $ARCHITECTURE \
-                  --jobs 16 \
+alibuild/aliBuild --reference-sources $MIRROR                   \
+                  --debug                                       \
+                  --work-dir $WORKAREA/$WORKAREA_INDEX          \
+                  --architecture $ARCHITECTURE                  \
+                  --jobs 16                                     \
                   ${REMOTE_STORE:+--remote-store $REMOTE_STORE} \
-                  ${DEFAULTS:+--defaults $DEFAULTS} \
+                  ${DEFAULTS:+--defaults $DEFAULTS}             \
+                  ${DISABLE:+--disable $DISABLE}                \
                   build $PACKAGE_NAME || BUILDERR=$?
 
 rm -f $WORKAREA/$WORKAREA_INDEX/current_slave
