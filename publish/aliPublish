@@ -456,7 +456,7 @@ def sync(pub, architectures, baseUrl, rules, includeFirst, autoIncludeDeps,
                      arch=arch, pack=pack["name"], ver=pack["ver"], key=key, url=depsUrl))
         jdeps = jget(depsUrl)
         if not jdeps:
-          error(format("%(arch)s / %(pack)s / %(ver)s: cannot get %(dtype) dependencies: skipping",
+          error(format("%(arch)s / %(pack)s / %(ver)s: cannot get %(dtype)s dependencies: skipping",
                        arch=arch, pack=pack["name"], ver=pack["ver"], dtype=key))
           newPackages[arch].append({ "name": pack["name"], "ver": pack["ver"], "success": False })
           depFail = True
