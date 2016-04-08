@@ -6,14 +6,13 @@ node ('jekyll') {
                     credentialsId: 'alibuild-ssh-vault-token', variable: 'VAULT_TOKEN']]) {
     sh "echo ${VAULT_SECRET_PATH}"
 
-    withEnv(["VAULT_ADDR=${VAULT_ADDR}"]) {
+    withEnv(["VAULT_ADDR=${VAULT_ADDR}",
+             "VAULT_SKIP_VERIFY=1"]) {
       sh """
       hostname
       which vault
-      echo ${env.HOME}
 
-      export VAULT_SKIP_VERIFY=1
-      echo ${env.VAULT_TOKEN[0,5]}
+      echo ${VAULT_TOKEN[0,5]}
       mkdir -p /root/.ssh
       [[ ! -f /root/.ssh/id_rsa ]] && vault read -field=ssh-key ${VAULT_SECRET_PATH} > /root/.ssh/id_rsa
       [[ ! -f /root/.ssh/known_hosts ]] && vault read -field=ssh-known-hosts ${VAULT_SECRET_PATH} > /root/.ssh/known_hosts
