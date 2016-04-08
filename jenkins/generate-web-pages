@@ -6,7 +6,7 @@ node ('jekyll') {
                     credentialsId: 'alibuild-ssh-vault-token', variable: 'VAULT_TOKEN']]) {
     sh "echo ${VAULT_SECRET_PATH}"
 
-    withEnv(["VAULT_ADDR=${VAULT_ADDR}"] {
+    withEnv(["VAULT_ADDR=${VAULT_ADDR}"]) {
       sh """
       hostname
       which vault
