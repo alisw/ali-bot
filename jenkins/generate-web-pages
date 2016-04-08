@@ -1,0 +1,79 @@
+# Checkout repository if needed.
+node {
+  sh '''
+  hostname
+  env
+  which vault
+  '''
+}
+
+//[[ ! -f /root/.ssh/id_rsa ]] && vault read -field=ssh-key secret/repository/gitlab > /root/.ssh/id_rsa
+//[[ ! -f /root/.ssh/known_hosts ]] && vault read -field=ssh-known-hosts secret/repository/gitlab > /root/.ssh/known_hosts
+//echo >> /root/.ssh/known_hosts
+//chmod 750 /root/.ssh
+//chmod 400 /root/.ssh/id_rsa
+//
+//git config --global user.name $BUILDER_USERNAME
+//git config --global user.email $BUILDER_EMAIL
+//
+//ls -la /build/mirror
+//
+//rm -fr ali-bot aliroot
+//
+//if [ ! -d aliroot ]; then
+//  git clone --mirror --bare --reference /build/mirror/aliroot http://git.cern.ch/pub/AliRoot aliroot
+//else
+//  (export GIT_DIR=aliroot && git fetch && git fetch --tags)
+//fi
+//
+//rm -fr aliceo2
+//if [ ! -d aliceo2 ]; then
+//  git clone --bare https://github.com/ktf/AliceO2 aliceo2
+//else
+//  (export GIT_DIR=aliceo2 && git fetch && git fetch --tags)
+//fi
+//
+//if [ ! -d dds ]; then
+//  git clone --bare https://github.com/FairRootGroup/dds dds
+//else
+//  (export GIT_DIR=dds && git fetch && git fetch --tags)
+//fi
+//
+//if [ ! -d fairroot ]; then
+//  git clone --bare https://github.com/FairRootGroup/FairRoot fairroot
+//else
+//  (export GIT_DIR=fairroot && git fetch && git fetch --tags)
+//fi
+//
+//if [ ! -d ali-bot ]; then
+//  git clone git@github.com:$SOURCE_REPO/ali-bot
+//else
+//  (cd ali-bot ; git pull --rebase origin master)
+//fi
+//
+//rm -fr alisw.github.io
+//if [ ! -d alisw.github.io ]; then
+//  git clone git@github.com:$DESTINATION_REPO/alisw.github.io
+//fi
+//cd alisw.github.io
+//git reset --hard HEAD
+//git pull --rebase origin master
+//
+//# Update the content of result web pages
+//mkdir -p _data
+//
+//GIT_DIR=$WORKSPACE/aliroot git log --since="1 week" master --format='-%n commit: "%H"%n message: >-%n    %s%n author: !!str %an' master > _data/commits-aliroot-master.yaml
+//GIT_DIR=$WORKSPACE/aliceo2 git log -n 50 master --format='-%n commit: "%H"%n message: >-%n    %s%n author: !!str %an' master > _data/commits-o2-master.yaml
+//GIT_DIR=$WORKSPACE/dds git log -n 50 master --format='-%n commit: "%H"%n message: >-%n    %s%n author: !!str %an' master > _data/commits-dds-master.yaml
+//GIT_DIR=$WORKSPACE/fairroot git log -n 50 master --format='-%n commit: "%H"%n message: >-%n    %s%n author: !!str %an' master > _data/commits-fairroot-master.yaml
+//
+//(cd $WORKSPACE/ali-bot/ && script/get_builds.sh)
+//
+//git add _data/
+//
+//git commit -m 'Updated results.' || true
+//git push origin master
+//
+//# Generate web pages and push them
+//jekyll build
+//ls /jenkins/workspace/generate-web-pages/alisw.github.io/_site
