@@ -3,7 +3,7 @@ node ('jekyll') {
   stage 'Secrets Setup'
 
   withCredentials([[$class: 'StringBinding', credentialsId: 'alibuild-ssh-vault-token', variable: 'VAULT_TOKEN']]) {
-    sh 'echo ${env.VAULT_SECRET_PATH}'
+    sh "echo ${env.VAULT_SECRET_PATH}"
 
     sh '''
     hostname
@@ -14,7 +14,7 @@ node ('jekyll') {
     echo ${VAULT_TOKEN[0,5]}
     echo $VAULT_SECRET_PATH
     mkdir -p /root/.ssh
-    [[ ! -f /root/.ssh/id_rsa ]] && vault read -field=ssh-key $VAULT_SECRET_PATH > /root/.ssh/id_rsa
+    [[ ! -f /root/.ssh/id_rsa ]] && vault read -field=ssh-key ${VAULT_SECRET_PATH} > /root/.ssh/id_rsa
     [[ ! -f /root/.ssh/known_hosts ]] && vault read -field=ssh-known-hosts $VAULT_SECRET_PATH > /root/.ssh/known_hosts
     echo >> /root/.ssh/known_hosts
     chmod 750 /root/.ssh
