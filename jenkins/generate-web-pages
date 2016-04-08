@@ -8,7 +8,7 @@ node ('jekyll') {
     sh """
     hostname
     which vault
-    echo $HOME
+    echo ${env.HOME}
 
     export VAULT_SKIP_VERIFY=1
     echo ${env.VAULT_TOKEN[0,5]}
