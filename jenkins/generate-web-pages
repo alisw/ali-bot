@@ -3,6 +3,8 @@ node ('jekyll') {
   stage 'Secrets Setup'
 
   withCredentials([[$class: 'StringBinding', credentialsId: 'alibuild-ssh-vault-token', variable: 'VAULT_TOKEN']]) {
+    sh 'echo $VAULT_SECRET_PATH'
+
     sh '''
     hostname
     which vault
