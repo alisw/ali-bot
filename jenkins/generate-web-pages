@@ -1,5 +1,4 @@
-# Checkout repository if needed.
-node {
+node ('jekyll') {
   sh '''
   hostname
   env
