@@ -2,26 +2,29 @@ node ('jekyll') {
 
   stage 'Secrets Setup'
 
-  withCredentials([[$class: 'StringBinding', credentialsId: 'alibuild-ssh-vault-token', variable: 'VAULT_TOKEN']]) {
+  withCredentials([[$class: 'StringBinding',
+                    credentialsId: 'alibuild-ssh-vault-token', variable: 'VAULT_TOKEN']]) {
     sh "echo ${VAULT_SECRET_PATH}"
 
-    sh """
-    hostname
-    which vault
-    echo ${env.HOME}
+    withEnv(["VAULT_ADDR=${VAULT_ADDR}"] {
+      sh """
+      hostname
+      which vault
+      echo ${env.HOME}
 
-    export VAULT_SKIP_VERIFY=1
-    echo ${env.VAULT_TOKEN[0,5]}
-    mkdir -p /root/.ssh
-    [[ ! -f /root/.ssh/id_rsa ]] && vault read -field=ssh-key ${VAULT_SECRET_PATH} > /root/.ssh/id_rsa
-    [[ ! -f /root/.ssh/known_hosts ]] && vault read -field=ssh-known-hosts ${VAULT_SECRET_PATH} > /root/.ssh/known_hosts
-    echo >> /root/.ssh/known_hosts
-    chmod 750 /root/.ssh
-    chmod 400 /root/.ssh/id_rsa
+      export VAULT_SKIP_VERIFY=1
+      echo ${env.VAULT_TOKEN[0,5]}
+      mkdir -p /root/.ssh
+      [[ ! -f /root/.ssh/id_rsa ]] && vault read -field=ssh-key ${VAULT_SECRET_PATH} > /root/.ssh/id_rsa
+      [[ ! -f /root/.ssh/known_hosts ]] && vault read -field=ssh-known-hosts ${VAULT_SECRET_PATH} > /root/.ssh/known_hosts
+      echo >> /root/.ssh/known_hosts
+      chmod 750 /root/.ssh
+      chmod 400 /root/.ssh/id_rsa
 
-    git config --global user.name $BUILDER_USER
-    git config --global user.email $BUILDER_EMAIL
-    """
+      git config --global user.name ${BUILDER_USER}
+      git config --global user.email ${BUILDER_EMAIL}
+      """
+    }
   }
 
   stage 'Checkout repositories'
