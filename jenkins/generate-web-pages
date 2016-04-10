@@ -4,33 +4,101 @@ node ('jekyll') {
 
   withCredentials([[$class: 'StringBinding',
                     credentialsId: 'alibuild-ssh-vault-token', variable: 'VAULT_TOKEN']]) {
-    sh "echo ${VAULT_SECRET_PATH}"
-
     withEnv(["VAULT_ADDR=${VAULT_ADDR}",
              "VAULT_SKIP_VERIFY=1"]) {
       sh """
-      hostname
-      which vault
-
-      echo ${VAULT_TOKEN[0,5]}
       mkdir -p /root/.ssh
+      git config --global user.name ${BUILDER_USER}
+      git config --global user.email ${BUILDER_EMAIL}
       [[ ! -f /root/.ssh/id_rsa ]] && vault read -field=ssh-key ${VAULT_SECRET_PATH} > /root/.ssh/id_rsa
       [[ ! -f /root/.ssh/known_hosts ]] && vault read -field=ssh-known-hosts ${VAULT_SECRET_PATH} > /root/.ssh/known_hosts
       echo >> /root/.ssh/known_hosts
       chmod 750 /root/.ssh
       chmod 400 /root/.ssh/id_rsa
-
-      git config --global user.name ${BUILDER_USER}
-      git config --global user.email ${BUILDER_EMAIL}
       """
     }
   }
 
   stage 'Checkout repositories'
 
-  sh '''
-  ls -la /build/mirror
+  def workspace = pwd()
+  parallel (
+    checkout_aliroot: {
+      sh """
+        rm -rf aliroot
+        if [ ! -d aliroot ]; then
+          git clone --mirror --bare --reference /build/mirror/aliroot http://git.cern.ch/pub/AliRoot aliroot
+        else
+          (export GIT_DIR=aliroot && git fetch && git fetch --tags)
+        fi
+      """},
+    checkout_o2: {
+      sh """
+        rm -fr aliceo2
+        if [ ! -d aliceo2 ]; then
+          git clone --bare https://github.com/ktf/AliceO2 aliceo2
+        else
+          (export GIT_DIR=aliceo2 && git fetch && git fetch --tags)
+        fi
+      """},
+    checkout_dds: {
+      sh """
+        if [ ! -d dds ]; then
+          git clone --bare https://github.com/FairRootGroup/dds dds
+        else
+          (export GIT_DIR=dds && git fetch && git fetch --tags)
+        fi
+      """},
+    checkout_fairroot: {
+      sh """
+        if [ ! -d fairroot ]; then
+          git clone --bare https://github.com/FairRootGroup/FairRoot fairroot
+        else
+          (export GIT_DIR=fairroot && git fetch && git fetch --tags)
+        fi
+      """},
+    checkout_alibot: {
+      sh """
+        rm -rf ali-bot
+        if [ ! -d ali-bot ]; then
+          git clone git@github.com:${SOURCE_REPO}/ali-bot
+        else
+          (cd ali-bot ; git pull --rebase origin master)
+        fi
+      """},
+    checkout_alisw: {
+      sh """
+        rm -fr alisw.github.io
+        if [ ! -d alisw.github.io ]; then
+          git clone git@github.com:${DESTINATION_REPO}/alisw.github.io
+        fi
+      """}
+     )
 
-  rm -fr ali-bot aliroot
-  '''
+    stage 'Process and commit results'
+    sh """
+      export WORKSPACE="${workspace}"
+      cd alisw.github.io
+      git reset --hard HEAD
+      git pull --rebase origin master
+
+      # Update the content of result web pages
+      mkdir -p _data
+
+      GIT_DIR="${workspace}/aliroot" git log --since="1 week" master --format='-%n commit: "%H"%n message: >-%n    %s%n author: !!str %an' master > _data/commits-aliroot-master.yaml
+      GIT_DIR="${workspace}/aliceo2" git log -n 50 master --format='-%n commit: "%H"%n message: >-%n    %s%n author: !!str %an' master > _data/commits-o2-master.yaml
+      GIT_DIR="${workspace}/dds" git log -n 50 master --format='-%n commit: "%H"%n message: >-%n    %s%n author: !!str %an' master > _data/commits-dds-master.yaml
+      GIT_DIR="${workspace}/fairroot" git log -n 50 master --format='-%n commit: "%H"%n message: >-%n    %s%n author: !!str %an' master > _data/commits-fairroot-master.yaml
+
+      (cd "${workspace}/ali-bot/" && script/get_builds.sh)
+
+      git add _data/
+
+      git commit -m 'Updated results.' || true
+      git push origin master
+
+      # Generate web pages and push them
+      jekyll build
+      ls "${workspace}/alisw.github.io/_site"
+    """
 }
