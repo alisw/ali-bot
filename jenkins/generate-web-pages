@@ -1,3 +1,4 @@
+#!groovy
 node ('jekyll') {
 
   stage 'Secrets Setup'
@@ -6,16 +7,18 @@ node ('jekyll') {
                     credentialsId: 'alibuild-ssh-vault-token', variable: 'VAULT_TOKEN']]) {
     withEnv(["VAULT_ADDR=${VAULT_ADDR}",
              "VAULT_SKIP_VERIFY=1"]) {
-      sh """
-      mkdir -p /root/.ssh
-      git config --global user.name ${BUILDER_USER}
-      git config --global user.email ${BUILDER_EMAIL}
-      [[ ! -f /root/.ssh/id_rsa ]] && vault read -field=ssh-key ${VAULT_SECRET_PATH} > /root/.ssh/id_rsa
-      [[ ! -f /root/.ssh/known_hosts ]] && vault read -field=ssh-known-hosts ${VAULT_SECRET_PATH} > /root/.ssh/known_hosts
-      echo >> /root/.ssh/known_hosts
-      chmod 750 /root/.ssh
-      chmod 400 /root/.ssh/id_rsa
-      """
+      retry (3) {
+        sh """
+        mkdir -p /root/.ssh
+        git config --global user.name ${BUILDER_USER}
+        git config --global user.email ${BUILDER_EMAIL}
+        [[ ! -f /root/.ssh/id_rsa ]] && vault read -field=ssh-key ${VAULT_SECRET_PATH} > /root/.ssh/id_rsa
+        [[ ! -f /root/.ssh/known_hosts ]] && vault read -field=ssh-known-hosts ${VAULT_SECRET_PATH} > /root/.ssh/known_hosts
+        echo >> /root/.ssh/known_hosts
+        chmod 750 /root/.ssh
+        chmod 400 /root/.ssh/id_rsa
+        """
+      }
     }
   }
 
@@ -27,50 +30,50 @@ node ('jekyll') {
       sh """
         rm -rf aliroot
         if [ ! -d aliroot ]; then
-          git clone --mirror --bare --reference /build/mirror/aliroot http://git.cern.ch/pub/AliRoot aliroot
+          time git clone --mirror --bare --reference /build/mirror/aliroot http://git.cern.ch/pub/AliRoot aliroot
         else
-          (export GIT_DIR=aliroot && git fetch && git fetch --tags)
+          time (export GIT_DIR=aliroot && git fetch && git fetch --tags)
         fi
       """},
     checkout_o2: {
       sh """
         rm -fr aliceo2
         if [ ! -d aliceo2 ]; then
-          git clone --bare https://github.com/ktf/AliceO2 aliceo2
+          time git clone --bare https://github.com/ktf/AliceO2 aliceo2
         else
-          (export GIT_DIR=aliceo2 && git fetch && git fetch --tags)
+          time (export GIT_DIR=aliceo2 && git fetch && git fetch --tags)
         fi
       """},
     checkout_dds: {
       sh """
         if [ ! -d dds ]; then
-          git clone --bare https://github.com/FairRootGroup/dds dds
+          time git clone --bare https://github.com/FairRootGroup/dds dds
         else
-          (export GIT_DIR=dds && git fetch && git fetch --tags)
+          time (export GIT_DIR=dds && git fetch && git fetch --tags)
         fi
       """},
     checkout_fairroot: {
       sh """
         if [ ! -d fairroot ]; then
-          git clone --bare https://github.com/FairRootGroup/FairRoot fairroot
+          time git clone --bare https://github.com/FairRootGroup/FairRoot fairroot
         else
-          (export GIT_DIR=fairroot && git fetch && git fetch --tags)
+          time (export GIT_DIR=fairroot && git fetch && git fetch --tags)
         fi
       """},
     checkout_alibot: {
       sh """
         rm -rf ali-bot
         if [ ! -d ali-bot ]; then
-          git clone git@github.com:${SOURCE_REPO}/ali-bot
+          time git clone git@github.com:${SOURCE_REPO}/ali-bot
         else
-          (cd ali-bot ; git pull --rebase origin master)
+          time (cd ali-bot ; git pull --rebase origin master)
         fi
       """},
     checkout_alisw: {
       sh """
         rm -fr alisw.github.io
         if [ ! -d alisw.github.io ]; then
-          git clone git@github.com:${DESTINATION_REPO}/alisw.github.io
+          time git clone git@github.com:${DESTINATION_REPO}/alisw.github.io
         fi
       """}
      )
