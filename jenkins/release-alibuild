@@ -1,10 +1,24 @@
-node {
-  stage "Decide if there is a new tag"
-  
+node (slc7_x86-64-light) {
+  stage "Check tag"
   sh '''
     rm -fr alibuild
     git clone https://github.com/alisw/alibuild
     cd alibuild
-    git tag --points-at master
+    LAST_TAG=`git tag --points-at master`
+    if [ X$LAST_TAG = X ]; then
+      echo "Nothing to release."
+      exit 1
+    fi
+    perl -p -i -e "s/1.0.19/$LAST_TAG/g" setup.py
+  '''
+
+  stage "Build python distribution"
+  sh '''
+    python setup.py sdist
+  '''
+
+  stage "Upload python package"
+  sh '''
+    twine upload dist/*
   '''
 }
