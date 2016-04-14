@@ -4,7 +4,7 @@ node ("slc7_x86-64-light") {
     rm -fr alibuild
     git clone https://github.com/alisw/alibuild
     cd alibuild
-    git fetch --tags
+    git fetch origin --tags
     LAST_TAG=`git tag --points-at master`
     if [ "X$LAST_TAG" = X ]; then
       echo "Nothing to release."
