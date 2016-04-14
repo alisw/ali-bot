@@ -1,0 +1,25 @@
+node ("slc7_x86-64-light") {
+  stage "Checkout repositories"
+  retry (3) {
+    timeout (300) {
+      sh '''
+        ls /build/mirror/aliroot
+        rm -fr AliRoot.git
+        git clone --reference /build/mirror/aliroot --mirror http://git.cern.ch/pub/AliRoot
+      '''
+    }
+  }
+  stage "Strip repository"
+  sh '''
+    ls -la $PWD/AliRoot.git
+    # bfg --strip-blobs-bigger-than 10M --protect-blobs-from master $PWD/AliRoot.git
+    bfg AliRoot.git
+  '''
+
+  stage "Garbage collection"
+  dir ("AliRoot.git") {
+    sh '''
+      git reflog expire --expire=now --all && git gc --prune=now --aggressive
+    '''
+  }
+}
