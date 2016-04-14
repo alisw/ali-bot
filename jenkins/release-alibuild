@@ -3,6 +3,7 @@ node {
   
   sh '''
     git clone https://github.com/alisw/alibuild
+    cd alibuild
     git tag --points-at master
   '''
 }
