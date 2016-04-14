@@ -1,0 +1,32 @@
+node ("slc7_x86-64-light") {
+  stage "Check tag"
+  sh '''
+    rm -fr alibuild
+    git clone https://github.com/alisw/alibuild
+    cd alibuild
+    git fetch origin --tags
+    LAST_TAG=`git tag --points-at master | sed -e 's|^v||' | grep -e "[0-9]*[.][0-9]*[.][0-9]*"`
+    if [ "X$LAST_TAG" = X ]; then
+      echo "Nothing to release."
+      exit 1
+    fi
+    perl -p -i -e "s/LAST_TAG/$LAST_TAG/g" setup.py
+  '''
+
+  stage "Build python distribution"
+  sh '''
+    cd alibuild
+    python setup.py sdist
+  '''
+
+  stage "Upload python package"
+  withCredentials([[$class: 'FileBinding', credentialsId: 'alibuild-pypi', variable: 'ALIBUILD_PYPI_CONFIG']]) {
+    sh '''
+      pip install twine
+      cd alibuild
+      mv ${ALIBUILD_PYPI_CONFIG}  ~/.pypirc
+      twine upload dist/*
+      rm -f ~/.pypirc
+    '''
+  }
+}
