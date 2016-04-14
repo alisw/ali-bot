@@ -15,6 +15,7 @@ node ("slc7_x86-64-light") {
 
   stage "Build python distribution"
   sh '''
+    cd alibuild
     python setup.py sdist
   '''
 
