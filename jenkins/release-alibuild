@@ -15,6 +15,7 @@ node ("slc7_x86-64-light") {
 
   stage "Build python distribution"
   sh '''
+    cd alibuild
     python setup.py sdist
   '''
 
@@ -22,6 +23,7 @@ node ("slc7_x86-64-light") {
   withCredentials([[$class: 'FileBinding', credentialsId: 'alibuild-pypi', variable: 'ALIBUILD_PYPI_CONFIG']]) {
     sh '''
       pip install twine
+      cd alibuild
       mv ${ALIBUILD_PYPI_CONFIG}  ~/.pypirc
       twine upload dist/*
       rm -f ~/.pypirc
