@@ -1,4 +1,4 @@
-node (slc7_x86-64-light) {
+node ("slc7_x86-64-light") {
   stage "Check tag"
   sh '''
     rm -fr alibuild
