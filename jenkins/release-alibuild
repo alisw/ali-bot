@@ -2,6 +2,7 @@ node {
   stage "Decide if there is a new tag"
   
   sh '''
+    rm -fr alibuild
     git clone https://github.com/alisw/alibuild
     cd alibuild
     git tag --points-at master
