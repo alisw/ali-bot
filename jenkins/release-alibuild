@@ -1,0 +1,8 @@
+node {
+  stage "Decide if there is a new tag"
+  
+  sh '''
+    git clone https://github.com/alisw/alibuild
+    git tag --points-at master
+  '''
+}
