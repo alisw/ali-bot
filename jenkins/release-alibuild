@@ -5,11 +5,11 @@ node ("slc7_x86-64-light") {
     git clone https://github.com/alisw/alibuild
     cd alibuild
     LAST_TAG=`git tag --points-at master`
-    if [ X$LAST_TAG = X ]; then
+    if [ "X$LAST_TAG" = X ]; then
       echo "Nothing to release."
       exit 1
     fi
-    perl -p -i -e "s/1.0.19/$LAST_TAG/g" setup.py
+    perl -p -i -e "s/LAST_TAG/$LAST_TAG/g" setup.py
   '''
 
   stage "Build python distribution"
