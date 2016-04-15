@@ -1,13 +1,15 @@
 node ("slc7_x86-64-light") {
   stage "Checkout repositories"
   sh '''
+    ls /build/mirror/aliroot
     rm -fr AliRoot.git
-    git clone --mirror http://git.cern.ch/pub/AliRoot
+    git clone --reference /build/mirror/aliroot --mirror http://git.cern.ch/pub/AliRoot
   '''
 
   stage "Strip repository"
   sh '''
-    bfg --delete-folders EPOS --strip-blobs-bigger-than 10M --protect-blobs-from master AliRoot.git
+    ls -la $PWD/AliRoot.git
+    bfg --strip-blobs-bigger-than 10M --protect-blobs-from master $PWD/AliRoot.git
   '''
 
   stage "Garbage collection"
