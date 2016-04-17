@@ -1,0 +1,4 @@
+#!groovy
+node {
+  stage "An empty pipeline to do validation"
+}
