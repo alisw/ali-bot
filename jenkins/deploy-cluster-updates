@@ -1,0 +1,64 @@
+node ("master") {
+
+  stage "Setup secrets"
+  withCredentials([[$class: 'FileBinding', credentialsId: '0dd617a6-6b27-4904-becc-51e4cd56eae8', variable: 'GIT_CREDS_FILE']]) {
+    withEnv(["BUILDER_USER=${BUILDER_USER}",
+             "BUILDER_EMAIL=${BUILDER_EMAIL}"
+      ]) {
+      sh '''
+        git credential-store --file ~/git-creds store < ${GIT_CREDS_FILE}
+      '''
+
+      sh '''
+        git config --global credential.helper "store --file ~/git-creds"
+        ls ~/git-creds
+        mkdir -p $HOME/.ssh
+        git config --replace-all --global user.name ${BUILDER_USER}
+        git config --replace-all --global user.email ${BUILDER_EMAIL}
+      '''
+    }
+  }
+
+  stage "Get Configs"
+  withEnv (["REPO_URL=${REPO_URL}"]) {
+    sh '''
+      git config --global credential.helper "store --file ~/git-creds"
+      rm -fr config
+      git clone $REPO_URL config
+    '''
+  }
+
+  stage "Deploy mesos slaves"
+  withCredentials([[$class: 'FileBinding', credentialsId: 'ID_RSA_ALIBUILD', variable: 'ID_RSA_ALIBUILD']]) {
+    dir("config/ansible_config") {
+      sh '''
+        export ANSIBLE_HOST_KEY_CHECKING=False
+        chmod 700 ${ID_RSA_ALIBUILD}
+        ansible-playbook -u root -i hosts -l mesos-slaves mesos-openstack.yaml --private-key ${ID_RSA_ALIBUILD}
+      '''
+    }
+  }
+
+  stage "Deploy mesos slaves ubuntu"
+  withCredentials([[$class: 'FileBinding', credentialsId: 'ID_RSA_ALIBUILD', variable: 'ID_RSA_ALIBUILD']]) {
+    dir("config/ansible_config") {
+      sh '''
+        export ANSIBLE_HOST_KEY_CHECKING=False
+        chmod 700 ${ID_RSA_ALIBUILD}
+        ansible-playbook -u root -i hosts -l ubuntu-slaves mesos-playbook.yaml --private-key ${ID_RSA_ALIBUILD}
+      '''
+    }
+  }
+
+  stage "Deploy mesos masters"
+  withCredentials([[$class: 'FileBinding', credentialsId: 'ID_RSA_ALIBUILD', variable: 'ID_RSA_ALIBUILD']]) {
+    dir("config/ansible_config") {
+      sh '''
+        export ANSIBLE_HOST_KEY_CHECKING=False
+        chmod 700 ${ID_RSA_ALIBUILD}
+        ansible-playbook -u root -i hosts -l mesos-masters mesos-masters.yaml --private-key ${ID_RSA_ALIBUILD}
+      '''
+    }
+  }
+
+}
