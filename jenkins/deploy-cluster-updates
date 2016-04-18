@@ -1,6 +1,7 @@
 node ("master") {
 
   stage "Setup secrets"
+  currentBuild.displayName = "Setup secrets"
   withCredentials([[$class: 'FileBinding', credentialsId: '0dd617a6-6b27-4904-becc-51e4cd56eae8', variable: 'GIT_CREDS_FILE']]) {
     withEnv(["BUILDER_USER=${BUILDER_USER}",
              "BUILDER_EMAIL=${BUILDER_EMAIL}"
@@ -20,6 +21,7 @@ node ("master") {
   }
 
   stage "Get Configs"
+  currentBuild.displayName = "Checkout ${REPO_URL}"
   withEnv (["REPO_URL=${REPO_URL}"]) {
     sh '''
       git config --global credential.helper "store --file ~/git-creds"
@@ -29,6 +31,7 @@ node ("master") {
   }
 
   stage "Deploy mesos slaves"
+  currentBuild.displayName = "Deploy OpenStack slaves"
   withCredentials([[$class: 'FileBinding', credentialsId: 'ID_RSA_ALIBUILD', variable: 'ID_RSA_ALIBUILD']]) {
     dir("config/ansible_config") {
       sh '''
@@ -40,6 +43,7 @@ node ("master") {
   }
 
   stage "Deploy mesos slaves ubuntu"
+  currentBuild.displayName = "Deploy Ubuntu slaves"
   withCredentials([[$class: 'FileBinding', credentialsId: 'ID_RSA_ALIBUILD', variable: 'ID_RSA_ALIBUILD']]) {
     dir("config/ansible_config") {
       sh '''
@@ -51,6 +55,7 @@ node ("master") {
   }
 
   stage "Deploy mesos masters"
+  currentBuild.displayName = "Deploy Mesos Master"
   withCredentials([[$class: 'FileBinding', credentialsId: 'ID_RSA_ALIBUILD', variable: 'ID_RSA_ALIBUILD']]) {
     dir("config/ansible_config") {
       sh '''
@@ -60,5 +65,5 @@ node ("master") {
       '''
     }
   }
-
+  currentBuild.displayName = "Deployment done"
 }
