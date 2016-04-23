@@ -73,35 +73,37 @@ node ('jekyll') {
       sh """
         rm -fr alisw.github.io
         if [ ! -d alisw.github.io ]; then
-          time git clone git@github.com:${DESTINATION_REPO}/alisw.github.io
+          time git clone --reference /build/mirror/alisw.github.io git@github.com:${DESTINATION_REPO}/alisw.github.io
         fi
       """}
      )
 
     stage 'Process and commit results'
-    sh """
-      export WORKSPACE="${workspace}"
-      cd alisw.github.io
-      git reset --hard HEAD
-      git pull --rebase origin master
+    withEnv(["WORKSPACE=${workspace}"]) {
+      sh '''
+        cd alisw.github.io
+        git reset --hard HEAD
+        git pull --rebase origin master
 
-      # Update the content of result web pages
-      mkdir -p _data
+        # Update the content of result web pages
+        mkdir -p _data
 
-      GIT_DIR="${workspace}/aliroot" git log --since="1 week" master --format='-%n commit: "%H"%n message: >-%n    %s%n author: !!str %an' master > _data/commits-aliroot-master.yaml
-      GIT_DIR="${workspace}/aliceo2" git log -n 50 master --format='-%n commit: "%H"%n message: >-%n    %s%n author: !!str %an' master > _data/commits-o2-master.yaml
-      GIT_DIR="${workspace}/dds" git log -n 50 master --format='-%n commit: "%H"%n message: >-%n    %s%n author: !!str %an' master > _data/commits-dds-master.yaml
-      GIT_DIR="${workspace}/fairroot" git log -n 50 master --format='-%n commit: "%H"%n message: >-%n    %s%n author: !!str %an' master > _data/commits-fairroot-master.yaml
+        GIT_DIR="${WORKSPACE}/aliroot" git log --since="1 week" master --format='-%n commit: "%H"%n message: >-%n    %s%n author: !!str %an' master > _data/commits-aliroot-master.yaml
+        GIT_DIR="${WORKSPACE}/aliceo2" git log -n 50 master --format='-%n commit: "%H"%n message: >-%n    %s%n author: !!str %an' master > _data/commits-o2-master.yaml
+        GIT_DIR="${WORKSPACE}/dds" git log -n 50 master --format='-%n commit: "%H"%n message: >-%n    %s%n author: !!str %an' master > _data/commits-dds-master.yaml
+        GIT_DIR="${WORKSPACE}/fairroot" git log -n 50 master --format='-%n commit: "%H"%n message: >-%n    %s%n author: !!str %an' master > _data/commits-fairroot-master.yaml
 
-      (cd "${workspace}/ali-bot/" && script/get_builds.sh)
+        (cd "${WORKSPACE}/ali-bot/" && script/get_builds.sh)
 
-      git add _data/
+        git add _data/
 
-      git commit -m 'Updated results.' || true
-      git push origin master
+        git commit -m 'Updated results.' || true
+        git push origin master
 
-      # Generate web pages and push them
-      jekyll build
-      ls "${workspace}/alisw.github.io/_site"
-    """
+        # Generate web pages and push them
+        perl -p -i -e "s/\\"_MODULE_\\"/'_MODULE_'/g" "${WORKSPACE}/alisw.github.io/_data/warnings.json"
+        jekyll build
+        ls "${WORKSPACE}/alisw.github.io/_site"
+      '''
+    }
 }
