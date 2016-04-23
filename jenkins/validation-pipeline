@@ -1,0 +1,16 @@
+#!groovy
+node ("slc6_x86-64-relval") {
+  stage "Check if release is available"
+  withEnv(["ALIPHYSICS_VERSION=${ALIPHYSICS_VERSION}"]){
+    sh '''
+      # If we do not find the required release in the official area,
+      # let's ask for the test one.
+      eval `/cvmfs/alice.cern.ch/bin/alienv printenv AliPhysics/$ALIPHYSICS_VERSION`
+      which aliroot
+      if ! which aliroot > /dev/null 2>&1 ;then
+        eval `/cvmfs/alice-test.cern.ch/bin/alienv printenv AliPhysics/$ALIPHYSICS_VERSION`
+      fi
+      which aliroot > /dev/null 2>&1 || exit 40
+    '''
+  }
+}
