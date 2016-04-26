@@ -30,7 +30,7 @@ else
   distro_release='<unknown>'
 fi
 
-[ x$ALIENV_DEBUG == x1 ] && printf "distro_name=$distro_name\ndistro_release=$distro_release\n"
+[ x$ALIENV_DEBUG == x1 ] && printf "distro_name=$distro_name\ndistro_release=$distro_release\n" >&2
 
 case $distro_name in
      Scientific*|CentOS*|RedHatEnterprise*)
@@ -98,7 +98,7 @@ case $distro_name in
      ;;
 esac
 
-[ x$ALIENV_DEBUG == x1 ] && printf "distro_dir=$distro_dir\nuname_m=$uname_m\narch=$arch\ndistro_xrelease=$distro_xrelease\nplatform=$platform\n"
+[ x$ALIENV_DEBUG == x1 ] && printf "distro_dir=$distro_dir\nuname_m=$uname_m\narch=$arch\ndistro_xrelease=$distro_xrelease\nplatform=$platform\n" >&2
 
 modules=$cvmfsdir/$arch/Modules
 
@@ -130,7 +130,7 @@ function modulepath {
 
 export MODULEPATH=$(modulepath modulefiles $moduledirs)
 [ x$platform != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
-[ x$ALIENV_DEBUG == x1 ] && printf "MODULEPATH=$MODULEPATH\n"
+[ x$ALIENV_DEBUG == x1 ] && printf "MODULEPATH=$MODULEPATH\n" >&2
 
 export PATH=$PATH:$path
 
