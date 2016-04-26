@@ -30,6 +30,8 @@ else
   distro_release='<unknown>'
 fi
 
+[ x$ALIENV_DEBUG == x1 ] && printf "distro_name=$distro_name\ndistro_release=$distro_release\n" >&2
+
 case $distro_name in
      Scientific*|CentOS*|RedHatEnterprise*)
         distro_dir="Scientific"
@@ -38,9 +40,15 @@ case $distro_name in
         case $distro_release in
            5.*)
               distro_xrelease=5.x
+              platform=el5
               ;;
-           6.*|7*)
+           6.*)
               distro_xrelease=6.x
+              platform=el6
+              ;;
+           7*)
+              distro_xrelease=6.x
+              platform=el7
               ;;
         esac
         ;;
@@ -69,8 +77,12 @@ case $distro_name in
         uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
-           6.*|7.*|8.*)
+           6.*|6|7.*|7)
               distro_xrelease=6.x
+              ;;
+           8.*|8)
+              distro_xrelease=6.x
+              platform=ubuntu1404
               ;;
         esac
         ;;
@@ -79,8 +91,12 @@ case $distro_name in
         uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
-           13.*|14.*|15.*)
+           13.*)
               distro_xrelease=6.x
+              ;;
+           14.*|15.*)
+              distro_xrelease=6.x
+              platform=ubuntu1404
               ;;
         esac
         ;;
@@ -89,6 +105,8 @@ case $distro_name in
       exit 1
      ;;
 esac
+
+[ x$ALIENV_DEBUG == x1 ] && printf "distro_dir=$distro_dir\nuname_m=$uname_m\narch=$arch\ndistro_xrelease=$distro_xrelease\nplatform=$platform\n" >&2
 
 modules=$cvmfsdir/$arch/Modules
 
@@ -100,7 +118,7 @@ fi
 
 unset MODULESHOME
 
-moduledirs="                                                                                                      $modulepath                                                                                                       $cvmfsdir/x86_64-2.6-gnu-4.1.2                                                                                    $cvmfsdir/x86_64-2.6-gnu-4.7.2                                                                                    $cvmfsdir/x86_64-2.6-gnu-4.8.3                                                                                    $cvmfsdir/x86_64-2.6-gnu-4.8.4                                                                                    "
+moduledirs="$modulepath $cvmfsdir/x86_64-2.6-gnu-4.1.2 $cvmfsdir/x86_64-2.6-gnu-4.7.2 $cvmfsdir/x86_64-2.6-gnu-4.8.3 $cvmfsdir/x86_64-2.6-gnu-4.8.4"
 
 function modulepath {
   local dir
@@ -118,7 +136,32 @@ function modulepath {
   printf "\n" 
 }
 
+function test_toolchain {
+  local TMPPREF=/tmp/alienv_helloworld
+  cat > $TMPPREF.cpp <<EOF
+#include <iostream>
+int main(int argn, char *argv) {
+  std::cout << "hello world" << std::endl;
+  return 0;
+}
+EOF
+  g++ -o $TMPPREF ${TMPPREF}.cpp > ${TMPPREF}.log 2>&1
+  if [[ `/tmp/alienv_helloworld 2> /dev/null` != "hello world" ]]; then
+    echo "WARNING: We are using GNU C++ compiler at $(which g++ 2> /dev/null)" >&2
+    echo "WARNING: This compiler is unable to produce valid executables on this platform!" >&2
+    echo "WARNING: Error from g++ follows:" >&2
+    while IFS= read LINE; do
+      echo "WARNING: $LINE" >&2
+    done < <(cat ${TMPPREF}.log)
+  else
+    echo "NOTICE: loaded compiler ($(which g++)) seems to produce valid executables" >&2
+  fi
+  rm -f ${TMPPREF}*
+}
+
 export MODULEPATH=$(modulepath modulefiles $moduledirs)
+[ x$platform != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
+[ x$ALIENV_DEBUG == x1 ] && printf "MODULEPATH=$MODULEPATH\n" >&2
 
 export PATH=$PATH:$path
 
@@ -137,7 +180,7 @@ then
       exit 1
 fi
  
-tclsh<<EOF>/dev/null 2>&1
+tclsh <<EOF >/dev/null 2>&1
 EOF
 
 if [ $? -eq 0 ]
@@ -186,6 +229,7 @@ do
        else
           alienvrc=""
        fi
+       [ x$ALIENV_DEBUG == x1 ] && test_toolchain
        exec env PS1="[$args] \W > " bash --norc $alienvrc -i
        ;;
      setenv)
@@ -197,6 +241,7 @@ do
          $moduleenv $modulecmd bash list 2>&1 | grep -q AliEn-Runtime ) || \
          toload="$alien$alien_version $args"
        Eval $moduleenv $modulecmd bash load $toload || exit 1
+       [ x$ALIENV_DEBUG == x1 ] && test_toolchain
        shift 1
        ;;
      printenv)
@@ -212,6 +257,7 @@ do
          $moduleenv $modulecmd bash list 2>&1 | grep -q AliEn-Runtime ) || \
          toload="$alien$alien_version $args"
        $moduleenv $modulecmd bash load $toload || exit 1
+       [ x$ALIENV_DEBUG == x1 ] && test_toolchain
        exit
        ;;
      -print)
