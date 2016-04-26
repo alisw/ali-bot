@@ -30,6 +30,8 @@ else
   distro_release='<unknown>'
 fi
 
+[ x$ALIENV_DEBUG == x1 ] && printf "distro_name=$distro_name\ndistro_release=$distro_release\n"
+
 case $distro_name in
      Scientific*|CentOS*|RedHatEnterprise*)
         distro_dir="Scientific"
@@ -38,9 +40,15 @@ case $distro_name in
         case $distro_release in
            5.*)
               distro_xrelease=5.x
+              platform=el5
               ;;
-           6.*|7*)
+           6.*)
               distro_xrelease=6.x
+              platform=el6
+              ;;
+           7*)
+              distro_xrelease=6.x
+              platform=el7
               ;;
         esac
         ;;
@@ -90,6 +98,8 @@ case $distro_name in
      ;;
 esac
 
+[ x$ALIENV_DEBUG == x1 ] && printf "distro_dir=$distro_dir\nuname_m=$uname_m\narch=$arch\ndistro_xrelease=$distro_xrelease\nplatform=$platform\n"
+
 modules=$cvmfsdir/$arch/Modules
 
 if [  ! -d $modules ] 
@@ -100,7 +110,7 @@ fi
 
 unset MODULESHOME
 
-moduledirs="                                                                                                      $modulepath                                                                                                       $cvmfsdir/x86_64-2.6-gnu-4.1.2                                                                                    $cvmfsdir/x86_64-2.6-gnu-4.7.2                                                                                    $cvmfsdir/x86_64-2.6-gnu-4.8.3                                                                                    $cvmfsdir/x86_64-2.6-gnu-4.8.4                                                                                    "
+moduledirs="$modulepath $cvmfsdir/x86_64-2.6-gnu-4.1.2 $cvmfsdir/x86_64-2.6-gnu-4.7.2 $cvmfsdir/x86_64-2.6-gnu-4.8.3 $cvmfsdir/x86_64-2.6-gnu-4.8.4"
 
 function modulepath {
   local dir
@@ -119,6 +129,8 @@ function modulepath {
 }
 
 export MODULEPATH=$(modulepath modulefiles $moduledirs)
+[ x$platform != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
+[ x$ALIENV_DEBUG == x1 ] && printf "MODULEPATH=$MODULEPATH\n"
 
 export PATH=$PATH:$path
 
@@ -137,7 +149,7 @@ then
       exit 1
 fi
  
-tclsh<<EOF>/dev/null 2>&1
+tclsh <<EOF >/dev/null 2>&1
 EOF
 
 if [ $? -eq 0 ]
