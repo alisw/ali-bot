@@ -1,5 +1,5 @@
 #!groovy
-node ("slc5_x86-64-light") {
+node ("slc6_x86-64-relval") {
   stage "Run tests"
   withEnv(["ALIPHYSICS_VERSION=${ALIPHYSICS_VERSION}"]){
     sh '''
@@ -13,7 +13,14 @@ node ("slc5_x86-64-light") {
       which aliroot > /dev/null 2>&1 || exit 40
 
       echo $ALICE_PHYSICS
+
+      export X509_CERT_DIR="/cvmfs/grid.cern.ch/etc/grid-security/certificates"
+      export X509_USER_PROXY="/secrets/eos-proxy"
+      [ -f "$X509_USER_PROXY" ] || exit 41
+
       sh -ex $ALICE_PHYSICS/PWGJE/EMCALJetTasks/macros/runEMCalJetSampleTask.sh AOD LHC11h fileLists/files_LHC11h_2_AOD145.txt 1000
+      sh -ex $ALICE_PHYSICS/PWGJE/EMCALJetTasks/macros/runEMCalJetSampleTask.sh AOD LHC12c fileLists/files_LHC12c_pass2_AOD.txt 10000
+
     '''
   }
 }
