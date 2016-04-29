@@ -57,6 +57,14 @@ case $distro_name in
         uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
+           17|18)
+              distro_xrelease=6.x
+              platform=el6
+              ;;
+           19|20|21)
+              distro_xrelease=6.x
+              platform=el7
+              ;;
            *)
               distro_xrelease=6.x
               ;;
