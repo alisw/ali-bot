@@ -106,6 +106,7 @@ case $distro_name in
      ;;
 esac
 
+[[ "$ALIENV_OVERRIDE_PLATFORM" != "" ]] && { printf "WARNING: overriding detected platform ($platform) with $ALIENV_OVERRIDE_PLATFORM\n" >&2; platform=$ALIENV_OVERRIDE_PLATFORM; }
 [ x$ALIENV_DEBUG == x1 ] && printf "distro_dir=$distro_dir\nuname_m=$uname_m\narch=$arch\ndistro_xrelease=$distro_xrelease\nplatform=$platform\n" >&2
 
 modules=$cvmfsdir/$arch/Modules
@@ -257,7 +258,6 @@ do
          $moduleenv $modulecmd bash list 2>&1 | grep -q AliEn-Runtime ) || \
          toload="$alien$alien_version $args"
        $moduleenv $modulecmd bash load $toload || exit 1
-       [ x$ALIENV_DEBUG == x1 ] && test_toolchain
        exit
        ;;
      -print)
