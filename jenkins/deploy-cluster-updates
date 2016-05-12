@@ -34,11 +34,15 @@ node ("master") {
   currentBuild.displayName = "Deploy OpenStack slaves"
   withCredentials([[$class: 'FileBinding', credentialsId: 'ID_RSA_ALIBUILD', variable: 'ID_RSA_ALIBUILD']]) {
     dir("config/ansible_config") {
-      sh '''
-        export ANSIBLE_HOST_KEY_CHECKING=False
-        chmod 700 ${ID_RSA_ALIBUILD}
-        ansible-playbook -u root -i hosts -l mesos-slaves mesos-openstack.yaml --private-key ${ID_RSA_ALIBUILD}
-      '''
+      retry (3) {
+        timeout(600) {
+          sh '''
+            export ANSIBLE_HOST_KEY_CHECKING=False
+            chmod 700 ${ID_RSA_ALIBUILD}
+            ansible-playbook -u root -i hosts -l mesos-slaves mesos-openstack.yaml --private-key ${ID_RSA_ALIBUILD}
+          '''
+        }
+      }
     }
   }
 
@@ -46,11 +50,15 @@ node ("master") {
   currentBuild.displayName = "Deploy Ubuntu slaves"
   withCredentials([[$class: 'FileBinding', credentialsId: 'ID_RSA_ALIBUILD', variable: 'ID_RSA_ALIBUILD']]) {
     dir("config/ansible_config") {
-      sh '''
-        export ANSIBLE_HOST_KEY_CHECKING=False
-        chmod 700 ${ID_RSA_ALIBUILD}
-        ansible-playbook -u root -i hosts -l ubuntu-slaves mesos-playbook.yaml --private-key ${ID_RSA_ALIBUILD}
-      '''
+      retry (3) {
+        timeout(600) {
+          sh '''
+            export ANSIBLE_HOST_KEY_CHECKING=False
+            chmod 700 ${ID_RSA_ALIBUILD}
+            ansible-playbook -u root -i hosts -l ubuntu-slaves mesos-playbook.yaml --private-key ${ID_RSA_ALIBUILD}
+          '''
+        }
+      }
     }
   }
 
