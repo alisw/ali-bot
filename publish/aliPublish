@@ -114,11 +114,14 @@ class RiemannPkgNotify(object):
       return
     if state not in [ "ok", "warning", "critical" ]:
       raise Exception("RiemannPkgNotify only supports ok, warning, critical states")
-    self.client.send({ "host": self._currentHost,
-                       "state": state,
-                       "service": "aliPublish publish %s %s %s" % (arch, pkgname, pkgver),
-                       "ttl": self._ttl,
-                       "metric": state == "critical" and 1 or 0 })
+    try:
+      self.client.send({ "host": self._currentHost,
+                         "state": state,
+                         "service": "aliPublish publish %s %s %s" % (arch, pkgname, pkgver),
+                         "ttl": self._ttl,
+                         "metric": state == "critical" and 1 or 0 })
+    except Exception as e:
+      error("Cannot send Riemann notification: %s" % e)
 
 class CvmfsServer(object):
 
