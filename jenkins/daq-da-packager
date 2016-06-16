@@ -1,0 +1,17 @@
+#!groovy
+node ("slc7_x86-64-light") {
+  stage "Check tag"
+  sh '''
+    echo stage 1
+  '''
+
+  stage "Build python distribution"
+  sh '''
+    echo stage 2
+  '''
+
+  stage "Upload python package"
+  sh '''
+    echo stage 3
+  '''
+}
