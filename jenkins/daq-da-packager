@@ -1,17 +1,18 @@
 #!groovy
-node ("slc7_x86-64-light") {
-  stage "Check tag"
-  sh '''
-    echo stage 1
-  '''
-
-  stage "Build python distribution"
-  sh '''
-    echo stage 2
-  '''
-
-  stage "Upload python package"
-  sh '''
-    echo stage 3
-  '''
+node ("$ARCHITECTURE-$MESOS_QUEUE_SIZE") {
+  stage "Building AliRoot for DA RPMs"
+  sh """
+    export ARCHITECTURE=$ARCHITECTURE
+    export ALIBOT_REPO=$ALIBOT_REPO
+    export ALIBUILD_REPO=$ALIBUILD_REPO
+    export ALIDIST_REPO=$ALIDIST_REPO
+    export ALIROOT_VERSION=$ALIROOT_VERSION
+    ALIBOT_BRANCH=\${ALIBOT_REPO##*:}
+    ALIBOT_REPO=\${ALIBOT_REPO%:*}
+    git clone https://github.com/\$ALIBOT_REPO -b \$ALIBOT_BRANCH
+    bash -ex ali-bot/daq-da-rpms.sh
+  """
 }
+//node("repo") {
+//  stage "Creating RPM repository"
+//}
