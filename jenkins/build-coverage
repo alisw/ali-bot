@@ -43,7 +43,7 @@ node ("scheduler") {
     )
 
     stage 'Process and commit results'
-    withEnv(["WORKSPACE=${workspace}") {
+    withEnv(["WORKSPACE=${workspace}"]) {
       sh '''
         alibuild/aliBuild --defaults coverage build AliRoot-test
 
