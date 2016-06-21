@@ -2,26 +2,20 @@
 node ("scheduler") {
 
   stage 'Secrets Setup'
-
-  withCredentials([[$class: 'StringBinding',
-                    credentialsId: 'alibuild-ssh-vault-token', variable: 'VAULT_TOKEN']]) {
-    withEnv(["VAULT_ADDR=${VAULT_ADDR}",
-             "VAULT_SKIP_VERIFY=1"]) {
-      retry (3) {
-        sh """
-        mkdir -p /root/.ssh
-        git config --global user.name ${BUILDER_USER}
-        git config --global user.email ${BUILDER_EMAIL}
-        [[ ! -f /root/.ssh/id_rsa ]] && vault read -field=ssh-key ${VAULT_SECRET_PATH} > /root/.ssh/id_rsa
-        [[ ! -f /root/.ssh/known_hosts ]] && vault read -field=ssh-known-hosts ${VAULT_SECRET_PATH} > /root/.ssh/known_hosts
-        echo >> /root/.ssh/known_hosts
-        chmod 750 /root/.ssh
-        chmod 400 /root/.ssh/id_rsa
-        """
-      }
+  withCredentials([[$class: 'FileBinding', credentialsId: '0dd617a6-6b27-4904-becc-51e4cd56eae8', variable: 'GIT_CREDS_FILE']]) {
+    withEnv(["BUILDER_USER=${BUILDER_USER}",
+             "BUILDER_EMAIL=${BUILDER_EMAIL}"
+      ]) {
+      sh '''
+        git credential-store --file ~/git-creds store < ${GIT_CREDS_FILE}
+        git config --global credential.helper "store --file ~/git-creds"
+        ls ~/git-creds
+        mkdir -p $HOME/.ssh
+        git config --replace-all --global user.name ${BUILDER_USER:-alibuild}
+        git config --replace-all --global user.email ${BUILDER_EMAIL:-alibuild@cern.ch}
+      '''
     }
   }
-
   stage 'Checkout repositories'
   def workspace = pwd()
   parallel (
