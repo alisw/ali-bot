@@ -19,6 +19,7 @@ services:
       - ./dummy-secrets/cert.pem:/etc/grid-security/hostcert.pem
       - ./dummy-secrets/key.pem:/etc/grid-security/hostkey.pem
     network_mode: host
+    command: sh -ex /run.sh
   slave:
     image: alisw/mesos-slave:0.27.2
     pid: host
@@ -40,6 +41,7 @@ services:
       MESOS_HOSTNAME: "192.168.99.100"
 #      MESOS_LAUNCHER: posix
     network_mode: host
+    command: sh -ex /run.sh
   riemann:
     image: alisw/riemann
     volumes:
@@ -117,16 +119,14 @@ services:
     environment:
       "ZOOKEEPER_ADDRESS": "zk://zookeeper:2181"
       "DEBUG1": "0"
-    networks:
-      - back
+    network_mode: host
   mesos-dns:
     image: alisw/mesos-dns:0.5.1
     environment:
       "MESOS_MASTER_ZK": "zookeeper:2181"
       "MESOS_DNS_RESOLVERS": "137.138.17.5"
       "MESOS_DNS_MASTERS": "master:5050"
-    networks:
-      - back
+    network_mode: host
   aurora-scheduler:
     image: alisw/aurora-scheduler:0.11.0
     privileged: true
