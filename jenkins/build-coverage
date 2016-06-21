@@ -43,17 +43,18 @@ node ("scheduler") {
     )
 
     stage 'Process and commit results'
-    sh """
-      export WORKSPACE="${workspace}"
-      alibuild/aliBuild --defaults coverage build AliRoot-test
+    withEnv(["WORKSPACE=${workspace}") {
+      sh '''
+        alibuild/aliBuild --defaults coverage build AliRoot-test
 
-      eval $(alibuild/alienv load AliRoot/latest)
-      lcov --capture --directory sw/osx_x86-64/profile-data --output-file coverage.info
-      genhtml coverage.info --output-directory aliphysics-coverage
+        eval $(alibuild/alienv load AliRoot/latest)
+        lcov --capture --directory sw/osx_x86-64/profile-data --output-file coverage.info
+        genhtml coverage.info --output-directory aliphysics-coverage
 
-      cd aliphysics-coverage
-      git add .
-      git commit -m 'Updated results.' || true
-      git push origin master
-    """
+        cd aliphysics-coverage
+        git add .
+        git commit -m 'Updated results.' || true
+        git push origin master
+      '''
+    }
 }
