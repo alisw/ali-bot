@@ -27,7 +27,7 @@ node ("scheduler") {
     checkout_aliphysics: {
       sh """
         rm -rf AliPhysics
-        time git clone --reference /build/mirror/aliroot http://git.cern.ch/pub/AliPhysics AliPhysics
+        time git clone --reference /build/mirror/aliphysics http://git.cern.ch/pub/AliPhysics AliPhysics
       """},
     checkout_results: {
       sh """
