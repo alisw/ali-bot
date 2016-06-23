@@ -87,6 +87,7 @@ def buildAny(architecture) {
 
 node {
   stage "Verify author"
+  throw new hudson.AbortException("Always fail")
   def power_users = ["ktf", "dberzano"]
   if (power_users.contains(env.CHANGE_AUTHOR)) {
     currentBuild.displayName = "Feedback required for ${env.BRANCH_NAME} from ${env.CHANGE_AUTHOR}"
