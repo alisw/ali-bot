@@ -90,6 +90,6 @@ node {
   def power_users = ["ktf", "dberzano"]
   if (power_users.contains(env.CHANGE_AUTHOR)) {
     currentBuild.displayName = "Testing ${env.BRANCH_NAME} from ${env.CHANGE_AUTHOR}"
-    echo "PR comes from power user ${env.CHANGE_AUTHOR} and it affects ${env.CHANGE_TARGET}"
+    echo "PR comes from power user ${env.CHANGE_AUTHOR} and it affects ${env.CHANGE_TARGET}!!!"
   }
 }
