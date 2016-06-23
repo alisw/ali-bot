@@ -13,13 +13,13 @@ Eval(){
    then
       eval $ret
    else
-      return 1 
+      return 1
    fi
 }
 
 os_release=/etc/os-release
 which lsb_release > /dev/null 2>&1
-if [[ $? == 0 ]] ; then 
+if [[ $? == 0 ]] ; then
   distro_name=`lsb_release -i | sed -e 's/.*://' -e 's/[ \t]*//g'`
   distro_release=`lsb_release -r | awk '{print $NF}'`
 elif [[ -r "$os_release" ]] ; then
@@ -119,7 +119,7 @@ esac
 
 modules=$cvmfsdir/$arch/Modules
 
-if [  ! -d $modules ] 
+if [  ! -d $modules ]
 then
    echo "Platform $distro_dir,$arch not supported"
    exit 1
@@ -133,16 +133,16 @@ function modulepath {
   local dir
   local colon
   local subdir
-  subdir=$1; shift 1 
+  subdir=$1; shift 1
   for dir in $MODULEPATH $*
   do
     if [ -d $dir/Modules/$subdir ]
-    then 
+    then
        printf "${colon}${dir}/Modules/${subdir}"
        colon=":"
     fi
   done
-  printf "\n" 
+  printf "\n"
 }
 
 function test_toolchain {
@@ -168,13 +168,28 @@ EOF
   rm -f ${TMPPREF}*
 }
 
+# Old modulefiles were not loading AliEn automatically as a dependency. For
+# those packages we must do it manually.
+function load_alien_if_missing {
+  local REQ_ALIEN="ROOT GEANT3 GEANT4 AliRoot AliPhysics"
+  if ! $moduleenv $modulecmd bash -t list 2>&1 | grep -q AliEn-Runtime; then
+    for PKG in $REQ_ALIEN; do
+      if $moduleenv $modulecmd bash -t list 2>&1 | grep -q ^$PKG; then
+        Eval $moduleenv $modulecmd bash load $alien$alien_version || return 1
+        break
+      fi
+    done
+  fi
+  return 0
+}
+
 export MODULEPATH=$(modulepath modulefiles $moduledirs)
 [ x$platform != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
 [ x$ALIENV_DEBUG == x1 ] && printf "MODULEPATH=$MODULEPATH\n" >&2
 
 export PATH=$PATH:$path
 
-if [  -d $modules/$version/$distro_dir/$distro_release ] 
+if [  -d $modules/$version/$distro_dir/$distro_release ]
 then
    moduleenv="env LD_LIBRARY_PATH=$modules/$version/$distro_dir/$distro_release/lib"
    modulecmd="$modules/$version/$distro_dir/$distro_release/bin/modulecmd"
@@ -188,7 +203,7 @@ then
       echo "Unknown distribution release: $distro_name $distro_release"
       exit 1
 fi
- 
+
 tclsh <<EOF >/dev/null 2>&1
 EOF
 
@@ -214,14 +229,10 @@ do
   case $1 in
      enter)
        shift 1
-       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'` 
+       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'`
        before=`printenv`
-       # Load AliEn only if no AliEn-Runtime is there
-       toload="$args"
-       ( Eval $moduleenv $modulecmd bash load $args || exit 1;
-         $moduleenv $modulecmd bash list 2>&1 | grep -q AliEn-Runtime ) || \
-         toload="$alien$alien_version $args"
-       Eval $moduleenv $modulecmd bash load $toload || exit 1
+       Eval $moduleenv $modulecmd bash load $args || exit 1
+       load_alien_if_missing || exit 1
        after=`printenv | grep -v LS_COLORS=`
        _LM_ENV=""
        for var in $after
@@ -243,13 +254,9 @@ do
        ;;
      setenv)
        shift 1
-       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'` 
-       # Load AliEn only if no AliEn-Runtime is there
-       toload="$args"
-       ( Eval $moduleenv $modulecmd bash load $args || exit 1;
-         $moduleenv $modulecmd bash list 2>&1 | grep -q AliEn-Runtime ) || \
-         toload="$alien$alien_version $args"
-       Eval $moduleenv $modulecmd bash load $toload || exit 1
+       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'`
+       Eval $moduleenv $modulecmd bash load $args || exit 1
+       load_alien_if_missing || exit 1
        [ x$ALIENV_DEBUG == x1 ] && test_toolchain
        shift 1
        ;;
@@ -259,13 +266,9 @@ do
        then
           echo $_LM_ENV
        fi
-       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'` 
-       # Load AliEn only if no AliEn-Runtime is there
-       toload="$args"
-       ( Eval $moduleenv $modulecmd bash load $args || exit 1;
-         $moduleenv $modulecmd bash list 2>&1 | grep -q AliEn-Runtime ) || \
-         toload="$alien$alien_version $args"
-       $moduleenv $modulecmd bash load $toload || exit 1
+       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'`
+       Eval $moduleenv $modulecmd bash load $args || exit 1
+       load_alien_if_missing || exit 1
        exit
        ;;
      -print)
@@ -280,8 +283,8 @@ do
        ;;
      -c)
        shift 1
-       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'` 
-       exec env PS1="[$args] \W > " bash -c "$*" 
+       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'`
+       exec env PS1="[$args] \W > " bash -c "$*"
        ;;
      -alien-version|--alien-version)
        shift 1
@@ -294,9 +297,9 @@ do
        ;;
      -alien-services|--alien-services)
        shift 1
-       alien_environment=`echo $1 | sed -e 's%,%; %g'` 
+       alien_environment=`echo $1 | sed -e 's%,%; %g'`
        eval $alien_environment
-       alien_services=`echo $2 | sed -e 's%,% %g'` 
+       alien_services=`echo $2 | sed -e 's%,% %g'`
        Eval $modulecmd bash load $alien$alien_version || exit 1
        mkdir -p $HOME/.alien
        echo $alien_environment > $HOME/.alien/Environment
@@ -306,10 +309,10 @@ do
      q|query)
        $modulecmd bash -t avail  2>&1 | grep -v : | awk -v org=$ALIEN_ORGANISATION -F/ '{printf("VO_%s@%s::%s\n",org,$1,$2)}'
        exit $?
-       ;; 
+       ;;
      *)
        $modulecmd bash $*
        exit
      ;;
     esac
-done  
+done
