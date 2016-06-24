@@ -1,6 +1,7 @@
 #!groovy
 
 def testOnArch(architecture) {
+  echo "Testing architecture ${architecture}"
   def testScript = '''
     # This is the build script. It is executed in bash.
     echo $SHELL
@@ -9,6 +10,7 @@ def testOnArch(architecture) {
     env
     ls -lR
   '''
+  echo "Testing architecture ${architecture}: ended"
   return { -> node("${architecture}-relval") {
                 dir ("alidist") { checkout scm }
                 sh testScript
