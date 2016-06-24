@@ -3,6 +3,7 @@
 def testOnArch(architecture) {
   def testScript = '''
     # Test scripts are executed with -e.
+    set -o pipefail
     parrot_run --mount=/cvmfs/alice.cern.ch/bin/alienv=$PWD/cvmfs/alienv \
                /cvmfs/alice.cern.ch/bin/alienv q | grep -i aliphysics | tail -n 10
   '''
