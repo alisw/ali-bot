@@ -33,6 +33,6 @@ node {
 
   stage "Test changes"
   withEnv (["CHANGE_AUTHOR=${env.CHANGE_AUTHOR}"]) {
-    testOnArch("slc6_x86-64")
+    testOnArch("slc6_x86-64").call()
   }
 }
