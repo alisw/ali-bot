@@ -1,95 +1,96 @@
 #!groovy
 
-def buildAny(architecture) {
-  def build_script = '''
-      # Make sure we have only one builder per directory
-      BUILD_DATE=$(echo 2015$(echo "$(date -u +%s) / (86400 * 3)" | bc))
-      WORKAREA=/build/workarea/$WORKAREA_PREFIX/$BUILD_DATE
-
-      CURRENT_SLAVE=unknown
-      while [[ "$CURRENT_SLAVE" != '' ]]; do
-        WORKAREA_INDEX=$((WORKAREA_INDEX+1))
-        CURRENT_SLAVE=$(cat $WORKAREA/$WORKAREA_INDEX/current_slave 2> /dev/null || true)
-        [[ "$CURRENT_SLAVE" == "$NODE_NAME" ]] && CURRENT_SLAVE=
-      done
-
-      mkdir -p $WORKAREA/$WORKAREA_INDEX
-      echo $NODE_NAME > $WORKAREA/$WORKAREA_INDEX/current_slave
-
-      (cd alidist && git show)
-      rm -fr alibuild
-      git clone https://github.com/alisw/alibuild
-
-      # Whenever we change a spec file, we rebuild it and then we
-      # rebuild AliRoot just to make sure we did not break anything.
-      case $CHANGE_TARGET in
-        null)
-          PKGS=AliPhysics
-        ;;
-        *)
-          PKGS=`cd alidist ; git diff --name-only origin/$CHANGE_TARGET | grep .sh | sed -e's|[.]sh$||'`
-        ;;
+def testAlienvOnArch(architecture) {
+  def testScript = '''
+    # Test scripts are executed with -e.
+    set -e
+    set -o pipefail
+    mkdir -p /cvmfs/.modulerc || true
+    [[ "$PARROT_ENABLED" != TRUE ]] && { parrot_run --mount=/cvmfs/alice.cern.ch/xbin/alienv=$PWD/ali-bot/cvmfs/alienv "$0" "$@"; exit $?; }
+    OLD_VER="AliPhysics/vAN-20150131"
+    NEW_VER="AliPhysics/vAN-20160622-1"
+    case $ARCHITECTURE in
+      slc6* ) PLATFORM=el6        ;;
+      slc7* ) PLATFORM=el7        ;;
+      ubt14*) PLATFORM=ubuntu1404 ;;
+    esac
+    PLATFORM=$PLATFORM-`uname -m`
+    printf "Running on architecture $ARCHITECTURE (platform detected: $PLATFORM)\n"
+    export PATH=/cvmfs/alice.cern.ch/bin:$PATH
+    [[ `which alienv` == /cvmfs/alice.cern.ch/bin/alienv ]]
+    printf "TEST: list AliPhysics packages\n"
+    alienv q | grep AliPhysics | tail -n5
+    function alienv_test() {
+      local METHOD=$1
+      local PACKAGE=$2
+      local COMMAND=$3
+      local OVERRIDE_ENV=$4
+      case $METHOD in
+        setenv)   env $OVERRIDE_ENV alienv setenv $PACKAGE -c "$COMMAND"                                                    ;;
+        printenv) ( eval `env $OVERRIDE_ENV alienv printenv $PACKAGE`; $COMMAND )                                           ;;
+        enter)    ( echo 'echo TEST=`'"$COMMAND"'`' | env $OVERRIDE_ENV alienv enter $PACKAGE | grep ^TEST= | cut -d= -f2-) ;;
       esac
-
-      for p in $PKGS; do
-        # Euristics to decide which kind of test we should run.
-        case $p in
-          # Packages which only touch rivet
-          yoda|rivet)
-            BUILD_TEST="$BUILD_TEST Rivet-test" ;;
-
-          # Packages which only touch O2
-          o2|fairroot|dds|zeromq|nanomsg|sodium|pythia|pythia6|lhapdf)
-            BUILD_TEST="$BUILD_TEST O2 " ;;
-
-          # Packages which are only for AliRoot
-          aliphysics|aliroot-test)
-            BUILD_TEST="$BUILD_TEST AliRoot-test" ;;
-
-          # Packages which are common between O2 and Rivet
-          python-modules|python|freetype|libpng|hepmc)
-            BUILD_TEST="$BUILD_TEST Rivet-test" ;; # FIXME: For the moment we test only Rivet
-
-          # Packages which are for AliRoot and O2
-          aliroot|geant4|geant4_vmc|geant3)
-            BUILD_TEST="$BUILD_TEST AliRoot-test" ;; # FIXME: For the moment we test only AliRoot
-
-          # Packages which are (will be) common for all of them
-          gcc-toolchain|root|cmake|zlib|alien-runtime|gsl|boost|cgal|fastjet)
-            BUILD_TEST="$BUILD_TEST AliRoot-test Rivet-test" ;;
-
-          # Packages which are standalone
-          *) BUILD_TEST="$BUILD_TEST $p" ;;
-        esac
+    }
+    printf "TEST: check that the legacy AliEn package can be loaded\n"
+    for METHOD in setenv printenv enter; do
+      [[ `alienv_test $METHOD AliEn "which aliensh"` == *'/AliEn/'* ]]
+    done
+    for OVERRIDE_PLATFORM in el6 el7 ubuntu1404; do
+      for METHOD in setenv printenv enter; do
+        for VER in $NEW_VER $OLD_VER; do
+          for TEST in cxx aliroot alien; do
+            case $TEST in
+              cxx)
+                printf "TEST: check g++ with $VER on $OVERRIDE_PLATFORM\n"
+                [[ $VER == $NEW_VER ]] && EXPECT="/cvmfs/alice.cern.ch/$OVERRIDE_PLATFORM" || EXPECT="/usr/"
+                [[ `alienv_test $METHOD $VER "which g++" ALIENV_OVERRIDE_PLATFORM=$OVERRIDE_PLATFORM` == "$EXPECT"* ]]
+                ;;
+              aliroot)
+                printf "TEST: check aliroot with $VER on $OVERRIDE_PLATFORM\n"
+                [[ `alienv_test $METHOD $VER "which aliroot" ALIENV_OVERRIDE_PLATFORM=$OVERRIDE_PLATFORM` == "/cvmfs/alice.cern.ch/"*"bin/aliroot" ]]
+                ;;
+              alien)
+                printf "TEST: check AliEn-Runtime with $VER on $OVERRIDE_PLATFORM\n"
+                [[ $VER == $NEW_VER ]] && EXPECT="/AliEn-Runtime/" || EXPECT="/AliEn/"
+                [[ `alienv_test $METHOD $VER "which aliensh" ALIENV_OVERRIDE_PLATFORM=$OVERRIDE_PLATFORM` == "/cvmfs/alice.cern.ch/"*"$EXPECT"* ]]
+                ;;
+            esac
+          done
+        done
       done
-
-      for p in `echo $BUILD_TEST | sort -u`; do
-        alibuild/aliBuild --work-dir $WORKAREA/$WORKAREA_INDEX                                 \
-                          --reference-sources /build/mirror                                    \
-                          --debug                                                              \
-                          --jobs 16                                                            \
-                          --disable DDS                                                        \
-                          --remote-store rsync://repo.marathon.mesos/store/${DO_UPLOAD:+::rw}  \
-                          -d build $p || BUILDERR=$?
-      done
-
-      rm -f $WORKAREA/$WORKAREA_INDEX/current_slave
-      if [ ! "X$BUILDERR" = X ]; then
-        exit $BUILDERR
-      fi
-    '''
-  return { -> node("${architecture}-large") {
-                dir ("alidist") { checkout scm }
-                sh build_script
+    done
+    printf "Test was successful.\n"
+  '''
+  return { -> node("${architecture}-relval") {
+                dir ("ali-bot") { checkout scm }
+                withEnv (["ARCHITECTURE=${architecture}"]) { sh testScript }
               }
   }
 }
 
 node {
   stage "Verify author"
-  def power_users = ["ktf", "dberzano"]
-  if (power_users.contains(env.CHANGE_AUTHOR)) {
-    currentBuild.displayName = "Testing ${env.BRANCH_NAME} from ${env.CHANGE_AUTHOR}"
-    echo "PR comes from power user ${env.CHANGE_AUTHOR} and it affects ${env.CHANGE_TARGET}"
+  def powerUsers = ["ktf", "dberzano"]
+  if (!powerUsers.contains(env.CHANGE_AUTHOR)) {
+    currentBuild.displayName = "Not testing ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
+    throw new hudson.AbortException("Pull request does not come from a valid user")
+  }
+
+  stage "Test changes"
+  dir ("ali-bot") { checkout scm }
+  sh '''
+    cd ali-bot
+    git diff --name-only origin/$CHANGE_TARGET > ../changed_files
+  '''
+  def chfiles = readFile("changed_files").tokenize("\n")
+  println "List of changed files: " + chfiles
+  if (chfiles.contains("cvmfs/alienv") || chfiles.contains("Jenkinsfile")) {
+    currentBuild.displayName = "Testing ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
+    withEnv (["CHANGE_TARGET=${env.CHANGE_TARGET}"]) {
+      testAlienvOnArch("slc6_x86-64").call()
+    }
+  }
+  else {
+    currentBuild.displayName = "Not checking ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
   }
 }
