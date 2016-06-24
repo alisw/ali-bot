@@ -9,7 +9,7 @@ def testOnArch(architecture) {
     env
     ls -lR
   '''
-  return { -> node("${architecture}-large") {
+  return { -> node("${architecture}-relval") {
                 dir ("alidist") { checkout scm }
                 sh testScript
               }
@@ -23,12 +23,14 @@ node {
     currentBuild.displayName = "Feedback required for ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
     input "Do you want to test it?"
     currentBuild.displayName = "Testing ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
-    withEnv (["CHANGE_AUTHOR=${env.CHANGE_AUTHOR}"]) {
-      testOnArch("slc6_x86-64")
-    }
   }
   else {
     currentBuild.displayName = "Not testing ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
     throw new hudson.AbortException("Pull request does not come from a valid user")
+  }
+
+  stage "Test changes"
+  withEnv (["CHANGE_AUTHOR=${env.CHANGE_AUTHOR}"]) {
+    testOnArch("slc6_x86-64")
   }
 }
