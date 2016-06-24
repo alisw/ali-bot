@@ -18,7 +18,7 @@ def testOnArch(architecture) {
   '''
   return { -> node("${architecture}-relval") {
                 dir ("ali-bot") { checkout scm }
-                sh testScript
+                withEnv (["ARCHITECTURE=${architecture}"]) { sh testScript }
               }
   }
 }
@@ -33,8 +33,7 @@ node {
 
   stage "Test changes"
   currentBuild.displayName = "Testing ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
-  withEnv (["CHANGE_TARGET=${env.CHANGE_TARGET}",
-           ]) {
+  withEnv (["CHANGE_TARGET=${env.CHANGE_TARGET}"]) {
     testOnArch("slc6_x86-64").call()
   }
 }
