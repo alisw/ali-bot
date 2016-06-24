@@ -6,7 +6,7 @@ def testOnArch(architecture) {
     set -o pipefail
     [[ "$PARROT_ENABLED" != TRUE ]] && { parrot_run --mount=/cvmfs/alice.cern.ch/xbin/alienv=$PWD/ali-bot/cvmfs/alienv "$0" "$@"; exit $?; }
     pushd ali-bot
-      git diff --name-only origin/$CHANGE_TARGET | grep -q '^cvmfs/alienv$' || { printf "No test to run, all OK."; exit 0; }
+      git diff --name-only origin/$CHANGE_TARGET | grep -qE '^(cvmfs/alienv|Jenkinsfile)$' || { printf "No test to run, all OK."; exit 0; }
     popd
     OLD_VER="AliPhysics/vAN-20150131"
     NEW_VER="AliPhysics/vAN-20160622-1"
