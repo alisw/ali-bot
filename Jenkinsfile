@@ -12,10 +12,11 @@ def testOnArch(architecture) {
     uname -a
     env
     ls -lR
+    parrot_run /cvmfs/alice.cern.ch/bin/alienv q | grep -i aliphysics | tail -n 10
   '''
   echo "Testing architecture ${architecture}: ended"
   return { -> node("${architecture}-relval") {
-                dir ("alidist") { checkout scm }
+                dir ("ali-bot") { checkout scm }
                 sh testScript
               }
   }
