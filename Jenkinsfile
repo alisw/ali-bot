@@ -22,8 +22,8 @@ node {
   stage "Verify author"
   def power_users = ["ktf", "dberzano"]
   if (power_users.contains(env.CHANGE_AUTHOR)) {
-    currentBuild.displayName = "Feedback required for ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
-    input "Do you want to test it?"
+    #currentBuild.displayName = "Feedback required for ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
+    #input "Do you want to test it?"
     currentBuild.displayName = "Testing ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
   }
   else {
