@@ -6,6 +6,9 @@ def testOnArch(architecture) {
     # This is the build script. It is executed in bash.
     echo $SHELL
     echo $CHANGE_AUTHOR
+    echo are shells executed with -e
+    false
+    echo apparently they are not.
     uname -a
     env
     ls -lR
