@@ -37,8 +37,8 @@ fi
 git fetch origin
 
 ERROR=0
-[ updateBranch IB/v5-08/next IB/master/root6 ] || ERROR=1
-[ updateBranch IB/master/root6 IB/v5-08/o2 ] || ERROR=1
-[ updateBranch IB/v5-06/prod IB/v5-06/next ] || ERROR=1
-[ updateBranch IB/v5-08/prod IB/v5-08/next ] || ERROR=1
+updateBranch IB/v5-08/next IB/master/root6 || ERROR=1
+updateBranch IB/master/root6 IB/v5-08/o2 || ERROR=1
+updateBranch IB/v5-06/prod IB/v5-06/next || ERROR=1
+updateBranch IB/v5-08/prod IB/v5-08/next || ERROR=1
 exit $ERROR
