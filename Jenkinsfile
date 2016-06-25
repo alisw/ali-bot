@@ -6,7 +6,7 @@ def testAlienvOnArch(architecture) {
     set -e
     set -o pipefail
     mkdir -p /cvmfs/.modulerc || true
-    [[ "$PARROT_ENABLED" != TRUE ]] && { parrot_run --mount=/cvmfs/alice.cern.ch/xbin/alienv=$PWD/ali-bot/cvmfs/alienv "$0" "$@"; exit $?; }
+    [[ "$PARROT_ENABLED" != TRUE ]] && { parrot_run --mount=/cvmfs/alice.cern.ch/bin/alienv=$PWD/ali-bot/cvmfs/alienv "$0" "$@"; exit $?; }
     OLD_VER="AliPhysics/vAN-20150131"
     NEW_VER="AliPhysics/vAN-20160622-1"
     case $ARCHITECTURE in
@@ -69,28 +69,34 @@ def testAlienvOnArch(architecture) {
 }
 
 node {
-  stage "Verify author"
-  def powerUsers = ["ktf", "dberzano"]
-  if (!powerUsers.contains(env.CHANGE_AUTHOR)) {
-    currentBuild.displayName = "Not testing ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
-    throw new hudson.AbortException("Pull request does not come from a valid user")
-  }
-
-  stage "Test changes"
+  stage "Check changeset"
   dir ("ali-bot") { checkout scm }
-  sh '''
-    cd ali-bot
-    git diff --name-only origin/$CHANGE_TARGET > ../changed_files
-  '''
-  def chfiles = readFile("changed_files").tokenize("\n")
+  def chfiles = []
+  if (env.CHANGE_TARGET != null) {
+    withEnv (["CHANGE_TARGET=${env.CHANGE_TARGET}"]) {
+      sh '''
+        cd ali-bot
+        git diff --name-only origin/$CHANGE_TARGET > ../changed_files
+      '''
+    }
+    chfiles = readFile("changed_files").tokenize("\n")
+  }
   println "List of changed files: " + chfiles
   if (chfiles.contains("cvmfs/alienv") || chfiles.contains("Jenkinsfile")) {
-    currentBuild.displayName = "Testing ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
-    withEnv (["CHANGE_TARGET=${env.CHANGE_TARGET}"]) {
-      testAlienvOnArch("slc6_x86-64").call()
+
+    stage "Verify author"
+    def powerUsers = ["ktf", "dberzano"]
+    if (!powerUsers.contains(env.CHANGE_AUTHOR)) {
+      currentBuild.displayName = "Feedback required for ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
+      input "Change comes from user ${env.CHANGE_AUTHOR}, do you want to test it?"
     }
+
+    stage "Test changes"
+    currentBuild.displayName = "Testing ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
+    testAlienvOnArch("slc6_x86-64").call()
+
   }
   else {
-    currentBuild.displayName = "Not checking ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
+    currentBuild.displayName = "Check unneeded for ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
   }
 }
