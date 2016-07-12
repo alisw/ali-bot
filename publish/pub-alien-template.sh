@@ -1,11 +1,19 @@
 #!/bin/bash -ex
 set -o pipefail
+SSLVERIFY=%(http_ssl_verify)d
+CONNTIMEOUT=%(conn_timeout_s)d
+CONNRETRY=%(conn_retries)d
+CONNRETRYDELAY=%(conn_dethrottle_s)d
+[[ $SSLVERIFY == 0 ]] && SSLVERIFY=-k || SSLVERIFY=
 TMPDIR=$(mktemp -d /tmp/aliPublish.XXXXX)
 TORDIR=/var/packages/download
 TORNOTIFY=/var/packages/NEWFILE
 mkdir -p "$TMPDIR"
 cd "$TMPDIR"
-curl --silent -L "%(url)s" | tar --strip-components=3 -xzf -
+curl -Lsf $SSLVERIFY                \
+     --connect-timeout $CONNTIMEOUT \
+     --retry-delay $CONNRETRYDELAY  \
+     --retry $CONNRETRY "%(url)s"   | tar --strip-components=3 -xzf -
 TAR="$(echo "%(package)s"|tr '[:upper:]' '[:lower:]')_%(version)s.%(arch)s.tar.gz"
 [[ -e "%(version)s/etc/modulefiles/%(package)s" ]]
 tar czf "$TAR" "%(version)s/"
