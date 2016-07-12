@@ -155,6 +155,9 @@ class RiemannPkgNotify(object):
     except Exception as e:
       error("Cannot send Riemann notification: %s" % e)
 
+class PublishException(Exception):
+  pass
+
 class CvmfsServer(object):
 
   def __init__(self, repository, modulefileTpl, pkgdirTpl, publishScriptTpl,
@@ -284,6 +287,9 @@ class AliEnPackMan(object):
         if not pkg in self._packs:
           self._packs[pkg] = {}
         self._packs[pkg].update({ver: []})
+
+    if not self._packs:
+      raise PublishException("PackMan: could not get list of packages from AliEn this time")
 
     if not arch in self._cachedArchs:
       for line in grabOutput([ "alien", "-exec", "find", "/alice/packages", arch ])[1].split("\n"):
