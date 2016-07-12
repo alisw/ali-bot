@@ -8,9 +8,17 @@ REVISION=${FULLVER##*-}
 FULLARCH="%(arch)s"
 FLAVOUR=${FULLARCH%%.*}
 ARCHITECTURE=${FULLARCH##*.}
+SSLVERIFY=%(http_ssl_verify)d
+CONNTIMEOUT=%(conn_timeout_s)d
+CONNRETRY=%(conn_retries)d
+CONNRETRYDELAY=%(conn_dethrottle_s)d
+[[ $SSLVERIFY == 0 ]] && SSLVERIFY=-k || SSLVERIFY=
 which fpm
 cd $TMPDIR
-curl --silent -L "%(url)s" | tar --strip-components=2 -xzf -
+curl -Lsf $SSLVERIFY                \
+     --connect-timeout $CONNTIMEOUT \
+     --retry-delay $CONNRETRYDELAY  \
+     --retry $CONNRETRY "%(url)s"   | tar --strip-components=2 -xzf -
 [[ -e "%(package)s/%(version)s/etc/modulefiles/%(package)s" ]]
 DEPS=()
 DEPS+=("--depends" "environment-modules")

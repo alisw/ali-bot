@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 from commands import getstatusoutput
 import logging, sys, json, yaml, requests
 from requests import RequestException
+from time import sleep, time
 from yaml import YAMLError
 from logging import debug, error, info
 from re import search, escape
@@ -79,14 +80,45 @@ def execute(command):
   return exitCode
 
 def grabOutput(command):
+  debug("Executing command: " + " ".join(command))
   popen = Popen(command, shell=False, stdout=PIPE, stderr=STDOUT)
-  return (popen.returncode, popen.communicate()[0])
+  out = popen.communicate()[0]
+  return (popen.returncode, out)
 
-def jget(url):
-  try:
-    return requests.get(url).json()
-  except (RequestException, ValueError) as e:
-    error(format("Getting %(url)s gave %(msg)s", url=url, msg=str(e)))
+class JGet(object):
+  def __init__(self, http_ssl_verify, conn_timeout_s, conn_retries, conn_dethrottle_s):
+    self.http_ssl_verify   = http_ssl_verify
+    self.conn_timeout_s    = conn_timeout_s
+    self.conn_retries      = conn_retries
+    self.conn_dethrottle_s = conn_dethrottle_s
+    self.last_ts           = time()
+    self.count_req         = 0
+    self.count_req_retries = 0
+  def __call__(self, url):
+    self.count_req += 1
+    dethrottle = self.conn_dethrottle_s
+    for i in range(0,self.conn_retries+1):
+      pause_s = max(dethrottle-(time()-self.last_ts), 0)
+      debug(format("Dethrottling connection to %(url)s: pausing %(pause).2f second(s)",
+                   url=url, pause=pause_s))
+      sleep(pause_s)
+      try:
+        self.count_req_retries += 1
+        j = requests.get(url,
+                         verify=self.http_ssl_verify,
+                         timeout=self.conn_timeout_s).json()
+      except ValueError:
+        j = {}
+      except RequestException as e:
+        error(format("Error getting %(url)s, %(att)d attempt(s) left: %(msg)s",
+                     url=url,
+                     att=self.conn_retries-i,
+                     msg=str(e)))
+        dethrottle = 2*dethrottle
+        j = None
+      self.last_ts = time()
+      if j is not None:
+        return j
     return {}
 
 class RiemannPkgNotify(object):
@@ -125,20 +157,25 @@ class RiemannPkgNotify(object):
 
 class CvmfsServer(object):
 
-  def __init__(self, repository, modulefileTpl, pkgdirTpl, publishScriptTpl, dryRun=False):
+  def __init__(self, repository, modulefileTpl, pkgdirTpl, publishScriptTpl,
+                     connParams, dryRun=False):
+
     self._inCvmfsTransaction = False
-    self._repository = repository
-    self._modulefileTpl = modulefileTpl
-    self._pkgdirTpl = pkgdirTpl
-    self._publishScriptTpl = publishScriptTpl
-    self._dryRun = dryRun
-    self._countChanges = 0
+    self._repository         = repository
+    self._modulefileTpl      = modulefileTpl
+    self._pkgdirTpl          = pkgdirTpl
+    self._publishScriptTpl   = publishScriptTpl
+    self._connParams         = connParams
+    self._dryRun             = dryRun
+    self._countChanges       = 0
 
   def _kw(self, url, arch, pkgName, pkgVer):
     kw =  { "url": url, "package": pkgName, "version": pkgVer, "repo": self._repository,
             "arch": arch }
     kw.update({ "pkgdir": format(self._pkgdirTpl, **kw) })
     kw.update({ "modulefile": format(self._modulefileTpl, **kw) })
+    kw.update(self._connParams)
+    kw["http_ssl_verify"] = 1 if kw["http_ssl_verify"] else 0
     return kw
 
   def installed(self, arch, pkgName, pkgVer):
@@ -219,14 +256,17 @@ class CvmfsServer(object):
 
 class AliEnPackMan(object):
 
-  def __init__(self, publishScriptTpl, dryRun=False):
+  def __init__(self, publishScriptTpl, connParams, dryRun=False):
     self._dryRun = dryRun
     self._publishScriptTpl = publishScriptTpl
     self._packs = None
+    self._connParams = connParams
     self._cachedArchs = []
 
   def _kw(self, url, arch, pkgName, pkgVer, deps):
     kw =  { "url": url, "package": pkgName, "version": pkgVer, "arch": arch, "dependencies": deps }
+    kw.update(self._connParams)
+    kw["http_ssl_verify"] = 1 if kw["http_ssl_verify"] else 0
     return kw
 
   def installed(self, arch, pkgName, pkgVer):
@@ -281,16 +321,19 @@ class AliEnPackMan(object):
 
 class RPM(object):
 
-  def __init__(self, repoDir, publishScriptTpl, dryRun=False):
+  def __init__(self, repoDir, publishScriptTpl, connParams, dryRun=False):
     self._dryRun = dryRun
     self._repoDir = repoDir
     self._publishScriptTpl = publishScriptTpl
     self._countChanges = 0
+    self._connParams = connParams
     self._archs = []
 
   def _kw(self, url, arch, pkgName, pkgVer, workDir=None, deps=None):
     kw =  { "url": url, "package": pkgName, "version": pkgVer, "arch": arch, "dependencies": deps,
             "repodir": self._repoDir+"/"+arch, "workdir": workDir }
+    kw.update(self._connParams)
+    kw["http_ssl_verify"] = 1 if kw["http_ssl_verify"] else 0
     kw.update({ "rpm": format("alisw-%(package)s+%(version)s-1-1.%(arch)s.rpm", **kw) })
     return kw
 
@@ -349,17 +392,17 @@ def nameVerFromTar(tar, arch, validPacks):
   return None
 
 def sync(pub, architectures, baseUrl, rules, includeFirst, autoIncludeDeps,
-         notifEmail, riemann, dryRun):
+         notifEmail, riemann, dryRun, jget):
 
   newPackages = {}
 
   # Template URLs
-  packNamesUrlTpl = "%(baseUrl)s/%(arch)s/dist-direct"
-  distUrlTpl = "%(baseUrl)s/%(arch)s/dist/%(pack)s/%(pack)s-%(ver)s"
-  distDirectUrlTpl = "%(baseUrl)s/%(arch)s/dist-direct/%(pack)s/%(pack)s-%(ver)s"
-  distRuntimeUrlTpl = "%(baseUrl)s/%(arch)s/dist-runtime/%(pack)s/%(pack)s-%(ver)s"
-  verUrlTpl = "%(baseUrl)s/%(arch)s/dist-direct/%(pack)s"
-  getPackUrlTpl = distDirectUrlTpl + "/%(pack)s-%(ver)s.%(arch)s.tar.gz"
+  packNamesUrlTpl   = "%(baseUrl)s/%(arch)s/dist-direct/"
+  distUrlTpl        = "%(baseUrl)s/%(arch)s/dist/%(pack)s/%(pack)s-%(ver)s/"
+  distDirectUrlTpl  = "%(baseUrl)s/%(arch)s/dist-direct/%(pack)s/%(pack)s-%(ver)s/"
+  distRuntimeUrlTpl = "%(baseUrl)s/%(arch)s/dist-runtime/%(pack)s/%(pack)s-%(ver)s/"
+  verUrlTpl         = "%(baseUrl)s/%(arch)s/dist-direct/%(pack)s/"
+  getPackUrlTpl     = distDirectUrlTpl + "/%(pack)s-%(ver)s.%(arch)s.tar.gz"
 
   # Prepare the list of packages to install
   for arch in architectures:
@@ -379,6 +422,10 @@ def sync(pub, architectures, baseUrl, rules, includeFirst, autoIncludeDeps,
 
     # Get versions for all valid packages and filter them according to the rules
     for pkgName in distPackages:
+      if includeFirst and pkgName not in rules["include"][arch]:
+        continue
+      if not includeFirst and rules["exclude"][arch].get(pkgName) == True:
+        continue
       verUrl = format(verUrlTpl,
                       baseUrl=baseUrl, arch=arch, pack=pkgName)
       debug(format("%(arch)s / %(pack)s: listing versions under %(url)s",
@@ -601,7 +648,7 @@ def hostport(s, defaultPort):
   host = host[0]
   return host,port
 
-def mesos_resolve(host, dns):
+def mesos_resolve(host, dns, jget):
   for d in sorted(dns, key=lambda k: random()):
     ips = [ x["ip"] for x in jget(format("http://%(dns)s/v1/hosts/%(host)s", dns=d, host=host))
                     if x.get("ip", None) ]
@@ -626,7 +673,7 @@ def main():
   parser.add_argument("--dry-run", "-n", dest="dryRun", action="store_true", default=False,
                       help="Do not write or publish anything")
   args = parser.parse_args()
-  
+
   logger = logging.getLogger()
   loggerHandler = logging.StreamHandler()
   logger.addHandler(loggerHandler)
@@ -652,15 +699,24 @@ def main():
   if conf is None: conf = {}
   if conf.get("include", None) is None: conf["include"] = {}
   if conf.get("exclude", None) is None: conf["exclude"] = {}
+  conf["http_ssl_verify"]   = conf.get("http_ssl_verify"  , True)
+  conf["conn_timeout_s"]    = conf.get("conn_timeout_s"   , 6.05)
+  conf["conn_retries"]      = conf.get("conn_retries"     , 0)
+  conf["conn_dethrottle_s"] = conf.get("conn_dethrottle_s", 0)
 
   doExit = False
 
   conf["mesos_dns"] = [ ":".join(map(str, hostport(x, 8123))) for x in conf.get("mesos_dns", []) ]
   conf["riemann_host"],conf["riemann_port"] = hostport(conf.get("riemann_host", ""), 5555)
 
+  # Connection handler
+  connParams = dict((k, conf[k]) for k in [ "http_ssl_verify", "conn_timeout_s",
+                                            "conn_retries", "conn_dethrottle_s" ])
+  jget = JGet(**connParams)
+
   # Resolve Riemann name via Mesos
   if conf["riemann_host"].endswith(".mesos") and conf["mesos_dns"]:
-    conf["riemann_host"] = choice(mesos_resolve(conf["riemann_host"], conf["mesos_dns"]))
+    conf["riemann_host"] = choice(mesos_resolve(conf["riemann_host"], conf["mesos_dns"], jget))
 
   if not isinstance(conf.get("architectures", None), dict):
     error("architectures must be a dict of dicts")
@@ -676,13 +732,16 @@ def main():
   if not isinstance(conf["notification_email"], dict):
     error("notification_email must be a dict of dicts")
     doExit = True
+  if not isinstance(conf["http_ssl_verify"], bool):
+    error("http_ssl_verify must be a bool")
+    doExit = True
 
   if doExit: exit(1)
 
   # Resolve base_url name via Mesos
   us = urlsplit(conf["base_url"])
   if us.netloc.endswith(".mesos") and conf["mesos_dns"]:
-    us = us._replace( netloc=choice(mesos_resolve(us.netloc, conf["mesos_dns"])) )
+    us = us._replace( netloc=choice(mesos_resolve(us.netloc, conf["mesos_dns"], jget)) )
     conf["base_url"] = urlunsplit(us)
 
   debug("Configuration: " + json.dumps(conf, indent=2))
@@ -721,10 +780,12 @@ def main():
                         modulefileTpl=conf["cvmfs_modulefile"],
                         pkgdirTpl=conf["cvmfs_package_dir"],
                         publishScriptTpl=open(progDir+"/pub-cvmfs-template.sh").read(),
+                        connParams=connParams,
                         dryRun=args.dryRun)
     elif args.action == "sync-alien":
       archKey = "AliEn"
       pub = AliEnPackMan(publishScriptTpl=open(progDir+"/pub-alien-template.sh").read(),
+                         connParams=connParams,
                          dryRun=args.dryRun)
     else:
       if not isinstance(conf.get("rpm_repo_dir", None), basestring):
@@ -733,6 +794,7 @@ def main():
       archKey = "RPM"
       pub = RPM(repoDir=conf["rpm_repo_dir"],
                 publishScriptTpl=open(progDir+"/pub-rpms-template.sh").read(),
+                connParams=connParams,
                 dryRun=args.dryRun)
     if args.abort:
       pub.abort(force=True)
@@ -743,15 +805,19 @@ def main():
     debug("Architecture names mappings: %s" % json.dumps(architectures, indent=2))
     riemann = None if args.dryRun \
               else RiemannPkgNotify(conf["riemann_host"], conf["riemann_port"])
-    sync(pub=pub,
-         architectures=architectures,
-         baseUrl=conf["base_url"],
-         rules=rules,
-         includeFirst=includeFirst,
-         autoIncludeDeps=conf["auto_include_deps"],
-         notifEmail=conf["notification_email"],
-         riemann=riemann,
-         dryRun=args.dryRun) and sys.exit(0) or sys.exit(1)
+    r = sync(pub=pub,
+             architectures=architectures,
+             baseUrl=conf["base_url"],
+             rules=rules,
+             includeFirst=includeFirst,
+             autoIncludeDeps=conf["auto_include_deps"],
+             notifEmail=conf["notification_email"],
+             riemann=riemann,
+             dryRun=args.dryRun,
+             jget=jget)
+    debug("Made %d unique HTTP requests (%d including retries)" % \
+          (jget.count_req, jget.count_req_retries))
+    sys.exit(0 if r else 1)
   elif args.action == "test-rules":
     if not args.pkgName or not args.pkgVer or not args.pkgArch:
       error("Please specify a package name, version and architecture")
