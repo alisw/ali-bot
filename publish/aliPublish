@@ -8,8 +8,8 @@ from time import sleep, time
 from yaml import YAMLError
 from logging import debug, error, info
 from re import search, escape
-from os.path import isdir, isfile, realpath, dirname
-from os import chmod, remove, chdir, getcwd
+from os.path import isdir, isfile, realpath, dirname, getmtime
+from os import chmod, remove, chdir, getcwd, getpid, kill
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, mkdtemp
 from subprocess import Popen, PIPE, STDOUT
@@ -678,6 +678,8 @@ def main():
                       help="Do not send any notification (ignore configuration)")
   parser.add_argument("--dry-run", "-n", dest="dryRun", action="store_true", default=False,
                       help="Do not write or publish anything")
+  parser.add_argument("--pidfile", "-p", dest="pidFile", default=None,
+                      help="Write PID to this file and do not run if already running")
   args = parser.parse_args()
 
   logger = logging.getLogger()
@@ -709,6 +711,7 @@ def main():
   conf["conn_timeout_s"]    = conf.get("conn_timeout_s"   , 6.05)
   conf["conn_retries"]      = conf.get("conn_retries"     , 0)
   conf["conn_dethrottle_s"] = conf.get("conn_dethrottle_s", 0)
+  conf["kill_after_s"]      = conf.get("kill_after_s"     , 3600)
 
   doExit = False
 
@@ -770,6 +773,26 @@ def main():
 
   if args.action in [ "sync-cvmfs", "sync-alien", "sync-rpms" ]:
     chdir("/")
+    if args.pidFile:
+      try:
+        otherPid = int(open(args.pidFile, "r").read().strip())
+        kill(otherPid, 0)
+        runningFor = time() - getmtime(args.pidFile)
+        if runningFor > conf["kill_after_s"]:
+          kill(otherPid, 9)
+          error("aliPublish with PID %d in overtime (%ds): killed" % (otherPid, runningFor))
+          otherPid = 0
+      except (IOError, OSError, ValueError):
+        otherPid = 0
+      if otherPid:
+        error("aliPublish already running with PID %d for %ds" % (otherPid, runningFor))
+        sys.exit(1)
+      try:
+        with open(args.pidFile, "w") as f:
+          f.write(str(getpid()))
+      except IOError as e:
+        error("Cannot write pidfile %s, aborting" % args.pidFile)
+        sys.exit(1)
     if args.action == "sync-cvmfs":
       if not isinstance(conf.get("cvmfs_repository", None), basestring):
         error("cvmfs_repository must be a string")

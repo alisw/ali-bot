@@ -42,10 +42,11 @@ popd
 ln -nfs $(basename $LOG.error) log/latest
 ( cd $DEST/publish
   echo "Running version $(git rev-parse HEAD)"
-  ./aliPublish --debug \
-               ${DRYRUN:+--dry-run} \
+  ./aliPublish --debug                        \
+               ${DRYRUN:+--dry-run}           \
                ${NO_NOTIF:+--no-notification} \
-               ${CONF:+--config "$CONF"} \
+               ${CONF:+--config "$CONF"}      \
+               --pidfile /tmp/aliPublish.pid  \
                $CMD ) 2>&1 | tee -a $LOG.error
 mv -v $LOG.error $LOG
 ln -nfs $(basename $LOG) log/latest
