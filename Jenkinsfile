@@ -68,6 +68,21 @@ def testAlienvOnArch(architecture) {
   }
 }
 
+def testPublish() {
+  def testScript = '''
+    set -e
+    set -x
+    cd ali-bot/publish
+    [[ -e test.yaml ]] || { echo "No test.yaml: not testing."; exit 0; }
+    ./aliPublish test-rules --test-conf test.yaml
+  '''
+  return { -> node("slc7_x86-64-large") {
+                dir ("ali-bot") { checkout scm }
+                sh testScript
+              }
+  }
+}
+
 node {
   stage "Check changeset"
   dir ("ali-bot") { checkout scm }
@@ -82,7 +97,24 @@ node {
     chfiles = readFile("changed_files").tokenize("\n")
   }
   println "List of changed files: " + chfiles
-  if (chfiles.contains("cvmfs/alienv") || chfiles.contains("Jenkinsfile")) {
+  def listAlienv  = [ "Jenkinsfile",
+                      "cvmfs/alienv" ]
+  def listPublish = [ "publish/aliPublish",
+                      "publish/aliPublish.conf",
+                      "publish/test.yaml" ]
+  def jobs = [:]
+  for (String f : listAlienv) {
+    if (chfiles.contains(f)) {
+      jobs << [ "alienv": testAlienvOnArch("slc6_x86-64") ]
+    }
+  }
+  for (String f : listPublish) {
+    if (chfiles.contains(f)) {
+      jobs << [ "publish": testPublish() ]
+    }
+  }
+
+  if (jobs.size() > 0) {
 
     stage "Verify author"
     def powerUsers = ["ktf", "dberzano"]
@@ -93,7 +125,7 @@ node {
 
     stage "Test changes"
     currentBuild.displayName = "Testing ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
-    testAlienvOnArch("slc6_x86-64").call()
+    parallel(jobs)
 
   }
   else {
