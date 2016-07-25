@@ -668,6 +668,7 @@ def main():
   parser.add_argument("--pkgname", dest="pkgName")
   parser.add_argument("--pkgver", dest="pkgVer")
   parser.add_argument("--pkgarch", dest="pkgArch")
+  parser.add_argument("--test-conf", dest="testConf")
   parser.add_argument("--config", "-c", dest="configFile", default="aliPublish.conf",
                       help="Configuration file")
   parser.add_argument("--debug", "-d", dest="debug", action="store_true", default=False,
@@ -848,17 +849,33 @@ def main():
           (jget.count_req, jget.count_req_retries))
     sys.exit(0 if r else 1)
   elif args.action == "test-rules":
-    if not args.pkgName or not args.pkgVer or not args.pkgArch:
-      error("Please specify a package name, version and architecture")
+    testRules = {}
+    if args.testConf:
+      try:
+        testRules = yaml.safe_load(open(args.testConf).read())
+      except (IOError, YAMLError) as e:
+        error("Cannot open rules to test: %s" % e)
+        sys.exit(1)
+    if not testRules and not (args.pkgName and args.pkgVer and args.pkgArch):
+      error("No rules to test. Please specify a package name, version and architecture")
       sys.exit(1)
-    matches = applyFilter(args.pkgVer,
-                          rules["include"].get(args.pkgArch, {}).get(args.pkgName, None),
-                          rules["exclude"].get(args.pkgArch, {}).get(args.pkgName, None),
-                          includeFirst)
-    info(format(matches and "%(package)s version %(version)s matches filters"
-                        or "%(package)s version %(version)s does NOT match filters",
-                package=args.pkgName, version=args.pkgVer))
-    sys.exit(not matches)
+    if not testRules:
+      testRules = { args.pkgArch: { args.pkgName: { args.pkgVer: True } } }
+    for arch in testRules:
+      for pkg in testRules[arch]:
+        for ver in testRules[arch][pkg]:
+          match = applyFilter(ver,
+                              rules["include"].get(arch, {}).get(pkg, None),
+                              rules["exclude"].get(arch, {}).get(pkg, None),
+                              includeFirst)
+          msg = format(match and "%(arch)s: %(pkg)s ver %(ver)s matches filters"
+                             or "%(arch)s: %(pkg)s ver %(ver)s does NOT match filters",
+                       arch=arch, pkg=pkg, ver=ver)
+          if match != testRules[arch][pkg][ver]:
+            error(msg)
+            sys.exit(1)
+          info(msg)
+    sys.exit(0)
   else:
     error("Wrong action, use: sync-cvmfs, sync-alien, sync-rpms, test-rules")
     sys.exit(1)
