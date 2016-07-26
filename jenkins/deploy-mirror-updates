@@ -1,49 +1,17 @@
-node ("master") {
+node("master") {
+   stage 'Clone ansible playbook'
+    git changelog: false,
+        credentialsId: '48961768-72d9-42d4-86c0-99893f92c296',
+        poll: false,
+        url: 'ssh://git@gitlab.cern.ch:7999/ALICEDevOps/ali-marathon.git'
 
-  stage "Setup secrets"
-  currentBuild.displayName = "Setup secrets"
-  withCredentials([[$class: 'FileBinding', credentialsId: '0dd617a6-6b27-4904-becc-51e4cd56eae8', variable: 'GIT_CREDS_FILE']]) {
-    withEnv(["BUILDER_USER=${BUILDER_USER}",
-             "BUILDER_EMAIL=${BUILDER_EMAIL}"
-      ]) {
-      sh '''
-        git credential-store --file ~/git-creds store < ${GIT_CREDS_FILE}
-      '''
-
-      sh '''
-        git config --global credential.helper "store --file ~/git-creds"
-        ls ~/git-creds
-        mkdir -p $HOME/.ssh
-        git config --replace-all --global user.name ${BUILDER_USER}
-        git config --replace-all --global user.email ${BUILDER_EMAIL}
-      '''
-    }
-  }
-
-  stage "Get Configs"
-  currentBuild.displayName = "Checkout ${REPO_URL}"
-  withEnv (["REPO_URL=${REPO_URL}"]) {
-    sh '''
-      git config --global credential.helper "store --file ~/git-creds"
-      rm -fr config
-      git clone $REPO_URL config
-    '''
-  }
-
-  stage "Update mirrors on whole cluster"
-  currentBuild.displayName = "Update mirrors"
-  withCredentials([[$class: 'FileBinding', credentialsId: 'ID_RSA_ALIBUILD', variable: 'ID_RSA_ALIBUILD']]) {
-    dir("config/ansible_config") {
-      retry (3) {
-        timeout(600) {
-          sh '''
-            export ANSIBLE_HOST_KEY_CHECKING=False
-            chmod 700 ${ID_RSA_ALIBUILD}
-            ansible-playbook -u root -i hosts -l mesos-slaves,mesos-ubuntu mirror-repos.yaml --private-key ${ID_RSA_ALIBUILD}
-          '''
-        }
-      }
-    }
-  }
-  currentBuild.displayName = "Mirroring done"
+   stage 'Do mirroring'
+   wrap([$class: 'AnsiColorBuildWrapper', colorMapName: "xterm"]) {
+     ansiblePlaybook colorized: true,
+                     credentialsId: 'ALIBUILD_SSH_KEY',
+                     inventory: 'ansible_config/hosts',
+                     limit: 'mesos-slaves',
+                     playbook: 'ansible_config/mirror-repos.yaml',
+                     sudoUser: null
+   }
 }
