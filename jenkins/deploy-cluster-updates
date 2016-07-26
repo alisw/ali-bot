@@ -1,81 +1,47 @@
 node ("master") {
-
-  stage "Setup secrets"
-  currentBuild.displayName = "Setup secrets"
-  withCredentials([[$class: 'FileBinding', credentialsId: '0dd617a6-6b27-4904-becc-51e4cd56eae8', variable: 'GIT_CREDS_FILE']]) {
-    withEnv(["BUILDER_USER=${BUILDER_USER}",
-             "BUILDER_EMAIL=${BUILDER_EMAIL}"
-      ]) {
-      sh '''
-        git credential-store --file ~/git-creds store < ${GIT_CREDS_FILE}
-      '''
-
-      sh '''
-        git config --global credential.helper "store --file ~/git-creds"
-        ls ~/git-creds
-        mkdir -p $HOME/.ssh
-        git config --replace-all --global user.name ${BUILDER_USER}
-        git config --replace-all --global user.email ${BUILDER_EMAIL}
-      '''
+  stage "Get configuration"
+  retry (3) {
+    timeout(600) {
+      git changelog: false,
+          credentialsId: '48961768-72d9-42d4-86c0-99893f92c296',
+          poll: false,
+          url: 'ssh://git@gitlab.cern.ch:7999/ALICEDevOps/ali-marathon.git'
     }
   }
 
-  stage "Get Configs"
-  currentBuild.displayName = "Checkout ${REPO_URL}"
-  withEnv (["REPO_URL=${REPO_URL}"]) {
-    sh '''
-      git config --global credential.helper "store --file ~/git-creds"
-      rm -fr config
-      git clone $REPO_URL config
-    '''
-  }
-
   stage "Deploy mesos slaves"
-  currentBuild.displayName = "Deploy OpenStack slaves"
-  withCredentials([[$class: 'FileBinding', credentialsId: 'ID_RSA_ALIBUILD', variable: 'ID_RSA_ALIBUILD']]) {
-    dir("config/ansible_config") {
-      retry (3) {
-        timeout(600) {
-          sh '''
-            export ANSIBLE_HOST_KEY_CHECKING=False
-            chmod 700 ${ID_RSA_ALIBUILD}
-            ansible-playbook -u root -i hosts -l mesos-slaves mesos-openstack.yaml --private-key ${ID_RSA_ALIBUILD}
-          '''
-        }
-      }
+  timeout(600) {
+    wrap([$class: 'AnsiColorBuildWrapper', colorMapName: "xterm"]) {
+      ansiblePlaybook colorized: true,
+                      credentialsId: 'ALIBUILD_SSH_KEY',
+                      inventory: 'ansible_config/hosts',
+                      limit: 'mesos-slaves',
+                      playbook: 'ansible_config/mesos-openstack.yaml',
+                      sudoUser: null
     }
   }
 
   stage "Deploy mesos slaves ubuntu"
-  currentBuild.displayName = "Deploy Ubuntu slaves"
-  withCredentials([[$class: 'FileBinding', credentialsId: 'ID_RSA_ALIBUILD', variable: 'ID_RSA_ALIBUILD']]) {
-    dir("config/ansible_config") {
-      retry (3) {
-        timeout(600) {
-          sh '''
-            export ANSIBLE_HOST_KEY_CHECKING=False
-            chmod 700 ${ID_RSA_ALIBUILD}
-            ansible-playbook -u root -i hosts -l ubuntu-slaves mesos-playbook.yaml --private-key ${ID_RSA_ALIBUILD}
-          '''
-        }
-      }
+  timeout(600) {
+    wrap([$class: 'AnsiColorBuildWrapper', colorMapName: "xterm"]) {
+      ansiblePlaybook colorized: true,
+                      credentialsId: 'ALIBUILD_SSH_KEY',
+                      inventory: 'ansible_config/hosts',
+                      limit: 'ubuntu-slaves',
+                      playbook: 'ansible_config/mesos-playbook.yaml',
+                      sudoUser: null
     }
   }
 
   stage "Deploy mesos masters"
-  currentBuild.displayName = "Deploy Mesos Master"
-  withCredentials([[$class: 'FileBinding', credentialsId: 'ID_RSA_ALIBUILD', variable: 'ID_RSA_ALIBUILD']]) {
-    dir("config/ansible_config") {
-      retry (3) {
-        timeout(600) {
-          sh '''
-            export ANSIBLE_HOST_KEY_CHECKING=False
-            chmod 700 ${ID_RSA_ALIBUILD}
-            ansible-playbook -u root -i hosts -l mesos-masters mesos-masters.yaml --private-key ${ID_RSA_ALIBUILD}
-          '''
-        }
-      }
+  timeout(600) {
+    wrap([$class: 'AnsiColorBuildWrapper', colorMapName: "xterm"]) {
+      ansiblePlaybook colorized: true,
+                      credentialsId: 'ALIBUILD_SSH_KEY',
+                      inventory: 'ansible_config/hosts',
+                      limit: 'mesos-masters',
+                      playbook: 'ansible_config/mesos-masters.yaml',
+                      sudoUser: null
     }
   }
-  currentBuild.displayName = "Deployment done"
 }
