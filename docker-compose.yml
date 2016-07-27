@@ -6,7 +6,7 @@ services:
     image: alisw/zookeeper
     network_mode: host
   master:
-    image: alisw/mesos-master:0.27.2
+    image: alisw/mesos-master:0.28.2
     environment:
       MESOS_MASTER_ZK: zk://192.168.99.100:2181/mesos
       MESOS_IP: 192.168.99.100
@@ -21,7 +21,7 @@ services:
     network_mode: host
     command: sh -ex /run.sh
   slave:
-    image: alisw/mesos-slave:0.27.2
+    image: alisw/mesos-slave:0.28.2
     pid: host
     privileged: true
     volumes:
@@ -54,12 +54,13 @@ services:
   #  - 5555
   #  - 5556
   marathon:
-    image: alisw/marathon:0.15.2
+    image: alisw/marathon:1.1.1
     environment:
       - MARATHON_ZK=zk://0.0.0.0:2181/marathon
       - MESOS_MASTER=zk://0.0.0.0:2181/mesos
       - MARATHON_WEBUI_URL=http://192.168.99.100:8080
     network_mode: host
+    command: sh -ex /run.sh
   traefik:
     image: alisw/traefik
     volumes:
