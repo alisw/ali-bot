@@ -33,7 +33,7 @@ done
 
 RWOPT='::rw'
 [[ "$PUBLISH_BUILDS" == "false" ]] && RWOPT=
-REMOTE_STORE="rsync://repo.marathon.mesos/store/$RWOPT"
+REMOTE_STORE="${REMOTE_STORE:-rsync://repo.marathon.mesos/store/}$RWOPT"
 [[ "$USE_REMOTE_STORE" == "false" ]] && REMOTE_STORE=
 alibuild/aliBuild --reference-sources $MIRROR                    \
                   --debug                                        \
