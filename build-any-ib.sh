@@ -9,7 +9,10 @@ date
 BUILD_DATE=$(echo 2015$(echo "$(date -u +%s) / (86400 * 3)" | bc))
 
 MIRROR=/build/mirror
-WORKAREA=/build/workarea/sw/$BUILD_DATE
+
+# Allow for $WORKAREA to be overridden so that we can build special
+# builds (e.g. coverage ones) in a different PATH.
+WORKAREA=${WORKAREA:-/build/workarea/sw/$BUILD_DATE}
 WORKAREA_INDEX=0
 
 git clone -b $ALIBUILD_BRANCH https://github.com/$ALIBUILD_REPO/alibuild
