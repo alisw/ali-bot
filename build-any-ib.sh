@@ -34,6 +34,26 @@ for x in $OVERRIDE_TAGS; do
   perl -p -i -e "s|tag: .*|tag: $OVERRIDE_TAG|" alidist/$OVERRIDE_PACKAGE.sh
 done
 
+# Allow to specify AliRoot and AliPhysics as a development packages
+if [[ "$ALIROOT_DEVEL_VERSION" != '' ]]; then
+  alibuild/aliBuild init AliRoot@$ALIROOT_DEVEL_VERSION
+  pushd AliRoot
+    # Either pull changes in the branch or reset it to the requested tag
+    git pull origin || git reset --hard $ALIROOT_DEVEL_VERSION
+  popd
+else
+  rm -rf AliRoot
+fi
+if [[ "$ALIPHYSICS_DEVEL_VERSION" != '' ]]; then
+  alibuild/aliBuild init AliPhysics@$ALIPHYSICS_DEVEL_VERSION
+  pushd AliPhysics
+    # Either pull changes in the branch or reset it to the requested tag
+    git pull origin || git reset --hard $ALIPHYSICS_DEVEL_VERSION
+  popd
+else
+  rm -rf AliPhysics
+fi
+
 RWOPT='::rw'
 [[ "$PUBLISH_BUILDS" == "false" ]] && RWOPT=
 REMOTE_STORE="${REMOTE_STORE:-rsync://repo.marathon.mesos/store/}$RWOPT"
