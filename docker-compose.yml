@@ -4,12 +4,11 @@ networks:
 services:
   zookeeper:
     image: alisw/zookeeper
-    network_mode: host
   master:
-    image: alisw/mesos-master:0.27.2
+    image: alisw/mesos-master:0.28.2
     environment:
-      MESOS_MASTER_ZK: zk://192.168.99.100:2181/mesos
-      MESOS_IP: 192.168.99.100
+      MESOS_MASTER_ZK: zk://zookeeper:2181/mesos
+      MESOS_IP: 0.0.0.0
       SSL_KEY_FILE: /etc/grid-security/hostkey.pem
       SSL_CERT_FILE: /etc/grid-security/hostcert.pem
       SSL_VERIFY_CERT: "true"
@@ -18,10 +17,11 @@ services:
     volumes:
       - ./dummy-secrets/cert.pem:/etc/grid-security/hostcert.pem
       - ./dummy-secrets/key.pem:/etc/grid-security/hostkey.pem
-    network_mode: host
+    ports:
+    - "5050:5050"
     command: sh -ex /run.sh
   slave:
-    image: alisw/mesos-slave:0.27.2
+    image: alisw/mesos-slave:0.28.2
     pid: host
     privileged: true
     volumes:
@@ -30,17 +30,16 @@ services:
       - ./dummy-secrets/cert.pem:/etc/grid-security/hostcert.pem
       - ./dummy-secrets/key.pem:/etc/grid-security/hostkey.pem
     environment:
-      MESOS_MASTER_ZK: zk://192.168.99.100:2181/mesos
-      MESOS_IP: 192.168.99.100
+      MESOS_MASTER_ZK: zk://zookeeper:2181/mesos
+#      MESOS_IP: master
       SSL_KEY_FILE: /etc/grid-security/hostkey.pem
       SSL_CERT_FILE: /etc/grid-security/hostcert.pem
       SSL_VERIFY_CERT: "true"
       SSL_SUPPORT_DOWNGRADE: "true"
       SSL_ENABLED: "true"
       MESOS_SYSTEMD_ENABLE_SUPPORT: "false"
-      MESOS_HOSTNAME: "192.168.99.100"
+      MESOS_HOSTNAME: "slave"
 #      MESOS_LAUNCHER: posix
-    network_mode: host
     command: sh -ex /run.sh
   riemann:
     image: alisw/riemann
@@ -54,12 +53,14 @@ services:
   #  - 5555
   #  - 5556
   marathon:
-    image: alisw/marathon:0.15.2
+    image: alisw/marathon:1.1.1
     environment:
-      - MARATHON_ZK=zk://0.0.0.0:2181/marathon
-      - MESOS_MASTER=zk://0.0.0.0:2181/mesos
-      - MARATHON_WEBUI_URL=http://192.168.99.100:8080
-    network_mode: host
+      - MARATHON_ZK=zk://zookeeper:2181/marathon
+      - MESOS_MASTER=zk://zookeeper:2181/mesos
+      - MARATHON_WEBUI_URL=http://marathon:8080
+    ports:
+    - 8080:8080
+    command: sh -ex /run.sh
   traefik:
     image: alisw/traefik
     volumes:
