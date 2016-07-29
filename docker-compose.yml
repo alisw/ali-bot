@@ -38,9 +38,11 @@ services:
       SSL_SUPPORT_DOWNGRADE: "true"
       SSL_ENABLED: "true"
       MESOS_SYSTEMD_ENABLE_SUPPORT: "false"
-      MESOS_HOSTNAME: "slave"
+      MESOS_HOSTNAME: "localhost"
 #      MESOS_LAUNCHER: posix
     command: sh -ex /run.sh
+    ports:
+    - "5051:5051"
   riemann:
     image: alisw/riemann
     volumes:
