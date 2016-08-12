@@ -7,7 +7,9 @@ if [[ -x /home/monalisa/bin/alien ]]; then
   CMD=sync-alien
 elif [[ -d /lustre/atlas/proj-shared/csc108 && -d /lustre/atlas/proj-shared/csc108 ]]; then
   # Titan needs some magic.
+  source /usr/share/Modules/init/bash
   eval $(modulecmd bash load git/2.2.0)
+  git --help > /dev/null 2>&1
   FAKECVMFS=/lustre/atlas/proj-shared/csc108/psvirin/publisher/.fakecvmfs
   mkdir -p $FAKECVMFS
   ln -nfs $(which true) $FAKECVMFS/cvmfs_server
