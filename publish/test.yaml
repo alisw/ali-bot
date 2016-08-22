@@ -1,4 +1,8 @@
 slc5_x86-64:
+  cctools:
+    v5.4.1-1               : True
+  AliEn-WorkQueue:
+    v1.0-1                 : True
   AliPhysics:
     vAN-20151110-1         : False
     vAN-20151201-1         : False
