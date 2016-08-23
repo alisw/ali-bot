@@ -133,6 +133,7 @@ fi
 unset MODULESHOME
 
 moduledirs="$modulepath $cvmfsdir/x86_64-2.6-gnu-4.1.2 $cvmfsdir/x86_64-2.6-gnu-4.7.2 $cvmfsdir/x86_64-2.6-gnu-4.8.3 $cvmfsdir/x86_64-2.6-gnu-4.8.4"
+[ x$platform != x ] && moduledirs="$moduledirs $cvmfsdir/${platform}-${uname_m}"
 
 function modulepath {
   local dir
