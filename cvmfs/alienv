@@ -181,8 +181,12 @@ function load_alien_if_missing {
   if ! $moduleenv $modulecmd bash -t list 2>&1 | grep -q AliEn-Runtime; then
     for PKG in $REQ_ALIEN; do
       if $moduleenv $modulecmd bash -t list 2>&1 | grep -q ^$PKG; then
-        Eval $moduleenv $modulecmd bash load $alien$alien_version || return 1
-        break
+        if [[ $1 == --print-alien-package ]]; then
+          echo $alien$alien_version
+        else
+          Eval $moduleenv $modulecmd bash load $alien$alien_version || return 1
+        fi
+        return 0
       fi
     done
   fi
@@ -273,13 +277,9 @@ do
           echo $_LM_ENV
        fi
        args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'`
-
-       # Load AliEn only if no AliEn-Runtime is there
-       toload="$args"
-       ( Eval $moduleenv $modulecmd bash load $args || exit 1; \
-         $moduleenv $modulecmd bash list 2>&1 | grep -q AliEn-Runtime ) || toload="$args $alien$alien_version"
-       $moduleenv $modulecmd bash load $toload || exit 1
-
+       $moduleenv $modulecmd bash load $args \
+         $(Eval $moduleenv $modulecmd bash load $args > /dev/null 2>&1 && \
+           load_alien_if_missing --print-alien-package) || exit 1
        exit
        ;;
      -print)
