@@ -3,7 +3,8 @@
 version=3.2.10
 cvmfsdir=/cvmfs/alice.cern.ch
 path=`dirname $0`
-[[ "${path:0:7}" == /cvmfs/ && `basename "$path"` == bin ]] && cvmfsdir=`dirname "$path"`
+path=`cd "$path";pwd`
+[[ `basename "$path"` == bin ]] && cvmfsdir=`dirname "$path"`
 printvar=""
 
 Eval(){
@@ -75,6 +76,10 @@ case $distro_name in
         uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
+           11) # Titan
+              distro_xrelease=6.x
+              platform=suse11
+              ;;
            *)
               distro_xrelease=6.x
               ;;
