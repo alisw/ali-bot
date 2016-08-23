@@ -4,6 +4,8 @@ networks:
 services:
   zookeeper:
     image: alisw/zookeeper
+    ports:
+    - "2181:2181"
   master:
     image: alisw/mesos-master:0.28.2
     environment:
@@ -131,12 +133,14 @@ services:
       "MESOS_DNS_MASTERS": "master:5050"
     network_mode: host
   aurora-scheduler:
-    image: alisw/aurora-scheduler:0.11.0
+    image: alisw/aurora-scheduler:0.15.0
     privileged: true
     command: bash -ex /run.sh
     environment:
-      "AURORA_MESOS_MASTERS": zk://192.168.99.100:2181/mesos
-      "ZK_ENDPOINTS": 192.168.99.100:2181
+      "AURORA_MESOS_MASTERS": zk://zookeeper:2181/mesos
+      "ZK_ENDPOINTS": zookeeper:2181
+    ports:
+    - 8081:8081
   jenkins:
     image: alisw/jenkins
     network_mode: host
