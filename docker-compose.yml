@@ -31,6 +31,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./dummy-secrets/cert.pem:/etc/grid-security/hostcert.pem
       - ./dummy-secrets/key.pem:/etc/grid-security/hostkey.pem
+      - /var/lib/mesos
     environment:
       MESOS_MASTER_ZK: zk://zookeeper:2181/mesos
 #      MESOS_IP: master
@@ -141,6 +142,15 @@ services:
       "ZK_ENDPOINTS": zookeeper:2181
     ports:
     - 8081:8081
+  aurora-observer:
+    image: alisw/aurora-executor:0.15.0
+    pid: host
+    privileged: true
+    command: /usr/bin/thermos_observer --mesos-root=/var/lib/mesos
+    ports:
+    - 1338:1338
+    volumes_from:
+    - slave
   jenkins:
     image: alisw/jenkins
     network_mode: host
