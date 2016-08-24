@@ -16,6 +16,20 @@ def testAlienvOnArch(architecture) {
     esac
     PLATFORM=$PLATFORM-`uname -m`
     printf "Running on architecture $ARCHITECTURE (platform detected: $PLATFORM)\n"
+    for NP in /tmp/alienv_bin /tmp/alienv_path/bin; do
+      printf "TEST: run alienv from a non-standard path ($NP) with full symlink\n"
+      ( mkdir -p $NP
+        ln -nfs /cvmfs/alice.cern.ch/bin/alienv $NP/alienv
+        export PATH=$NP:$PATH
+        ALIENV_DEBUG=1 alienv q | grep AliPhysics | tail -n1
+      )
+    done
+    printf "TEST: run alienv from a non-standard path (/tmp/alienv_symlink/bin) with relative symlink\n"
+    ( mkdir -p /tmp/alienv_symlink/bin
+      ln -nfs ../../../cvmfs/alice.cern.ch/bin/alienv /tmp/alienv_symlink/bin/alienv
+      export PATH=/tmp/alienv_symlink/bin:$PATH
+      ALIENV_DEBUG=1 alienv q | grep AliPhysics | tail -n1
+    )
     export PATH=/cvmfs/alice.cern.ch/bin:$PATH
     [[ `which alienv` == /cvmfs/alice.cern.ch/bin/alienv ]]
     printf "TEST: list AliPhysics packages\n"
