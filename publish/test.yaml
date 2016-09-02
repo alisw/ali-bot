@@ -5,8 +5,6 @@ slc5_x86-64:
     v1.0-1                 : False
   AliGenerators:
     v20160829-1            : True
-  Rivet:
-    2.5.1-alice1-1         : True
   AliPhysics:
     vAN-20151110-1         : False
     vAN-20151201-1         : False
