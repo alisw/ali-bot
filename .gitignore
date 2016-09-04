@@ -5,3 +5,4 @@ _site
 *.ini
 riemann/.lein-repl-history
 .terraform
+*.swp
