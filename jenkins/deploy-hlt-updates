@@ -1,0 +1,40 @@
+#!groovy
+node ("master") {
+
+  stage "Get configuration"
+  retry (3) {
+    timeout(600) {
+      withEnv (["GIT_URL=${env.GIT_URL}",
+                "GIT_BRANCH=${env.GIT_BRANCH}"]) {
+        git changelog     : false,
+            poll          : false,
+            credentialsId : '369b09bf-5f5e-4b68-832a-2f30cad28755',
+            url           : "${GIT_URL}",
+            branch        : "${GIT_BRANCH}"
+      }
+    }
+  }
+
+  stage "Deploy configuration"
+  def hltClusters = HLT_CLUSTERS.split(',')
+  for (int i=0; i<hltClusters.size(); i++) {
+    def hltCluster = hltClusters[i];
+    timeout(1800) {
+      wrap([$class: 'AnsiColorBuildWrapper', colorMapName: "xterm"]) {
+        withCredentials([[$class        : 'StringBinding',
+                          credentialsId : "${hltCluster}-vault-token",
+                          variable      : 'JENKINS_VAULT_TOKEN']]) {
+          withEnv (["VAULT_ADDR=https://alimesos01.cern.ch:8200"]) {
+            ansiblePlaybook colorized     : true,
+                            credentialsId : 'hltcloud-ssh',
+                            inventory     : "ansible_hlt/hosts_${hltCluster}.txt",
+                            limit         : 'grid_head_node',
+                            playbook      : 'ansible_hlt/grid-head-node.yaml',
+                            sudo          : true,
+                            extraVars     : [ vault_token: "${env.JENKINS_VAULT_TOKEN}" ]
+          }
+        }
+      }
+    }
+  }
+}
