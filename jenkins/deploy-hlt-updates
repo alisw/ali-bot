@@ -1,5 +1,5 @@
 #!groovy
-node ("master") {
+node ("slc7_x86-64-light") {
 
   stage "Get configuration"
   retry (3) {
