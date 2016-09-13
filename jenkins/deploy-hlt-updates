@@ -15,25 +15,40 @@ node ("slc7_x86-64-light") {
     }
   }
 
-  stage "Deploy configuration"
+  stage "Obtain Vault tokens"
+  sh '''
+    set -e
+    set -o pipefail
+    rm -rf ansible_hlt/inventory_generated/
+    mkdir -p ansible_hlt/inventory_generated/
+  '''
   def hltClusters = HLT_CLUSTERS.split(',')
   for (int i=0; i<hltClusters.size(); i++) {
     def hltCluster = hltClusters[i];
-    timeout(1800) {
-      wrap([$class: 'AnsiColorBuildWrapper', colorMapName: "xterm"]) {
-        withCredentials([[$class        : 'StringBinding',
-                          credentialsId : "${hltCluster}-vault-token",
-                          variable      : 'JENKINS_VAULT_TOKEN']]) {
-          withEnv (["VAULT_ADDR=https://alimesos01.cern.ch:8200"]) {
-            ansiblePlaybook colorized     : true,
-                            credentialsId : 'hltcloud-ssh',
-                            inventory     : "ansible_hlt/hosts_${hltCluster}.txt",
-                            limit         : 'grid_head_node',
-                            playbook      : 'ansible_hlt/grid-head-node.yaml',
-                            sudo          : true,
-                            extraVars     : [ vault_token: "${env.JENKINS_VAULT_TOKEN}" ]
-          }
-        }
+    withCredentials([[$class        : 'StringBinding',
+                      credentialsId : "${hltCluster}-vault-token",
+                      variable      : 'MY_VAULT_TOKEN']]) {
+      withEnv (["CLUSTER=${hltCluster}"]) {
+      sh '''
+        set -e
+        set -o pipefail
+        sed -e "s/^\\(.*vault.*\\)$/\\1 vault_token=$MY_VAULT_TOKEN/g" \
+            ansible_hlt/inventory/$CLUSTER > ansible_hlt/inventory_generated/$CLUSTER
+      '''
+      }
+    }
+  }
+
+  stage "Deploy configuration"
+  timeout(1800) {
+    wrap([$class: 'AnsiColorBuildWrapper', colorMapName: "xterm"]) {
+      withEnv (["VAULT_ADDR=https://alimesos01.cern.ch:8200"]) {
+        ansiblePlaybook colorized     : true,
+                        credentialsId : 'hltcloud-ssh',
+                        inventory     : "ansible_hlt/inventory_generated",
+                        limit         : 'grid_head_node',
+                        playbook      : 'ansible_hlt/grid-head-node.yaml',
+                        sudo          : true
       }
     }
   }
