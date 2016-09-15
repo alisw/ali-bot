@@ -5,6 +5,9 @@ slc5_x86-64:
     v1.0-1                 : False
   AliGenerators:
     v20160829-1            : True
+  AliDPG:
+    v5-08-XX-12            : True
+    v5-08-XX-Titan-2       : True
   AliPhysics:
     vAN-20151110-1         : False
     vAN-20151201-1         : False
