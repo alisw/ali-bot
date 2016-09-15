@@ -87,8 +87,13 @@ def testPublish() {
     set -e
     set -x
     cd ali-bot/publish
-    [[ -e test.yaml ]] || { echo "No test.yaml: not testing."; exit 0; }
-    ./aliPublish test-rules --test-conf test.yaml
+    for TESTFILE in test*.yaml; do
+      CONF=${TESTFILE//test}
+      CONF=aliPublish${CONF%.*}.conf
+      echo "==> Testing rules from $TESTFILE using configuration $CONF"
+      [[ -e $TESTFILE && -e $CONF ]]
+      ./aliPublish test-rules --test-conf $TESTFILE --conf $CONF
+    done
   '''
   return { -> node("slc7_x86-64-large") {
                 dir ("ali-bot") { checkout scm }
@@ -115,7 +120,8 @@ node {
                       "cvmfs/alienv" ]
   def listPublish = [ "publish/aliPublish",
                       "publish/aliPublish.conf",
-                      "publish/test.yaml" ]
+                      "publish/test.yaml",
+                      "publish/test-titan.yaml" ]
   def jobs = [:]
   for (String f : listAlienv) {
     if (chfiles.contains(f)) {

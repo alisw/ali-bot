@@ -1,0 +1,6 @@
+slc5_x86-64:
+  AliDPG:
+    v5-08-XX-12            : True
+    v5-08-XX-Titan-2       : True
+  AliPhysics:
+    v5-08-14-01-1          : True
