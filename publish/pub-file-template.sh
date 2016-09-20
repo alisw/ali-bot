@@ -23,3 +23,8 @@ MODULEDST="%(modulefile)s"
 [[ -e "$MODULESRC" ]]
 mkdir -p "$(dirname "$MODULEDST")"
 cp -v "$MODULESRC" "$MODULEDST"
+[[ ! "%(repo)s" ]] || exit 0
+# Only in sync-dir mode: create BASE/1.0
+BASEDST=$(dirname $(dirname $MODULEDST))/BASE/1.0
+mkdir -p $(dirname $BASEDST)
+echo -e "#%%Module\nsetenv BASEDIR $PACKAGES_DIR" > $BASEDST
