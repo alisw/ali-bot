@@ -31,9 +31,10 @@ rpm -e mysql-libs mysql mysql-devel postfix || true
 rm -rf /var/lib/mysql/
 rpm --rebuilddb
 yum clean all
-yum install -y BWidget MySQL-shared MySQL-client MySQL-devel dim smi tcl-devel \
+yum install --disablerepo=rpmforge                                             \
+            -y BWidget MySQL-shared MySQL-client MySQL-devel dim smi tcl-devel \
                tk-devel libcurl-devel libxml2-devel pciutils-devel mysqltcl    \
-               xinetd ksh tcsh pigz MySQL-server date amore ACT daqDA-lib
+               xinetd ksh tcsh pigz MySQL-server date amore ACT daqDA-lib      \
 #rpm -qa | grep ^root- | xargs -L1 rpm -e --nodeps
 yum clean all
 rm -fv /var/lib/rpm/__db*
