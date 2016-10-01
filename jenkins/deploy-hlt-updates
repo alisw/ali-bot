@@ -16,38 +16,37 @@ node ("slc7_x86-64-light") {
   }
 
   stage "Obtain Vault tokens"
-  sh '''
-    set -e
-    set -o pipefail
-    rm -rf ansible_hlt/inventory_generated/
-    mkdir -p ansible_hlt/inventory_generated/
-  '''
-  def hltClusters = HLT_CLUSTERS.split(',')
-  for (int i=0; i<hltClusters.size(); i++) {
-    def hltCluster = hltClusters[i];
+  def targetHosts = TARGET_HOSTS.split(',')
+  for (int i=0; i<targetHosts.size(); i++) {
+    def targetHost = targetHosts[i];
     withCredentials([[$class        : 'StringBinding',
-                      credentialsId : "${hltCluster}-vault-token",
+                      credentialsId : "${targetHost}-vault-token",
                       variable      : 'MY_VAULT_TOKEN']]) {
-      withEnv (["CLUSTER=${hltCluster}"]) {
+      withEnv (["MY_HOST=${targetHost}"]) {
       sh '''
         set -e
         set -o pipefail
-        sed -e "s/^\\(.*vault.*\\)$/\\1 vault_token=$MY_VAULT_TOKEN/g" \
-            ansible_hlt/inventory/$CLUSTER > ansible_hlt/inventory_generated/$CLUSTER
+        cd ansible/inventory
+        sed -e "s/^\\($MY_HOST\\..*\\)$/\\1 vault_token=$MY_VAULT_TOKEN/" hltvoboxes > hltvoboxes.0
+        mv -f hltvoboxes.0 hltvoboxes
       '''
       }
     }
   }
 
   stage "Deploy configuration"
+  def limitHosts = targetHosts
+  for (i=0; i<limitHosts.size(); i++) {
+    limitHosts[i] = limitHosts[i]+".*"
+  }
   timeout(1800) {
     wrap([$class: 'AnsiColorBuildWrapper', colorMapName: "xterm"]) {
       withEnv (["VAULT_ADDR=https://alimesos01.cern.ch:8200"]) {
         ansiblePlaybook colorized     : true,
                         credentialsId : 'hltcloud-ssh',
-                        inventory     : "ansible_hlt/inventory_generated",
-                        limit         : 'grid_head_node',
-                        playbook      : 'ansible_hlt/grid-head-node.yaml',
+                        inventory     : "ansible/inventory/hltvoboxes",
+                        limit         : limitHosts.join(","),
+                        playbook      : 'ansible/site.yml',
                         sudo          : true
       }
     }
