@@ -120,8 +120,11 @@ node {
                       "cvmfs/alienv" ]
   def listPublish = [ "publish/aliPublish",
                       "publish/aliPublish.conf",
+                      "publish/aliPublish-titan.conf",
+                      "publish/aliPublish-nightlies.conf",
                       "publish/test.yaml",
-                      "publish/test-titan.yaml" ]
+                      "publish/test-titan.yaml",
+                      "publish/test-nightlies.yaml" ]
   def jobs = [:]
   for (String f : listAlienv) {
     if (chfiles.contains(f)) {
