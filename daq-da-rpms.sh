@@ -11,7 +11,7 @@ DISABLE=AliEn-Runtime,GEANT4_VMC,GEANT3,fastjet,GCC-Toolchain
 REMOTE_STORE=rsync://repo.marathon.mesos/store/
 
 function getver() {
-  yum info $1 | grep ^Version | cut -d: -f2 | xargs -I{} echo $1_{}
+  yum --disablerepo=rpmforge info $1 | grep ^Version | cut -d: -f2 | xargs -I{} echo $1_{}
 }
 
 cat > /etc/yum.repos.d/yum-alice-daq.slc6_64.repo <<EoF
