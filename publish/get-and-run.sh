@@ -22,6 +22,9 @@ elif [[ -d /lustre/atlas/proj-shared/csc108 && -d /lustre/atlas/proj-shared/csc1
 elif [[ -d /cvmfs/alice-test.cern.ch ]]; then
   CONF=aliPublish-test.conf
   CMD=sync-cvmfs
+elif [[ -d /cvmfs/alice-nightlies.cern.ch ]]; then
+  CONF=aliPublish-nightlies.conf
+  CMD=sync-cvmfs
 elif [[ -d /cvmfs ]]; then
   CMD=sync-cvmfs
 else
