@@ -186,6 +186,7 @@ slc5_x86-64:
     vAN-20160430-1         : True
     v5-08-15-01-pcm1-1     : True
     v5-08-13-01-mctest-rc1-1 : True
+    vAN-20101616-fjtest1-1 : True
 
 slc6_x86-64:
   cctools:
