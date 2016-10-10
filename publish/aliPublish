@@ -905,7 +905,7 @@ def main():
                              or "%(arch)s: %(pkg)s ver %(ver)s does NOT match filters",
                        arch=arch, pkg=pkg, ver=ver)
           if match != testRules[arch][pkg][ver]:
-            error(msg)
+            error(msg + (match and " but it should not" or " but it should"))
             sys.exit(1)
           info(msg)
     sys.exit(0)
