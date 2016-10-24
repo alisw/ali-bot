@@ -6,3 +6,8 @@ _site
 riemann/.lein-repl-history
 .terraform
 *.swp
+.cache
+.pants.d
+.pants.workdir.file_lock
+.ruby-version
+dist
