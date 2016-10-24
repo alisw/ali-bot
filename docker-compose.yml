@@ -23,7 +23,7 @@ services:
     - "5050:5050"
     command: sh -ex /run.sh
   slave:
-    image: alisw/mesos-slave:0.28.2
+    image: aliswdev/mesos-slave:0.28.2
     pid: host
     privileged: true
     volumes:
@@ -46,6 +46,11 @@ services:
       MESOS_DOCKER_MESOS_IMAGE: "alisw/mesos-slave:0.28.2"
       MESOS_ISOLATION: "posix/cpu,posix/mem,docker/runtime"
       MESOS_IMAGE_PROVIDERS: "docker"
+      MESOS_EXTRA_CPUS: "1"
+      MESOS_MODULES: "file://etc/mesos-slave/modules"
+      MESOS_RESOURCE_ESTIMATOR: "org_apache_mesos_FixedResourceEstimator"
+      MESOS_QOS_CONTROLLER: "org_apache_mesos_LoadQoSController"
+      MESOS_LOGGING_LEVEL: "WARNING"
 #      MESOS_LAUNCHER: posix
     command: sh -ex /run.sh
     ports:
