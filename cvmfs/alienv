@@ -124,6 +124,10 @@ case $distro_name in
               distro_xrelease=6.x
               platform=ubuntu1404
               ;;
+           16.*)
+              distro_xrelease=6.x
+              platform=ubuntu1604
+              ;;
         esac
         ;;
      *)
