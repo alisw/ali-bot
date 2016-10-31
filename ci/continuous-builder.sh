@@ -12,10 +12,10 @@ while true; do
     git clone https://github.com/alisw/alidist
   fi
   if [ ! -e AliPhysics ]; then
-    git clone https://git.cern.ch/web/AliPhysics.git
+    git clone http://git.cern.ch/pub/AliPhysics
   fi
   if [ ! -e AliPhysics ]; then
-    git clone https://git.cern.ch/web/AliRoot.git
+    git clone http://git.cern.ch/pub/AliRoot
   fi
   for d in alibuild alidist AliRoot AliPhysics; do
     pushd $d
