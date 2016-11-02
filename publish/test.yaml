@@ -193,3 +193,20 @@ slc6_x86-64:
     v5.4.1-2               : True
   AliEn-WorkQueue:
     v1.0-2                 : True
+  GCC-Toolchain:
+    v4.9.3-alice2-1        : False
+    v4.9.3-alice3-1        : True
+
+slc7_x86-64:
+  GCC-Toolchain:
+    v4.9.3-2               : False
+    v4.9.3-alice3-1        : True
+
+ubt14_x86-64:
+  GCC-Toolchain:
+    v4.9.3-8               : False
+    v4.9.3-alice3-1        : True
+
+ubt1604_x86-64:
+  GCC-Toolchain:
+    v4.9.3-alice3-1        : True
