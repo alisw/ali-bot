@@ -27,7 +27,7 @@ node ("slc7_x86-64-light") {
         set -e
         set -o pipefail
         cd ansible/inventory
-        sed -e "s/^\\($MY_HOST\\..*\\)$/\\1 vault_token=\"$MY_VAULT_TOKEN\"/" hltvoboxes > hltvoboxes.0
+        sed -e "s/^\\($MY_HOST\\..*\\)$/\\1 vault_token=\\"$MY_VAULT_TOKEN\\"/" hltvoboxes > hltvoboxes.0
         mv -f hltvoboxes.0 hltvoboxes
       '''
       }
