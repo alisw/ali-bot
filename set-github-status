@@ -1,0 +1,40 @@
+#!/usr/bin/env python
+from __future__ import print_function
+from github import Github
+from os.path import expanduser
+from argparse import ArgumentParser
+import yaml, logging
+from logging import debug, info
+import os
+
+import re
+from sys import exit
+
+# Just for the moment
+DEFAULT_REPO = "alibuild"
+DEFAULT_USER = "alisw"
+VALID_STATES = ["pending", "success", "error", "failure"]
+
+if __name__ == "__main__":
+  parser = ArgumentParser(usage="set-github-status -c <commit> -s <status> [-m <status-message>] [-u <target-url>]")
+  parser.add_argument("--commit", "-c",
+                      help="Commit the the status refers to, in <org>/<project>@<ref> format")
+  parser.add_argument("--status", "-s",
+                      help="Status to set in <status-id>/<status> format")
+  parser.add_argument("--message", "-m", default="", help="Message relative to the status")
+  parser.add_argument("--url", "-u", default="", help="Target url for the report")
+  args = parser.parse_args()
+
+  repo_name = args.commit.split("@")[0]
+  commit_ref = args.commit.split("@")[1] if "@" in args.commit else "master"
+  state_context = args.status.rsplit("/", 1)[0] if "/" in args.status else ""
+  state_value = args.status.rsplit("/", 1)[1] if "/" in args.status else args.status
+  print(state_value, state_context)
+
+  gh = Github(login_or_token=os.environ["GITHUB_TOKEN"])
+  if not state_value in VALID_STATES:
+    parser.error("Valid states are " + ",".join(VALID_STATES))
+
+  repo = gh.get_repo(repo_name)
+  commit = repo.get_commit(commit_ref)
+  commit.create_status(state_value, args.url, args.message, state_context)
