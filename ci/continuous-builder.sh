@@ -5,29 +5,36 @@
 # really to catch errors earlier.
 
 MIRROR=${MIRROR:-/build/mirror}
-ALIBUILD_REPO=${ALIBUILD_REPO:-alisw/alibuild}
-ALIDIST_REPO=${ALIDIST_REPO:-alisw/alidist}
+PACKAGE=${PACKAGE:-AliPhysics}
+
+pushd alidist
+  ALIDIST_REF=`git rev-parse --verify HEAD`
+popd
+ali-bot/set-github-status -c alisw/alidist@$ALIDIST_REF -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/pending
 
 while true; do
-  if [ ! -e alibuild ]; then
-    git clone https://github.com/$ALIBUILD_REPO
-  fi
-  if [ ! -e alidist ]; then
-    git clone https://github.com/$ALIDIST_REPO
-  fi
-  if [ ! -e AliPhysics ]; then
-    git clone http://git.cern.ch/pub/AliPhysics
-  fi
-  if [ ! -e AliRoot ]; then
-    git clone http://git.cern.ch/pub/AliRoot
-  fi
-  for d in alibuild alidist AliRoot AliPhysics; do
+  for d in $(find . -maxdepth 2 -name .git -exec dirname {} \;); do
     pushd $d
       git pull origin
     popd
   done
+  DOCTOR_ERROR=""
+  BUILD_ERROR=""
 
-  alibuild/aliDoctor AliPhysics || DOCTOR_ERROR=$?
-  alibuild/aliBuild -j ${JOBS:-`nproc`} --reference-sources $MIRROR build AliPhysics || BUILD_ERROR=$?
-  sleep 10
+  alibuild/aliDoctor ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} $PACKAGE || DOCTOR_ERROR=$?
+  if [[ $DOCTOR_ERROR != '' ]]; then
+    ali-bot/set-github-status -c alisw/alidist@$ALIDIST_REF -s doctor/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error
+  else
+    ali-bot/set-github-status -c alisw/alidist@$ALIDIST_REF -s doctor/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/success
+  fi
+  alibuild/aliBuild -j ${JOBS:-`nproc`}                                    \
+                       ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} \
+                       --reference-sources $MIRROR                         \
+                       build $PACKAGE || BUILD_ERROR=$?
+  if [[ $BUILD_ERROR != '' ]]; then
+    ali-bot/set-github-status -c alisw/alidist@$ALIDIST_REF -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error
+  else
+    ali-bot/set-github-status -c alisw/alidist@$ALIDIST_REF -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/success
+  fi
+  sleep ${DELAY:-10}
 done
