@@ -1,0 +1,30 @@
+#!/usr/bin/env python
+from __future__ import print_function
+
+import os
+
+from argparse import ArgumentParser
+from sys import exit
+
+from github import Github
+
+if __name__ == "__main__":
+  parser = ArgumentParser(usage="list-branch-prs <repo>@<branch>")
+  parser.add_argument("branch",
+                      help="Branch of which to list hashes for open prs")
+  parser.add_argument("--trusted", default="", help="Users whose request you trust")
+  args = parser.parse_args()
+
+  repo_name = args.branch.split("@")[0]
+  branch_ref = args.branch.split("@")[1] if "@" in args.branch else "master"
+  trusted = args.trusted.split(",")
+
+  token = os.environ.get("GITHUB_TOKEN", None)
+  opts = {"login_or_token": token} if token else {}
+  gh = Github(**opts)
+
+  repo = gh.get_repo(repo_name)
+  for x in repo.get_pulls(state="open", base=branch_ref):
+    if not x.user.login in trusted:
+      continue
+    print(x.head.sha)
