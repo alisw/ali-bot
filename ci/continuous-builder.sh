@@ -55,6 +55,6 @@ while true; do
     else
       ali-bot/set-github-status -c ${STATUS_REF} -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/success
     fi
-    sleep ${DELAY:-10}
   done
+  sleep ${DELAY:-10}
 done
