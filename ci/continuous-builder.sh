@@ -45,9 +45,10 @@ while true; do
     else
       ali-bot/set-github-status -c ${STATUS_REF} -s doctor/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/success
     fi
-    alibuild/aliBuild -j ${JOBS:-`nproc`}                                    \
-                         ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} \
-                         --reference-sources $MIRROR                         \
+    alibuild/aliBuild -j ${JOBS:-`nproc`}                                     \
+                         ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS}  \
+                         --reference-sources $MIRROR                          \
+                         ${REMOTE_STORE:+--remote-store $REMOTE_STORE}        \
                          build $PACKAGE || BUILD_ERROR=$?
     if [[ $BUILD_ERROR != '' ]]; then
       ali-bot/set-github-status -c ${STATUS_REF} -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error
