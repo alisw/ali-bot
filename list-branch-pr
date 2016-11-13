@@ -13,6 +13,8 @@ if __name__ == "__main__":
   parser.add_argument("branch",
                       help="Branch of which to list hashes for open prs")
   parser.add_argument("--trusted", default="", help="Users whose request you trust")
+  parser.add_argument("--status", default="review",
+                      help="Commit status which is considered trustworthy")
   args = parser.parse_args()
 
   repo_name = args.branch.split("@")[0]
@@ -25,6 +27,9 @@ if __name__ == "__main__":
 
   repo = gh.get_repo(repo_name)
   for x in repo.get_pulls(state="open", base=branch_ref):
-    if not x.user.login in trusted:
+    commit = repo.get_commit(x.head.sha)
+    statuses = [s for s in commit.get_statuses()
+                if s.state == "success" and s.context == args.status]
+    if not x.user.login in trusted and not statuses:
       continue
-    print(x.head.sha)
+    print(commit.sha)
