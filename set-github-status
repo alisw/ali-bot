@@ -17,9 +17,9 @@ VALID_STATES = ["pending", "success", "error", "failure"]
 
 if __name__ == "__main__":
   parser = ArgumentParser(usage="set-github-status -c <commit> -s <status> [-m <status-message>] [-u <target-url>]")
-  parser.add_argument("--commit", "-c",
+  parser.add_argument("--commit", "-c", required=True,
                       help="Commit the the status refers to, in <org>/<project>@<ref> format")
-  parser.add_argument("--status", "-s",
+  parser.add_argument("--status", "-s", required=True,
                       help="Status to set in <status-id>/<status> format")
   parser.add_argument("--message", "-m", default="", help="Message relative to the status")
   parser.add_argument("--url", "-u", default="", help="Target url for the report")
