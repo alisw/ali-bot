@@ -1,0 +1,113 @@
+#!/usr/bin/env python
+from __future__ import print_function
+
+from argparse import ArgumentParser
+from commands import getstatusoutput
+from glob import glob
+from os.path import dirname, join
+from sys import exit
+import os
+import sys
+
+from github import Github
+
+import atexit
+
+def printStats(gh):
+  print("Github API used %s/%s" % gh.rate_limiting)
+
+if __name__ == "__main__":
+  gh = Github(login_or_token=os.environ["GITHUB_TOKEN"])
+  atexit.register(lambda : printStats(gh))
+  print("Github API used %s/%s" % gh.rate_limiting)
+  parser = ArgumentParser()
+  parser.add_argument("--work-dir", "-w", default="sw")
+  parser.add_argument("--default", default="release")
+  parser.add_argument("--devel-prefix", "-z", dest="develPrefix", default="")
+
+  parser.add_argument("--pr", required=True,
+                      help="Pull request which was checked in <org>/<project>#<nr>@ref format")
+  parser.add_argument("--status", "-s", required=True,
+                      help="Check which had the error")
+  parser.add_argument("--dry-run", "-n", action="store_true", default=False,
+                      help="Do not actually comment")
+  parser.add_argument("--limit", "-l", default=100,
+                      help="Max number of lines from the report")
+  args = parser.parse_args()
+
+  search_path = join(args.work_dir, "BUILD/*/log")
+  print("Searching all logs matching: %s" % search_path, file=sys.stderr)
+  globbed = glob(search_path)
+  logs = [x for x in globbed
+          if dirname(x).endswith(("latest" + "-" + args.develPrefix).strip("-"))]
+  print("Found:\n%s" % "\n".join(logs), file=sys.stderr)
+  error_log = ""
+  for log in logs:
+    err, out = getstatusoutput("cat %s | grep ':[0-9][0-9]*:[0-9][0-9]*: error:' || tail -n %s %s" % (log, args.limit, log))
+    if err:
+      print("Error while parsing logs", file=sys.stderr)
+      print(out, file=sys.stderr)
+      continue
+    error_log += log + "\n"
+    error_log += out
+
+  error_log = "\n".join(error_log.split("\n")[0:args.limit])
+  error_log.strip(" \n\t")
+
+  if not "#" in args.pr:
+    parser.error("You need to specify a pull request")
+  if not "@" in args.pr:
+    parser.error("You need to specify a commit this error refers to")
+
+  repo_name, pr_parts = args.pr.split("#", 1)
+  pr_id, pr_commit = pr_parts.split("@", 1)
+
+  repo = gh.get_repo(repo_name)
+  # If the branch is not a PR, we should look for open issues for the
+  # branch. This should really folded as a special case of the PR case.
+  if not pr_id.isdigit():
+    branch = repo.get_branch(pr_id)
+    sha = branch.commit.sha
+    message = "Error while checking %s for %s:\n```\n%s\n```" % (args.status, sha, error_log)
+    for issue in repo.get_issues(state="open"):
+      # Look for open issues:
+      # - If we find one which was opened for the same branch / sha
+      #   pair, we update it, if needed.
+      # - If we find one which was opened for a different branch / sha
+      #   pair, close it (as we assume it's now obsolete since the branch
+      #   points to something else).
+      # - If no issue was found for the given branch, create one and add a comment
+      #   about the failure.
+      if issue.title.startswith("Error while checking branch %s@%s" % (pr_id, sha)):
+        for comment in issue.get_comments():
+          if comment.body == message:
+            print("Comment on branch was already done", file=sys.stderr)
+            exit(0)
+          comment.edit(message)
+          exit(0)
+      if issue.title.startswith("Error while checking branch %s@" % pr_id):
+        issue.create_comment("Branch was updated. Closing issue.")
+        issue.edit(state="close")
+        continue
+    issue = repo.create_issue(title="Error while checking branch %s@%s" % (pr_id, sha))
+    issue.create_comment(body=message)
+    exit(0)
+
+  pr = repo.get_pull(int(pr_id))
+  commit = repo.get_commit(pr_commit)
+  sha = commit.sha
+  message = "Error while checking %s for %s:\n```\n%s\n```" % (args.status, sha, error_log)
+
+  if args.dry_run:
+    print("Will annotate %s" % commit)
+    print(message)
+    exit(0)
+
+  for comment in pr.get_issue_comments():
+    if comment.body.startswith("Error while checking %s for %s" % (args.status, sha)):
+      if comment.body == message:
+        print("Comment on PR was already done.", file=sys.stderr)
+        exit(0)
+      comment.edit(message)
+      exit(0)
+  pr.create_issue_comment(body=message)
