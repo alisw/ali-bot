@@ -1,0 +1,93 @@
+#!groovy
+node ("slc6_x86-64-relval") {
+
+  stage "Create AliEn token"
+  retry (3) {
+    timeout (30) {
+      withCredentials([[$class: 'FileBinding',
+                        credentialsId: 'alien_proxy',
+                        variable: 'ALIEN_PROXY']]) {
+        sh '''
+          set -e
+          set -o pipefail
+          cp $ALIEN_PROXY /tmp/x509up_u$UID
+          chmod 0400 /tmp/x509up_u$UID
+          eval $(/cvmfs/alice.cern.ch/bin/alienv printenv AliPhysics/vAN-20161114-1)
+          alien-token-init dberzano
+          alien_ls -a /alice/data | grep -qE '^\\.\\.$'
+        '''
+      }
+    }
+  }
+
+  stage "Snapshot current OCDB list"
+  retry (3) {
+    timeout (900) {
+      sh '''
+        set -e
+        set -o pipefail
+        eval $(/cvmfs/alice.cern.ch/bin/alienv printenv AliPhysics/vAN-20161114-1)
+        rm -rf OCDB-List/
+        git clone https://github.com/alisw/OCDB-List
+        pushd OCDB-List
+          #./take-snapshot.sh
+          echo dummy > ocdb_list.txt
+          git config user.name 'ALICE Bot' && git config user.email ali.bot@cern.ch
+          git add --all -v :/
+          git commit -m "OCDB list from $(date +%Y-%m-%d)"
+          git show --name-status
+        popd
+      '''
+    }
+  }
+
+  stage "Push and tag"
+  if ("$DRY_RUN" != "true") {
+    retry (3) {
+      timeout(600) {
+        withCredentials([[$class: 'UsernamePasswordMultiBinding',
+                          credentialsId: 'github_alibuild',
+                          usernameVariable: 'GIT_BOT_USER',
+                          passwordVariable: 'GIT_BOT_PASS']]) {
+          withEnv(["DUMMY_RUN=${DUMMY_RUN}",
+                   "MAKE_TAG=${MAKE_TAG}"]) {
+            sh '''
+              set -e
+              set -o pipefail
+              [[ $DUMMY_RUN == true ]] && DUMMY_RUN=1 || DUMMY_RUN=
+              printf "protocol=https\nhost=github.com\nusername=$GIT_BOT_USER\npassword=$GIT_BOT_PASS\n" | \
+                git credential-store --file $PWD/git-creds store
+              git config --global credential.helper "store --file $PWD/git-creds"
+              pushd OCDB-List
+                git push ${DUMMY_RUN:+-f origin master:dummy}
+                if [[ $MAKE_TAG == true ]]; then
+                  BASE=${DUMMY_RUN:+dummy-}v$(date +%Y%m%d)-r
+                  ERR=1
+                  for ((I=1; I<=10; I++)); do
+                    git tag $BASE$I || continue
+                    git push origin $BASE$I
+                    ERR=0
+                    break
+                  done
+                  [[ $ERR == 0 ]]
+                else
+                  echo "Not tagging"
+                fi
+              popd
+              rm -rf OCDB-List
+            '''
+          }
+        }
+      }
+    }
+  }
+  else {
+    sh '''
+      echo "Not pushing (dry run)."
+      rm -rf OCDB-List
+    '''
+  }
+
+  // TODO: add the aliBuild part to build/deploy the package
+
+}
