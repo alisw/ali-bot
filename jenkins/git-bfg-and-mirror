@@ -1,0 +1,104 @@
+#!groovy
+node ("slc7_x86-64-huge") {
+
+  stage "Clone from source"
+  retry (3) {
+    timeout (600) {
+      withEnv(["SOURCE_REPO=${SOURCE_REPO}",
+               "DEST_REPO=${DEST_REPO}"]) {
+        sh '''
+          set -e
+          set -o pipefail
+          rm -rf repo repo.git
+          git clone --mirror $SOURCE_REPO repo.git/
+          pushd repo.git
+            git remote set-url --push origin $DEST_REPO
+          popd
+          git clone --depth=1 repo.git/ repo/
+          echo "==> Size before cleanup: $(du -shx repo.git|awk '{print $1}')"
+        '''
+      }
+    }
+  }
+
+  stage "Slim repo"
+  withEnv(["BADDIRS_HIST=${BADDIRS_HIST}",
+           "BADFILES_HIST=${BADFILES_HIST}",
+           "BADDIRS_HEAD=${BADDIRS_HEAD}",
+           "BADFILES_HEAD=${BADFILES_HEAD}"]) {
+    sh '''
+      set -e
+      set -o pipefail
+
+      # If not specified then use same values used for BFG
+      BADFILES_HEAD=${BADFILES_HEAD:-"$BADFILES_HIST"}
+      BADDIRS_HEAD=${BADDIRS_HEAD:-"$BADDIRS_HIST"}
+
+      # Create a clean topmost commit
+      pushd repo
+        # Clean bad directories
+        for X in $BADDIRS_HEAD; do
+          find . -type d -name $X -exec git rm -r '{}' ';' || true
+        done
+        # Clean bad files
+        find . -type d -not -path './.git*' | \
+          while read D; do
+            for F in `eval "echo $D/$BADFILES_HEAD"`; do
+              [[ -f $F ]] && git rm $F || true;
+            done
+          done
+        git config user.name 'ALICE Bot' && git config user.email ali.bot@cern.ch
+        git commit -m 'Checkpoint history rewrite'
+        git push  # pushes to local bare clone only
+        git show --name-status  # show exactly what we have changed
+      popd
+      rm -rf repo
+
+      # Check how BFG is installed
+      BFG="java -jar /usr/local/lib/bfg.jar"
+      [[ -f /usr/local/lib/bfg.jar ]] || BFG=bfg
+
+      # Apply BFG to the bare local clone
+      pushd repo.git
+        $BFG --delete-folders \
+             "{$(echo $(for X in $BADDIRS_HIST; do basename $X; done)|sed -e "s/ /,/g")}" \
+             --delete-files "$BADFILES_HIST"
+        git reflog expire --expire=now --all
+        git gc --prune=now --aggressive
+      popd
+      echo "==> Size after cleanup: $(du -shx repo.git|awk '{print $1}')"
+    '''
+  }
+
+  stage "Push to GitHub"
+  if ("$PUSH_TO_GITHUB" == "true") {
+    retry (3) {
+      timeout(600) {
+        withCredentials([[$class: 'UsernamePasswordMultiBinding',
+                          credentialsId: 'github_alibuild',
+                          usernameVariable: 'GIT_BOT_USER',
+                          passwordVariable: 'GIT_BOT_PASS']]) {
+          sh '''
+            set -e
+            set -o pipefail
+            printf "protocol=https\nhost=github.com\nusername=$GIT_BOT_USER\npassword=$GIT_BOT_PASS\n" | \
+              git credential-store --file $PWD/git-creds store
+            git config --global credential.helper "store --file $PWD/git-creds"
+            ls $PWD/git-creds
+            pushd repo.git
+              git push --mirror
+            popd
+            rm -rf repo.git
+          '''
+        }
+      }
+    }
+  }
+  else {
+    sh '''
+      echo "Not pushing to GitHub."
+      rm -rf repo.git
+    '''
+  }
+
+}
