@@ -3,36 +3,36 @@ repos:
   alice-ocdb.cern.ch:
     CERN:
       url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice-ocdb.cern.ch/stratum1_details/65/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch
+      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
     RAL:
       url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice-ocdb.cern.ch/stratum1_details/114/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch
+      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
     BNL:
       url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice-ocdb.cern.ch/stratum1_details/118/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch
+      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
     Fermilab:
       url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice-ocdb.cern.ch/stratum1_details/120/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch
+      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
     ASGC:
       url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice-ocdb.cern.ch/stratum1_details/238/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch
+      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
 
   alice.cern.ch:
     CERN:
       url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice.cern.ch/stratum1_details/4/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch
+      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
     RAL:
       url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice.cern.ch/stratum1_details/7/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch
+      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
     BNL:
       url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice.cern.ch/stratum1_details/17/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch
+      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
     Fermilab:
       url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice.cern.ch/stratum1_details/13/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch
+      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
     ASGC:
       url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice.cern.ch/stratum1_details/225/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch
+      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
 
 notif:
   smtp: cernmx.cern.ch:25
@@ -47,10 +47,14 @@ notif:
      * Stratum 1 last modified: %(stratum1_mod)s
      * Stratum 1 revision: %(stratum1_rev)s
 
+    Summary:
+
+      http://cernvm-monitor.cern.ch/cvmfs-monitor/%(repo)s/
+
     Please check.
     --
     ALICE CVMFS check bot
 
 sleep: 3600
-snooze: 7200
+snooze: 14400
 outdated: 3600
