@@ -51,6 +51,10 @@ notif:
 
       http://cernvm-monitor.cern.ch/cvmfs-monitor/%(repo)s/
 
+    Raw JSON data:
+
+      %(api_url)s
+
     Please check.
     --
     ALICE CVMFS check bot
