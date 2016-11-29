@@ -16,7 +16,16 @@ WORKAREA=${WORKAREA:-/build/workarea/sw/$BUILD_DATE}
 WORKAREA_INDEX=0
 
 git clone -b $ALIBUILD_BRANCH https://github.com/$ALIBUILD_REPO/alibuild
-git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO/alidist
+if [[ $ALIDIST_BRANCH =~ pull/ ]]; then
+  git clone https://github.com/$ALIDIST_REPO/alidist
+  pushd alidist
+    ALIDIST_LOCAL_BRANCH=$(echo $ALIDIST_BRANCH|sed -e 's|/|_|g')
+    git fetch origin $ALIDIST_BRANCH:$ALIDIST_LOCAL_BRANCH
+    git checkout $ALIDIST_LOCAL_BRANCH
+  popd
+else
+  git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO/alidist
+fi
 
 CURRENT_SLAVE=unknown
 while [[ "$CURRENT_SLAVE" != '' ]]; do
