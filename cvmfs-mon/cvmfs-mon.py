@@ -38,6 +38,7 @@ def check(monit):
       try:
         s = get(monit["repos"][repo][stratum_name]["url"]).json()
         delta = (timestamp(s["stratum0"]["last_modified"])-timestamp(s["stratum1"]["last_modified"])).total_seconds()
+        pub_delta = (datetime.utcnow()-timestamp(s["stratum0"]["last_modified"])).total_seconds()
         revdiff = s["stratum0"]["revision"]-s["stratum1"]["revision"]
         ok = s["status"] == "ok"
       except (RequestException,KeyError,ValueError) as e:
@@ -46,8 +47,9 @@ def check(monit):
 
       if revdiff == 0:
         print("%s:%s: OK" % (repo, stratum_name))
-      elif delta < monit["outdated"]:
-        print("%s:%s: syncing: %d seconds, %d revisions behind" % (repo, stratum_name, delta, revdiff))
+      elif delta < monit["outdated"] or pub_delta < monit["outdated"]:
+        print("%s:%s: syncing: %d seconds, %d revisions behind (stratum0 updated %d seconds ago)" % \
+          (repo, stratum_name, delta, revdiff, pub_delta))
       else:
         print("%s:%s: error: %d seconds, %d revisions behind" % (repo, stratum_name, delta, revdiff))
         if time.time()-monit["repos"][repo][stratum_name].get("last_notification", 0) > monit["snooze"]:
@@ -55,6 +57,7 @@ def check(monit):
                  to=monit["repos"][repo][stratum_name]["contact"],
                  stratum_name=stratum_name,
                  repo=repo,
+                 api_url=monit["repos"][repo][stratum_name]["url"],
                  delta_rev=revdiff,
                  delta_time=delta,
                  stratum0_mod=s["stratum0"]["last_modified"],
