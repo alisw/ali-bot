@@ -36,7 +36,7 @@ repos:
 
 notif:
   smtp: cernmx.cern.ch:25
-  from: noreply@cern.ch
+  from: "ALICE CVMFS bot <noreply@cern.ch>"
   subject: "Stratum 1 %(stratum_name)s for %(repo)s is outdated"
   body: |
     Stratum 1 %(stratum_name)s for CVMFS repository %(repo)s appears out of date:
@@ -59,6 +59,7 @@ notif:
     --
     ALICE CVMFS check bot
 
-sleep: 3600
+sleep: 1800
 snooze: 14400
-outdated: 3600
+max_timedelta: 3600
+max_revdelta: 4

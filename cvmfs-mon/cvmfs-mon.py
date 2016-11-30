@@ -17,6 +17,14 @@ def notify(notif, to, **keys):
   subject = notif["subject"] % keys
   body = "Subject: %s\nFrom: %s\nTo: %s\n\n" % (subject, notif["from"], ", ".join(to))
   body += notif["body"] % keys
+  if os.environ.get("CVMFSMON_NO_NOTIF", "0") != "0":
+    print("%(repo)s:%(stratum_name)s: would send the following email through " \
+          "%(host)s:%(port)d:\n---\n%(body)s\n---" %  { "repo": keys["repo"],
+                                                        "stratum_name": keys["stratum_name"],
+                                                        "host": notif["smtp"]["host"],
+                                                        "port": notif["smtp"]["port"],
+                                                        "body": body })
+    return
   try:
     mailer = SMTP(notif["smtp"]["host"], notif["smtp"]["port"])
     mailer.sendmail(notif["from"], to, body)
@@ -47,11 +55,12 @@ def check(monit):
 
       if revdiff == 0:
         print("%s:%s: OK" % (repo, stratum_name))
-      elif delta < monit["outdated"] or pub_delta < monit["outdated"]:
+      elif revdiff <= monit["max_revdelta"] and pub_delta <= monit["max_timedelta"]:
         print("%s:%s: syncing: %d seconds, %d revisions behind (stratum0 updated %d seconds ago)" % \
           (repo, stratum_name, delta, revdiff, pub_delta))
       else:
-        print("%s:%s: error: %d seconds, %d revisions behind" % (repo, stratum_name, delta, revdiff))
+        print("%s:%s: error: %d seconds, %d revisions behind (stratum0 updated %d seconds ago)" % \
+          (repo, stratum_name, delta, revdiff, pub_delta))
         if time.time()-monit["repos"][repo][stratum_name].get("last_notification", 0) > monit["snooze"]:
           notify(monit["notif"],
                  to=monit["repos"][repo][stratum_name]["contact"],
@@ -81,28 +90,25 @@ if __name__ == "__main__":
     exit(1)
 
   monit["notif"] = monit.get("notif", {})
-  monit["notif"]["smtp"] = monit["notif"].get("smtp", "").split(":", 1)
-  try:
-    monit["notif"]["smtp"].append(int(monit["notif"]["smtp"].pop(1)))
-  except (ValueError,IndexError) as e:
-     monit["notif"]["smtp"].append(25)
-  monit["notif"]["smtp"] = dict(zip(["host", "port"], monit["notif"]["smtp"]))
-
-  if not "from" in monit["notif"] or    \
-     not "subject" in monit["notif"] or \
-     not "body" in monit["notif"] or    \
-     not "smtp" in monit["notif"]:
-    monit["notif"]["smtp"]["host"] = ""
-
-  if monit["notif"]["smtp"]["host"]:
-    print("email notifications will be sent via %s:%d" % (monit["notif"]["smtp"]["host"], monit["notif"]["smtp"]["port"]))
+  for k in ["from", "subject", "body", "smtp"]:
+    if not k in monit["notif"]:
+      monit["notif"] = {}
+  if monit["notif"]:
+    monit["notif"]["smtp"] = monit["notif"]["smtp"].split(":", 1)
+    try:
+      monit["notif"]["smtp"].append(int(monit["notif"]["smtp"].pop(1)))
+    except (ValueError,IndexError) as e:
+       monit["notif"]["smtp"].append(25) # default smtp port
+    monit["notif"]["smtp"] = dict(zip(["host", "port"], monit["notif"]["smtp"]))
+    print("email notifications will be sent via %(host)s:%(port)d" % monit["notif"]["smtp"])
   else:
     print("email notifications disabled")
     notify = lambda *x, **y: False
 
   monit["sleep"] = getint(monit, "sleep", 120)
   monit["snooze"] = getint(monit, "snooze", 3600)
-  monit["outdated"] = getint(monit, "outdated", 7200)
+  monit["max_timedelta"] = getint(monit, "max_timedelta", 7200)
+  monit["max_revdelta"] = getint(monit, "max_revdelta", 7200)
 
   while True:
     check(monit)
