@@ -7,7 +7,7 @@ ALIDIST_BRANCH=${ALIDIST_REPO##*:}
 ALIDIST_REPO=${ALIDIST_REPO%:*}
 OVERRIDE_TAGS="AliRoot=$ALIROOT_VERSION"
 DEFAULTS=daq
-DISABLE=AliEn-Runtime,GEANT4_VMC,GEANT3,fastjet,GCC-Toolchain
+DISABLE=AliEn-Runtime,GEANT4_VMC,GEANT3,fastjet,GCC-Toolchain,Vc
 REMOTE_STORE=rsync://repo.marathon.mesos/store/
 
 function getver() {
