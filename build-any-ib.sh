@@ -9,11 +9,23 @@ date
 BUILD_DATE=$(echo 2015$(echo "$(date -u +%s) / (86400 * 3)" | bc))
 
 MIRROR=/build/mirror
-WORKAREA=/build/workarea/sw/$BUILD_DATE
+
+# Allow for $WORKAREA to be overridden so that we can build special
+# builds (e.g. coverage ones) in a different PATH.
+WORKAREA=${WORKAREA:-/build/workarea/sw/$BUILD_DATE}
 WORKAREA_INDEX=0
 
 git clone -b $ALIBUILD_BRANCH https://github.com/$ALIBUILD_REPO/alibuild
-git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO/alidist
+if [[ $ALIDIST_BRANCH =~ pull/ ]]; then
+  git clone https://github.com/$ALIDIST_REPO/alidist
+  pushd alidist
+    ALIDIST_LOCAL_BRANCH=$(echo $ALIDIST_BRANCH|sed -e 's|/|_|g')
+    git fetch origin $ALIDIST_BRANCH:$ALIDIST_LOCAL_BRANCH
+    git checkout $ALIDIST_LOCAL_BRANCH
+  popd
+else
+  git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO/alidist
+fi
 
 CURRENT_SLAVE=unknown
 while [[ "$CURRENT_SLAVE" != '' ]]; do
@@ -31,9 +43,29 @@ for x in $OVERRIDE_TAGS; do
   perl -p -i -e "s|tag: .*|tag: $OVERRIDE_TAG|" alidist/$OVERRIDE_PACKAGE.sh
 done
 
+# Allow to specify AliRoot and AliPhysics as a development packages
+if [[ "$ALIROOT_DEVEL_VERSION" != '' ]]; then
+  alibuild/aliBuild init AliRoot@$ALIROOT_DEVEL_VERSION
+  pushd AliRoot
+    # Either pull changes in the branch or reset it to the requested tag
+    git pull origin || git reset --hard $ALIROOT_DEVEL_VERSION
+  popd
+else
+  rm -rf AliRoot
+fi
+if [[ "$ALIPHYSICS_DEVEL_VERSION" != '' ]]; then
+  alibuild/aliBuild init AliPhysics@$ALIPHYSICS_DEVEL_VERSION
+  pushd AliPhysics
+    # Either pull changes in the branch or reset it to the requested tag
+    git pull origin || git reset --hard $ALIPHYSICS_DEVEL_VERSION
+  popd
+else
+  rm -rf AliPhysics
+fi
+
 RWOPT='::rw'
 [[ "$PUBLISH_BUILDS" == "false" ]] && RWOPT=
-REMOTE_STORE="rsync://repo.marathon.mesos/store/$RWOPT"
+REMOTE_STORE="${REMOTE_STORE:-rsync://repo.marathon.mesos/store/}$RWOPT"
 [[ "$USE_REMOTE_STORE" == "false" ]] && REMOTE_STORE=
 alibuild/aliBuild --reference-sources $MIRROR                    \
                   --debug                                        \

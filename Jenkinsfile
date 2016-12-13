@@ -16,6 +16,20 @@ def testAlienvOnArch(architecture) {
     esac
     PLATFORM=$PLATFORM-`uname -m`
     printf "Running on architecture $ARCHITECTURE (platform detected: $PLATFORM)\n"
+    for NP in /tmp/alienv_bin /tmp/alienv_path/bin; do
+      printf "TEST: run alienv from a non-standard path ($NP) with full symlink\n"
+      ( mkdir -p $NP
+        ln -nfs /cvmfs/alice.cern.ch/bin/alienv $NP/alienv
+        export PATH=$NP:$PATH
+        ALIENV_DEBUG=1 alienv q | grep AliPhysics | tail -n1
+      )
+    done
+    printf "TEST: run alienv from a non-standard path (/tmp/alienv_symlink/bin) with relative symlink\n"
+    ( mkdir -p /tmp/alienv_symlink/bin
+      ln -nfs ../../../cvmfs/alice.cern.ch/bin/alienv /tmp/alienv_symlink/bin/alienv
+      export PATH=/tmp/alienv_symlink/bin:$PATH
+      ALIENV_DEBUG=1 alienv q | grep AliPhysics | tail -n1
+    )
     export PATH=/cvmfs/alice.cern.ch/bin:$PATH
     [[ `which alienv` == /cvmfs/alice.cern.ch/bin/alienv ]]
     printf "TEST: list AliPhysics packages\n"
@@ -68,6 +82,26 @@ def testAlienvOnArch(architecture) {
   }
 }
 
+def testPublish() {
+  def testScript = '''
+    set -e
+    set -x
+    cd ali-bot/publish
+    for TESTFILE in test*.yaml; do
+      CONF=${TESTFILE//test}
+      CONF=aliPublish${CONF%.*}.conf
+      echo "==> Testing rules from $TESTFILE using configuration $CONF"
+      [[ -e $TESTFILE && -e $CONF ]]
+      ./aliPublish test-rules --test-conf $TESTFILE --conf $CONF
+    done
+  '''
+  return { -> node("slc7_x86-64-large") {
+                dir ("ali-bot") { checkout scm }
+                sh testScript
+              }
+  }
+}
+
 node {
   stage "Check changeset"
   dir ("ali-bot") { checkout scm }
@@ -82,7 +116,28 @@ node {
     chfiles = readFile("changed_files").tokenize("\n")
   }
   println "List of changed files: " + chfiles
-  if (chfiles.contains("cvmfs/alienv") || chfiles.contains("Jenkinsfile")) {
+  def listAlienv  = [ "Jenkinsfile",
+                      "cvmfs/alienv" ]
+  def listPublish = [ "publish/aliPublish",
+                      "publish/aliPublish.conf",
+                      "publish/aliPublish-titan.conf",
+                      "publish/aliPublish-nightlies.conf",
+                      "publish/test.yaml",
+                      "publish/test-titan.yaml",
+                      "publish/test-nightlies.yaml" ]
+  def jobs = [:]
+  for (String f : listAlienv) {
+    if (chfiles.contains(f)) {
+      jobs << [ "alienv": testAlienvOnArch("slc6_x86-64") ]
+    }
+  }
+  for (String f : listPublish) {
+    if (chfiles.contains(f)) {
+      jobs << [ "publish": testPublish() ]
+    }
+  }
+
+  if (jobs.size() > 0) {
 
     stage "Verify author"
     def powerUsers = ["ktf", "dberzano"]
@@ -93,7 +148,7 @@ node {
 
     stage "Test changes"
     currentBuild.displayName = "Testing ${env.BRANCH_NAME} (${env.CHANGE_AUTHOR})"
-    testAlienvOnArch("slc6_x86-64").call()
+    parallel(jobs)
 
   }
   else {

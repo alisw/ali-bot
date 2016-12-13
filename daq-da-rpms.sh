@@ -7,11 +7,11 @@ ALIDIST_BRANCH=${ALIDIST_REPO##*:}
 ALIDIST_REPO=${ALIDIST_REPO%:*}
 OVERRIDE_TAGS="AliRoot=$ALIROOT_VERSION"
 DEFAULTS=daq
-DISABLE=AliEn-Runtime,GEANT4_VMC,GEANT3,fastjet,GCC-Toolchain
+DISABLE=AliEn-Runtime,GEANT4_VMC,GEANT3,fastjet,GCC-Toolchain,Vc
 REMOTE_STORE=rsync://repo.marathon.mesos/store/
 
 function getver() {
-  yum info $1 | grep ^Version | cut -d: -f2 | xargs -I{} echo $1_{}
+  yum --disablerepo=rpmforge info $1 | grep ^Version | cut -d: -f2 | xargs -I{} echo $1_{}
 }
 
 cat > /etc/yum.repos.d/yum-alice-daq.slc6_64.repo <<EoF
@@ -31,9 +31,10 @@ rpm -e mysql-libs mysql mysql-devel postfix || true
 rm -rf /var/lib/mysql/
 rpm --rebuilddb
 yum clean all
-yum install -y BWidget MySQL-shared MySQL-client MySQL-devel dim smi tcl-devel \
+yum install --disablerepo=rpmforge                                             \
+            -y BWidget MySQL-shared MySQL-client MySQL-devel dim smi tcl-devel \
                tk-devel libcurl-devel libxml2-devel pciutils-devel mysqltcl    \
-               xinetd ksh tcsh pigz MySQL-server date amore ACT daqDA-lib
+               xinetd ksh tcsh pigz MySQL-server date amore ACT daqDA-lib      \
 #rpm -qa | grep ^root- | xargs -L1 rpm -e --nodeps
 yum clean all
 rm -fv /var/lib/rpm/__db*

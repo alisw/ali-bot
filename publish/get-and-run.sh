@@ -1,10 +1,15 @@
 #!/bin/bash -ex
 set -o pipefail
+export LANG=C
+cd "$(dirname "$0")"
 if [[ -x /home/monalisa/bin/alien ]]; then
   export PATH="/home/monalisa/bin:$PATH"
   CMD=sync-alien
 elif [[ -d /lustre/atlas/proj-shared/csc108 && -d /lustre/atlas/proj-shared/csc108 ]]; then
   # Titan needs some magic.
+  source /usr/share/Modules/init/bash
+  eval $(modulecmd bash load git/2.2.0)
+  git --help > /dev/null 2>&1
   FAKECVMFS=/lustre/atlas/proj-shared/csc108/psvirin/publisher/.fakecvmfs
   mkdir -p $FAKECVMFS
   ln -nfs $(which true) $FAKECVMFS/cvmfs_server
@@ -17,6 +22,9 @@ elif [[ -d /lustre/atlas/proj-shared/csc108 && -d /lustre/atlas/proj-shared/csc1
 elif [[ -d /cvmfs/alice-test.cern.ch ]]; then
   CONF=aliPublish-test.conf
   CMD=sync-cvmfs
+elif [[ -d /cvmfs/alice-nightlies.cern.ch ]]; then
+  CONF=aliPublish-nightlies.conf
+  CMD=sync-cvmfs
 elif [[ -d /cvmfs ]]; then
   CMD=sync-cvmfs
 else
@@ -25,8 +33,6 @@ fi
 CMD="$CMD"
 DEST=ali-bot
 DRYRUN=${DRYRUN:-}
-export LANG=C
-cd "$(dirname "$0")"
 [[ ! -e $DEST/.git ]] && git clone https://github.com/alisw/ali-bot $DEST
 mkdir -p log
 find log/ -type f -mtime +3 -delete || true

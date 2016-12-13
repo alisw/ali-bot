@@ -1,0 +1,25 @@
+slc5_x86-64:
+  AliPhysics:
+    v5-08-13b-01-rc5-2: False
+    v5-08-17-01-rc1-1: False
+    v5-08-18-01-rc2-1: True
+    v5-08-18-01_ROOT6-1: True
+
+slc6_x86-64:
+  GCC-Toolchain:
+    v4.9.3-alice2-1        : False
+    v4.9.3-alice3-1        : True
+
+slc7_x86-64:
+  GCC-Toolchain:
+    v4.9.3-2               : False
+    v4.9.3-alice3-1        : True
+
+ubt14_x86-64:
+  GCC-Toolchain:
+    v4.9.3-8               : False
+    v4.9.3-alice3-1        : True
+
+ubt1604_x86-64:
+  GCC-Toolchain:
+    v4.9.3-alice3-1        : True

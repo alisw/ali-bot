@@ -2,9 +2,23 @@
 
 version=3.2.10
 cvmfsdir=/cvmfs/alice.cern.ch
-path=`dirname $0`
-[[ "${path:0:7}" == /cvmfs/ && `basename "$path"` == bin ]] && cvmfsdir=`dirname "$path"`
+
+prog=`readlink $0 2>/dev/null`
+[[ -z $prog ]] && prog=$0
+path=`dirname $prog`
+path=`cd "$path";pwd`
+[ x$ALIENV_DEBUG == x1 ] && printf "path=$path\nprog=$prog\n" >&2
+
+if [[ `basename $prog` == alienv && `basename $path` == bin ]]; then
+  cvmfsdir=`dirname "$path"`
+else
+  [ x$ALIENV_DEBUG == x1 ] && printf "WARNING: cannot autodetect CVMFS path, falling back to $cvmfsdir\n" >&2
+fi
+
+path=$(cd $(dirname $0) && pwd) # appended to PATH later on
 printvar=""
+
+[ x$ALIENV_DEBUG == x1 ] && printf "cvmfsdir=$cvmfsdir\npath=$path\n" >&2
 
 Eval(){
    cmd=$*
@@ -75,6 +89,10 @@ case $distro_name in
         uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
+           11) # Titan
+              distro_xrelease=6.x
+              platform=suse11
+              ;;
            *)
               distro_xrelease=6.x
               ;;
@@ -106,6 +124,10 @@ case $distro_name in
               distro_xrelease=6.x
               platform=ubuntu1404
               ;;
+           16.*)
+              distro_xrelease=6.x
+              platform=ubuntu1604
+              ;;
         esac
         ;;
      *)
@@ -126,8 +148,6 @@ then
 fi
 
 unset MODULESHOME
-
-moduledirs="$modulepath $cvmfsdir/x86_64-2.6-gnu-4.1.2 $cvmfsdir/x86_64-2.6-gnu-4.7.2 $cvmfsdir/x86_64-2.6-gnu-4.8.3 $cvmfsdir/x86_64-2.6-gnu-4.8.4"
 
 function modulepath {
   local dir
@@ -175,17 +195,17 @@ function load_alien_if_missing {
   if ! $moduleenv $modulecmd bash -t list 2>&1 | grep -q AliEn-Runtime; then
     for PKG in $REQ_ALIEN; do
       if $moduleenv $modulecmd bash -t list 2>&1 | grep -q ^$PKG; then
-        Eval $moduleenv $modulecmd bash load $alien$alien_version || return 1
-        break
+        if [[ $1 == --print-alien-package ]]; then
+          echo $alien$alien_version
+        else
+          Eval $moduleenv $modulecmd bash load $alien$alien_version || return 1
+        fi
+        return 0
       fi
     done
   fi
   return 0
 }
-
-export MODULEPATH=$(modulepath modulefiles $moduledirs)
-[ x$platform != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
-[ x$ALIENV_DEBUG == x1 ] && printf "MODULEPATH=$MODULEPATH\n" >&2
 
 export PATH=$PATH:$path
 
@@ -223,6 +243,56 @@ fi
 alien="AliEn"
 
 export ALIEN_ORGANISATION=$(tr "[:lower:]" "[:upper:]" <<< "${ALIEN_ORGANISATION:=ALICE}")
+
+# We cannot cross-pick pacakages among different platforms but we have to
+# pick all packages consistently from a certain platform tree. When listing
+# packages we show them all, when we load a package e define a priority list and
+# we always have a fallback for backward compatibility.
+PLATFORM_PRIORITY="el6-x86_64 el5-x86_64"
+ARGS=("$@")
+PACKAGES=
+EXPECT_PACKAGES=
+for ARG in "$@"; do
+  if [[ $EXPECT_PACKAGES == 1 ]]; then
+    PACKAGES=`echo $ARG | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'`
+    break
+  elif [[ "$ARG" == enter || "$ARG" == printenv || "$ARG" == setenv ]]; then
+    EXPECT_PACKAGES=1
+  else
+    EXPECT_PACKAGES=
+  fi
+done
+if [[ x"$PACKAGES" != x ]]; then
+  for P in $PLATFORM_PRIORITY; do
+    [[ "${P:0:3}" == el5 ]] && P="$cvmfsdir/x86_64-2.6-gnu-4.1.2
+                                  $cvmfsdir/x86_64-2.6-gnu-4.7.2
+                                  $cvmfsdir/x86_64-2.6-gnu-4.8.3
+                                  $cvmfsdir/x86_64-2.6-gnu-4.8.4" \
+                            || P="$cvmfsdir/$P"
+    moduledirs="`echo $modulepath $P`"
+    export MODULEPATH=$(modulepath modulefiles $moduledirs)
+    [ x$platform != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
+    LOADED="`Eval $moduleenv $modulecmd bash load $PACKAGES > /dev/null 2>&1 ; echo "$_LMFILES_"`"
+    OK=1
+    for X in $PACKAGES; do
+      # Policy: all specified packages must be found in current platform. If
+      # this is not the case then fallback on the next platform.
+      echo $LOADED | grep -q $X || { OK=0; break; }
+    done
+    [ x$OK == x1 ] && break || { [ x$ALIENV_DEBUG == x1 ] && printf "WARNING: cannot find packages with MODULEPATH set to $MODULEPATH\n"; }
+  done
+else
+  moduledirs="`echo "$modulepath
+                     $cvmfsdir/x86_64-2.6-gnu-4.1.2
+                     $cvmfsdir/x86_64-2.6-gnu-4.7.2
+                     $cvmfsdir/x86_64-2.6-gnu-4.8.3
+                     $cvmfsdir/x86_64-2.6-gnu-4.8.4
+                     $cvmfsdir/el6-x86_64"`"
+  export MODULEPATH=$(modulepath modulefiles $moduledirs)
+  [ x$platform != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
+fi
+
+[ x$ALIENV_DEBUG == x1 ] && printf "MODULEPATH=$MODULEPATH\n" >&2
 
 while [ $# -gt 0 ]
 do
@@ -267,13 +337,9 @@ do
           echo $_LM_ENV
        fi
        args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'`
-
-       # Load AliEn only if no AliEn-Runtime is there
-       toload="$args"
-       ( Eval $moduleenv $modulecmd bash load $args || exit 1; \
-         $moduleenv $modulecmd bash list 2>&1 | grep -q AliEn-Runtime ) || toload="$args $alien$alien_version"
-       $moduleenv $modulecmd bash load $toload || exit 1
-
+       $moduleenv $modulecmd bash load $args \
+         $(Eval $moduleenv $modulecmd bash load $args > /dev/null 2>&1 && \
+           load_alien_if_missing --print-alien-package) || exit 1
        exit
        ;;
      -print)

@@ -1,0 +1,61 @@
+#!/usr/bin/env python
+from __future__ import print_function
+
+import os
+import sys
+
+from argparse import ArgumentParser
+from sys import exit
+import atexit
+
+from github import Github
+
+def printStats(gh):
+  print("Github API used %s/%s" % gh.rate_limiting, file=sys.stderr)
+
+if __name__ == "__main__":
+  gh = Github(login_or_token=os.environ["GITHUB_TOKEN"])
+  atexit.register(lambda : printStats(gh))
+  printStats(gh)
+  parser = ArgumentParser(usage="list-branch-prs <repo>@<branch>")
+  parser.add_argument("branch",
+                      help="Branch of which to list hashes for open prs")
+  parser.add_argument("--trusted", default="", help="Users whose request you trust")
+  parser.add_argument("--show-main-branch", dest="showMainBranch", default=False, action="store_true",
+                      help="Also show reference for the main branch, not only for the PRs")
+  parser.add_argument("--status", default="review",
+                      help="Commit status which is considered trustworthy")
+  args = parser.parse_args()
+
+  repo_name = args.branch.split("@")[0]
+  branch_ref = args.branch.split("@")[1] if "@" in args.branch else "master"
+  trusted = args.trusted.split(",")
+
+  token = os.environ.get("GITHUB_TOKEN", None)
+  opts = {"login_or_token": token} if token else {}
+  gh = Github(**opts)
+
+  repo = gh.get_repo(repo_name)
+  pulls = repo.get_pulls(state="open", base=branch_ref)
+  for x in pulls:
+    commit = repo.get_commit(x.head.sha)
+    if x.user.login in trusted:
+      print("%s@%s" % (x.number, commit.sha))
+      continue
+
+    all_statuses = commit.get_statuses()
+    reviewed = False
+
+    for s in all_statuses:
+      if s.context == args.status and s.state == "success":
+        reviewed = True
+        break
+    if not reviewed:
+      continue
+    print("%s@%s" % (x.number, commit.sha))
+
+  if not args.showMainBranch:
+    exit(0)
+  # Print the ref of the main branch as well
+  branch = repo.get_branch(branch_ref)
+  print("%s@%s" % (branch_ref, branch.commit.sha))

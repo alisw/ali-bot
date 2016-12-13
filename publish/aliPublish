@@ -155,16 +155,17 @@ class RiemannPkgNotify(object):
     except Exception as e:
       error("Cannot send Riemann notification: %s" % e)
 
+
 class PublishException(Exception):
   pass
 
-class CvmfsServer(object):
 
-  def __init__(self, repository, modulefileTpl, pkgdirTpl, publishScriptTpl,
+class PlainFilesystem(object):
+
+  def __init__(self, modulefileTpl, pkgdirTpl, publishScriptTpl,
                      connParams, dryRun=False):
 
-    self._inCvmfsTransaction = False
-    self._repository         = repository
+    self._repository         = ""
     self._modulefileTpl      = modulefileTpl
     self._pkgdirTpl          = pkgdirTpl
     self._publishScriptTpl   = publishScriptTpl
@@ -200,6 +201,25 @@ class CvmfsServer(object):
     debug(format("%(repo)s: cleaning up %(pkgdir)s and %(modulefile)s", **kw))
     rmrf(kw["pkgdir"])
     rmrf(kw["modulefile"])
+
+  def transaction(self):
+    return True
+
+  def abort(self):
+    return True
+
+  def publish(self):
+    return True
+
+
+class CvmfsServer(PlainFilesystem):
+
+  def __init__(self, repository, modulefileTpl, pkgdirTpl, publishScriptTpl,
+                     connParams, dryRun=False):
+    super(CvmfsServer, self).__init__(modulefileTpl, pkgdirTpl,
+                                      publishScriptTpl, connParams, dryRun)
+    self._inCvmfsTransaction = False
+    self._repository         = repository
 
   def transaction(self):
     if self._inCvmfsTransaction:
@@ -256,6 +276,7 @@ class CvmfsServer(object):
             repo=self._repository))
       self.abort()
       return False
+
 
 class AliEnPackMan(object):
 
@@ -668,6 +689,7 @@ def main():
   parser.add_argument("--pkgname", dest="pkgName")
   parser.add_argument("--pkgver", dest="pkgVer")
   parser.add_argument("--pkgarch", dest="pkgArch")
+  parser.add_argument("--test-conf", dest="testConf")
   parser.add_argument("--config", "-c", dest="configFile", default="aliPublish.conf",
                       help="Configuration file")
   parser.add_argument("--debug", "-d", dest="debug", action="store_true", default=False,
@@ -727,6 +749,9 @@ def main():
   if conf["riemann_host"].endswith(".mesos") and conf["mesos_dns"]:
     conf["riemann_host"] = choice(mesos_resolve(conf["riemann_host"], conf["mesos_dns"], jget))
 
+  conf["package_dir"] = conf.get("package_dir", conf.get("cvmfs_package_dir", None))
+  conf["modulefile"] = conf.get("modulefile", conf.get("cvmfs_modulefile", None))
+
   if not isinstance(conf.get("architectures", None), dict):
     error("architectures must be a dict of dicts")
     doExit = True
@@ -771,7 +796,7 @@ def main():
         rules[r][arch][uk] = (a == True or b == True) or (a + b)
   debug("Per architecture include/exclude rules: %s" % json.dumps(rules, indent=2))
 
-  if args.action in [ "sync-cvmfs", "sync-alien", "sync-rpms" ]:
+  if args.action in [ "sync-cvmfs", "sync-dir", "sync-alien", "sync-rpms" ]:
     chdir("/")
     if args.pidFile:
       try:
@@ -793,24 +818,33 @@ def main():
       except IOError as e:
         error("Cannot write pidfile %s, aborting" % args.pidFile)
         sys.exit(1)
+    if args.action in [ "sync-cvmfs", "sync-dir" ]:
+      if not isinstance(conf["package_dir"], basestring):
+        error("[cvmfs_]package_dir must be a string")
+        doExit = True
+      if not isinstance(conf["modulefile"], basestring):
+        error("[cvmfs_]modulefile must be a string")
+        doExit = True
     if args.action == "sync-cvmfs":
       if not isinstance(conf.get("cvmfs_repository", None), basestring):
         error("cvmfs_repository must be a string")
         doExit = True
-      if not isinstance(conf.get("cvmfs_package_dir", None), basestring):
-        error("cvmfs_package_dir must be a string")
-        doExit = True
-      if not isinstance(conf.get("cvmfs_modulefile", None), basestring):
-        error("cvmfs_modulefile must be a string")
-        doExit = True
       if doExit: sys.exit(1)
       archKey = "CVMFS"
       pub = CvmfsServer(repository=conf["cvmfs_repository"],
-                        modulefileTpl=conf["cvmfs_modulefile"],
-                        pkgdirTpl=conf["cvmfs_package_dir"],
-                        publishScriptTpl=open(progDir+"/pub-cvmfs-template.sh").read(),
+                        modulefileTpl=conf["modulefile"],
+                        pkgdirTpl=conf["package_dir"],
+                        publishScriptTpl=open(progDir+"/pub-file-template.sh").read(),
                         connParams=connParams,
                         dryRun=args.dryRun)
+    elif args.action == "sync-dir":
+      if doExit: sys.exit(1)
+      archKey = "dir"
+      pub = PlainFilesystem(modulefileTpl=conf["modulefile"],
+                            pkgdirTpl=conf["package_dir"],
+                            publishScriptTpl=open(progDir+"/pub-file-template.sh").read(),
+                            connParams=connParams,
+                            dryRun=args.dryRun)
     elif args.action == "sync-alien":
       archKey = "AliEn"
       pub = AliEnPackMan(publishScriptTpl=open(progDir+"/pub-alien-template.sh").read(),
@@ -848,17 +882,33 @@ def main():
           (jget.count_req, jget.count_req_retries))
     sys.exit(0 if r else 1)
   elif args.action == "test-rules":
-    if not args.pkgName or not args.pkgVer or not args.pkgArch:
-      error("Please specify a package name, version and architecture")
+    testRules = {}
+    if args.testConf:
+      try:
+        testRules = yaml.safe_load(open(args.testConf).read())
+      except (IOError, YAMLError) as e:
+        error("Cannot open rules to test: %s" % e)
+        sys.exit(1)
+    if not testRules and not (args.pkgName and args.pkgVer and args.pkgArch):
+      error("No rules to test. Please specify a package name, version and architecture")
       sys.exit(1)
-    matches = applyFilter(args.pkgVer,
-                          rules["include"].get(args.pkgArch, {}).get(args.pkgName, None),
-                          rules["exclude"].get(args.pkgArch, {}).get(args.pkgName, None),
-                          includeFirst)
-    info(format(matches and "%(package)s version %(version)s matches filters"
-                        or "%(package)s version %(version)s does NOT match filters",
-                package=args.pkgName, version=args.pkgVer))
-    sys.exit(not matches)
+    if not testRules:
+      testRules = { args.pkgArch: { args.pkgName: { args.pkgVer: True } } }
+    for arch in testRules:
+      for pkg in testRules[arch]:
+        for ver in testRules[arch][pkg]:
+          match = applyFilter(ver,
+                              rules["include"].get(arch, {}).get(pkg, None),
+                              rules["exclude"].get(arch, {}).get(pkg, None),
+                              includeFirst)
+          msg = format(match and "%(arch)s: %(pkg)s ver %(ver)s matches filters"
+                             or "%(arch)s: %(pkg)s ver %(ver)s does NOT match filters",
+                       arch=arch, pkg=pkg, ver=ver)
+          if match != testRules[arch][pkg][ver]:
+            error(msg + (match and " but it should not" or " but it should"))
+            sys.exit(1)
+          info(msg)
+    sys.exit(0)
   else:
     error("Wrong action, use: sync-cvmfs, sync-alien, sync-rpms, test-rules")
     sys.exit(1)
