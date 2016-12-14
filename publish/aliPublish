@@ -908,6 +908,7 @@ def main():
             error(msg + (match and " but it should not" or " but it should"))
             sys.exit(1)
           info(msg)
+    info("All rules tested with success")
     sys.exit(0)
   else:
     error("Wrong action, use: sync-cvmfs, sync-alien, sync-rpms, test-rules")
