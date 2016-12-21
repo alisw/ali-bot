@@ -1,0 +1,6 @@
+slc7_x86-64:
+  O2:
+    f4b35472b6_O2_DAQ-1: True
+    f4b35472b6_O2-1: False
+    f4b35472b6-1: False
+    f4b35472b63b27cb86051a576c308b38a85255d3_O2_DAQ-1: False
