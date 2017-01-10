@@ -15,10 +15,57 @@ node ("slc7_x86-64-huge") {
             git remote set-url --push origin $DEST_REPO
           popd
           git clone --depth=1 repo.git/ repo/
-          echo "==> Size before cleanup: $(du -shx repo.git|awk '{print $1}')"
+          echo "==> Size before cleanup (bare repo): $(du -shx repo.git|awk '{print $1}')"
         '''
       }
     }
+  }
+
+  stage "Prepare data repo"
+  withEnv(["BADDIRS_HIST=${BADDIRS_HIST}",
+           "BADFILES_HIST=${BADFILES_HIST}",
+           "BADDIRS_HEAD=${BADDIRS_HEAD}",
+           "BADFILES_HEAD=${BADFILES_HEAD}",
+           "BIGDIRS=${BIGDIRS}",
+           "BIGFILES=${BIGFILES}"]) {
+    sh '''
+      set -e
+      set -o pipefail
+
+      # If not specified then use same values used for BFG
+      BADFILES_HEAD=${BADFILES_HEAD:-"$BADFILES_HIST"}
+      BADDIRS_HEAD=${BADDIRS_HEAD:-"$BADDIRS_HIST"}
+      BIGFILES=${BIGFILES:-"$BADFILES_HEAD"}
+      BIGDIRS=${BIGDIRS:-"$BADDIRS_HEAD"}
+
+      rm -rf keep && mkdir keep
+      pushd repo
+        # Copy big files to the big files repo
+        find . -type d -not -path './.git*' | \
+          while read D; do
+            CONT=1
+            for X in $BADDIRS_HEAD; do
+              [[ $D != *i'/'$X && $D != */$X'/'* ]] || { CONT=; break; }
+            done
+            [[ $CONT ]] || continue;
+            for F in `eval "echo $D/$BIGFILES"`; do
+              [[ -f $F ]] && mkdir -p ../keep/`dirname $F` && cp -a $F ../keep/$F || true;
+            done
+          done
+        # Copy whole big dirs to the big files repo
+        for D in $BIGDIRS; do
+          find . -type d -not -path './.git*' -name $D -exec rsync -a {} ../keep/{} ';'
+        done
+      popd
+      echo "==> Size of data: $(du -shx keep|awk '{print $1}')"
+      pushd keep
+        git init .
+        git add --all :/
+        git config user.name 'ALICE Bot' && git config user.email ali.bot@cern.ch
+        git commit -m 'Import data'
+        git show --name-status
+      popd
+    '''
   }
 
   stage "Slim repo"
@@ -66,29 +113,74 @@ node ("slc7_x86-64-huge") {
         git reflog expire --expire=now --all
         git gc --prune=now --aggressive
       popd
-      echo "==> Size after cleanup: $(du -shx repo.git|awk '{print $1}')"
+      echo "==> Size after cleanup (bare repo): $(du -shx repo.git|awk '{print $1}')"
     '''
   }
 
-  stage "Push to GitHub"
-  if ("$PUSH_TO_GITHUB" == "true") {
+  stage "Config credentials"
+  if ("$PUSH_TO_GIT" == "true") {
+    withCredentials([[$class: 'UsernamePasswordMultiBinding',
+                      credentialsId: 'github_alibuild',
+                      usernameVariable: 'GIT_BOT_USER',
+                      passwordVariable: 'GIT_BOT_PASS']]) {
+      sh '''
+        set -e
+        set -o pipefail
+        printf "protocol=https\nhost=github.com\nusername=$GIT_BOT_USER\npassword=$GIT_BOT_PASS\n" | \
+          git credential-store --file $PWD/git-creds store
+      '''
+    }
+    withCredentials([[$class: 'UsernamePasswordMultiBinding',
+                      credentialsId: 'gitlab_alibuild',
+                      usernameVariable: 'GIT_BOT_USER',
+                      passwordVariable: 'GIT_BOT_PASS']]) {
+      sh '''
+        set -e
+        set -o pipefail
+        printf "protocol=https\nhost=gitlab.cern.ch\nusername=$GIT_BOT_USER\npassword=$GIT_BOT_PASS\n" | \
+          git credential-store --file $PWD/git-creds store
+      '''
+    }
+    sh '''
+      set -e
+      git config --global credential.helper "store --file $PWD/git-creds"
+      ls -l $PWD/git-creds
+    '''
+  }
+
+  stage "Push slim repo"
+  if ("$PUSH_TO_GIT" == "true") {
     retry (3) {
       timeout(600) {
-        withCredentials([[$class: 'UsernamePasswordMultiBinding',
-                          credentialsId: 'github_alibuild',
-                          usernameVariable: 'GIT_BOT_USER',
-                          passwordVariable: 'GIT_BOT_PASS']]) {
+        sh '''
+          set -e
+          pushd repo.git
+            git push --mirror
+          popd
+          rm -rf repo.git
+        '''
+      }
+    }
+  }
+  else {
+    sh '''
+      echo "Not pushing slim repo."
+      rm -rf repo.git
+    '''
+  }
+
+  stage "Push big repo"
+  if ("$PUSH_TO_GIT" == "true") {
+    retry (3) {
+      timeout(600) {
+        withEnv(["BIG_REPO=${BIG_REPO}"]) {
           sh '''
             set -e
-            set -o pipefail
-            printf "protocol=https\nhost=github.com\nusername=$GIT_BOT_USER\npassword=$GIT_BOT_PASS\n" | \
-              git credential-store --file $PWD/git-creds store
-            git config --global credential.helper "store --file $PWD/git-creds"
-            ls $PWD/git-creds
-            pushd repo.git
+            pushd keep
+              git remote add origin $BIG_REPO
               git push --mirror
             popd
-            rm -rf repo.git
+            rm -rf keep
           '''
         }
       }
@@ -96,8 +188,8 @@ node ("slc7_x86-64-huge") {
   }
   else {
     sh '''
-      echo "Not pushing to GitHub."
-      rm -rf repo.git
+      echo "Not pushing big repo."
+      rm -rf keep
     '''
   }
 
