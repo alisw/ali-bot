@@ -3,47 +3,52 @@ networks:
   back:
 services:
   zookeeper:
-    image: alisw/zookeeper
+    image: "alisw${DEVMODE}/zookeeper"
     ports:
     - "2181:2181"
   master:
-    image: alisw/mesos-master:0.28.2
+    image: "alisw${DEVMODE}/mesos-master:1.0.1"
     environment:
       MESOS_MASTER_ZK: zk://zookeeper:2181/mesos
       MESOS_IP: 0.0.0.0
+      LIBPROCESS_SSL_KEY_FILE: /etc/grid-security/hostkey.pem
+      LIBPROCESS_SSL_CERT_FILE: /etc/grid-security/hostcert.pem
+      LIBPROCESS_SSL_VERIFY_CERT: "false"
+      LIBPROCESS_SSL_SUPPORT_DOWNGRADE: "true"
+      LIBPROCESS_SSL_ENABLED: "true"
       SSL_KEY_FILE: /etc/grid-security/hostkey.pem
       SSL_CERT_FILE: /etc/grid-security/hostcert.pem
-      SSL_VERIFY_CERT: "true"
+      SSL_VERIFY_CERT: "false"
       SSL_SUPPORT_DOWNGRADE: "true"
       SSL_ENABLED: "true"
-    volumes:
-      - ./dummy-secrets/cert.pem:/etc/grid-security/hostcert.pem
-      - ./dummy-secrets/key.pem:/etc/grid-security/hostkey.pem
     ports:
     - "5050:5050"
     command: sh -ex /run.sh
   slave:
-    image: aliswdev/mesos-slave:0.28.2
+    image: "alisw${DEVMODE}/mesos-slave:1.0.1"
     pid: host
     privileged: true
     volumes:
       - /sys:/sys
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./dummy-secrets/cert.pem:/etc/grid-security/hostcert.pem
-      - ./dummy-secrets/key.pem:/etc/grid-security/hostkey.pem
       - /var/lib/mesos
     environment:
       MESOS_MASTER_ZK: zk://zookeeper:2181/mesos
 #      MESOS_IP: master
+      LIBPROCESS_SSL_KEY_FILE: /etc/grid-security/hostkey.pem
+      LIBPROCESS_SSL_CERT_FILE: /etc/grid-security/hostcert.pem
+      LIBPROCESS_SSL_VERIFY_CERT: "false"
+      LIBPROCESS_SSL_SUPPORT_DOWNGRADE: "true"
+      LIBPROCESS_SSL_ENABLED: "true"
       SSL_KEY_FILE: /etc/grid-security/hostkey.pem
       SSL_CERT_FILE: /etc/grid-security/hostcert.pem
-      SSL_VERIFY_CERT: "true"
+      SSL_VERIFY_CERT: "false"
       SSL_SUPPORT_DOWNGRADE: "true"
       SSL_ENABLED: "true"
       MESOS_SYSTEMD_ENABLE_SUPPORT: "false"
       MESOS_HOSTNAME: "localhost"
       MESOS_SWITCH_USER: "false"
-      MESOS_DOCKER_MESOS_IMAGE: "alisw/mesos-slave:0.28.2"
+      MESOS_DOCKER_MESOS_IMAGE: "alisw${DEVMODE}/mesos-slave:1.0.1"
       MESOS_ISOLATION: "posix/cpu,posix/mem,docker/runtime"
       MESOS_IMAGE_PROVIDERS: "docker"
       MESOS_EXTRA_CPUS: "1"
@@ -67,7 +72,7 @@ services:
   #  - 5555
   #  - 5556
   marathon:
-    image: alisw/marathon:1.1.1
+    image: "alisw${DEVMODE}/marathon:1.3.5"
     environment:
       - MARATHON_ZK=zk://zookeeper:2181/marathon
       - MARATHON_MASTER=zk://zookeeper:2181/mesos
@@ -79,7 +84,7 @@ services:
     - 8080:8080
     command: bash -ex /run.sh
   marathon-sso:
-    image: alisw/marathon:1.1.1
+    image: "alisw${DEVMODE}/marathon:1.3.5"
     environment:
       - MARATHON_ZK=zk://zookeeper:2181/marathon
       - MARATHON_MASTER=zk://zookeeper:2181/mesos
@@ -166,17 +171,17 @@ services:
       "MESOS_DNS_MASTERS": "master:5050"
     network_mode: host
   aurora-scheduler:
-    image: alisw/aurora-scheduler:0.15.0
+    image: "alisw${DEVMODE}/aurora-scheduler:0.16.0"
     privileged: true
     command: "/bin/bash -ex /run.sh"
     environment:
       "AURORA_MESOS_MASTERS": zk://zookeeper:2181/mesos
       "ZK_ENDPOINTS": zookeeper:2181
-      "AURORA_SHIRO_AFTER_AUTH_FILTER": ch.cern.shirosso.ShibbolethAuthenticationFilter
-      "AURORA_SHIRO_REALM_MODULES": ch.cern.shirosso.CERNSSORealmModule,INI_AUTHNZ
-      "AURORA_SHIRO_INI": /shiro.ini
-      "AURORA_ENABLE_API_SECURITY": "true"
-      "AURORA_HTTP_AUTHENTICATION_MECHANISM": BASIC
+#      "AURORA_SHIRO_AFTER_AUTH_FILTER": ch.cern.shirosso.ShibbolethAuthenticationFilter
+#      "AURORA_SHIRO_REALM_MODULES": ch.cern.shirosso.CERNSSORealmModule,INI_AUTHNZ
+#      "AURORA_SHIRO_INI": /shiro.ini
+#      "AURORA_ENABLE_API_SECURITY": "true"
+#      "AURORA_HTTP_AUTHENTICATION_MECHANISM": BASIC
       "AURORA_REVOCABLE_RESOURCES": "true"
     volumes:
       - /Users/ktf/work/active/shirosso/target/classes:/usr/lib/aurora/lib/classes
@@ -184,7 +189,7 @@ services:
     ports:
     - 8081:8081
   aurora-observer:
-    image: alisw/aurora-executor:0.15.0
+    image: "alisw${DEVMODE}/aurora-executor:0.16.0"
     pid: host
     privileged: true
     command: /usr/bin/thermos_observer --mesos-root=/var/lib/mesos
