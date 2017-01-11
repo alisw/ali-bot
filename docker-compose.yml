@@ -42,6 +42,8 @@ services:
       SSL_ENABLED: "true"
       MESOS_SYSTEMD_ENABLE_SUPPORT: "false"
       MESOS_HOSTNAME: "localhost"
+      MESOS_SWITCH_USER: "false"
+      MESOS_DOCKER_MESOS_IMAGE: "alisw/mesos-slave:0.28.2"
 #      MESOS_LAUNCHER: posix
     command: sh -ex /run.sh
     ports:
@@ -61,11 +63,13 @@ services:
     image: alisw/marathon:1.1.1
     environment:
       - MARATHON_ZK=zk://zookeeper:2181/marathon
-      - MESOS_MASTER=zk://zookeeper:2181/mesos
+      - MARATHON_MASTER=zk://zookeeper:2181/mesos
       - MARATHON_WEBUI_URL=http://marathon:8080
+      - MARATHON_MESOS_ROLE=marathon
+      - MARATHON_LOGGING_LEVEL=warn
     ports:
     - 8080:8080
-    command: sh -ex /run.sh
+    command: marathon
   traefik:
     image: alisw/traefik
     volumes:
