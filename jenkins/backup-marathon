@@ -1,27 +1,32 @@
 #!groovy
 node ('jekyll') {
 
-  stage 'Secrets Setup'
-  withCredentials([[$class: 'FileBinding', credentialsId: '0dd617a6-6b27-4904-becc-51e4cd56eae8', variable: 'GIT_CREDS_FILE']]) {
-    withEnv(["VAULT_ADDR=${VAULT_ADDR}",
-             "VAULT_SKIP_VERIFY=1",
-             "BUILDER_USER=${BUILDER_USER}",
-             "BUILDER_EMAIL=${BUILDER_EMAIL}",
-             "VAULT_SECRET_PATH=${VAULT_SECRET_PATH}"
-      ]) {
-      sh '''
-        git credential-store --file ~/git-creds store < ${GIT_CREDS_FILE}
-        git config --global credential.helper "store --file ~/git-creds"
-        ls ~/git-creds
-        mkdir -p $HOME/.ssh
-        git config --replace-all --global user.name ${BUILDER_USER}
-        git config --replace-all --global user.email ${BUILDER_EMAIL}
-      '''
-    }
+  stage 'Setup credentials'
+  withCredentials([[$class: 'UsernamePasswordMultiBinding',
+                    credentialsId: 'gitlab_alibuild',
+                    usernameVariable: 'GIT_BOT_USER',
+                    passwordVariable: 'GIT_BOT_PASS']]) {
+    sh '''
+      set -e
+      set -o pipefail
+      printf "protocol=https\nhost=gitlab.cern.ch\nusername=$GIT_BOT_USER\npassword=$GIT_BOT_PASS\n" | \
+        git credential-store --file $PWD/git-creds store
+    '''
+  }
+  withEnv(["BUILDER_USER=${BUILDER_USER}",
+           "BUILDER_EMAIL=${BUILDER_EMAIL}"]) {
+    sh '''
+      set -e
+      git config --global credential.helper "store --file $PWD/git-creds"
+      ls -l $PWD/git-creds
+      git config --replace-all --global user.name ${BUILDER_USER}
+      git config --replace-all --global user.email ${BUILDER_EMAIL}
+    '''
   }
 
   stage 'Fetch configuration'
-  withEnv(["MARATHON_URL=${MARATHON_URL}"]) {
+  withEnv(["MARATHON_URL=${MARATHON_URL}",
+           "BACKUP_REPO=${BACKUP_REPO}"]) {
     retry(3) {
       timeout(60) {
         sh """
@@ -34,7 +39,7 @@ node ('jekyll') {
     }
   }
 
-  stage 'Save to gitlab'
+  stage 'Push to GitLab'
     retry(3) {
       timeout(60) {
         sh """
