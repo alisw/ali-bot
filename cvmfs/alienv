@@ -218,8 +218,16 @@ else
    modulecmd="$modules/$version/$distro_dir/$distro_xrelease/bin/modulecmd"
 fi
 
-if [ ! -f $modulecmd ]
-then
+if [[ ! -f $modulecmd ]]; then
+  # Fallback on system-installed
+  modulecmd=modulecmd
+  moduleenv=
+fi
+
+[[ $ALIENV_DEBUG == 1 ]] && printf "modulecmd=$modulecmd\nmoduleenv=$moduleenv\n" >&2
+
+$modulecmd > /dev/null 2>&1
+if [[ $? == 127 ]]; then
       echo "Unknown distribution release: $distro_name $distro_release"
       exit 1
 fi
