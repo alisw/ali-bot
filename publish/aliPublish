@@ -731,7 +731,7 @@ def main():
   if conf.get("exclude", None) is None: conf["exclude"] = {}
   conf["http_ssl_verify"]   = conf.get("http_ssl_verify"  , True)
   conf["conn_timeout_s"]    = conf.get("conn_timeout_s"   , 6.05)
-  conf["conn_retries"]      = conf.get("conn_retries"     , 0)
+  conf["conn_retries"]      = conf.get("conn_retries"     , 3)
   conf["conn_dethrottle_s"] = conf.get("conn_dethrottle_s", 0)
   conf["kill_after_s"]      = conf.get("kill_after_s"     , 3600)
 
@@ -758,7 +758,7 @@ def main():
   if not isinstance(conf.get("base_url", None), basestring):
     error("base_url must be a string")
     doExit = True
-  conf["auto_include_deps"] = conf.get("auto_include_deps", False)
+  conf["auto_include_deps"] = conf.get("auto_include_deps", True)
   if not isinstance(conf["auto_include_deps"], bool):
     error("auto_include_deps must be a boolean")
     doExit = True
