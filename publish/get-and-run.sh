@@ -46,12 +46,15 @@ pushd $DEST
   git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)
 popd
 ln -nfs $(basename $LOG.error) log/latest
+CACHE=$PWD/cache
+mkdir -p $CACHE
 ( cd $DEST/publish
   echo "Running version $(git rev-parse HEAD)"
   ./aliPublish --debug                        \
                ${DRYRUN:+--dry-run}           \
                ${NO_NOTIF:+--no-notification} \
                ${CONF:+--config "$CONF"}      \
+               --cache-deps-dir $CACHE        \
                --pidfile /tmp/aliPublish.pid  \
                $CMD ) 2>&1 | tee -a $LOG.error
 mv -v $LOG.error $LOG

@@ -7,8 +7,8 @@ from requests import RequestException
 from time import sleep, time
 from yaml import YAMLError
 from logging import debug, error, info
-from re import search, escape
-from os.path import isdir, isfile, realpath, dirname, getmtime
+from re import search, escape, sub
+from os.path import isdir, isfile, realpath, dirname, getmtime, join
 from os import chmod, remove, chdir, getcwd, getpid, kill
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, mkdtemp
@@ -86,17 +86,36 @@ def grabOutput(command):
   return (popen.returncode, out)
 
 class JGet(object):
-  def __init__(self, http_ssl_verify, conn_timeout_s, conn_retries, conn_dethrottle_s):
+  def __init__(self, http_ssl_verify, conn_timeout_s, conn_retries, conn_dethrottle_s, cache_dir):
     self.http_ssl_verify   = http_ssl_verify
     self.conn_timeout_s    = conn_timeout_s
     self.conn_retries      = conn_retries
     self.conn_dethrottle_s = conn_dethrottle_s
     self.last_ts           = time()
+    self.count_cached      = 0
     self.count_req         = 0
     self.count_req_retries = 0
+    self.cache_dir         = cache_dir
+    self.urls              = []
+    self.cachable          = '/[^/]+/(dist|dist-runtime|dist-direct)/[^/]+/[^/]+/$'
   def __call__(self, url):
     self.count_req += 1
     dethrottle = self.conn_dethrottle_s
+    cache_file = None
+    cache_status = "DIR"
+    m = search(self.cachable, url)
+    if self.cache_dir and m:
+      cache_file = join(self.cache_dir, sub("[^A-Za-z0-9-_]", "_", m.group(0)).strip("_")+".json")
+      try:
+        j = json.loads(open(cache_file).read())
+        debug("Using cached data for %s" % url)
+        self.count_cached += 1
+        self.urls.append({"url":url, "cached":"HIT"})
+        return j
+      except (IOError,ValueError):
+        pass
+
+    self.urls.append({"url":url, "cached": "MIS" if m else "DIR"})
     for i in range(0,self.conn_retries+1):
       pause_s = max(dethrottle-(time()-self.last_ts), 0)
       debug(format("Dethrottling connection to %(url)s: pausing %(pause).2f second(s)",
@@ -118,6 +137,12 @@ class JGet(object):
         j = None
       self.last_ts = time()
       if j is not None:
+        if cache_file:
+          try:
+            with open(cache_file, "w") as jc:
+              jc.write(json.dumps(j))
+          except IOError as e:
+            error("Cannot cache %s: %s" % (url,e))
         return j
     return {}
 
@@ -174,7 +199,7 @@ class PlainFilesystem(object):
     self._countChanges       = 0
 
   def _kw(self, url, arch, pkgName, pkgVer):
-    kw =  { "url": url, "package": pkgName, "version": pkgVer, "repo": self._repository,
+    kw =  { "url": url, "package": pkgName, "version": pkgVer, "repo": self._repository or "filesystem",
             "arch": arch }
     kw.update({ "pkgdir": format(self._pkgdirTpl, **kw) })
     kw.update({ "modulefile": format(self._modulefileTpl, **kw) })
@@ -702,6 +727,8 @@ def main():
                       help="Do not write or publish anything")
   parser.add_argument("--pidfile", "-p", dest="pidFile", default=None,
                       help="Write PID to this file and do not run if already running")
+  parser.add_argument("--cache-deps-dir", dest="cacheDepsDir", default=None,
+                      help="Directory where to cache package dependencies (optional)")
   args = parser.parse_args()
 
   logger = logging.getLogger()
@@ -743,6 +770,7 @@ def main():
   # Connection handler
   connParams = dict((k, conf[k]) for k in [ "http_ssl_verify", "conn_timeout_s",
                                             "conn_retries", "conn_dethrottle_s" ])
+  connParams["cache_dir"] = args.cacheDepsDir
   jget = JGet(**connParams)
 
   # Resolve Riemann name via Mesos
@@ -878,8 +906,11 @@ def main():
              riemann=riemann,
              dryRun=args.dryRun,
              jget=jget)
-    debug("Made %d unique HTTP requests (%d including retries)" % \
-          (jget.count_req, jget.count_req_retries))
+    debug("Made %d unique HTTP requests (%d remote requests including retries, %d read from cache)" % \
+          (jget.count_req, jget.count_req_retries, jget.count_cached))
+    debug("Summary of requested URLs (DIR=direct access, HIT=cache hit, MIS=cache miss):")
+    for u in jget.urls:
+      debug("[%s] %s" % (u["cached"], u["url"]))
     sys.exit(0 if r else 1)
   elif args.action == "test-rules":
     testRules = {}
@@ -911,7 +942,7 @@ def main():
     info("All rules tested with success")
     sys.exit(0)
   else:
-    error("Wrong action, use: sync-cvmfs, sync-alien, sync-rpms, test-rules")
+    error("Wrong action, use: sync-cvmfs, sync-dir, sync-alien, sync-rpms, test-rules")
     sys.exit(1)
 
 if __name__ == "__main__":
