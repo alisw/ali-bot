@@ -164,12 +164,14 @@ services:
       "DEBUG1": "0"
     network_mode: host
   mesos-dns:
-    image: alisw/mesos-dns:0.5.1
+    image: alisw${DEVMODE}/mesos-dns:0.5.2
     environment:
-      "MESOS_MASTER_ZK": "zookeeper:2181"
-      "MESOS_DNS_RESOLVERS": "137.138.17.5"
-      "MESOS_DNS_MASTERS": "master:5050"
+      "MESOS_DNS_ZK": "zk://localhost:2181/mesos"
+      "MESOS_DNS_RESOLVERS": "8.8.8.8"
+      "MESOS_MASTER_ZK": "localhost:5050"
+      "MESOS_DNS_MASTERS": "localhost:5050"
     network_mode: host
+    command: "/bin/bash -ex /run.sh"
   aurora-scheduler:
     image: "alisw${DEVMODE}/aurora-scheduler:0.16.0"
     privileged: true
