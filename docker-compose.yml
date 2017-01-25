@@ -157,7 +157,7 @@ services:
     networks:
       - back
   vault:
-    image: alisw/vault
+    image: alisw${DEVMODE}/vault:0.6.4
     privileged: true
     environment:
       "ZOOKEEPER_ADDRESS": "zk://zookeeper:2181"
