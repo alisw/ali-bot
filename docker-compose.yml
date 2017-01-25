@@ -3,7 +3,7 @@ networks:
   back:
 services:
   zookeeper:
-    image: "alisw${DEVMODE}/zookeeper"
+    image: "alisw/zookeeper"
     ports:
     - "2181:2181"
   master:
