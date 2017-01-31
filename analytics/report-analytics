@@ -1,0 +1,94 @@
+#!/usr/bin/env python
+import os, subprocess, sys, argparse
+try:
+  from commands import getstatusoutput
+  from urllib import urlopen
+except ImportError:
+  from subprocess import getstatusoutput
+  from urllib.request import urlopen
+from os import unlink
+from os.path import exists, expanduser, dirname
+
+def report(eventType, **metadata):
+  opts = {
+    "v": "1",
+    "tid": os.environ["ALIBOT_ANALYTICS_ID"],
+    "cid": os.environ["ALIBOT_ANALYTICS_USER_UUID"],
+    "aip": "1",
+    "an": os.environ["ALIBOT_ANALYTICS_APP_NAME"],
+    "av": os.environ["ALIBOT_ANALYTICS_APP_VERSION"],
+    "t": eventType
+  }
+  opts.update(metadata)
+  architecture = os.environ["ALIBOT_ANALYTICS_ARCHITECTURE"]
+  ostype = "Macintosh" if architecture.startswith("osx") else "Linux"
+  osversion, osprocessor = architecture.split("_", 1)
+  args = ["curl", "--max-time", "5",
+          "--user-agent", "report-analytics/%s (%s; %s %s) Python/%s" % (
+                                                    os.environ["ALIBOT_VERSION"],
+                                                    ostype,
+                                                    osprocessor,
+                                                    osversion,
+                                                    ".".join([str(x) for x in sys.version_info[:3]])
+                                                   )
+         ]
+  for k,v in opts.items():
+    if not v:
+      continue
+    args += ["-d", "%s=%s" %(k,v)]
+
+  args += ["--silent", "--output", "/dev/null",
+           "https://www.google-analytics.com/collect"]
+  try:
+    subprocess.Popen(args)
+  except:
+    pass
+
+def report_event(category, action, label = "", value = None):
+  report("event", ec=category, ea=action, el = label, ev = value)
+
+def report_screenview(screen_name):
+  report("screenview", cd=screen_name)
+
+def getVersion():
+  cmd = "GIT_DIR=\'%s/.git\' git describe --tags" % dirname(dirname(__file__))
+  err, version = getstatusoutput(cmd)
+  return version if not err else "Unknown version."
+
+if __name__ == "__main__":
+  os.environ["ALIBOT_VERSION"] = getVersion()
+
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--cid", default=None)
+  parser.add_argument("--an", default=None)
+  parser.add_argument("--av", default=None)
+  parser.add_argument("--ec", default=None)
+  parser.add_argument("--ea", default=None)
+  parser.add_argument("--el", default=None)
+  parser.add_argument("--ev", default=None)
+  parser.add_argument("--cd", default=None)
+  parser.add_argument("--tid", default=None)
+  parser.add_argument("--architecture", default=None)
+  parser.add_argument("action", choices=["exception", "screenview", "event"], help="kind of report")
+  args = parser.parse_args()
+
+  VALIDATE_INPUT = [
+    ("tid", "ALIBOT_ANALYTICS_ID"),
+    ("cid", "ALIBOT_ANALYTICS_USER_UUID"),
+    ("an", "ALIBOT_ANALYTICS_APP_NAME"),
+    ("av", "ALIBOT_ANALYTICS_APP_VERSION")
+  ]
+  for opt, env in VALIDATE_INPUT:
+    if getattr(args, opt, None) or os.environ.get(env):
+      continue
+    parser.error("Please provide either --%s flag or export %s" % (opt, env))
+  os.environ["ALIBOT_ANALYTICS_ID"] = args.tid if args.tid else os.environ["ALIBOT_ANALYTICS_ID"]
+  os.environ["ALIBOT_ANALYTICS_USER_UUID"] = args.cid if args.cid else os.environ["ALIBOT_ANALYTICS_USER_UUID"]
+  os.environ["ALIBOT_ANALYTICS_APP_NAME"] = args.an if args.an else os.environ["ALIBOT_ANALYTICS_APP_NAME"]
+  os.environ["ALIBOT_ANALYTICS_APP_VERSION"] = args.av if args.av else os.environ["ALIBOT_ANALYTICS_APP_VERSION"]
+  os.environ["ALIBOT_ANALYTICS_ARCHITECTURE"] = args.architecture if args.architecture else os.environ["ALIBOT_ANALYTICS_ARCHITECTURE"]
+
+  if args.action == "screenview":
+    report_screenview(args.cd)
+  elif args.action == "event":
+    report_screenview(args.ec, args.ea, args.el, args.ev)
