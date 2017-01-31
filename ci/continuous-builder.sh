@@ -4,15 +4,30 @@
 # Notice this will do an incremental build, not a full build, so it
 # really to catch errors earlier.
 
+# A few common environment variables when reporting status to analytics.
+# In analytics we use screenviews to indicate different states of the
+# processing and events to indicate all the things we would consider as
+# fatal in a non deamon process but that here simly make us go to the
+# next step.
+export ALIBOT_ANALYTICS_ID=$ALIBOT_ANALYTICS_ID
+export ALIBOT_ANALYTICS_USER_UUID=`hostname -s`
+# Hardcode for now
+export ALIBOT_ANALYTICS_ARCHITECTURE=slc7_x86-64
+export ALIBOT_ANALYTICS_APP_NAME="continuous-builder.sh"
+
 MIRROR=${MIRROR:-/build/mirror}
 PACKAGE=${PACKAGE:-AliPhysics}
+ANALYTICS=ali-bot/analytics/report-analytics
 
 pushd alidist
   ALIDIST_REF=`git rev-parse --verify HEAD`
 popd
 ali-bot/set-github-status -c alisw/alidist@$ALIDIST_REF -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/pending
 
+$ANALYTICS screenview --cd started
+
 while true; do
+  $ANALYTICS screenview --cd looping
   for d in $(find . -maxdepth 2 -name .git -exec dirname {} \; | grep -v ali-bot); do
     pushd $d
       git pull origin
@@ -24,7 +39,9 @@ while true; do
   else
     HASHES="0@0"
   fi
+
   for pr_id in $HASHES; do
+    $ANALYTICS screenview --cd pr_processing
     DOCTOR_ERROR=""
     BUILD_ERROR=""
     pr_number=${pr_id%@*}
@@ -86,6 +103,8 @@ while true; do
       # so we ignore the result code for now
       ali-bot/set-github-status -c ${STATUS_REF} -s $STATE_CONTEXT/success || true
     fi
+    $ANALYTICS screenview --cd pr_processing_done
   done
+  $ANALYTICS screenview --cd looping_done
   sleep ${DELAY:-600} || true
 done
