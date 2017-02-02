@@ -27,10 +27,13 @@ node ("slc7_x86-64-huge") {
            "BADDIRS_HEAD=${BADDIRS_HEAD}",
            "BADFILES_HEAD=${BADFILES_HEAD}",
            "BIGDIRS=${BIGDIRS}",
-           "BIGFILES=${BIGFILES}"]) {
+           "BIGFILES=${BIGFILES}",
+           "BIG_REPO=${BIG_REPO}"]) {
     sh '''
       set -e
       set -o pipefail
+
+      [[ $BIG_REPO ]] || { echo "No big repo configured: skipping."; exit 0; }
 
       # If not specified then use same values used for BFG
       BADFILES_HEAD=${BADFILES_HEAD:-"$BADFILES_HIST"}
@@ -176,6 +179,7 @@ node ("slc7_x86-64-huge") {
         withEnv(["BIG_REPO=${BIG_REPO}"]) {
           sh '''
             set -e
+            [[ $BIG_REPO ]] || { echo "No big repo configured: skipping."; exit 0; }
             pushd keep
               git remote add origin $BIG_REPO
               git push --mirror
