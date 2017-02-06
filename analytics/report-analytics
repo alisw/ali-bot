@@ -59,24 +59,25 @@ if __name__ == "__main__":
   os.environ["ALIBOT_VERSION"] = getVersion()
 
   parser = argparse.ArgumentParser()
-  parser.add_argument("--cid", default=None)
-  parser.add_argument("--an", default=None)
-  parser.add_argument("--av", default=None)
+  parser.add_argument("--tid", default=None, metavar="ALIBOT_ANALYTICS_ID")
+  parser.add_argument("--cid", default=None, metavar="ALIBOT_ANALYTICS_USER_UUID")
+  parser.add_argument("--an", default=None, metavar="ALIBOT_ANALYTICS_APP_NAME")
+  parser.add_argument("--av", default=None, metavar="ALIBOT_ANALYTICS_APP_VERSION")
   parser.add_argument("--ec", default=None)
   parser.add_argument("--ea", default=None)
   parser.add_argument("--el", default=None)
   parser.add_argument("--ev", default=None)
   parser.add_argument("--cd", default=None)
-  parser.add_argument("--tid", default=None)
-  parser.add_argument("--architecture", default=None)
+  parser.add_argument("--architecture", default=None, metavar="ALIBOT_ANALYTICS_ARCHITECTURE")
   parser.add_argument("action", choices=["exception", "screenview", "event"], help="kind of report")
   args = parser.parse_args()
 
+  # Variables which should always be there.
   VALIDATE_INPUT = [
     ("tid", "ALIBOT_ANALYTICS_ID"),
     ("cid", "ALIBOT_ANALYTICS_USER_UUID"),
     ("an", "ALIBOT_ANALYTICS_APP_NAME"),
-    ("av", "ALIBOT_ANALYTICS_APP_VERSION")
+    ("architecture", "ALIBOT_ANALYTICS_ARCHITECTURE"),
   ]
   for opt, env in VALIDATE_INPUT:
     if getattr(args, opt, None) or os.environ.get(env):
@@ -85,7 +86,7 @@ if __name__ == "__main__":
   os.environ["ALIBOT_ANALYTICS_ID"] = args.tid if args.tid else os.environ["ALIBOT_ANALYTICS_ID"]
   os.environ["ALIBOT_ANALYTICS_USER_UUID"] = args.cid if args.cid else os.environ["ALIBOT_ANALYTICS_USER_UUID"]
   os.environ["ALIBOT_ANALYTICS_APP_NAME"] = args.an if args.an else os.environ["ALIBOT_ANALYTICS_APP_NAME"]
-  os.environ["ALIBOT_ANALYTICS_APP_VERSION"] = args.av if args.av else os.environ["ALIBOT_ANALYTICS_APP_VERSION"]
+  os.environ["ALIBOT_ANALYTICS_APP_VERSION"] = args.av if args.av else (os.environ.get("ALIBOT_ANALYTICS_APP_VERSION", os.environ["ALIBOT_VERSION"]))
   os.environ["ALIBOT_ANALYTICS_ARCHITECTURE"] = args.architecture if args.architecture else os.environ["ALIBOT_ANALYTICS_ARCHITECTURE"]
 
   if args.action == "screenview":
