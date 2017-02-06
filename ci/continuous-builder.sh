@@ -17,12 +17,12 @@ export ALIBOT_ANALYTICS_APP_NAME="continuous-builder.sh"
 
 MIRROR=${MIRROR:-/build/mirror}
 PACKAGE=${PACKAGE:-AliPhysics}
-ANALYTICS=ali-bot/analytics/report-analytics
+ANALYTICS=report-analytics
 
 pushd alidist
   ALIDIST_REF=`git rev-parse --verify HEAD`
 popd
-ali-bot/set-github-status -c alisw/alidist@$ALIDIST_REF -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/pending
+set-github-status -c alisw/alidist@$ALIDIST_REF -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/pending
 
 $ANALYTICS screenview --cd started
 
@@ -35,7 +35,7 @@ while true; do
   done
 
   if [[ "$PR_REPO" != "" ]]; then
-    HASHES=`ali-bot/list-branch-pr --show-main-branch ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} || true`
+    HASHES=`list-branch-pr --show-main-branch ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} || true`
   else
     HASHES="0@0"
   fi
@@ -60,7 +60,7 @@ while true; do
       if [[ $CANNOT_MERGE == 1 ]]; then
         # We do not want to kill the system is github is not working
         # so we ignore the result code for now
-        ali-bot/set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error -m "Cannot merge PR into test area" || true
+        set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error -m "Cannot merge PR into test area" || true
         continue
       fi
     fi
@@ -70,11 +70,11 @@ while true; do
     if [[ $DOCTOR_ERROR != '' ]]; then
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
-      ali-bot/set-github-status -c ${STATUS_REF} -s doctor/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error || true
+      set-github-status -c ${STATUS_REF} -s doctor/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error || true
     else
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
-      ali-bot/set-github-status -c ${STATUS_REF} -s doctor/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/success || true
+      set-github-status -c ${STATUS_REF} -s doctor/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/success || true
     fi
     # Each round we delete the "latest" symlink, to avoid reporting errors
     # from a previous one. In any case they will be recreated if needed when
@@ -92,15 +92,15 @@ while true; do
     if [[ $BUILD_ERROR != '' ]]; then
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
-      ali-bot/set-github-status -c ${STATUS_REF} -s $STATE_CONTEXT/error || true
+      set-github-status -c ${STATUS_REF} -s $STATE_CONTEXT/error || true
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
-      ali-bot/report-pr-errors --default $BUILD_SUFFIX                                              \
+      report-pr-errors --default $BUILD_SUFFIX                                              \
                                --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $STATE_CONTEXT || true
     else
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
-      ali-bot/set-github-status -c ${STATUS_REF} -s $STATE_CONTEXT/success || true
+      set-github-status -c ${STATUS_REF} -s $STATE_CONTEXT/success || true
     fi
     $ANALYTICS screenview --cd pr_processing_done
   done

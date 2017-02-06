@@ -10,6 +10,7 @@ import os
 import sys
 import re
 from hashlib import sha1
+from alibot_helpers.github_utilities import calculateMessageHash
 
 from github import Github
 
@@ -101,7 +102,7 @@ if __name__ == "__main__":
       #   points to something else).
       # - If no issue was found for the given branch, create one and add a comment
       #   about the failure.
-      messageSha = sha1("\n".join(sorted(re.sub("[0-9]", "", message).split("\n")))).hexdigest()[0:10]
+      messageSha = calculateMessageHash(message)
       if issue.title.startswith("Error while checking branch %s@%s:%s" % (pr_id, sha, messageSha)):
         print("Issue still valid. Exiting.", file=sys.stderr)
         exit(0)
