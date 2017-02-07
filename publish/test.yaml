@@ -1,6 +1,8 @@
 slc5_x86-64:
   cctools:
     v5.4.1-1               : False
+  CMake:
+    v3.5.2-3               : True
   AliEn-WorkQueue:
     v1.0-1                 : False
   AliGenerators:
