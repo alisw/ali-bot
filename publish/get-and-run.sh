@@ -25,6 +25,12 @@ elif [[ -d /cvmfs/alice-test.cern.ch ]]; then
 elif [[ -d /cvmfs/alice-nightlies.cern.ch ]]; then
   CONF=aliPublish-nightlies.conf
   CMD=sync-cvmfs
+  PUB_DATA=1
+  export PATH=$HOME/opt/bin:$PATH
+elif [[ -d /cvmfs/alice.cern.ch ]]; then
+  CMD=sync-cvmfs
+  PUB_DATA=1
+  export PATH=$HOME/opt/bin:$PATH
 elif [[ -d /cvmfs ]]; then
   CMD=sync-cvmfs
 else
@@ -56,8 +62,8 @@ mkdir -p $CACHE
                ${CONF:+--config "$CONF"}      \
                --cache-deps-dir $CACHE        \
                --pidfile /tmp/aliPublish.pid  \
-               $CMD ) 2>&1 | tee -a $LOG.error
-mv -v $LOG.error $LOG
-ln -nfs $(basename $LOG) log/latest
-echo "All went right, self-updating now"
-[[ -x $DEST/publish/get-and-run.sh ]] && exec cp -v $DEST/publish/get-and-run.sh .
+               $CMD
+  [[ $PUB_DATA != 1 ]] || ./publish-data.sh ) 2>&1 | tee -a $LOG.error || ERR=1
+[[ $ERR ]] && echo "Something went wrong" \
+           || { echo "All OK"; mv -v $LOG.error $LOG; ln -nfs $(basename $LOG) log/latest; }
+[[ -x $DEST/publish/get-and-run.sh ]] && cp -v $DEST/publish/get-and-run.sh .
