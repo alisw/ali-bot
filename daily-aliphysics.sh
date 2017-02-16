@@ -11,22 +11,29 @@ MIRROR=/build/mirror
 WORKAREA=/build/workarea/sw/$BUILD_DATE
 WORKAREA_INDEX=0
 
-git clone -b $ALIBUILD_BRANCH https://github.com/$ALIBUILD_REPO/alibuild
-git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO/alidist
+# Backwards compatibility (run standalone with old interface and pipelines too)
+[[ $ALIBUILD_REPO == */* ]] || ALIBUILD_REPO=$ALIBUILD_REPO/alibuild
+[[ $ALIDIST_REPO == */* ]] || ALIDIST_REPO=$ALIDIST_REPO/alidist
+rm -rf alibuild/ alidist/
+git clone -b $ALIBUILD_BRANCH https://github.com/$ALIBUILD_REPO alibuild/
+git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO alidist/
 
 set -o pipefail
-AUTOTAG_REMOTE=https://git.cern.ch/reps/AliPhysics
-AUTOTAG_MIRROR=$MIRROR/aliphysics
+
+PACKAGE_LOWER=$(echo $PACKAGE_NAME | tr '[[:upper:]]' '[[:lower:]]')
+RECIPE=alidist/$PACKAGE_LOWER.sh
+AUTOTAG_REMOTE=$(grep -E '^(source:|write_repo:)' $RECIPE | sort -r | head -n1 | cut -d: -f2- | xargs echo)
+AUTOTAG_MIRROR=$MIRROR/$PACKAGE_LOWER
 AUTOTAG_TAG=vAN-$(LANG=C date +%Y%m%d)
 [[ "$TEST_TAG" == "true" ]] && AUTOTAG_TAG=TEST-IGNORE-$AUTOTAG_TAG
 AUTOTAG_BRANCH=rc/$AUTOTAG_TAG
 AUTOTAG_REF=$AUTOTAG_BRANCH
-AUTOTAG_CLONE=$PWD/aliphysics.git
+AUTOTAG_CLONE=$PWD/$PACKAGE_LOWER.git
 [[ -d $AUTOTAG_MIRROR ]] || AUTOTAG_MIRROR=
 rm -rf $AUTOTAG_CLONE
 mkdir $AUTOTAG_CLONE
 pushd $AUTOTAG_CLONE
-  git config --global credential.helper "store --file ~/git-creds-autotag"
+  [[ -e ../git-creds ]] || git config --global credential.helper "store --file ~/git-creds-autotag"  # backwards compat
   git clone --bare \
             ${AUTOTAG_MIRROR:+--reference=$AUTOTAG_MIRROR} \
             $AUTOTAG_REMOTE .
@@ -72,9 +79,9 @@ for x in $OVERRIDE_TAGS; do
   perl -p -i -e "s|tag: .*|tag: $OVERRIDE_TAG|" alidist/$OVERRIDE_PACKAGE.sh
 done
 
-# Extra override for AliPhysics
-perl -p -i -e "s|version: .*|version: ${AUTOTAG_TAG}${DEFAULTS:+_$(echo ${DEFAULTS} | tr '[:lower:]' '[:upper:]')}|" alidist/aliphysics.sh
-perl -p -i -e "s|tag: .*|tag: $AUTOTAG_REF|" alidist/aliphysics.sh
+# Extra override for the toplevel package
+perl -p -i -e "s|version: .*|version: ${AUTOTAG_TAG}${DEFAULTS:+_$(echo ${DEFAULTS} | tr '[:lower:]' '[:upper:]')}|" $RECIPE
+perl -p -i -e "s|tag: .*|tag: $AUTOTAG_HASH|" $RECIPE
 
 RWOPT='::rw'
 [[ "$PUBLISH_BUILDS" == "false" ]] && RWOPT=
@@ -102,8 +109,8 @@ popd
 echo ALIROOT_BUILD_NR=$BUILD_NUMBER >> results.props
 echo PACKAGE_NAME=$PACKAGE_NAME >> results.props
 
-ALIDIST_HASH=$(cd $WORKSPACE/alidist && git rev-parse HEAD)
-ALIBUILD_HASH=$(cd $WORKSPACE/alibuild && git rev-parse HEAD)
+ALIDIST_HASH=$(cd alidist && git rev-parse HEAD)
+ALIBUILD_HASH=$(cd alibuild && git rev-parse HEAD)
 
 case $PACKAGE_NAME in
   aliroot*|zlib*)
