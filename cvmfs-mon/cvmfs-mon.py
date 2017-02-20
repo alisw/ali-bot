@@ -45,7 +45,6 @@ def check(monit):
     for stratum_name in monit["repos"][repo]:
       try:
         s = get(monit["repos"][repo][stratum_name]["url"]).json()
-        delta = (timestamp(s["stratum0"]["last_modified"])-timestamp(s["stratum1"]["last_modified"])).total_seconds()
         pub_delta = (datetime.utcnow()-timestamp(s["stratum0"]["last_modified"])).total_seconds()
         revdiff = s["stratum0"]["revision"]-s["stratum1"]["revision"]
         ok = s["status"] == "ok"
@@ -57,10 +56,10 @@ def check(monit):
         print("%s:%s: OK" % (repo, stratum_name))
       elif revdiff <= monit["max_revdelta"] and pub_delta <= monit["max_timedelta"]:
         print("%s:%s: syncing: %d seconds, %d revisions behind (stratum0 updated %d seconds ago)" % \
-          (repo, stratum_name, delta, revdiff, pub_delta))
+          (repo, stratum_name, pub_delta, revdiff, pub_delta))
       else:
         print("%s:%s: error: %d seconds, %d revisions behind (stratum0 updated %d seconds ago)" % \
-          (repo, stratum_name, delta, revdiff, pub_delta))
+          (repo, stratum_name, pub_delta, revdiff, pub_delta))
         if time.time()-monit["repos"][repo][stratum_name].get("last_notification", 0) > monit["snooze"]:
           notify(monit["notif"],
                  to=monit["repos"][repo][stratum_name]["contact"],
@@ -68,7 +67,7 @@ def check(monit):
                  repo=repo,
                  api_url=monit["repos"][repo][stratum_name]["url"],
                  delta_rev=revdiff,
-                 delta_time=delta,
+                 delta_time=pub_delta,
                  stratum0_mod=s["stratum0"]["last_modified"],
                  stratum1_mod=s["stratum1"]["last_modified"],
                  stratum0_rev=s["stratum0"]["revision"],
