@@ -31,9 +31,22 @@ if __name__ == "__main__":
                       help="Check which had the error")
   parser.add_argument("--dry-run", "-n", action="store_true", default=False,
                       help="Do not actually comment")
-  parser.add_argument("--limit", "-l", default=100,
+  parser.add_argument("--limit", "-l", default=50,
                       help="Max number of lines from the report")
+  parser.add_argument("--logs-dest", dest="logsDest", default="rsync://repo.marathon.mesos/store/logs",
+                      help="Destination path for logs")
+  parser.add_argument("--log-url", dest="logsUrl", default="https://ali-ci.cern.ch/repo/logs",
+                      help="Destination path for logs")
+
   args = parser.parse_args()
+
+  if not "#" in args.pr:
+    parser.error("You need to specify a pull request")
+  if not "@" in args.pr:
+    parser.error("You need to specify a commit this error refers to")
+
+  repo_name, pr_parts = args.pr.split("#", 1)
+  pr_id, pr_commit = pr_parts.split("@", 1)
 
   search_path = join(args.work_dir, "BUILD/*/log")
   print("Searching all logs matching: %s" % search_path, file=sys.stderr)
@@ -54,13 +67,19 @@ if __name__ == "__main__":
   error_log = "\n".join(error_log.split("\n")[0:args.limit])
   error_log.strip(" \n\t")
 
-  if not "#" in args.pr:
-    parser.error("You need to specify a pull request")
-  if not "@" in args.pr:
-    parser.error("You need to specify a commit this error refers to")
+  logId = join(repo_name, pr_id, pr_commit, "fullLog.txt")
+  getstatusoutput("rm -fr copy-logs && mkdir -p `dirname copy-logs/%s`" % logId)
+  for log in logs:
+    cmd = "cat %s >> copy-logs/%s" % (log, logId)
+    print(cmd, file=sys.stderr)
+    err, out = getstatusoutput(cmd)
+    print(out, file=sys.stderr)
+  err, out = getstatusoutput("cd copy-logs && rsync -av ./ %s" % (args.logsDest))
+  if err:
+    print("Error while copying logs to store.", file=sys.stderr)
+    print(out, file=sys.stderr)
 
-  repo_name, pr_parts = args.pr.split("#", 1)
-  pr_id, pr_commit = pr_parts.split("@", 1)
+  logUrl = join(args.logsUrl, logId)
 
   repo = gh.get_repo(repo_name)
   # If the branch is not a PR, we should look for open issues for the
@@ -68,7 +87,7 @@ if __name__ == "__main__":
   if not pr_id.isdigit():
     branch = repo.get_branch(pr_id)
     sha = branch.commit.sha
-    message = "Error while checking %s for %s:\n```\n%s\n```" % (args.status, sha, error_log)
+    message = "Error while checking %s for %s:\n```\n%s\n```\nFull log [here](%s).\n" % (args.status, sha, error_log, logUrl)
     for issue in repo.get_issues(state="open"):
       # Look for open issues:
       # - If we find one which was opened for the same branch / sha
@@ -96,7 +115,7 @@ if __name__ == "__main__":
   pr = repo.get_pull(int(pr_id))
   commit = repo.get_commit(pr_commit)
   sha = commit.sha
-  message = "Error while checking %s for %s:\n```\n%s\n```" % (args.status, sha, error_log)
+  message = "Error while checking %s for %s:\n```\n%s\n```\nFull log [here](%s).\n" % (args.status, sha, error_log, logUrl)
 
   if args.dry_run:
     print("Will annotate %s" % commit)
