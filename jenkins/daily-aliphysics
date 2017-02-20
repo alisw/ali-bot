@@ -1,0 +1,108 @@
+#!groovy
+node ("slc7_x86-64-light") {
+  try {
+    currentBuild.displayName = "#${env.BUILD_NUMBER} - $PACKAGE_NAME $OVERRIDE_TAGS $ARCHITECTURE"
+
+    stage "Wait pull requests"
+    if ("$WAIT_PR" == "true") {
+      timeout (7200) {
+        withEnv(["ALIBOT_REPO=${ALIBOT_REPO}",
+                 "PACKAGE_NAME=${PACKAGE_NAME}"]) {
+          withCredentials([[$class: 'StringBinding',
+                            credentialsId: 'github_token',
+                            variable: 'GITHUB_TOKEN']]) {
+            sh '''
+              set -e
+              echo $GITHUB_TOKEN > ~/.github-token
+              chmod 0600 ~/.github-token
+              rm -rf ali-bot/
+              ALIBOT_BRANCH="${ALIBOT_REPO##*:}"
+              ALIBOT_REPO="${ALIBOT_REPO%:*}"
+              git clone "https://github.com/$ALIBOT_REPO" -b "$ALIBOT_BRANCH" ali-bot/
+              while ! ali-bot/check-open-pr.py 16:00 alisw/$PACKAGE_NAME; do
+                echo "Waiting for all pull requests to be merged"
+                sleep 120
+              done
+            '''
+          }
+        }
+      }
+    }
+    else {
+      println("Not waiting for open pull requests")
+    }
+
+    node ("$ARCHITECTURE-$MESOS_QUEUE_SIZE") {
+
+      stage "Config credentials"
+      withCredentials([[$class: 'UsernamePasswordMultiBinding',
+                        credentialsId: 'github_alibuild',
+                        usernameVariable: 'GIT_BOT_USER',
+                        passwordVariable: 'GIT_BOT_PASS']]) {
+        sh '''
+          set -e
+          set -o pipefail
+          printf "protocol=https\nhost=github.com\nusername=$GIT_BOT_USER\npassword=$GIT_BOT_PASS\n" | \
+            git credential-store --file $PWD/git-creds store
+        '''
+      }
+      withCredentials([[$class: 'UsernamePasswordMultiBinding',
+                        credentialsId: '369b09bf-5f5e-4b68-832a-2f30cad28755',
+                        usernameVariable: 'GIT_BOT_USER',
+                        passwordVariable: 'GIT_BOT_PASS']]) {
+        sh '''
+          set -e
+          set -o pipefail
+          printf "protocol=https\nhost=git.cern.ch\nusername=$GIT_BOT_USER\npassword=$GIT_BOT_PASS\n" | \
+            git credential-store --file $PWD/git-creds store
+        '''
+      }
+      sh '''
+        set -e
+        git config --global credential.helper "store --file $PWD/git-creds"
+        ls -l $PWD/git-creds
+      '''
+
+      stage "Create daily"
+      retry (3) {
+        timeout (240) {
+          withEnv(["ALIBUILD_REPO=${ALIBUILD_REPO}",
+                   "ALIDIST_REPO=${ALIDIST_REPO}",
+                   "ALIBOT_REPO=${ALIBOT_REPO}",
+                   "ARCHITECTURE=${ARCHITECTURE}",
+                   "PACKAGE_NAME=${PACKAGE_NAME}",
+                   "OVERRIDE_TAGS=${OVERRIDE_TAGS}",
+                   "DISABLE=${DISABLE}",
+                   "DEFAULTS=${DEFAULTS}",
+                   "PUBLISH_BUILDS=${PUBLISH_BUILDS}",
+                   "USE_REMOTE_STORE=${USE_REMOTE_STORE}",
+                   "TEST_TAG=${TEST_TAG}",
+                   "REMOVE_RC_BRANCH_FIRST=${REMOVE_RC_BRANCH_FIRST}"]) {
+            sh '''
+              set -e
+              set -o pipefail
+              ALIBOT_BRANCH="${ALIBOT_REPO##*:}"
+              ALIBOT_REPO="${ALIBOT_REPO%:*}"
+              rm -rf ali-bot/
+              git clone "https://github.com/$ALIBOT_REPO" -b "$ALIBOT_BRANCH" ali-bot/
+              export ALIBUILD_BRANCH="${ALIBUILD_REPO##*:}"
+              export ALIBUILD_REPO="${ALIBUILD_REPO%:*}"
+              export ALIDIST_BRANCH="${ALIDIST_REPO##*:}"
+              export ALIDIST_REPO="${ALIDIST_REPO%:*}"
+              echo "Using alibuild $ALIBUILD_REPO $ALIBUILD_BRANCH"
+              echo "Using alidist $ALIDIST_REPO $ALIDIST_BRANCH"
+              ali-bot/daily-aliphysics.sh
+            '''
+          }
+        }
+      }
+    }
+  }
+  catch (e) {
+    // Notify failures
+    emailext(subject: "Daily ${PACKAGE_NAME} tag failed",
+             body: "More details here: ${env.BUILD_URL}",
+             to: "${NOTIFY_EMAILS}")
+    throw e
+  }
+}
