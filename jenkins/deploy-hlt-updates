@@ -1,54 +1,63 @@
 #!groovy
 node ("slc7_x86-64-light") {
 
-  stage "Get configuration"
-  retry (3) {
-    timeout(600) {
-      withEnv (["GIT_URL=${env.GIT_URL}",
-                "GIT_BRANCH=${env.GIT_BRANCH}"]) {
-        git changelog     : false,
-            poll          : false,
-            credentialsId : '369b09bf-5f5e-4b68-832a-2f30cad28755',
-            url           : "${GIT_URL}",
-            branch        : "${GIT_BRANCH}"
+  try {
+    stage "Get configuration"
+    retry (3) {
+      timeout(600) {
+        withEnv (["GIT_URL=${env.GIT_URL}",
+                  "GIT_BRANCH=${env.GIT_BRANCH}"]) {
+          git changelog     : false,
+              poll          : false,
+              credentialsId : '369b09bf-5f5e-4b68-832a-2f30cad28755',
+              url           : "${GIT_URL}",
+              branch        : "${GIT_BRANCH}"
+        }
       }
     }
-  }
 
-  stage "Obtain Vault tokens"
-  def targetHosts = TARGET_HOSTS.split(',')
-  for (int i=0; i<targetHosts.size(); i++) {
-    def targetHost = targetHosts[i];
-    withCredentials([[$class        : 'StringBinding',
-                      credentialsId : "${targetHost}-vault-token",
-                      variable      : 'MY_VAULT_TOKEN']]) {
-      withEnv (["MY_HOST=${targetHost}"]) {
-      sh '''
-        set -e
-        set -o pipefail
-        cd ansible/inventory
-        sed -e "s/^\\($MY_HOST\\..*\\)$/\\1 vault_token=\\"$MY_VAULT_TOKEN\\"/" hltvoboxes > hltvoboxes.0
-        mv -f hltvoboxes.0 hltvoboxes
-      '''
+    stage "Obtain Vault tokens"
+    def targetHosts = TARGET_HOSTS.split(',')
+    for (int i=0; i<targetHosts.size(); i++) {
+      def targetHost = targetHosts[i];
+      withCredentials([[$class        : 'StringBinding',
+                        credentialsId : "${targetHost}-vault-token",
+                        variable      : 'MY_VAULT_TOKEN']]) {
+        withEnv (["MY_HOST=${targetHost}"]) {
+        sh '''
+          set -e
+          set -o pipefail
+          cd ansible/inventory
+          sed -e "s/^\\($MY_HOST\\..*\\)$/\\1 vault_token=\\"$MY_VAULT_TOKEN\\"/" hltvoboxes > hltvoboxes.0
+          mv -f hltvoboxes.0 hltvoboxes
+        '''
+        }
       }
     }
-  }
 
-  stage "Deploy configuration"
-  def limitHosts = targetHosts
-  for (i=0; i<limitHosts.size(); i++) {
-    limitHosts[i] = limitHosts[i]+".*"
-  }
-  timeout(1800) {
-    wrap([$class: 'AnsiColorBuildWrapper', colorMapName: "xterm"]) {
-      withEnv (["VAULT_ADDR=https://alimesos01.cern.ch:8200"]) {
-        ansiblePlaybook colorized     : true,
-                        credentialsId : 'hltcloud-ssh',
-                        inventory     : "ansible/inventory/hltvoboxes",
-                        limit         : limitHosts.join(","),
-                        playbook      : 'ansible/site.yml',
-                        sudo          : true
+    stage "Deploy configuration"
+    def limitHosts = targetHosts
+    for (i=0; i<limitHosts.size(); i++) {
+      limitHosts[i] = limitHosts[i]+".*"
+    }
+    timeout(1800) {
+      wrap([$class: 'AnsiColorBuildWrapper', colorMapName: "xterm"]) {
+        withEnv (["VAULT_ADDR=https://alimesos01.cern.ch:8200"]) {
+          ansiblePlaybook colorized     : true,
+                          credentialsId : 'hltcloud-ssh',
+                          inventory     : "ansible/inventory/hltvoboxes",
+                          limit         : limitHosts.join(","),
+                          playbook      : 'ansible/site.yml',
+                          sudo          : true
+        }
       }
     }
+  }
+  catch (e) {
+    // Notify failures
+    emailext(subject: "Update HLT configuration failed",
+             body: "More details here: ${env.BUILD_URL}",
+             to: "${NOTIFY_EMAILS}")
+    throw e
   }
 }
