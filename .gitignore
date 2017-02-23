@@ -11,3 +11,4 @@ riemann/.lein-repl-history
 .pants.workdir.file_lock
 .ruby-version
 dist
+ali_bot.egg-info/
