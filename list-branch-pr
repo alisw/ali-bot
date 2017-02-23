@@ -25,6 +25,10 @@ if __name__ == "__main__":
                       help="Also show reference for the main branch, not only for the PRs")
   parser.add_argument("--status", default="review",
                       help="Commit status which is considered trustworthy")
+  parser.add_argument("--worker-index", dest="workerIndex", type=int, default=0,
+                      help="Index for the current worker")
+  parser.add_argument("--worker-pool-size", dest="workerPoolSize", type=int, default=1,
+                      help="Total number of workers")
   args = parser.parse_args()
 
   repo_name = args.branch.split("@")[0]
@@ -39,6 +43,10 @@ if __name__ == "__main__":
   pulls = repo.get_pulls(state="open", base=branch_ref)
   for x in pulls:
     commit = repo.get_commit(x.head.sha)
+    # Decide whether or not to show the PR based on how many
+    # workers are there and the current worker id.
+    if ((int(commit.sha[0], 16)) % args.workerPoolSize) != args.workerIndex:
+      continue
     if x.user.login in trusted:
       print("%s@%s" % (x.number, commit.sha))
       continue
@@ -58,4 +66,7 @@ if __name__ == "__main__":
     exit(0)
   # Print the ref of the main branch as well
   branch = repo.get_branch(branch_ref)
-  print("%s@%s" % (branch_ref, branch.commit.sha))
+  # Decide whether or not to show the PR based on how many
+  # workers are there and the current worker id.
+  if (int(branch.commit.sha[0], 16) % args.workerPoolSize) == args.workerIndex:
+    print("%s@%s" % (branch_ref, branch.commit.sha))
