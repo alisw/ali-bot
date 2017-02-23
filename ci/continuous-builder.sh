@@ -81,10 +81,9 @@ while true; do
     # we build.
     mkdir -p sw/BUILD
     find sw/BUILD/ -maxdepth 1 -name "*latest*" -delete
-
     GITHUB_TOKEN= alibuild/aliBuild -j ${JOBS:-`nproc`}                       \
                          ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS}  \
-                         ${ASSUME_CONSISTENT_EXTERNALS:--z $(echo ${pr_number} | tr - _)} \
+                         ${NO_ASSUME_CONSISTENT_EXTERNALS:+-z $(echo ${pr_number} | tr - _)} \
                          --reference-sources $MIRROR                          \
                          ${REMOTE_STORE:+--remote-store $REMOTE_STORE}        \
                          ${DEBUG:+--debug}                                    \
