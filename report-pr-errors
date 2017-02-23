@@ -14,7 +14,7 @@ from github import Github
 import atexit
 
 def printStats(gh):
-  print("Github API used %s/%s" % gh.rate_limiting)
+  print("Github API used %s/%s" % gh.rate_limiting, file=sys.stderr)
 
 if __name__ == "__main__":
   gh = Github(login_or_token=os.environ["GITHUB_TOKEN"])
