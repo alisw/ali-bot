@@ -12,7 +12,7 @@ from sys import exit
 import sys
 
 def printStats(gh):
-  debug("Github API used %s/%s" % gh.rate_limiting)
+  print("Github API used %s/%s" % gh.rate_limiting, file=sys.stderr)
 
 # Just for the moment
 DEFAULT_REPO = "alibuild"
