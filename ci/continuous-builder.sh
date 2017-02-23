@@ -84,7 +84,7 @@ while true; do
 
     GITHUB_TOKEN= alibuild/aliBuild -j ${JOBS:-`nproc`}                       \
                          ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS}  \
-                         -z $(echo ${pr_number} | tr - _)                     \
+                         ${ASSUME_CONSISTENT_EXTERNALS:--z $(echo ${pr_number} | tr - _)} \
                          --reference-sources $MIRROR                          \
                          ${REMOTE_STORE:+--remote-store $REMOTE_STORE}        \
                          ${DEBUG:+--debug}                                    \
