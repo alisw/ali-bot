@@ -27,7 +27,7 @@ if __name__ == "__main__":
                       help="Commit status which is considered trustworthy")
   parser.add_argument("--worker-index", dest="workerIndex", type=int, default=0,
                       help="Index for the current worker")
-  parser.add_argument("--worker-pool-size", dest="workerPoolSize", type=int, default=1,
+  parser.add_argument("--workers-pool-size", dest="workersPoolSize", type=int, default=1,
                       help="Total number of workers")
   args = parser.parse_args()
 
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     commit = repo.get_commit(x.head.sha)
     # Decide whether or not to show the PR based on how many
     # workers are there and the current worker id.
-    if ((int(commit.sha[0], 16)) % args.workerPoolSize) != args.workerIndex:
+    if ((int(commit.sha[0], 16)) % args.workersPoolSize) != args.workerIndex:
       continue
     if x.user.login in trusted:
       print("%s@%s" % (x.number, commit.sha))
@@ -68,5 +68,5 @@ if __name__ == "__main__":
   branch = repo.get_branch(branch_ref)
   # Decide whether or not to show the PR based on how many
   # workers are there and the current worker id.
-  if (int(branch.commit.sha[0], 16) % args.workerPoolSize) == args.workerIndex:
+  if (int(branch.commit.sha[0], 16) % args.workersPoolSize) == args.workerIndex:
     print("%s@%s" % (branch_ref, branch.commit.sha))
