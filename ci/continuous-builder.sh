@@ -35,7 +35,7 @@ while true; do
   done
 
   if [[ "$PR_REPO" != "" ]]; then
-    HASHES=`ali-bot/list-branch-pr --show-main-branch ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX}`
+    HASHES=`ali-bot/list-branch-pr --show-main-branch ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} || true`
   else
     HASHES="0@0"
   fi
