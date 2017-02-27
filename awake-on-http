@@ -1,0 +1,26 @@
+#!/usr/bin/env python
+
+import BaseHTTPServer, SimpleHTTPServer
+
+from argparse import ArgumentParser
+import time
+
+if __name__ == "__main__":
+  class myHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+    #Handler for the GET requests
+    def do_GET(self):
+      self.send_response(200)
+      self.send_header('Content-type','text/html')
+      self.end_headers()
+      # Send the html message
+      print "Quit requested"
+      return
+
+  parser = ArgumentParser()
+  parser.add_argument("--timeout", "-t", dest="timeout", type=int, help="Time to wait before quitting")
+  parser.add_argument("--port", "-p", dest="port", default=4443, type=int, help="Port to bind")
+  args = parser.parse_args()
+  httpd = BaseHTTPServer.HTTPServer(('', args.port), myHandler)
+  httpd.socket.settimeout(args.timeout)
+  httpd.handle_request()
+  httpd.server_close()
