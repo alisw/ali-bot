@@ -105,19 +105,18 @@ if __name__ == "__main__":
         print("Issue still valid. Exiting.", file=sys.stderr)
         exit(0)
       if issue.title.startswith("Error while checking branch %s@%s" % (pr_id, sha)):
-        print("Issue is about something different. Updating.")
+        print("Issue is about something different. Updating.", file=sys.stderr)
         issue.create_comment(body="Error for commit %s has changed.\n" % sha + message)
         issue.edit(title="Error while checking branch %s@%s:%s" % (pr_id, sha, messageSha))
         exit(0)
       if issue.title.startswith("Error while checking branch %s@" % pr_id):
-        issue.create_comment("Branch was updated. Closing issue.")
+        issue.create_comment("Branch was updated. Closing issue.", file=sys.stderr)
         issue.edit(state="close")
         continue
     # The first time we report an issue with a commit, we do so as issue body.
     # Subsequent changes will be reported as comments.
     issue = repo.create_issue(title="Error while checking branch %s@%s:%s" % (pr_id, sha, messageSha),
                               body=message)
-    issue.create_comment(body=message)
     exit(0)
 
   pr = repo.get_pull(int(pr_id))
@@ -132,9 +131,10 @@ if __name__ == "__main__":
 
   for comment in pr.get_issue_comments():
     if comment.body.startswith("Error while checking %s for %s" % (args.status, sha)):
-      if comment.body == message:
-        print("Comment on PR was already done.", file=sys.stderr)
+      if comment.body != message:
+        print("Comment was different. Updating", file=sys.stderr)
+        comment.edit(body=message)
         exit(0)
-      comment.edit(message)
+      print("Found same comment for the same commit", file=sys.stderr)
       exit(0)
   pr.create_issue_comment(body=message)
