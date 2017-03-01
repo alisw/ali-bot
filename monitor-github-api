@@ -6,4 +6,5 @@ from github import Github
 
 if __name__ == "__main__":
   gh = Github(login_or_token=os.environ["GITHUB_TOKEN"])
-  print("Github API used %s/%s" % gh.rate_limiting, file=sys.stderr)
+  parts = [time.time()] + [x for x in gh.rate_limiting]
+  print("%s,%s,%s" % tuple(parts), file=sys.stderr)
