@@ -8,6 +8,7 @@ from os.path import dirname, join
 from sys import exit
 import os
 import sys
+import re
 from hashlib import sha1
 
 from github import Github
@@ -100,7 +101,7 @@ if __name__ == "__main__":
       #   points to something else).
       # - If no issue was found for the given branch, create one and add a comment
       #   about the failure.
-      messageSha = sha1(message).hexdigest()[0:10]
+      messageSha = sha1("\n".join(sorted(re.sub("[0-9]", "", message).split("\n")))).hexdigest()[0:10]
       if issue.title.startswith("Error while checking branch %s@%s:%s" % (pr_id, sha, messageSha)):
         print("Issue still valid. Exiting.", file=sys.stderr)
         exit(0)
