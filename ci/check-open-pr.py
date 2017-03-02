@@ -26,18 +26,21 @@ for repo_name in sys.argv[2:]:
     # review must be success / build/AliPhysics/release must not be error
     review = None
     build = None
+    what_approved = None
     for st in pull.base.repo.get_commit(pull.head.sha).get_statuses():
       if not build and st.context == build_test_name:
         build = st.state
       if not review and st.context == "review":
         review = st.state
+        what_approved = st.description
+        print(what_approved)
       if review and build:
         break
-    if review == "success" and not build == "error":
-      print("%s#%d: created at %s (Geneva), review: %s, build: %s: must wait" % (repo_name, pull.number, when, review, build))
+    if review == "success" and not build == "error" and what_approved == "merge approved":
+      print("%s#%d: created at %s (Geneva), review: %s (%s), build: %s: must wait" % (repo_name, pull.number, when, review, what_approved, build))
       sys.exit(1)
     else:
-      print("%s#%d: created at %s (Geneva), review: %s, build: %s: not waiting: bad state" % (repo_name, pull.number, when, review, build))
+      print("%s#%d: created at %s (Geneva), review: %s (%s), build: %s: not waiting: bad state" % (repo_name, pull.number, when, review, what_approved, build))
 
 print("May proceed with tagging")
 sys.exit(0)
