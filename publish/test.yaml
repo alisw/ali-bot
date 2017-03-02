@@ -192,6 +192,8 @@ slc5_x86-64:
     v5-08-13q-p1-01-cookdedx-1 : True
     v5-08-18-01-pcm2-1     : True
     v5-08-19-01-emcalEmbedding-1 : True
+    vAN-20170216_GITHUB-1  : False
+    vAN-20170301_GITHUB-1  : True
 
 slc6_x86-64:
   cctools:
