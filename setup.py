@@ -98,5 +98,6 @@ setup(
                "process-pull-request",
                "list-branch-pr",
                "analytics/report-analytics",
-               "ci/continuous-builder.sh"]
+               "ci/continuous-builder.sh",
+               "monitor-github-api"]
 )
