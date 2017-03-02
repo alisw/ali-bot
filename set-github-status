@@ -5,20 +5,16 @@ from os.path import expanduser
 from argparse import ArgumentParser
 import yaml, logging
 from logging import debug, info
-import os
-
-import re
 from sys import exit
-import sys
+from alibot_helpers.github_utilities import setGithubStatus, printStats
 
-def printStats(gh):
-  print("Github API used %s/%s" % gh.rate_limiting, file=sys.stderr)
+import os
+import re
+import sys
 
 # Just for the moment
 DEFAULT_REPO = "alibuild"
 DEFAULT_USER = "alisw"
-VALID_STATES = ["pending", "success", "error", "failure"]
-
 
 if __name__ == "__main__":
   parser = ArgumentParser(usage="set-github-status -c <commit> -s <status> [-m <status-message>] [-u <target-url>]")
@@ -35,33 +31,14 @@ if __name__ == "__main__":
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
 
-  repo_name = args.commit.split("@")[0]
-  commit_ref = args.commit.split("@")[1] if "@" in args.commit else "master"
-  state_context = args.status.rsplit("/", 1)[0] if "/" in args.status else ""
-  state_value = args.status.rsplit("/", 1)[1] if "/" in args.status else args.status
-  print(state_value, state_context)
-
   gh = Github(login_or_token=os.environ["GITHUB_TOKEN"])
   printStats(gh)
-  if not state_value in VALID_STATES:
-    parser.error("Valid states are " + ",".join(VALID_STATES))
+  try:
+    setGithubStatus(gh, args)
+  except RuntimeError as e:
+    printStats(gh)
+    parser.error(e.message)
+    exit(1)
 
-  repo = gh.get_repo(repo_name)
-  commit = repo.get_commit(commit_ref)
-  # Avoid creating a new state if the previous one is exactly the same.
-  for s in commit.get_statuses():
-    # If the state already exists and it's different, create a new one
-    if s.context == state_context and (s.state != state_value or s.target_url != args.url or s.description != args.message):
-      print("Last status for %s does not match. Updating." % state_context, file=sys.stderr)
-      printStats(gh)
-      commit.create_status(state_value, args.url, args.message, state_context)
-      exit(0)
-    # If the state already exists and it's teh same, exit
-    if s.context == state_context and s.state == state_value and s.target_url == args.url and s.description == args.message:
-      print("Last status for %s is already matching. Exiting" % state_context, file=sys.stderr)
-      printStats(gh)
-      exit(0)
-  # If the state does not exists, create it.
-  print("%s does not exist. Creating." % state_context, file=sys.stderr)
-  commit.create_status(state_value, args.url, args.message, state_context)
   printStats(gh)
+  exit(0)
