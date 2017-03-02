@@ -92,9 +92,6 @@ while true; do
     if [[ $BUILD_ERROR != '' ]]; then
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
-      set-github-status -c ${STATUS_REF} -s $STATE_CONTEXT/error || true
-      # We do not want to kill the system is github is not working
-      # so we ignore the result code for now
       report-pr-errors --default $BUILD_SUFFIX                                              \
                                --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $STATE_CONTEXT || true
     else

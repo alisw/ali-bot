@@ -10,7 +10,7 @@ import os
 import sys
 import re
 from hashlib import sha1
-from alibot_helpers.github_utilities import calculateMessageHash
+from alibot_helpers.github_utilities import calculateMessageHash, setGithubStatus
 
 from github import Github
 
@@ -117,6 +117,7 @@ if __name__ == "__main__":
         continue
     # The first time we report an issue with a commit, we do so as issue body.
     # Subsequent changes will be reported as comments.
+    setGithubStatus(gh, Namespace(commit=sha, status=args.status + "/error", message="", url=""))
     issue = repo.create_issue(title="Error while checking branch %s@%s:%s" % (pr_id, sha, messageSha),
                               body=message)
     exit(0)
@@ -139,4 +140,5 @@ if __name__ == "__main__":
         exit(0)
       print("Found same comment for the same commit", file=sys.stderr)
       exit(0)
+  setGithubStatus(gh, Namespace(commit=sha, status=args.status + "/error", message="", url=""))
   pr.create_issue_comment(body=message)
