@@ -5,15 +5,19 @@ import os
 import random
 import sys
 import time
+import pickle
 
 from commands import getstatusoutput
 from argparse import ArgumentParser
 from sys import exit
 from operator import itemgetter
 from alibot_helpers.github_utilities import printStats
+from alibot_helpers.github_utilities import dumpCommits, loadCommits
 import atexit
 
 from github import Github
+
+CACHED_COMMITS = loadCommits()
 
 def getStatusInfo(statuses, args):
   reviewed = False
@@ -21,28 +25,34 @@ def getStatusInfo(statuses, args):
   success = False
 
   for s in statuses:
-    if s.context == args.status and s.state == "success":
-      reviewed = True
     if args.checkName and s.context == args.checkName:
       reviewed = True
       tested = s.state in ["success", "error", "failure"]
       success = s.state in ["success"]
       break
-  return {"tested": tested, "success": success, "reviewed": reviewed, "random": random.random()}
+    if s.context == args.status and s.state == "success":
+      reviewed = True
+  return {"tested": tested,
+          "success": success,
+          "reviewed": reviewed,
+          "random": random.random()}
 
-def processOnePull(pull, repo, args, sorted_pulls):
+
+def processOnePull(gh, pull, repo, args, sorted_pulls):
   # Decide whether or not to show the PR based on how many
   # workers are there and the current worker id.
   if ((int(pull.head.sha[0], 16)) % args.workersPoolSize) != args.workerIndex:
     return
-  commit = repo.get_commit(pull.head.sha)
-  if pull.user.login in trusted:
-    print("%s@%s" % (pull.number, commit.sha))
-    return
+
+  # Not sure why pygithub does not handle this internally.
+  commit = CACHED_COMMITS.get(pull.head.sha) or repo.get_commit(pull.head.sha)
+  CACHED_COMMITS[pull.head.sha] = commit
 
   all_statuses = commit.get_statuses()
   item = {"number": pull.number, "sha": commit.sha}
   item.update(getStatusInfo(all_statuses, args))
+  if pull.user.login in trusted:
+    item.update({"reviewed": True})
   sorted_pulls.append(item)
 
 def processMainBranch(repo, branch_ref, args, sorted_pulls):
@@ -76,7 +86,11 @@ if __name__ == "__main__":
                       help="Index for the current worker")
   parser.add_argument("--workers-pool-size", dest="workersPoolSize", type=int, default=1,
                       help="Total number of workers")
-  parser.add_argument("--script", dest="script", default="", help="Execute a script on the resulting PR")
+  parser.add_argument("--script", dest="script", default="",
+                      help="Execute a script on the resulting PR")
+  parser.add_argument("--timeout", dest="timeout", default=100, type=int,
+                      help="Timeout between one run and the other")
+
   args = parser.parse_args()
 
   repo_name = args.branch.split("@")[0]
@@ -95,9 +109,9 @@ if __name__ == "__main__":
     sorted_pulls = []
     for x in pulls:
       try:
-        printStats(gh)
         print("Processing: %s" % x.number, file=sys.stderr)
-        processOnePull(x, repo, args, sorted_pulls)
+        processOnePull(gh, x, repo, args, sorted_pulls)
+        print("Processing: %s. Done." % x.number, file=sys.stderr)
       except RuntimeError as e:
         print(e, file=sys.stderr)
 
@@ -119,11 +133,13 @@ if __name__ == "__main__":
       prId = "%(number)s@%(sha)s" % x
       print(prId)
       if args.script:
-        err, out = getstatusoutput("%s %s" % (prId, args.script))
+        err, out = getstatusoutput("%s %s" % (args.script, prId))
+        print(out)
 
     printStats(gh)
     # No script provided, run in one shot mode.
     if not args.script:
       break
-    time.sleep(100)
+    time.sleep(args.timeout)
 
+  dumpCommits(CACHED_COMMITS)

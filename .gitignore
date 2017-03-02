@@ -12,3 +12,7 @@ riemann/.lein-repl-history
 .ruby-version
 dist
 ali_bot.egg-info/
+.list-branch-pr-cached-commits
+.cached-commits
+.test_cache
+.cached_github_client_cache

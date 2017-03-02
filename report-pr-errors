@@ -11,17 +11,22 @@ import sys
 import re
 from hashlib import sha1
 from alibot_helpers.github_utilities import calculateMessageHash, setGithubStatus
+from alibot_helpers.github_utilities import printStats
+from alibot_helpers.github_utilities import loadCommits, dumpCommits
 
 from github import Github
 
 import atexit
 
-def printStats(gh):
-  print("Github API used %s/%s" % gh.rate_limiting, file=sys.stderr)
+CACHED_COMMITS = loadCommits()
 
 if __name__ == "__main__":
   gh = Github(login_or_token=os.environ["GITHUB_TOKEN"])
-  atexit.register(lambda : printStats(gh))
+  def atexit_handler():
+    printStats(gh)
+    dumpCommits(CACHED_COMMITS)
+  atexit.register(atexit_handler)
+
   print("Github API used %s/%s" % gh.rate_limiting)
   parser = ArgumentParser()
   parser.add_argument("--work-dir", "-w", default="sw")
@@ -117,13 +122,15 @@ if __name__ == "__main__":
         continue
     # The first time we report an issue with a commit, we do so as issue body.
     # Subsequent changes will be reported as comments.
-    setGithubStatus(gh, Namespace(commit=sha, status=args.status + "/error", message="", url=""))
+    setGithubStatus(gh, Namespace(commit=sha, status=args.status + "/error", message="", url=""), CACHED_COMMITS)
     issue = repo.create_issue(title="Error while checking branch %s@%s:%s" % (pr_id, sha, messageSha),
                               body=message)
     exit(0)
 
   pr = repo.get_pull(int(pr_id))
-  commit = repo.get_commit(pr_commit)
+  commit = CACHED_COMMITS.get(pr_commit) or repo.get_commit(pr_commit)
+  CACHED_COMMITS[pr_commit] = commit
+
   sha = commit.sha
   message = "Error while checking %s for %s:\n```\n%s\n```\nFull log [here](%s).\n" % (args.status, sha, error_log, logUrl)
 
@@ -140,5 +147,5 @@ if __name__ == "__main__":
         exit(0)
       print("Found same comment for the same commit", file=sys.stderr)
       exit(0)
-  setGithubStatus(gh, Namespace(commit=sha, status=args.status + "/error", message="", url=""))
+  setGithubStatus(gh, Namespace(commit=sha, status=args.status + "/error", message="", url=""), CACHED_COMMITS)
   pr.create_issue_comment(body=message)

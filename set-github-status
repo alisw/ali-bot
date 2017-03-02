@@ -7,6 +7,7 @@ import yaml, logging
 from logging import debug, info
 from sys import exit
 from alibot_helpers.github_utilities import setGithubStatus, printStats
+from alibot_helpers.github_utilities import loadCommits, dumpCommits
 
 import os
 import re
@@ -15,6 +16,7 @@ import sys
 # Just for the moment
 DEFAULT_REPO = "alibuild"
 DEFAULT_USER = "alisw"
+CACHED_COMMITS = loadCommits()
 
 if __name__ == "__main__":
   parser = ArgumentParser(usage="set-github-status -c <commit> -s <status> [-m <status-message>] [-u <target-url>]")
@@ -31,14 +33,19 @@ if __name__ == "__main__":
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
 
+  if not "GITHUB_TOKEN" in os.environ:
+    parser.error("Please set GITHUB_TOKEN")
+
   gh = Github(login_or_token=os.environ["GITHUB_TOKEN"])
   printStats(gh)
+
   try:
-    setGithubStatus(gh, args)
+    setGithubStatus(gh, args, CACHED_COMMITS)
   except RuntimeError as e:
     printStats(gh)
     parser.error(e.message)
     exit(1)
 
   printStats(gh)
+  dumpCommits(CACHED_COMMITS)
   exit(0)

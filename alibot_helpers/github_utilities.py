@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 from __future__ import print_function
-
+from collections import OrderedDict
 from hashlib import sha1
+import pickle
 
 import sys
 import re
@@ -15,7 +16,36 @@ def calculateMessageHash(message):
 
 VALID_STATES = ["pending", "success", "error", "failure"]
 
-def setGithubStatus(gh, args):
+def loadCommits():
+  message = ""
+  try:
+    with open(".cached-commits", "r+") as f:
+      return pickle.load(f)
+  except IOError as e:
+    pass
+  except EOFError as e:
+    message = "Malformed cache file"
+  except pickle.PickleError as e:
+    message = "Could not read commit cache"
+  message and print(message, file=sys.stderr)
+  return OrderedDict()
+
+# Dumps the cache. Since commits is an OrderedDict we can limit it to
+# the last 1000 insertions.
+def dumpCommits(commits):
+  message = ""
+  try:
+    with open(".cached-commits", "w") as f:
+      pickle.dump(OrderedDict(commits.items()[-1000:]), f, 2)
+  except IOError as e:
+    message = "Unable to write cache"
+  except EOFError as e:
+    message = "Malformed cache file"
+  except pickle.PickleError as e:
+    message = "Could not write commit cache"
+  print(message, file=sys.stderr)
+
+def setGithubStatus(gh, args, cache={}):
   repo_name = args.commit.split("@")[0]
   commit_ref = args.commit.split("@")[1] if "@" in args.commit else "master"
   state_context = args.status.rsplit("/", 1)[0] if "/" in args.status else ""
@@ -25,7 +55,8 @@ def setGithubStatus(gh, args):
     raise RuntimeError("Valid states are " + ",".join(VALID_STATES))
 
   repo = gh.get_repo(repo_name)
-  commit = repo.get_commit(commit_ref)
+  commit = cache.get(commit_ref) or repo.get_commit(commit_ref)
+  cache[commit_ref] = commit
 
   # Avoid creating a new state if the previous one is exactly the same.
   for s in commit.get_statuses():
