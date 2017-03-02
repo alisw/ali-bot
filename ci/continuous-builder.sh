@@ -105,5 +105,9 @@ while true; do
     $ANALYTICS screenview --cd pr_processing_done
   done
   $ANALYTICS screenview --cd looping_done
+  if [[ $ONESHOT = true ]]; then
+    echo "Called with ONESHOT=true. Exiting."
+    exit 0
+  fi
   sleep ${DELAY:-600} || true
 done
