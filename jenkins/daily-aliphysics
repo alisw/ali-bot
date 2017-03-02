@@ -7,6 +7,7 @@ node ("slc7_x86-64-light") {
     if ("$WAIT_PR" == "true") {
       timeout (7200) {
         withEnv(["ALIBOT_REPO=${ALIBOT_REPO}",
+                 "WAIT_PR_LIMIT=${WAIT_PR_LIMIT}",
                  "PACKAGE_NAME=${PACKAGE_NAME}"]) {
           withCredentials([[$class: 'StringBinding',
                             credentialsId: 'github_token',
@@ -19,7 +20,7 @@ node ("slc7_x86-64-light") {
               ALIBOT_BRANCH="${ALIBOT_REPO##*:}"
               ALIBOT_REPO="${ALIBOT_REPO%:*}"
               git clone "https://github.com/$ALIBOT_REPO" -b "$ALIBOT_BRANCH" ali-bot/
-              while ! ali-bot/ci/check-open-pr.py 16:00 alisw/$PACKAGE_NAME; do
+              while ! ali-bot/ci/check-open-pr.py $WAIT_PR_LIMIT alisw/$PACKAGE_NAME; do
                 echo "Waiting for all pull requests to be merged"
                 sleep 120
               done
