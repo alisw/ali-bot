@@ -53,14 +53,22 @@ while true; do
         git config --add remote.origin.fetch "+refs/pull/*/head:refs/remotes/origin/pr/*"
         git fetch origin
         git clean -fxd
+        OLD_SIZE=`du --exclude=.git -sb . | awk '{print $1}'`
         git rev-parse --verify HEAD
         git merge $pr_hash || CANNOT_MERGE=1
+        NEW_SIZE=`du --exclude=.git -sb . | awk '{print $1}'`
         PR_REF=$pr_hash
       popd
       if [[ $CANNOT_MERGE == 1 ]]; then
         # We do not want to kill the system is github is not working
         # so we ignore the result code for now
         set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error -m "Cannot merge PR into test area" || true
+        continue
+      fi
+      if [[ $(($NEW_SIZE - $OLD_SIZE)) -gt ${MAX_DIFF_SIZE:-4000000} ]]; then
+        # We do not want to kill the system is github is not working
+        # so we ignore the result code for now
+        set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error -m "Diff to big. Rejecting." || true
         continue
       fi
     fi
