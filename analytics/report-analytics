@@ -92,4 +92,4 @@ if __name__ == "__main__":
   if args.action == "screenview":
     report_screenview(args.cd)
   elif args.action == "event":
-    report_screenview(args.ec, args.ea, args.el, args.ev)
+    report_event(args.ec, args.ea, args.el, args.ev)
