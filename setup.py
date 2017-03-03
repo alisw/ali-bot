@@ -98,6 +98,8 @@ setup(
                "process-pull-request",
                "list-branch-pr",
                "analytics/report-analytics",
+               "analytics/report-metric-monalisa",
                "ci/continuous-builder.sh",
-               "monitor-github-api"]
+               "monitor-github-api",
+               "monitor-github-api-monalisa.sh"]
 )
