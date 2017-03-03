@@ -1,0 +1,21 @@
+#!/usr/bin/env python
+from argparse import ArgumentParser
+import socket
+import os
+
+def report_metric(args):
+  sock = socket.socket(socket.AF_INET, # Internet
+                       socket.SOCK_DGRAM) # UDP
+  line = "{a.metric_path} {a.name} {a.value}".format(a=args)
+  print line
+  sock.sendto(line, (args.monalisa_host, args.monalisa_port))
+
+if __name__ == "__main__":
+  parser = ArgumentParser()
+  parser.add_argument("--monalisa-host", dest="monalisa_host", default=os.environ.get("MONALISA_HOST", "localhost"), metavar="MONALISA_HOST")
+  parser.add_argument("--monalisa-port", dest="monalisa_port", default=os.environ.get("MONALISA_PORT", 8889), type=int, metavar="MONALISA_PORT")
+  parser.add_argument("--metric-path", dest="metric_path", default=os.environ.get("MONALISA_METRIC_PATH"), metavar="MONALISA_METRIC_PATH")
+  parser.add_argument("--metric-name", dest="name", required=True, help="name of the metric")
+  parser.add_argument("--metric-value", dest="value", required=True, help="value for the metric")
+  args = parser.parse_args()
+  report_metric(args)
