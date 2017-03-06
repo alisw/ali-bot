@@ -10,24 +10,32 @@
 # fatal in a non deamon process but that here simly make us go to the
 # next step.
 export ALIBOT_ANALYTICS_ID=$ALIBOT_ANALYTICS_ID
-export ALIBOT_ANALYTICS_USER_UUID=`hostname -s`
+export ALIBOT_ANALYTICS_USER_UUID=`hostname -s`-$WORKER_INDEX${CI_NAME:+-$CI_NAME}
 # Hardcode for now
 export ALIBOT_ANALYTICS_ARCHITECTURE=slc7_x86-64
 export ALIBOT_ANALYTICS_APP_NAME="continuous-builder.sh"
 
 MIRROR=${MIRROR:-/build/mirror}
 PACKAGE=${PACKAGE:-AliPhysics}
-ANALYTICS=report-analytics
 
 pushd alidist
   ALIDIST_REF=`git rev-parse --verify HEAD`
 popd
 set-github-status -c alisw/alidist@$ALIDIST_REF -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/pending
 
-$ANALYTICS screenview --cd started
+function report_state() {
+  CURRENT_STATE=$1
+  # Push some metric about being up and running to monalisa.
+  report-metric-monalisa --metric-path github-pr-checker.${CI_NAME:+$CI_NAME}_Nodes/$ALIBOT_ANALYTICS_USER_UUID \
+                         --metric-name state                                                                    \
+                         --metric-value $CURRENT_STATE
+  report-analytics screenview --cd $CURRENT_STATE
+}
+
+report_state started
 
 while true; do
-  $ANALYTICS screenview --cd looping
+  report_state looping
   for d in $(find . -maxdepth 2 -name .git -exec dirname {} \; | grep -v ali-bot); do
     pushd $d
       git pull origin
@@ -41,7 +49,7 @@ while true; do
   fi
 
   for pr_id in $HASHES; do
-    $ANALYTICS screenview --cd pr_processing
+    report_state pr_processing
     DOCTOR_ERROR=""
     BUILD_ERROR=""
     pr_number=${pr_id%@*}
@@ -107,9 +115,9 @@ while true; do
       # so we ignore the result code for now
       set-github-status -c ${STATUS_REF} -s $STATE_CONTEXT/success || true
     fi
-    $ANALYTICS screenview --cd pr_processing_done
+    report_state pr_processing_done
   done
-  $ANALYTICS screenview --cd looping_done
+  report_state looping_done
   if [[ $ONESHOT = true ]]; then
     echo "Called with ONESHOT=true. Exiting."
     exit 0
