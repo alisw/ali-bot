@@ -38,7 +38,7 @@ def getStatusInfo(statuses, args):
           "random": random.random()}
 
 
-def processOnePull(gh, pull, repo, args, sorted_pulls):
+def processOnePull(gh, pull, repo, args, sorted_pulls, trustedTeam):
   # Decide whether or not to show the PR based on how many
   # workers are there and the current worker id.
   if ((int(pull.head.sha[0], 16)) % args.workersPoolSize) != args.workerIndex:
@@ -51,7 +51,11 @@ def processOnePull(gh, pull, repo, args, sorted_pulls):
   all_statuses = commit.get_statuses()
   item = {"number": pull.number, "sha": commit.sha}
   item.update(getStatusInfo(all_statuses, args))
-  if pull.user.login in trusted:
+  if not item.get("reviewed") and pull.user.login in trusted:
+    item.update({"reviewed": True})
+  elif not item.get("reviewed") and trustedTeam and trustedTeam.has_in_members(pull.user):
+    item.update({"reviewed": True})
+  elif not item.get("reviewed") and args.trustCollaborators and repo.has_in_collaborators(pull.user):
     item.update({"reviewed": True})
   sorted_pulls.append(item)
 
@@ -76,6 +80,8 @@ if __name__ == "__main__":
   parser.add_argument("branch",
                       help="Branch of which to list hashes for open prs")
   parser.add_argument("--trusted", default="", help="Users whose request you trust")
+  parser.add_argument("--trusted-team", dest="trustedTeam", default=None, help="Trust provided team")
+  parser.add_argument("--trust-collaborators", dest="trustCollaborators", default=None, help="Trust all collaborators")
   parser.add_argument("--show-main-branch", dest="showMainBranch", default=False, action="store_true",
                       help="Also show reference for the main branch, not only for the PRs")
   parser.add_argument("--status", default="review",
@@ -104,13 +110,20 @@ if __name__ == "__main__":
   repo = gh.get_repo(repo_name)
   # We get all the pull requests and put them in a dictionary sorted by ID
   pulls = repo.get_pulls(state="open", base=branch_ref)
+
+  # Get the team for which we consider safe for test
+  trustedTeam = None
+  for team in repo.get_teams():
+    if team.name == args.trustedTeam:
+      trustedTeam = team
+
   while True:
     # Get only the updates
     sorted_pulls = []
     for x in pulls:
       try:
         print("Processing: %s" % x.number, file=sys.stderr)
-        processOnePull(gh, x, repo, args, sorted_pulls)
+        processOnePull(gh, x, repo, args, sorted_pulls, trustedTeam)
         print("Processing: %s. Done." % x.number, file=sys.stderr)
       except RuntimeError as e:
         print(e, file=sys.stderr)
