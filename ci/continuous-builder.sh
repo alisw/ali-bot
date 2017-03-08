@@ -43,7 +43,7 @@ while true; do
   done
 
   if [[ "$PR_REPO" != "" ]]; then
-    HASHES=`list-branch-pr --show-main-branch ${CHECK_NAME:+--check-name $CHECK_NAME} ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} || true`
+    HASHES=`list-branch-pr --show-main-branch ${CHECK_NAME:+--check-name $CHECK_NAME} ${TRUST_COLLABORATORS:+--trust-collaborators} ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} || true`
   else
     HASHES="0@0"
   fi
@@ -86,11 +86,10 @@ while true; do
     if [[ $DOCTOR_ERROR != '' ]]; then
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
-      set-github-status -c ${STATUS_REF} -s doctor/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error || true
-    else
-      # We do not want to kill the system is github is not working
-      # so we ignore the result code for now
-      set-github-status -c ${STATUS_REF} -s doctor/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/success || true
+      set-github-status -c ${STATUS_REF} -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error -m 'aliDoctor error' || true
+      # If doctor fails, we can move on to the next PR, since we know it will not work.
+      # We do not report aliDoctor being ok, because that's really a granted.
+      continue
     fi
     # Each round we delete the "latest" symlink, to avoid reporting errors
     # from a previous one. In any case they will be recreated if needed when
@@ -109,7 +108,7 @@ while true; do
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
       report-pr-errors --default $BUILD_SUFFIX                                              \
-                               --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $STATE_CONTEXT || true
+                       --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $STATE_CONTEXT || true
     else
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
