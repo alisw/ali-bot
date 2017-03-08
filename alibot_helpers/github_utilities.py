@@ -164,9 +164,14 @@ def dumpCommits(commits):
     message = "Could not write commit cache"
   print(message, file=sys.stderr)
 
+def parseGithubRef(s):
+  repo_name = re.split("[@#]", s)[0]
+  commit_ref = s.split("@")[1] if "@" in s else "master"
+  pr_n = re.split("[@#]", s)[1] if "#" in s else None
+  return (repo_name, pr_n, commit_ref)
+
 def setGithubStatus(gh, args, cache={}):
-  repo_name = args.commit.split("@")[0]
-  commit_ref = args.commit.split("@")[1] if "@" in args.commit else "master"
+  repo_name, _ , commit_ref = parseGithubRef(args.commit)
   state_context = args.status.rsplit("/", 1)[0] if "/" in args.status else ""
   state_value = args.status.rsplit("/", 1)[1] if "/" in args.status else args.status
   print(state_value, state_context)
