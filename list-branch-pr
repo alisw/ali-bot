@@ -100,8 +100,6 @@ def processMainBranch(cgh, repo_name, branch_ref, args, sorted_pulls):
   sorted_pulls.append(item)
 
 if __name__ == "__main__":
-  gh = Github(login_or_token=os.environ["GITHUB_TOKEN"])
-  printStats(gh)
   parser = ArgumentParser(usage="list-branch-prs <repo>@<branch>")
   parser.add_argument("branch",
                       help="Branch of which to list hashes for open prs")
@@ -124,6 +122,8 @@ if __name__ == "__main__":
                       help="Timeout between one run and the other")
 
   args = parser.parse_args()
+  gh = Github(login_or_token=os.environ["GITHUB_TOKEN"])
+  printStats(gh)
 
   repo_name = args.branch.split("@")[0]
   org = repo_name.split("/")[0]
