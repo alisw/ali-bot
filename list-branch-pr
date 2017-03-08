@@ -13,11 +13,11 @@ from sys import exit
 from operator import itemgetter
 from alibot_helpers.github_utilities import printStats
 from alibot_helpers.github_utilities import dumpCommits, loadCommits
+from alibot_helpers.github_utilities import GithubCachedClient
+
 import atexit
 
 from github import Github
-
-CACHED_COMMITS = loadCommits()
 
 def getStatusInfo(statuses, args):
   reviewed = False
@@ -25,12 +25,12 @@ def getStatusInfo(statuses, args):
   success = False
 
   for s in statuses:
-    if args.checkName and s.context == args.checkName:
+    if args.checkName and s["context"] == args.checkName:
       reviewed = True
-      tested = s.state in ["success", "error", "failure"]
-      success = s.state in ["success"]
+      tested = s["state"] in ["success", "error", "failure"]
+      success = s["state"] in ["success"]
       break
-    if s.context == args.status and s.state == "success":
+    if s["context"] == args.status and s["state"] == "success":
       reviewed = True
   return {"tested": tested,
           "success": success,
@@ -38,50 +38,76 @@ def getStatusInfo(statuses, args):
           "random": random.random()}
 
 
-def processOnePull(gh, pull, repo, args, sorted_pulls, trustedTeam):
+def processOnePull(cgh, pull, repo_name, args, sorted_pulls, trustedTeam):
   # Decide whether or not to show the PR based on how many
   # workers are there and the current worker id.
-  if ((int(pull.head.sha[0], 16)) % args.workersPoolSize) != args.workerIndex:
+  if ((int(pull["head"]["sha"][0], 16)) % args.workersPoolSize) != args.workerIndex:
     return
 
-  # Not sure why pygithub does not handle this internally.
-  commit = CACHED_COMMITS.get(pull.head.sha) or repo.get_commit(pull.head.sha)
-  CACHED_COMMITS[pull.head.sha] = commit
+  item = {"number": pull["number"],
+          "sha": pull["head"]["sha"],
+          "reviewed": False,
+          "tested": False,
+          "success": False,
+          "random": random.random()}
 
-  all_statuses = commit.get_statuses()
-  item = {"number": pull.number, "sha": commit.sha}
-  item.update(getStatusInfo(all_statuses, args))
-  if not item.get("reviewed") and pull.user.login in trusted:
+  # If we specified a status to approve changes to tests we need to
+  # retrieve all the statuses.
+  # If we specified a check name to prioritize PR building, we need to
+  # retrieve all the statuses.
+  if args.status or args.checkName:
+    all_statuses = cgh.request("GET", "/repos/{repo_name}/commits/{ref}/statuses",
+                               repo_name=repo_name,
+                               ref=pull["head"]["sha"])
+    item.update(getStatusInfo(all_statuses, args))
+
+  if item.get("reviewed"):
+    sorted_pulls.append(item)
+    return
+
+  # If we specified a list of trusted users, a trusted team or if we
+  # trust collaborators, we need to check if this is the case for the
+  # given PR. Notice that given that these will actually consume API
+  # calls, you need to be careful about what you enable.
+  if pull["user"]["login"] in trusted:
     item.update({"reviewed": True})
-  elif not item.get("reviewed") and trustedTeam and trustedTeam.has_in_members(pull.user):
+  if trustedTeam and cgh.request(method="GET", url="/teams/{team_id}/memberships/{login}", team_id=trustedTeam, login=pull["user"]["login"]):
     item.update({"reviewed": True})
-  elif not item.get("reviewed") and args.trustCollaborators and repo.has_in_collaborators(pull.user):
+  if args.trustCollaborators:
+    permission = cgh.request(method="GET",
+                             url="/repos/{repo_name}/collaborators/{login}/permission",
+                             repo_name=repo_name,
+                             login=pull["user"]["login"],
+                             stable_api=False)
     item.update({"reviewed": True})
   sorted_pulls.append(item)
 
-def processMainBranch(repo, branch_ref, args, sorted_pulls):
+def processMainBranch(cgh, repo_name, branch_ref, args, sorted_pulls):
   # Print the ref of the main branch as well
-  branch = repo.get_branch(branch_ref)
+  branch = cgh.request("GET", "/repos/{repo_name}/branches/{branch_ref}",
+                        repo_name=repo_name,
+                        branch_ref=branch_ref)
   # Decide whether or not to show the PR based on how many
   # workers are there and the current worker id.
-  if (int(branch.commit.sha[0], 16) % args.workersPoolSize) != args.workerIndex:
+  if (int(branch["commit"]["sha"][0], 16) % args.workersPoolSize) != args.workerIndex:
     return
 
-  all_statuses = branch.commit.get_statuses()
-  item = {"number": branch_ref, "sha": branch.commit.sha}
+  all_statuses = cgh.request("GET", "/repos/{repo_name}/commits/{ref}/statuses",
+                             repo_name=repo_name,
+                             ref=branch["commit"]["sha"])
+  item = {"number": branch_ref, "sha": branch["commit"]["sha"]}
   item.update(getStatusInfo(all_statuses, args))
   sorted_pulls.append(item)
 
 if __name__ == "__main__":
   gh = Github(login_or_token=os.environ["GITHUB_TOKEN"])
-  atexit.register(lambda : printStats(gh))
   printStats(gh)
   parser = ArgumentParser(usage="list-branch-prs <repo>@<branch>")
   parser.add_argument("branch",
                       help="Branch of which to list hashes for open prs")
-  parser.add_argument("--trusted", default="", help="Users whose request you trust")
+  parser.add_argument("--trusted", default="review", help="Users whose request you trust")
   parser.add_argument("--trusted-team", dest="trustedTeam", default=None, help="Trust provided team")
-  parser.add_argument("--trust-collaborators", dest="trustCollaborators", default=None, help="Trust all collaborators")
+  parser.add_argument("--trust-collaborators", dest="trustCollaborators", default=None, action="store_true", help="Trust all collaborators")
   parser.add_argument("--show-main-branch", dest="showMainBranch", default=False, action="store_true",
                       help="Also show reference for the main branch, not only for the PRs")
   parser.add_argument("--status", default="review",
@@ -100,6 +126,7 @@ if __name__ == "__main__":
   args = parser.parse_args()
 
   repo_name = args.branch.split("@")[0]
+  org = repo_name.split("/")[0]
   branch_ref = args.branch.split("@")[1] if "@" in args.branch else "master"
   trusted = args.trusted.split(",")
 
@@ -107,30 +134,36 @@ if __name__ == "__main__":
   opts = {"login_or_token": token} if token else {}
   gh = Github(**opts)
 
-  repo = gh.get_repo(repo_name)
+  # We instanciate our custom Github client to limit the amount of API calls
+  cgh = GithubCachedClient(token=token)
+  cgh.loadCache(".cached_github_client_cache")
+
   # We get all the pull requests and put them in a dictionary sorted by ID
-  pulls = repo.get_pulls(state="open", base=branch_ref)
+  #pulls = repo.get_pulls(state="open", base=branch_ref)
+  pulls = cgh.request("GET", "/repos/{repo_name}/pulls?base={base}",
+                      repo_name=repo_name,
+                      base=branch_ref)
 
   # Get the team for which we consider safe for test
   trustedTeam = None
-  for team in repo.get_teams():
-    if team.name == args.trustedTeam:
-      trustedTeam = team
+  for team in cgh.request("GET", "/orgs/{org}/teams", org=org):
+    if team["name"] == args.trustedTeam:
+      trustedTeam = team["id"]
 
   while True:
     # Get only the updates
     sorted_pulls = []
-    for x in pulls:
+    for pull in pulls:
       try:
-        print("Processing: %s" % x.number, file=sys.stderr)
-        processOnePull(gh, x, repo, args, sorted_pulls, trustedTeam)
-        print("Processing: %s. Done." % x.number, file=sys.stderr)
+        print("Processing: %s" % pull["number"], file=sys.stderr)
+        processOnePull(cgh, pull, repo_name, args, sorted_pulls, trustedTeam)
+        print("Processing: %s. Done." % pull["number"], file=sys.stderr)
       except RuntimeError as e:
         print(e, file=sys.stderr)
 
     if args.showMainBranch:
       try:
-        processMainBranch(repo, branch_ref, args, sorted_pulls)
+        processMainBranch(cgh, repo_name, branch_ref, args, sorted_pulls)
       except RuntimeError as e:
         print(e, file=sys.stderr)
 
@@ -155,4 +188,4 @@ if __name__ == "__main__":
       break
     time.sleep(args.timeout)
 
-  dumpCommits(CACHED_COMMITS)
+  cgh.dumpCache(".cached_github_client_cache")
