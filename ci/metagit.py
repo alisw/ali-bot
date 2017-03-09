@@ -1,7 +1,7 @@
 from github import Github, GithubException
 from collections import namedtuple
 from time import time
-from logging import debug, info, warning, error
+import logging
 
 MetaPull = namedtuple("MetaPull", [ "name", "repo", "num", "title", "changed_files", "sha",
                                     "closed_at", "mergeable", "mergeable_state", "who", "when",
@@ -9,16 +9,26 @@ MetaPull = namedtuple("MetaPull", [ "name", "repo", "num", "title", "changed_fil
 MetaComment = namedtuple("MetaComment", [ "body", "short", "who", "when" ])
 MetaStatus = namedtuple("MetaStatus", [ "context", "state", "description" ])
 
+# Allow to use debug(), info(), etc. with a custom logger name
+logger = logging.getLogger(__name__)
+for n in ["debug", "info", "warning", "error"]:
+  vars()[n] = getattr(logger, n)
+
 def apicalls(f):
   # Use as decorator to MetaGit members to print API calls
+  def trunc(s):
+    s = str(s)
+    if len(s) > 50:
+      s = s[0:50] + "..."
+    return s
   def fn(self, *x, **y):
     left0,_,_ = self.get_rate_limit()
     fr = f(self, *x, **y)
     left,limit,resettime = self.get_rate_limit()
     try:
-      proto = ", ".join(map(str, x))
+      proto = ", ".join(map(trunc, x))
       if y:
-        proto += ", " + ", ".join([ "%s=%s" % (str(k),str(y[k])) for k in y ])
+        proto += ", " + ", ".join([ "%s=%s" % (str(k),trunc(y[k])) for k in y ])
     except Exception as e:
       proto = "<error>"
       debug("FIX THIS: %s(): error converting arguments: %s" % (f.__name__, e))
@@ -75,6 +85,11 @@ class MetaGit(object):
         self.gh_commits[sha] = self.gh_pulls[pr].base.repo.get_commit(sha)
       except GithubException as e:
         raise MetaGitException("Cannot get commit %s from %s: %s" % (pull.sha, pr, e))
+    def wrap_get_files(ghpr):
+      try:
+        return ghpr.get_files()
+      except GithubException as e:
+        raise MetaGitException("Cannot get list of files from pull request: %s" % e)
     pull = MetaPull(name            = pr,
                     repo            = repo,
                     num             = num,
@@ -86,7 +101,7 @@ class MetaGit(object):
                     mergeable_state = self.gh_pulls[pr].mergeable_state,
                     who             = self.gh_pulls[pr].user.login,
                     when            = self.gh_commits[sha].commit.committer.date,
-                    get_files       = self.gh_pulls[pr].get_files)  # TODO
+                    get_files       = lambda: wrap_get_files(self.gh_pulls[pr]))
     return pull
 
   @apicalls

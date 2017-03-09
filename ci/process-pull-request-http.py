@@ -665,7 +665,8 @@ if __name__ == "__main__":
   parser.add_argument("--process-all-every", dest="processAllEvery", default=600, type=int,
                       help="Process all pull requests every that many seconds (0: callbacks only)")
   args = parser.parse_args()
-  if args.more_debug: args.debug = True
+  if args.more_debug:
+    args.debug = True
   if not args.bot_user:
     parser.error("Please specify the bot's user name on GitHub (--bot-user)")
   if not args.admins:
