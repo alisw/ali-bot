@@ -1,51 +1,73 @@
 #!/usr/bin/env python
-from __future__ import print_function
-from github import Github
-from os.path import expanduser
-from argparse import ArgumentParser
-import yaml, logging
-from logging import debug, info
-from sys import exit
-from alibot_helpers.github_utilities import setGithubStatus, printStats
-from alibot_helpers.github_utilities import loadCommits, dumpCommits
 
+from __future__ import print_function
+from argparse import ArgumentParser
+import logging
 import os
 import re
 import sys
 
+from alibot_helpers.github_utilities import setGithubStatus, github_token
+from alibot_helpers.github_utilities import GithubCachedClient, PickledCache
+
+
 # Just for the moment
 DEFAULT_REPO = "alibuild"
 DEFAULT_USER = "alisw"
-CACHED_COMMITS = loadCommits()
+
+
+def parse_args():
+    usage = "set-github-status "
+    usage += "-c <commit> -s <status> [-m <status-message>] [-u <target-url>]"
+    parser = ArgumentParser(usage=usage)
+    parser.add_argument("--commit", "-c",
+                        required=True,
+                        help=("Commit that the status refers to, in "
+                              "<org>/<project>@<ref> format"))
+
+    parser.add_argument("--status", "-s",
+                        required=True,
+                        help="Status to set in <status-id>/<status> format")
+
+    parser.add_argument("--message", "-m",
+                        default="",
+                        help="Message relative to the status (default='')")
+
+    parser.add_argument("--url", "-u",
+                        default="",
+                        help="Target url for the report (default='')")
+
+    parser.add_argument("--debug", "-d",
+                        action="store_true",
+                        default=False,
+                        help="Target url for the report")
+
+    args = parser.parse_args()
+
+    if args.debug:
+        logger = logging.getLogger()
+        logger.setLevel(logging.DEBUG)
+
+    return args
+
+
+
+def main():
+    token = github_token()
+    args = parse_args()
+
+    cache = PickledCache(".cached-commits")
+    with GithubCachedClient(token=token, cache=cache) as cgh:
+        try:
+            setGithubStatus(cgh, args)
+        except RuntimeError as e:
+            print(e.message, file=sys.stderr)
+            sys.exit(1)
+        finally:
+            cgh.printStats()
+
+    sys.exit(0)
+
 
 if __name__ == "__main__":
-  parser = ArgumentParser(usage="set-github-status -c <commit> -s <status> [-m <status-message>] [-u <target-url>]")
-  parser.add_argument("--commit", "-c", required=True,
-                      help="Commit the the status refers to, in <org>/<project>@<ref> format")
-  parser.add_argument("--status", "-s", required=True,
-                      help="Status to set in <status-id>/<status> format")
-  parser.add_argument("--message", "-m", default="", help="Message relative to the status")
-  parser.add_argument("--url", "-u", default="", help="Target url for the report")
-  parser.add_argument("--debug", "-d", action="store_true", default=False, help="Target url for the report")
-  args = parser.parse_args()
-
-  if args.debug:
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-
-  if not "GITHUB_TOKEN" in os.environ:
-    parser.error("Please set GITHUB_TOKEN")
-
-  gh = Github(login_or_token=os.environ["GITHUB_TOKEN"])
-  printStats(gh)
-
-  try:
-    setGithubStatus(gh, args, CACHED_COMMITS)
-  except RuntimeError as e:
-    printStats(gh)
-    parser.error(e.message)
-    exit(1)
-
-  printStats(gh)
-  dumpCommits(CACHED_COMMITS)
-  exit(0)
+    main()
