@@ -1,200 +1,376 @@
 #!/usr/bin/env python
 from __future__ import print_function
 from collections import OrderedDict
-import requests
 from hashlib import sha1
+import inspect
+import os
+import json
 import pickle
-
-import sys
 import re
+import sys
+
+import requests
+
+
+def trace(func):
+    """Simple function to trace enter and exit of a function/method
+    and the args/kws that were passed. It is activated by -d/--debug
+    being present in the sys.argv list, otherwise just returns the
+    un-decorated function.
+    """
+    sysargs = sys.argv[1:]
+    if not ('--debug' in sysargs or '-d' in sysargs):
+        return func
+
+    def _(txt=func.__name__, enter=True):
+        prefix = "==> " if enter else "<== "
+        return '{0} {1}\n'.format(prefix, txt)
+
+    def examine(d):
+        m = ''
+        for i, (k, v) in enumerate(d.items(), 1):
+            m += '  [{0}] {1}({2}), value: {3}\n'.format(i, k, type(v), str(v))
+        return m
+
+    def wrapped(*args, **kws):
+        argspec = inspect.getargspec(func)
+        path = None
+        if argspec.args and argspec.args[0] == 'self':
+            # this func is actually an instance method
+            inst = args[0]
+            path = inst.__module__ 
+            path += '.' + inst.__class__.__name__ 
+            path += ':' + func.__name__ + '():'
+        else:
+            path = func.__module__ + '.' + func.__name__ + '():'
+        
+        m = _(path)
+    
+        if args:
+            m += '{0} *args:\n'.format(len(args))
+            m += examine(OrderedDict(zip(argspec.args, args)))
+
+        if kws:
+            m += '{0} **kws:\n'.format(len(kws))
+            m += examine(kws)
+
+        print(m)
+        try:
+            retval = func(*args, **kws)
+            print(_(path, enter=False))
+        except:
+            print('Exception caught, re-raising.')
+            print(_(path, enter=False))
+            raise
+        else:
+            return retval
+    return wrapped
+
+
+def github_token():
+    try:
+        return os.environ["GITHUB_TOKEN"]
+    except KeyError:
+        raise RuntimeError("GITHUB_TOKEN env var not found, please set it")
+
 
 def generateCacheId(entries):
-  h = sha1()
-  for k,v in entries:
-    h.update(k)
-    h.update(str(v))
-  return h.hexdigest()
+    h = sha1()
+    for k, v in entries:
+        h.update(k)
+        h.update(str(v))
+    return h.hexdigest()
 
-# Parses the Link header string and gets the url for the next page. If
-# the next page is not found, returns None
+
 def parseLinks(linkString):
-  if not linkString:
-    return None
-  links = linkString.split(",")
-  for x in links:
-    url, what = x.split(";")
-    if what.strip().startswith("rel=\"next\""):
-      sanitized = url.strip().strip("<>")
-      return sanitized
-  return None
+    """Parses the Link header string and gets the url for the next page.
+    If the next page is not found, returns None.
+    """
+    if not linkString:
+        return None
+
+    links = linkString.split(",")
+    for x in links:
+        url, what = x.split(";")
+        if what.strip().startswith("rel=\"next\""):
+            sanitized = url.strip().strip("<>")
+            return sanitized
+
 
 def pagination(cache_item, nextLink, api, self, stable_api):
-  for x in cache_item["payload"]:
-    yield x
-  if nextLink:
-    for x in self.request("GET", nextLink.replace(api,""), stable_api):
-      yield x
+    for x in cache_item["payload"]:
+        yield x
+    if nextLink:
+        for x in self.get(nextLink.replace(api, ""), stable_api):
+            yield x
+
+
+class PickledCache(object):
+    def __init__(self, filename):
+        self.filename = filename
+        self.cache = OrderedDict()
+
+    def __enter__(self):
+        self.load()
+        return self
+
+    def __exit__(self, excType, excValue, tb):
+        self.dump()
+        return False
+
+    def update(self, d):
+        self.cache.update(d)
+
+    def load(self):
+        message = ""
+        try:
+            with open(self.filename, "r+") as f:
+                self.cache = pickle.load(f)
+                return
+        except IOError:
+            pass
+        except EOFError:
+            message = "Malformed cache file"
+        except pickle.PickleError:
+            message = "Could not read commit cache"
+
+        message and print(message, file=sys.stderr)
+        self.cache = OrderedDict()
+
+    def dump(self, limit=1000):
+        message = ""
+        try:
+            with open(self.filename, "w") as f:
+                pickle.dump(OrderedDict(self.cache.items()[-limit:]), f, 2)
+        except IOError:
+            message = "Unable to write cache file %s" % self.filename
+        except EOFError:
+            message = "Malformed cache file %s" % self.filename
+        except pickle.PickleError:
+            message = "Could not write to cache %s" % self.filename
+
+        print(message, file=sys.stderr)
+
+    def __getitem__(self, key):
+        return self.cache.get(key, {})
+
+    def __delitem__(self, key):
+        try:
+            del self.cache[key]
+        except KeyError:
+            pass
+
 
 class GithubCachedClient(object):
-  def __init__(self, token, api="https://api.github.com"):
-    self.token = token
-    self.api = api
-    self.cache = OrderedDict()
+    def __init__(self, token, cache, api="https://api.github.com"):
+        self.token = token
+        self.api = api
+        self.cache = cache
+        self.printStats()
 
-  def loadCache(self, filename):
-    message = ""
-    try:
-      with open(filename, "r+") as f:
-        self.cache = pickle.load(f)
-        return
-    except IOError as e:
-      pass
-    except EOFError as e:
-      message = "Malformed cache file"
-    except pickle.PickleError as e:
-      message = "Could not read commit cache"
-    message and print(message, file=sys.stderr)
-    self.cache = OrderedDict()
-    return
+    def __enter__(self):
+        self.cache.load()
+        return self
 
-  def dumpCache(self, filename, limit=1000):
-    message = ""
-    try:
-      with open(filename, "w") as f:
-        pickle.dump(OrderedDict(self.cache.items()[-limit:]), f, 2)
-    except IOError as e:
-      message = "Unable to write cache file %s" % filename
-    except EOFError as e:
-      message = "Malformed cache file %s" % filename
-    except pickle.PickleError as e:
-      message = "Could not write to cache %s" % filename
-    print(message, file=sys.stderr)
+    def __exit__(self, excType, excValue, traceback):
+        self.cache.dump()
+        return False
 
-  def request(self, method, url, stable_api=True, **kwds):
-    #if not "&page=" in url:
-    #  url += "&page=1"
-    # If we have a cache getter we use it to obtain an
-    # entry in the cached etags
-    cacheHash = generateCacheId([("url", url)] + kwds.items())
-    cache_item = self.cache.get(cacheHash)
+    @property
+    def rate_limiting(self):
+        """Get the Github rate limit: requests allowed, left and when
+        the quota will be reset.
+        """
+        url = self.makeURL("/rate_limit")
+        response = requests.get(url=url, headers=self.baseHeaders())
+        limits = (-1, -1)
+        if response.status_code == 200:
+            headers = response.headers
+            remaining = int(headers.get("X-RateLimit-Remaining", -1))
+            limit = int(headers.get("X-RateLimit-Limit", -1))
+            limits = (remaining, limit)
+        return limits
 
-    headers = {"Accept": "application/vnd.github.v3+json" if stable_api else "application/vnd.github.korra-preview",
-               "Authorization": "token %s" % self.token}
-    if cache_item and cache_item.get("ETag"):
-      headers.update({"If-None-Match": cache_item["ETag"]})
+    def printStats(self):
+        print("Github API used %s/%s" % self.rate_limiting, file=sys.stderr)
 
-    if cache_item and cache_item.get("Last-Modified"):
-      headers.update({"If-Modified-Since": cache_item["Last-Modified"]})
-    final_url = "{s.api}{url}".format(s=self, url=url).format(**kwds)
-    r = requests.request(method=method, url=final_url, headers=headers)
-    if r.status_code == 304:
-      if type(cache_item["payload"]) == list:
-        nextLink = parseLinks(cache_item.get("Link"))
-        return pagination(cache_item, nextLink, self.api, self, stable_api)
-      return cache_item["payload"]
-    # If we are here, it means we had some sort of cache miss. Therefore
-    # we pop the cacheHash from the cache.
-    try:
-      del self.cache[cacheHash]
-    except:
-      pass
-    if r.status_code == 404:
-      return None
-    if r.status_code == 403:
-      print("Forbidden", file=sys.stderr)
-      return None
-    if r.status_code == 200:
-      cache_item = {
-                    "payload": r.json(),
-                    "ETag": r.headers.get("ETag"),
-                    "Last-Modified": r.headers.get("Last-Modified"),
-                    "Link": r.headers.get("Link")
-                  }
-      self.cache.update({cacheHash: cache_item})
-      if type(cache_item["payload"]) == list:
-        nextLink = parseLinks(cache_item["Link"])
-        return pagination(cache_item, nextLink, self.api, self, stable_api)
-      return cache_item["payload"]
-    if r.status_code == 204:
-      cache_item = {
-                    "payload": True,
-                    "ETag": r.headers.get("ETag"),
-                    "Last-Modified": r.headers.get("Last-Modified")
-                  }
-      self.cache.update({cacheHash: cache_item})
-      return cache_item["payload"]
-    print(r.status_code)
-    assert(False)
+    def makeURL(self, template, **kwds):
+        template = template[1:] if template.startswith('/') else template
+        return os.path.join(self.api, template.format(**kwds))
 
-def printStats(gh):
-  print("Github API used %s/%s" % gh.rate_limiting, file=sys.stderr)
+    def baseHeaders(self, stable_api=True):
+        stableAPI = "application/vnd.github.v3+json"
+        unstableAPI = "application/vnd.github.korra-preview"
+        headers = {
+            "Accept": stableAPI if stable_api else unstableAPI,
+            "Authorization": "token %s" % self.token.strip()
+        }
+        return headers
 
-# Anything which can resemble an hash or a date is filtered out.
+    def getHeaders(self, stable_api=True, etag=None, lastModified=None):
+        headers = self.baseHeaders(stable_api)
+        if etag:
+            headers.update({"If-None-Match": etag})
+        if lastModified:
+            headers.update({"If-Modified-Since": lastModified})
+        return headers
+
+    def postHeaders(self, stable_api=True):
+        return self.baseHeaders(stable_api)
+
+    @trace
+    def post(self, url, data, stable_api=True, **kwds):
+        headers = self.postHeaders(stable_api)
+        url = self.makeURL(url, **kwds)
+        data = json.dumps(data) if type(data) == dict else data
+        response = requests.post(url=url, data=data, headers=headers)
+        sc = response.status_code
+        return sc
+
+    @trace
+    def patch(self, url, data, stable_api=True, **kwds):
+        headers = self.postHeaders(stable_api)
+        url = self.makeURL(url, **kwds)
+        data = json.dumps(data) if type(data) == dict else data
+        response = requests.patch(url=url, data=data, headers=headers)
+        return response.status_code
+
+    @trace
+    def get(self, url, stable_api=True, **kwds):
+        # If we have a cache getter we use it to obtain an
+        # entry in the cachedcache_item etags
+        cacheKey = generateCacheId([("url", url)] + kwds.items())
+        cacheValue = self.cache[cacheKey]
+        headers = self.getHeaders(stable_api,
+                                  cacheValue.get("ETag"),
+                                  cacheValue.get("Last-Modified"))
+
+        url = self.makeURL(url, **kwds)
+        # final_url = "{s.api}{url}".format(s=self, url=url).format(**kwds)
+        r = requests.get(url=url, headers=headers)
+
+        if r.status_code == 304:
+            if type(cacheValue["payload"]) == list:
+                nextLink = parseLinks(cacheValue.get("Link"))
+                return pagination(cacheValue,
+                                nextLink,
+                                self.api,
+                                self,
+                                stable_api)
+            return cacheValue["payload"]
+
+        # If we are here, it means we had some sort of cache miss.
+        # Therefore we pop the cacheHash from the cache.
+        del self.cache[cacheKey]
+
+        if r.status_code == 404:
+            return None
+
+        if r.status_code == 403:
+            print("Forbidden", file=sys.stderr)
+            return None
+
+        if r.status_code == 200:
+            cacheValue = {
+                "payload": r.json(),
+                "ETag": r.headers.get("ETag"),
+                "Last-Modified": r.headers.get("Last-Modified"),
+                "Link": r.headers.get("Link")
+            }
+            self.cache.update({cacheKey: cacheValue})
+            if type(cacheValue["payload"]) == list:
+                nextLink = parseLinks(cacheValue["Link"])
+                return pagination(cacheValue,
+                                  nextLink,
+                                  self.api,
+                                  self,
+                                  stable_api)
+            return cacheValue["payload"]
+
+        if r.status_code == 204:
+            cacheValue = {
+                "payload": True,
+                "ETag": r.headers.get("ETag"),
+                "Last-Modified": r.headers.get("Last-Modified")
+            }
+            self.cache.update({cacheKey: cacheValue})
+            return cacheValue["payload"]
+
+        print(r.status_code)
+        assert(False)
+
+
 def calculateMessageHash(message):
-  return sha1("\n".join(sorted(re.sub("[0-9a-f-A-F]", "", message).split("\n")))).hexdigest()[0:10]
+    # Anything which can resemble a hash or a date is filtered out.
+    subbed = re.sub("[0-9a-f-A-F]", "", message)
+    sortedSubbed = sorted(subbed.split("\n"))
+    sha = sha1("\n".join(sortedSubbed))
+    return sha.hexdigest()[0:10]
 
-VALID_STATES = ["pending", "success", "error", "failure"]
-
-def loadCommits():
-  message = ""
-  try:
-    with open(".cached-commits", "r+") as f:
-      return pickle.load(f)
-  except IOError as e:
-    pass
-  except EOFError as e:
-    message = "Malformed cache file"
-  except pickle.PickleError as e:
-    message = "Could not read commit cache"
-  message and print(message, file=sys.stderr)
-  return OrderedDict()
-
-# Dumps the cache. Since commits is an OrderedDict we can limit it to
-# the last 1000 insertions.
-def dumpCommits(commits):
-  message = ""
-  try:
-    with open(".cached-commits", "w") as f:
-      pickle.dump(OrderedDict(commits.items()[-1000:]), f, 2)
-  except IOError as e:
-    message = "Unable to write cache"
-  except EOFError as e:
-    message = "Malformed cache file"
-  except pickle.PickleError as e:
-    message = "Could not write commit cache"
-  print(message, file=sys.stderr)
 
 def parseGithubRef(s):
-  repo_name = re.split("[@#]", s)[0]
-  commit_ref = s.split("@")[1] if "@" in s else "master"
-  pr_n = re.split("[@#]", s)[1] if "#" in s else None
-  return (repo_name, pr_n, commit_ref)
+    repo_name = re.split("[@#]", s)[0]
+    commit_ref = s.split("@")[1] if "@" in s else "master"
+    pr_n = re.split("[@#]", s)[1] if "#" in s else None
+    return (repo_name, pr_n, commit_ref)
 
-def setGithubStatus(gh, args, cache={}):
-  repo_name, _ , commit_ref = parseGithubRef(args.commit)
-  state_context = args.status.rsplit("/", 1)[0] if "/" in args.status else ""
-  state_value = args.status.rsplit("/", 1)[1] if "/" in args.status else args.status
-  print(state_value, state_context)
-  if not state_value in VALID_STATES:
-    raise RuntimeError("Valid states are " + ",".join(VALID_STATES))
 
-  repo = gh.get_repo(repo_name)
-  commit = cache.get(commit_ref) or repo.get_commit(commit_ref)
-  cache[commit_ref] = commit
+def setGithubStatus(cgh, args):
+    repo_name, _, commit_ref = parseGithubRef(args.commit)
+    state_context = args.status.rsplit("/", 1)[0] if "/" in args.status else ""
+    state_value = args.status.rsplit("/", 1)[1] if "/" in args.status else args.status
+    print(state_value, state_context)
 
-  # Avoid creating a new state if the previous one is exactly the same.
-  for s in commit.get_statuses():
-    # If the state already exists and it's different, create a new one
-    if s.context == state_context and (s.state != state_value or s.target_url != args.url or s.description != args.message):
-      print("Last status for %s does not match. Updating." % state_context, file=sys.stderr)
-      printStats(gh)
-      commit.create_status(state_value, args.url, args.message, state_context)
-      return
-    # If the state already exists and it's teh same, exit
-    if s.context == state_context and s.state == state_value and s.target_url == args.url and s.description == args.message:
-      print("Last status for %s is already matching. Exiting" % state_context, file=sys.stderr)
-      printStats(gh)
-      return
-  # If the state does not exists, create it.
-  print("%s does not exist. Creating." % state_context, file=sys.stderr)
-  commit.create_status(state_value, args.url, args.message, state_context)
+    VALID_STATES = ["pending", "success", "error", "failure"]
+    if state_value not in VALID_STATES:
+        raise RuntimeError("Valid states are " + ",".join(VALID_STATES))
+
+    all_statuses = cgh.get("/repos/{repo_name}/statuses/{ref}",
+                           repo_name=repo_name,
+                           ref=commit_ref)
+    for s in all_statuses:
+        # If the state already exists and it's different, create a new one
+        if (s["context"] == state_context and
+            (s["state"] != state_value or
+             s["target_url"] != args.url or
+             s["description"] != args.message)):
+            print(s)
+            print("Last status for %s does not match. Updating." % state_context, file=sys.stderr)
+            print(cgh.rate_limiting) 
+
+            data = {
+                "state": state_value,
+                "context": state_context,
+                "description": args.message,
+                "target_url": args.url
+            }
+            cgh.post("/repos/{repo_name}/statuses/{ref}",
+                     data=data,
+                     repo_name=repo_name,
+                     ref=commit_ref)
+            return
+
+        # If the state already exists and it's the same, exit
+        if (s["context"] == state_context and
+            s["state"] == state_value and
+            s["target_url"] == args.url and
+            s["description"] == args.message):
+            msg = "Last status for %s is already matching. Exiting" % state_context
+            print(msg, file=sys.stderr)
+            cgh.printStats()
+            return
+
+    # If the state does not exists, create it.
+    print("%s does not exist. Creating." % state_context, file=sys.stderr)
+    data = {
+        "state": state_value,
+        "context": state_context,
+        "description": args.message,
+        "target_url": args.url
+    }
+    cgh.post(
+        "/repos/{repo_name}/statuses/{ref}",
+        data=data,
+        repo_name=repo_name,
+        ref=commit_ref
+    )

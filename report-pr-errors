@@ -2,150 +2,306 @@
 from __future__ import print_function
 
 from argparse import ArgumentParser, Namespace
+import atexit
 from commands import getstatusoutput
 from glob import glob
 from os.path import dirname, join
-from sys import exit
 import os
 import sys
-import re
-from hashlib import sha1
-from alibot_helpers.github_utilities import calculateMessageHash, setGithubStatus
-from alibot_helpers.github_utilities import printStats
-from alibot_helpers.github_utilities import loadCommits, dumpCommits
 
-from github import Github
+from alibot_helpers.github_utilities import calculateMessageHash, github_token
+from alibot_helpers.github_utilities import setGithubStatus, parseGithubRef
+from alibot_helpers.github_utilities import GithubCachedClient, PickledCache
 
-import atexit
 
-CACHED_COMMITS = loadCommits()
+def parse_args():
+    parser = ArgumentParser()
+    parser.add_argument("--work-dir", "-w", default="sw", dest="workDir")
 
-if __name__ == "__main__":
-  gh = Github(login_or_token=os.environ["GITHUB_TOKEN"])
-  def atexit_handler():
-    printStats(gh)
-    dumpCommits(CACHED_COMMITS)
-  atexit.register(atexit_handler)
+    parser.add_argument("--default", default="release")
 
-  print("Github API used %s/%s" % gh.rate_limiting)
-  parser = ArgumentParser()
-  parser.add_argument("--work-dir", "-w", default="sw")
-  parser.add_argument("--default", default="release")
-  parser.add_argument("--devel-prefix", "-z", dest="develPrefix", default="")
+    parser.add_argument("--devel-prefix", "-z",
+                        dest="develPrefix",
+                        default="")
 
-  parser.add_argument("--pr", required=True,
-                      help="Pull request which was checked in <org>/<project>#<nr>@ref format")
-  parser.add_argument("--status", "-s", required=True,
-                      help="Check which had the error")
-  parser.add_argument("--dry-run", "-n", action="store_true", default=False,
-                      help="Do not actually comment")
-  parser.add_argument("--limit", "-l", default=50,
-                      help="Max number of lines from the report")
-  parser.add_argument("--logs-dest", dest="logsDest", default="rsync://repo.marathon.mesos/store/logs",
-                      help="Destination path for logs")
-  parser.add_argument("--log-url", dest="logsUrl", default="https://ali-ci.cern.ch/repo/logs",
-                      help="Destination path for logs")
+    parser.add_argument("--pr",
+                        required=True,
+                        help=("Pull request which was checked in "
+                              "<org>/<project>#<nr>@ref format"))
 
-  args = parser.parse_args()
+    parser.add_argument("--status", "-s",
+                        required=True,
+                        help="Check which had the error")
 
-  if not "#" in args.pr:
-    parser.error("You need to specify a pull request")
-  if not "@" in args.pr:
-    parser.error("You need to specify a commit this error refers to")
+    parser.add_argument("--dry-run", "-n",
+                        action="store_true",
+                        default=False,
+                        help="Do not actually comment")
 
-  repo_name, pr_parts = args.pr.split("#", 1)
-  pr_id, pr_commit = pr_parts.split("@", 1)
+    parser.add_argument("--limit", "-l",
+                        default=50,
+                        help="Max number of lines from the report")
 
-  search_path = join(args.work_dir, "BUILD/*/log")
-  print("Searching all logs matching: %s" % search_path, file=sys.stderr)
-  globbed = glob(search_path)
-  logs = [x for x in globbed
-          if dirname(x).endswith(("latest" + "-" + args.develPrefix).strip("-"))]
-  print("Found:\n%s" % "\n".join(logs), file=sys.stderr)
-  error_log = ""
-  for log in logs:
-    err, out = getstatusoutput("cat %s | grep -e ': error:' -A 3 -B 3 || tail -n %s %s" % (log, args.limit, log))
-    if err:
-      print("Error while parsing logs", file=sys.stderr)
-      print(out, file=sys.stderr)
-      continue
-    error_log += log + "\n"
-    error_log += out
+    parser.add_argument("--message", "-m",
+                        dest="message",
+                        help="Message to be posted")
 
-  error_log = "\n".join(error_log.split("\n")[0:args.limit])
-  error_log.strip(" \n\t")
+    parser.add_argument("--logs-dest",
+                        dest="logsDest",
+                        default="rsync://repo.marathon.mesos/store/logs",
+                        help="Destination path for logs")
 
-  logId = join(repo_name, pr_id, pr_commit, "fullLog.txt")
-  getstatusoutput("rm -fr copy-logs && mkdir -p `dirname copy-logs/%s`" % logId)
-  for log in logs:
-    cmd = "cat %s >> copy-logs/%s" % (log, logId)
-    print(cmd, file=sys.stderr)
-    err, out = getstatusoutput(cmd)
-    print(out, file=sys.stderr)
-  err, out = getstatusoutput("cd copy-logs && rsync -av ./ %s" % (args.logsDest))
-  if err:
-    print("Error while copying logs to store.", file=sys.stderr)
-    print(out, file=sys.stderr)
+    parser.add_argument("--log-url",
+                        dest="logsUrl",
+                        default="https://ali-ci.cern.ch/repo/logs",
+                        help="Destination path for logs")
 
-  logUrl = join(args.logsUrl, logId)
+    parser.add_argument("--debug", "-d",
+                        action="store_true",
+                        default=False,
+                        help="Turn on debug output")
 
-  repo = gh.get_repo(repo_name)
-  # If the branch is not a PR, we should look for open issues for the
-  # branch. This should really folded as a special case of the PR case.
-  if not pr_id.isdigit():
-    branch = repo.get_branch(pr_id)
-    sha = branch.commit.sha
-    message = "Error while checking %s for %s:\n```\n%s\n```\nFull log [here](%s).\n" % (args.status, sha, error_log, logUrl)
-    for issue in repo.get_issues(state="open"):
-      # Look for open issues:
-      # - If we find one which was opened for the same branch / sha / error message sha
-      #   triplet, we consider having already commented.
-      # - If we find one which was opened for the same branch / sha, but with a different
-      #   error message sha, we close it (as we assume the error message is now different).
-      # - If we find one which was opened for a different branch / sha
-      #   pair, close it (as we assume it's now obsolete since the branch
-      #   points to something else).
-      # - If no issue was found for the given branch, create one and add a comment
-      #   about the failure.
-      messageSha = calculateMessageHash(message)
-      if issue.title.startswith("Error while checking branch %s@%s:%s" % (pr_id, sha, messageSha)):
-        print("Issue still valid. Exiting.", file=sys.stderr)
-        exit(0)
-      if issue.title.startswith("Error while checking branch %s@%s" % (pr_id, sha)):
-        print("Issue is about something different. Updating.", file=sys.stderr)
-        issue.create_comment(body="Error for commit %s has changed.\n" % sha + message)
-        issue.edit(title="Error while checking branch %s@%s:%s" % (pr_id, sha, messageSha))
-        exit(0)
-      if issue.title.startswith("Error while checking branch %s@" % pr_id):
-        issue.create_comment("Branch was updated. Closing issue.", file=sys.stderr)
-        issue.edit(state="close")
-        continue
+    args = parser.parse_args()
+    if "#" not in args.pr:
+        parser.error("You need to specify a pull request")
+    if "@" not in args.pr:
+        parser.error("You need to specify a commit this error refers to")
+    return args
+
+
+class Logs(object):
+    def __init__(self, args):
+        self.work_dir = args.workDir
+        self.develPrefix = args.develPrefix
+        self.limit = args.limit
+        self.full_log = self.constructFullLogName(args.pr)
+        self.rsync_dest = args.logsDest
+        self.url = join(args.logsUrl, self.full_log)
+
+    def parse(self):
+        self.find()
+        self.grep()
+        self.cat(self.full_log)
+        self.rsync(self.rsync_dest)
+
+    def constructFullLogName(self, pr):
+        # file to which we cat all the individual logs
+        pr = parse_pr(pr)
+        return join(pr.repo_name, pr.id, pr.commit, "fullLog.txt")
+
+    def find(self):
+        search_path = join(self.work_dir, "BUILD/*/log")
+        print("Searching all logs matching: %s" % search_path, file=sys.stderr)
+        globbed = glob(search_path)
+
+        suffix = ("latest" + "-" + self.develPrefix).strip("-")
+        logs = [x for x in globbed if dirname(x).endswith(suffix)]
+            
+        print("Found:\n%s" % "\n".join(logs), file=sys.stderr)
+        self.logs = logs
+
+    def grep(self):
+        """Grep for errors in the build logs, or, if none are found,
+        return the last N lines where N is the limit argument.
+        """
+        error_log = ""
+        for log in self.logs:
+            cmd = "cat %s | grep -e ': error:' -A 3 -B 3 " % log
+            cmd += "|| tail -n %s %s" % (self.limit, log)
+            err, out = getstatusoutput(cmd)
+            if err:
+                print("Error while parsing logs", file=sys.stderr)
+                print(out, file=sys.stderr)
+                continue
+
+            error_log += log + "\n"
+            error_log += out
+
+        error_log = "\n".join(error_log.split("\n")[0:self.limit])
+        error_log.strip(" \n\t")
+        self.error_log = error_log
+
+    def cat(self, tgtFile):
+        cmd = "rm -fr copy-logs && mkdir -p `dirname copy-logs/%s`" % tgtFile
+        getstatusoutput(cmd)
+
+        for log in self.logs:
+            cmd = "cat %s >> copy-logs/%s" % (log, tgtFile)
+            print(cmd, file=sys.stderr)
+            err, out = getstatusoutput(cmd)
+            print(out, file=sys.stderr)
+
+    def rsync(self, dest):
+        err, out = getstatusoutput("cd copy-logs && rsync -av ./ %s" % dest)
+        if err:
+            print("Error while copying logs to store.", file=sys.stderr)
+            print(out, file=sys.stderr)
+
+
+def handle_branch(cgh, pr, logs, args):
+    # pr_id in this case is in fact a branch name
+    branch = cgh.get("/repos/{repo_name}/branches/{branch}",
+                     repo_name=pr.repo_name,
+                     branch=pr.id)
+
+    sha = branch["commit"]["sha"]
+
+    message = "Error while checking %s for %s:\n" % (args.status, sha)
+    if args.message:
+        message += args.message
+    else:
+        message += "```\n%s\n```\nFull log [here](%s).\n" % (logs.error_log, logs.url)
+    messageSha = calculateMessageHash(message)
+
+    openIssues = cgh.get('/repos/{repo_name}/issues?state=open')
+    for issue in openIssues:
+        # Look for open issues:
+        # - If we find one which was opened for the same
+        #   branch / sha / error message sha triplet, we consider
+        #   having already commented.
+        # - If we find one which was opened for the same branch / sha,
+        #   but with a different error message sha, we close it
+        #   (as we assume the error message is now different).
+        # - If we find one which was opened for a different branch / sha
+        #   pair, close it (as we assume it's now obsolete since the
+        #   branch points to something else).
+        # - If no issue was found for the given branch, create one
+        #   and add a comment about the failure.
+        issueTitle = issue["title"]
+        if issueTitle.startswith("Error while checking branch %s@%s:%s" % (pr.id, sha, messageSha)):
+            print("Issue still valid. Exiting.", file=sys.stderr)
+            sys.exit(0)
+
+        if issueTitle.startswith("Error while checking branch %s@%s" % (pr.id, sha)):
+            print("Issue is about something different. Updating.", file=sys.stderr)
+
+            newBody = "Error for commit %s has changed.\n" % (sha + message)
+            cgh.post(
+                "/repos/{repo_name}/issues/{number}/comments",
+                {"body": newBody},
+                repo_name=pr.repo_name,
+                number=issue["number"]
+            )
+
+            newTitle = "Error while checking branch "
+            newTitle += "%s@%s:%s" % (pr.id, sha, messageSha)
+            cgh.patch(
+                "/repos/{repo_name}/issues/{number}/comments",
+                {"title": newTitle},
+                repo_name=pr.repo_name,
+                number=issue["number"]
+            )
+            sys.exit(0)
+
+        if issueTitle.startswith("Error while checking branch %s@" % pr.id):
+            data = {"body": "Branch was updated. Closing issue."}
+            cgh.post(
+                "/repos/{repo_name}/issues/{number}/comments",
+                data,
+                repo_name=pr.repo_name,
+                number=issue["number"]
+            )
+
+            data = {"state": "closed"}
+            cgh.patch(
+                "/repos/{repo_name}/issues/{number}/comments",
+                data,      
+                repo_name=pr.repo_name,
+                number=issue["number"]
+            )
+
+            continue
+
     # The first time we report an issue with a commit, we do so as issue body.
     # Subsequent changes will be reported as comments.
-    setGithubStatus(gh, Namespace(commit=args.pr, status=args.status + "/error", message="", url=""), CACHED_COMMITS)
-    issue = repo.create_issue(title="Error while checking branch %s@%s:%s" % (pr_id, sha, messageSha),
-                              body=message)
-    exit(0)
+    ns = Namespace(commit=args.pr,
+                   status=args.status + "/error",
+                   message="",
+                   url="")
+    setGithubStatus(cgh, ns)
 
-  pr = repo.get_pull(int(pr_id))
-  commit = CACHED_COMMITS.get(pr_commit) or repo.get_commit(pr_commit)
-  CACHED_COMMITS[pr_commit] = commit
+    data = {
+        "body": message,
+        "title": "Error while checking branch %s@%s:%s" % (pr.id, sha, messageSha)
+    }
+    cgh.post("/repos/{repo_name}/issues", data, repo_name=pr.repo_name)
+    sys.exit(0)
 
-  sha = commit.sha
-  message = "Error while checking %s for %s:\n```\n%s\n```\nFull log [here](%s).\n" % (args.status, sha, error_log, logUrl)
 
-  if args.dry_run:
-    print("Will annotate %s" % commit)
-    print(message)
-    exit(0)
+def handle_pr_id(cgh, pr, logs, args):
+    commit = cgh.get("/repos/{repo_name}/commits/{ref}",
+                     repo_name=pr.repo_name,
+                     ref=pr.commit)
+    sha = commit["sha"]
 
-  for comment in pr.get_issue_comments():
-    if comment.body.startswith("Error while checking %s for %s" % (args.status, sha)):
-      if comment.body != message:
-        print("Comment was different. Updating", file=sys.stderr)
-        comment.edit(body=message)
-        exit(0)
-      print("Found same comment for the same commit", file=sys.stderr)
-      exit(0)
-  setGithubStatus(gh, Namespace(commit=args.pr, status=args.status + "/error", message="", url=""), CACHED_COMMITS)
-  pr.create_issue_comment(body=message)
+    message = "Error while checking %s for %s:\n" % (args.status, sha)
+    if args.message:
+        message += args.message
+    else:
+        message += "```\n%s\n```\nFull log [here](%s).\n" % (logs.error_log, logs.url)
+
+
+    if args.dry_run:
+        # commit does not exist...
+        print("Will annotate %s" % commit)
+        print(message)
+        sys.exit(0)
+
+    prIssueComments = cgh.get("/repos/{repo_name}/issues/{pr_id}/comments",
+                              repo_name=pr.repo_name,
+                              pr_id=pr.id)
+
+    messageHash = calculateMessageHash(message)
+    for comment in prIssueComments:
+        if comment["body"].startswith("Error while checking %s for %s" % (args.status, sha)):
+            if calculateMessageHash(comment["body"]) != messageHash:
+                print("Comment was different. Updating", file=sys.stderr)
+                cgh.patch(
+                    "/repos/{repo_name}/issues/comments/{commentID}",
+                    {"body": message},
+                    repo_name=pr.repo_name,
+                    commentID=comment["id"]
+                )
+                sys.exit(0)
+
+            print("Found same comment for the same commit", file=sys.stderr)
+            sys.exit(0)
+
+    ns = Namespace(commit=args.pr, status=args.status + "/error", message="", url="")
+    setGithubStatus(cgh, ns)
+
+    cgh.post(
+        "repos/{repo_name}/issues/{pr_id}/comments",
+        {"body": message},
+        repo_name=pr.repo_name,
+        pr_id=pr.id
+    )
+
+
+def parse_pr(pr):
+    repo_name, pr_id, pr_commit = parseGithubRef(pr)
+    return Namespace(repo_name=repo_name,
+                     id=pr_id,
+                     commit=pr_commit)
+
+
+def main():
+    args = parse_args()
+    logs = Logs(args)
+    if not args.message:
+        logs.parse()
+
+    pr = parse_pr(args.pr)
+
+    cache = PickledCache('.cached-commits')
+    with GithubCachedClient(token=github_token(), cache=cache) as cgh:
+        # If the branch is not a PR, we should look for open issues
+        # for the branch. This should really folded as a special case
+        # of the PR case.
+        func = handle_branch if not pr.id.isdigit() else handle_pr_id
+        func(cgh, pr, logs, args)
+
+    cgh.printStats()
+
+if __name__ == "__main__":
+    main()
