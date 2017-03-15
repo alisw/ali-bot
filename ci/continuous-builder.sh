@@ -55,7 +55,7 @@ while true; do
     pr_number=${pr_id%@*}
     pr_hash=${pr_id#*@}
     if [[ "$PR_REPO" != "" ]]; then
-      pushd `basename $PR_REPO`
+      pushd ${PR_REPO_CHECKOUT:-$(basename $PR_REPO)}
         CANNOT_MERGE=0
         git reset --hard origin/$PR_BRANCH
         git config --add remote.origin.fetch "+refs/pull/*/head:refs/remotes/origin/pr/*"
