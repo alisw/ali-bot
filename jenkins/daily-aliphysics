@@ -58,6 +58,17 @@ node ("slc7_x86-64-light") {
             git credential-store --file $PWD/git-creds store
         '''
       }
+      withCredentials([[$class: 'UsernamePasswordMultiBinding',
+                        credentialsId: 'gitlab_alibuild',
+                        usernameVariable: 'GIT_BOT_USER',
+                        passwordVariable: 'GIT_BOT_PASS']]) {
+        sh '''
+          set -e
+          set -o pipefail
+          printf "protocol=https\nhost=gitlab.cern.ch\nusername=$GIT_BOT_USER\npassword=$GIT_BOT_PASS\n" | \
+            git credential-store --file $PWD/git-creds store
+        '''
+      }
       sh '''
         set -e
         git config --global credential.helper "store --file $PWD/git-creds"
