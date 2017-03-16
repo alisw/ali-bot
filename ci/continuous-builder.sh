@@ -43,7 +43,7 @@ while true; do
   done
 
   if [[ "$PR_REPO" != "" ]]; then
-    HASHES=`list-branch-pr --show-main-branch ${CHECK_NAME:+--check-name $CHECK_NAME} ${TRUST_COLLABORATORS:+--trust-collaborators} ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} || true`
+    HASHES=`list-branch-pr --show-main-branch ${CHECK_NAME:+--check-name $CHECK_NAME} ${TRUST_COLLABORATORS:+--trust-collaborators} ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} || report-analytics exception --desc "list-branch-pr failed"`
   else
     HASHES="0@0"
   fi
@@ -70,13 +70,13 @@ while true; do
       if [[ $CANNOT_MERGE == 1 ]]; then
         # We do not want to kill the system is github is not working
         # so we ignore the result code for now
-        set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error -m "Cannot merge PR into test area" || true
+        set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error -m "Cannot merge PR into test area" || report-analytics exception --desc "set-github-status fail on cannot merge"
         continue
       fi
       if [[ $(($NEW_SIZE - $OLD_SIZE)) -gt ${MAX_DIFF_SIZE:-4000000} ]]; then
         # We do not want to kill the system is github is not working
         # so we ignore the result code for now
-        set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error -m "Diff to big. Rejecting." || true
+        set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error -m "Diff to big. Rejecting." || report-analytics exception --desc "set-github-status fail on merge too big"
         continue
       fi
     fi
@@ -86,7 +86,7 @@ while true; do
     if [[ $DOCTOR_ERROR != '' ]]; then
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
-      set-github-status -c ${STATUS_REF} -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error -m 'aliDoctor error' || true
+      set-github-status -c ${STATUS_REF} -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error -m 'aliDoctor error' || report-analytics exception --desc "set-github-status fail on aliDoctor error"
       # If doctor fails, we can move on to the next PR, since we know it will not work.
       # We do not report aliDoctor being ok, because that's really a granted.
       continue
@@ -108,11 +108,11 @@ while true; do
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
       report-pr-errors --default $BUILD_SUFFIX                                              \
-                       --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $STATE_CONTEXT || true
+                       --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $STATE_CONTEXT || report-analytics exception --desc "report-pr-errors fail on build error"
     else
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
-      set-github-status -c ${STATUS_REF} -s $STATE_CONTEXT/success || true
+      set-github-status -c ${STATUS_REF} -s $STATE_CONTEXT/success || report-analytics exception --desc "set-github-status fail on build success"
     fi
     report_state pr_processing_done
   done
@@ -121,5 +121,5 @@ while true; do
     echo "Called with ONESHOT=true. Exiting."
     exit 0
   fi
-  sleep ${DELAY:-600} || true
+  sleep ${DELAY:-600} || report-analytics exception --desc "sleep fail"
 done
