@@ -95,7 +95,6 @@ setup(
     # pip to create the appropriate form of executable for the target platform.
     scripts = ["set-github-status",
                "report-pr-errors",
-               "process-pull-request",
                "list-branch-pr",
                "analytics/report-analytics",
                "analytics/report-metric-monalisa",
