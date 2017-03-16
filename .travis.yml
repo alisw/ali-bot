@@ -12,3 +12,4 @@ script: |
   curl -O https://aphyr.com/riemann/riemann-0.2.11.tar.bz2
   tar xjvf riemann-0.2.11.tar.bz2
   riemann-0.2.11/bin/riemann test riemann/riemann.config
+  pip install -e .
