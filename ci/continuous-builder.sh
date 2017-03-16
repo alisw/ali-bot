@@ -64,6 +64,9 @@ while true; do
         OLD_SIZE=`du --exclude=.git -sb . | awk '{print $1}'`
         git rev-parse --verify HEAD
         git merge $pr_hash || CANNOT_MERGE=1
+        # clean up in case the merge fails
+        git reset --hard HEAD
+        git clean -fxd
         NEW_SIZE=`du --exclude=.git -sb . | awk '{print $1}'`
         PR_REF=$pr_hash
       popd
