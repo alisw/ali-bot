@@ -18,10 +18,12 @@ export ALIBOT_ANALYTICS_APP_NAME="continuous-builder.sh"
 MIRROR=${MIRROR:-/build/mirror}
 PACKAGE=${PACKAGE:-AliPhysics}
 
+STATE_CONTEXT=build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}
+
 pushd alidist
   ALIDIST_REF=`git rev-parse --verify HEAD`
 popd
-set-github-status -c alisw/alidist@$ALIDIST_REF -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/pending
+set-github-status -c alisw/alidist@$ALIDIST_REF -s $STATE_CONTEXT/pending
 
 function report_state() {
   CURRENT_STATE=$1
@@ -73,13 +75,16 @@ while true; do
       if [[ $CANNOT_MERGE == 1 ]]; then
         # We do not want to kill the system is github is not working
         # so we ignore the result code for now
-        set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error -m "Cannot merge PR into test area" || report-analytics exception --desc "set-github-status fail on cannot merge"
+        set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s $STATE_CONTEXT/error -m "Cannot merge PR into test area" || report-analytics exception --desc "set-github-status fail on cannot merge"
         continue
       fi
       if [[ $(($NEW_SIZE - $OLD_SIZE)) -gt ${MAX_DIFF_SIZE:-4000000} ]]; then
         # We do not want to kill the system is github is not working
         # so we ignore the result code for now
-        set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error -m "Diff to big. Rejecting." || report-analytics exception --desc "set-github-status fail on merge too big"
+        set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s $STATE_CONTEXT/error -m "Diff too big. Rejecting." || report-analytics exception --desc "set-github-status fail on merge too big"
+        report-pr-errors --default $BUILD_SUFFIX  \
+                         --pr "${PR_REPO:-alisw/alidist}#${pr_id}" \
+                         -s $STATE_CONTEXT -m "Your pull request exceeded the allowed size. If you need to commit large files, please refer to <http://alisw.github.io/git-advanced/#how-to-use-large-data-files-for-analysis>" || report-analytics exception --desc "report-pr-errors fail on merge diff too big"
         continue
       fi
     fi
@@ -89,7 +94,7 @@ while true; do
     if [[ $DOCTOR_ERROR != '' ]]; then
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
-      set-github-status -c ${STATUS_REF} -s build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}/error -m 'aliDoctor error' || report-analytics exception --desc "set-github-status fail on aliDoctor error"
+      set-github-status -c ${STATUS_REF} -s $STATE_CONTEXT/error -m 'aliDoctor error' || report-analytics exception --desc "set-github-status fail on aliDoctor error"
       # If doctor fails, we can move on to the next PR, since we know it will not work.
       # We do not report aliDoctor being ok, because that's really a granted.
       continue
@@ -106,7 +111,6 @@ while true; do
                          ${REMOTE_STORE:+--remote-store $REMOTE_STORE}        \
                          ${DEBUG:+--debug}                                    \
                          build $PACKAGE || BUILD_ERROR=$?
-    STATE_CONTEXT=build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}
     if [[ $BUILD_ERROR != '' ]]; then
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
