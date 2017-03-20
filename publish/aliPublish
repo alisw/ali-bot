@@ -15,7 +15,7 @@ from tempfile import NamedTemporaryFile, mkdtemp
 from subprocess import Popen, PIPE, STDOUT
 from smtplib import SMTP
 from socket import getfqdn
-from random import random, choice
+from random import random, choice, shuffle
 from urlparse import urlsplit, urlunsplit
 
 def format(s, **kwds):
@@ -765,6 +765,7 @@ def main():
   doExit = False
 
   conf["mesos_dns"] = [ ":".join(map(str, hostport(x, 8123))) for x in conf.get("mesos_dns", []) ]
+  shuffle(conf["mesos_dns"])
   conf["riemann_host"],conf["riemann_port"] = hostport(conf.get("riemann_host", ""), 5555)
 
   # Connection handler
