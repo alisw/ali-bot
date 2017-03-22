@@ -104,7 +104,13 @@ while true; do
     # we build.
     mkdir -p sw/BUILD
     find sw/BUILD/ -maxdepth 1 -name "*latest*" -delete
-    GITHUB_TOKEN= alibuild/aliBuild -j ${JOBS:-`nproc`}                       \
+
+    # GitLab credentials for private ALICE repositories
+    printf "protocol=https\nhost=gitlab.cern.ch\nusername=$GITLAB_USER\npassword=$GITLAB_PASS\n" | \
+    git credential-store --file ~/.git-creds store
+    git config --global credential.helper "store --file ~/.git-creds"
+
+    GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= alibuild/aliBuild -j ${JOBS:-`nproc`}                       \
                          ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS}  \
                          ${NO_ASSUME_CONSISTENT_EXTERNALS:+-z $(echo ${pr_number} | tr - _)} \
                          --reference-sources $MIRROR                          \
