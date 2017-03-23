@@ -381,7 +381,7 @@ class PrRPC(object):
 
   def j(self, req, obj):
     req.setHeader("Content-Type", "application/json")
-    return json.dumps(obj)
+    return json.dumps(obj, default=lambda o: o.__dict__)
 
   def add_all_open_prs(self):
     perms,_,_ = load_perms("perms.yml", "groups.yml", "mapusers.yml", admins=args.admins.split(","))
@@ -532,6 +532,12 @@ class PrRPC(object):
   @app.route("/list")
   def get_list(self, req):
     return self.j(req, {"queued":list(self.items)})
+
+  @app.route("/perms")
+  def check_loaded_perms(self, req):
+    perms,tests,usermap = load_perms("perms.yml", "groups.yml", "mapusers.yml", admins=self.admins)
+    out = { "perms": perms, "tests": tests, "usermap": usermap }
+    return self.j(req, out)
 
   @app.route("/process/<group>/<repo>/<prid>")
   def process(self, req, group, repo, prid):
