@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 from __future__ import print_function
 
+import functools
 import os
 import random
 import sys
@@ -10,7 +11,7 @@ from commands import getstatusoutput
 from argparse import ArgumentParser
 from operator import itemgetter
 from alibot_helpers.github_utilities import GithubCachedClient
-from alibot_helpers.github_utilities import PickledCache
+from alibot_helpers.github_utilities import PickledCache, github_token
 
 
 def getStatusInfo(statuses, args):
@@ -34,14 +35,88 @@ def getStatusInfo(statuses, args):
     }
 
 
-def processOnePull(cgh, pull, repo_name, args, sorted_pulls, trustedTeam):
-    # Decide whether or not to show the PR based on how many
-    # workers are there and the current worker id.
+def process(cgh, args):
+    """The main function that gets the pulls to
+    process, including those from the main branch, if requested.
+    """
+    items = process_pulls(get_pulls(args), cgh, args)
+    if args.showMainBranch:
+        item = process_main_branch(get_main_branch(args), cgh, args)
+        if item:
+            items.append(item)
+    return items
 
-    modPoolSize = int(pull["head"]["sha"][0], 16) % args.workersPoolSize
-    if modPoolSize != args.workerIndex:
-        return
 
+def should_process(sha_first_char, args):
+    """Decide whether this worker should handle the PR who's
+    sha starts with sha_first_char.
+    """
+    index = int(sha_first_char, 16) % args.workersPoolSize
+    return index == args.workerIndex
+
+
+def get_pulls(args):
+    return cgh.get("/repos/{repo_name}/pulls?base={base}",
+                   repo_name=args.repo_name,
+                   base=args.branch_ref)
+
+
+def get_main_branch(args):
+    return cgh.get("/repos/{repo_name}/branches/{branch_ref}",
+                   repo_name=args.repo_name,
+                   branch_ref=args.branch_ref)
+
+
+def get_all_statuses(repoName, ref):
+    all_statuses = cgh.get("/repos/{repo_name}/commits/{ref}/statuses",
+                           repo_name=repoName,
+                           ref=ref)
+    return all_statuses
+
+
+def get_trusted_team(args):
+    # Get the team for which we consider safe for test
+    trustedTeam = None
+    teams = cgh.get("/orgs/{org}/teams", org=args.org)
+    if not teams:
+        m = "You do not have permission to fetch team info. "
+        m += "Using the correct GITHUB_TOKEN?"
+        raise SystemExit(m)
+        
+    for team in teams:
+        if team["name"] == args.trustedTeam:
+            trustedTeam = team["id"]
+    return trustedTeam
+
+
+def process_pulls(pulls, cgh, args):
+    args.trustedTeam = get_trusted_team(args)
+    pullsToProcess = []
+    for pull in pulls:
+        item = process_pull(pull, cgh, args)
+        if item:
+            pullsToProcess.append(item)
+
+    return pullsToProcess
+
+
+def process_pull(pull, cgh, args):
+    item = None 
+    if should_process(pull["head"]["sha"][0], args):
+        pn = pull["number"]
+        print("Processing: %s" % pn, file=sys.stderr)
+        try:
+            item = _do_process_pull(pull, cgh, args)
+            print("Processing: %s. Done." % pn, file=sys.stderr)
+        except RuntimeError as e:
+            print(e, file=sys.stderr)
+
+    return item
+
+
+
+def _do_process_pull(pull, cgh, args):
+    # Inner logic for the process_pull func
     item = {
         "number": pull["number"],
         "sha": pull["head"]["sha"],
@@ -51,184 +126,196 @@ def processOnePull(cgh, pull, repo_name, args, sorted_pulls, trustedTeam):
         "random": random.random()
     }
 
-    # If we specified a status to approve changes to tests we need to
-    # retrieve all the statuses.
-    # If we specified a check name to prioritize PR building, we need to
-    # retrieve all the statuses.
+    # If we specified a status to approve changes to tests we need
+    # to retrieve all the statuses. If we specified a check name to
+    # prioritize PR building, we need to retrieve all the statuses.
     if args.status or args.checkName:
-        all_statuses = cgh.get("/repos/{repo_name}/commits/{ref}/statuses",
-                               repo_name=repo_name,
-                               ref=pull["head"]["sha"])
+        all_statuses = get_all_statuses(args.repo_name, pull["head"]["sha"])
         item.update(getStatusInfo(all_statuses, args))
 
-    if item.get("reviewed"):
-        sorted_pulls.append(item)
-        return
+    if not item.get("reviewed"):
+        # If we specified a list of trusted users, a trusted team or
+        # if we trust collaborators, we need to check if this is the
+        # case for the given PR. Notice that given that these will
+        # actually consume API calls, you need to be careful about
+        # what you enable.
+        if pull["user"]["login"] in args.trusted:
+            item.update({"reviewed": True})
 
-    # If we specified a list of trusted users, a trusted team or if we
-    # trust collaborators, we need to check if this is the case for the
-    # given PR. Notice that given that these will actually consume API
-    # calls, you need to be careful about what you enable.
-    if pull["user"]["login"] in trusted:
-        item.update({"reviewed": True})
+        if args.trustedTeam and cgh.get(url="/teams/{team_id}/memberships/{login}",
+                                        team_id=args.trustedTeam,
+                                        login=pull["user"]["login"]):
+            item.update({"reviewed": True})
 
-    if trustedTeam and cgh.get(url="/teams/{team_id}/memberships/{login}",
-                               team_id=trustedTeam,
-                               login=pull["user"]["login"]):
-        item.update({"reviewed": True})
+        if args.trustCollaborators:
+            cgh.get("/repos/{repo_name}/collaborators/{login}/permission",
+                    repo_name=args.repo_name,
+                    login=pull["user"]["login"],
+                    stable_api=False)
+            item.update({"reviewed": True})
 
-    if args.trustCollaborators:
-        cgh.get("/repos/{repo_name}/collaborators/{login}/permission",
-                repo_name=repo_name,
-                login=pull["user"]["login"],
-                stable_api=False)
-        item.update({"reviewed": True})
-
-    sorted_pulls.append(item)
+    return item
 
 
-def processMainBranch(cgh, repo_name, branch_ref, args, sorted_pulls):
-    # Print the ref of the main branch as well
-    branch = cgh.get("/repos/{repo_name}/branches/{branch_ref}",
-                     repo_name=repo_name,
-                     branch_ref=branch_ref)
+def process_main_branch(branch, cgh, args):
+    item = None
+    if should_process(branch["commit"]["sha"][0], args):
+        try:
+            item = _do_process_main_branch(branch, cgh, args)
+        except RuntimeError as e:
+            print(e, file=sys.stderr)
 
-    # Decide whether or not to show the PR based on how many
-    # workers are there and the current worker id.
-    modPoolSize = int(branch["commit"]["sha"][0], 16) % args.workersPoolSize
-    if modPoolSize != args.workerIndex:
-        return
+    return item
 
-    all_statuses = cgh.get("/repos/{repo_name}/commits/{ref}/statuses",
-                           repo_name=repo_name,
-                           ref=branch["commit"]["sha"])
-    item = {"number": branch_ref, "sha": branch["commit"]["sha"]}
+
+def _do_process_main_branch(branch, cgh, args):
+    # Inner logic for the process_main_branch func
+    all_statuses = get_all_statuses(args.repo_name, branch["commit"]["sha"])
+    item = {"number": args.branch_ref, "sha": branch["commit"]["sha"]}
     item.update(getStatusInfo(all_statuses, args))
-    sorted_pulls.append(item)
+    return item
+
+
+def group_pulls(pulls):
+    reviewed = [p for p in pulls if p["reviewed"]]
+    not_tested = [p for p in reviewed if not p["tested"]]
+    not_successful = [p for p in reviewed if p["tested"] and not p["success"]]
+    return {
+        "reviewed": reviewed,
+        "not_tested": not_tested,
+        "not_successful": not_successful
+    }
+
+
+def now():
+    return int(time.time())
+
+
+def timeSince(t):
+    # Seconds since epoch t
+    return now() - t
 
 
 def parseArgs():
     parser = ArgumentParser(usage="list-branch-prs <repo>@<branch>")
     parser.add_argument("branch",
                         help="Branch of which to list hashes for open prs")
-    parser.add_argument("--trusted",
-                        default="review",
-                        help="Users whose request you trust")
-    parser.add_argument("--trusted-team",
-                        dest="trustedTeam",
-                        help="Trust provided team")
-    parser.add_argument("--trust-collaborators",
-                        dest="trustCollaborators",
-                        action="store_true",
-                        help="Trust all collaborators")
+
+    parser.add_argument("--check-name",
+                        dest="checkName",
+                        default="",
+                        help="Name of the check which we want to perform")
+
     parser.add_argument("--show-main-branch",
                         dest="showMainBranch",
                         default=False,
                         action="store_true",
                         help=("Also show reference for the main branch, "
                               " not only for the PRs"))
+
     parser.add_argument("--status",
                         default="review",
                         help="Commit status which is considered trustworthy")
-    parser.add_argument("--check-name",
-                        dest="checkName",
+
+    parser.add_argument("--script",
+                        dest="script",
                         default="",
-                        help="Name of the check which we want to perform")
+                        help="Execute a script on the resulting PR")
+
+    parser.add_argument("--poll-time", "--timeout",
+                        dest="poll_time",
+                        default=30,
+                        type=int,
+                        help="Timeout between one run and the other")
+
+    parser.add_argument("--max-wait",
+                        default=1200,
+                        dest="maxWait",
+                        type=int,
+                        help=("Max seconds to wait before returning "
+                            "whatever PRs we have (default: 1200)"))
+
+    parser.add_argument("--trusted",
+                        default="review",
+                        help="Users whose request you trust")
+
+    parser.add_argument("--trusted-team",
+                        dest="trustedTeam",
+                        help="Trust provided team")
+
+    parser.add_argument("--trust-collaborators",
+                        dest="trustCollaborators",
+                        action="store_true",
+                        help="Trust all collaborators")
+
     parser.add_argument("--worker-index",
                         dest="workerIndex",
                         type=int,
                         default=0,
                         help="Index for the current worker")
+
     parser.add_argument("--workers-pool-size",
                         dest="workersPoolSize",
                         type=int,
                         default=1,
                         help="Total number of workers")
-    parser.add_argument("--script",
-                        dest="script",
-                        default="",
-                        help="Execute a script on the resulting PR")
-    parser.add_argument("--timeout",
-                        dest="timeout",
-                        default=100,
-                        type=int,
-                        help="Timeout between one run and the other")
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.maxWait < 0: 
+        parser.error("max-wait should be positive")
+
+    args.repo_name = args.branch.split("@")[0]
+    args.org = args.repo_name.split("/")[0]
+    args.branch_ref = args.branch.split("@")[1] if "@" in args.branch else "master"
+    args.trusted = args.trusted.split(",")
+    return args
+
+
+def send(script, pulls):
+    # Push the pull ids to stdout, so they can be captured by the
+    # continuous builder shell script (that called this script)
+    # Execute on each PR, if not None, the script provided
+    for pull in pulls:
+        prId = "%(number)s@%(sha)s" % pull
+        print(prId)
+        if script:
+            err, out = getstatusoutput("%s %s" % (script, prId))
+            print(out)
 
 
 if __name__ == "__main__":
     args = parseArgs()
 
-    repo_name = args.branch.split("@")[0]
-    org = repo_name.split("/")[0]
-    branch_ref = args.branch.split("@")[1] if "@" in args.branch else "master"
-    trusted = args.trusted.split(",")
+    # Here's the plan:
+    # 1. Grab the pull requests and group by untested PRs and the other PRs
+    # 2. If there are untested entries, return them immediately
+    # 3. If not, then sleep for SLEEP_TIME
+    # 4. Upon waking check if total time spent is >= args.maxWait
+    #      If True, return one PR from tested+failed list or reviewed list
+    #                                 (note: this can be empty)
+    #      If not True: goto 1.
 
-    token = os.environ.get("GITHUB_TOKEN")
-
-    # We instanciate our custom Github client to limit the amount of API calls
     cache = PickledCache(".cached_github_client_cache")
-    with GithubCachedClient(token=token, cache=cache) as cgh:
-        # We get all the pull requests and put
-        # them in a dictionary sorted by ID
-        pulls = cgh.get("/repos/{repo_name}/pulls?base={base}",
-                        repo_name=repo_name,
-                        base=branch_ref)
-
-        # Get the team for which we consider safe for test
-        trustedTeam = None
-        for team in cgh.get("/orgs/{org}/teams", org=org):
-            if team["name"] == args.trustedTeam:
-                trustedTeam = team["id"]
+    with GithubCachedClient(token=github_token(), cache=cache) as cgh:
+        start = now()
+        # runOnce = not args.script
+        sendToStdOut = functools.partial(send, args.script)
 
         while True:
-            # Get only the updates
-            sorted_pulls = []
-            for pull in pulls:
-                try:
-                    print("Processing: %s" % pull["number"], file=sys.stderr)
-                    processOnePull(cgh,
-                                   pull,
-                                   repo_name,
-                                   args,
-                                   sorted_pulls,
-                                   trustedTeam)
-                    print("Processing: %s. Done." % pull["number"],
-                          file=sys.stderr)
-                except RuntimeError as e:
-                    print(e, file=sys.stderr)
+            pulls = process(cgh, args)
+            grouped = group_pulls(pulls)
 
-            if args.showMainBranch:
-                try:
-                    processMainBranch(cgh,
-                                      repo_name,
-                                      branch_ref,
-                                      args,
-                                      sorted_pulls)
-                except RuntimeError as e:
-                    print(e, file=sys.stderr)
-
-            sorted_pulls.sort(key=itemgetter("tested", "success", "random"))
-
-            reviewed_pulls = [p for p in sorted_pulls if p["reviewed"]]
-            not_tested_pulls = [p for p in reviewed_pulls if not p["tested"]]
-            not_successful = [p for p in reviewed_pulls if p["tested"] and not p["success"]]
-
-            actionable_pulls = (not_tested_pulls or
-                                not_successful[:1] or
-                                reviewed_pulls[:1])
-
-            for x in actionable_pulls:
-                prId = "%(number)s@%(sha)s" % x
-                print(prId)
-                if args.script:
-                    err, out = getstatusoutput("%s %s" % (args.script, prId))
-                    print(out)
-
-            cgh.printStats() 
-
-            # No script provided, run in one shot mode.
-            if not args.script:
+            if grouped["not_tested"]:
+                sendToStdOut(grouped["not_tested"])
                 break
-            time.sleep(args.timeout)
+            else:
+                m = "No untested PRs, sleeping for {0}s".format(args.poll_time)
+                print(m, file=sys.stderr)
+                    
+                err, out = getstatusoutput("sleep {0}".format(args.poll_time))
+                if err or timeSince(start) >= args.maxWait:
+                    # return whatever we have (may be empty)
+                    prs = (grouped["not_successful"][:1] or 
+                           grouped["reviewed"][:1])
+                    sendToStdOut(prs)
+                    break

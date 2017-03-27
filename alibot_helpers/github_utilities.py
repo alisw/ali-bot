@@ -174,6 +174,7 @@ class GithubCachedClient(object):
 
     def __exit__(self, excType, excValue, traceback):
         self.cache.dump()
+        self.printStats()
         return False
 
     @property

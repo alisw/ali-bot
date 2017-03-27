@@ -45,7 +45,7 @@ while true; do
   done
 
   if [[ "$PR_REPO" != "" ]]; then
-    HASHES=`list-branch-pr --show-main-branch ${CHECK_NAME:+--check-name $CHECK_NAME} ${TRUST_COLLABORATORS:+--trust-collaborators} ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} || report-analytics exception --desc "list-branch-pr failed"`
+    HASHES=`list-branch-pr --show-main-branch ${CHECK_NAME:+--check-name $CHECK_NAME} ${TRUST_COLLABORATORS:+--trust-collaborators} ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} ${DELAY:+--max-wait $DELAY} || report-analytics exception --desc "list-branch-pr failed"`
   else
     HASHES="0@0"
   fi
@@ -134,5 +134,4 @@ while true; do
     echo "Called with ONESHOT=true. Exiting."
     exit 0
   fi
-  sleep ${DELAY:-600} || report-analytics exception --desc "sleep fail"
 done
