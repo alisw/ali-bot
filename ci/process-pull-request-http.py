@@ -114,10 +114,10 @@ class State(object):
 
   def action_check_permissions(self, git, pr, perms, tests):
     pull = git.get_pull(pr, cached=True)
-    if pull.changed_files > 10:
+    if pull.changed_files > 50:
       # Too many changed files. It's not worth to check every single one of them. This would also
       # exhaust the API calls. Let's ask for the approval of the masters only.
-      info("this pull request has %d (> 10) changed files: requesting approval from the admins only" % \
+      info("this pull request has %d (> 50) changed files: requesting approval from the admins only" % \
            pull.changed_files)
       self.approvers.push(1, self.approvers.users_override)
     else:
