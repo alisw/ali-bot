@@ -1,7 +1,9 @@
 from github import Github, GithubException
 from collections import namedtuple
 from time import time
-import logging
+from os import listdir
+from datetime import datetime
+import logging, yaml, os
 
 MetaPull = namedtuple("MetaPull", [ "name", "repo", "num", "title", "changed_files", "sha",
                                     "closed_at", "mergeable", "mergeable_state", "who", "when",
@@ -45,17 +47,155 @@ class MetaGitException(Exception):
 
 class MetaGit(object):
 
-  def __init__(self, backend, token, rw=True):
-    # Set rw to False to only read from GitHub ("dry run")
-    assert backend=="GitHub", "You can only use GitHub for now"
-    self.gh = Github(login_or_token=token)  # lazy
-    self.gh_commits = {}
-    self.gh_pulls = {}
-    self.gh_repos = {}
+  @staticmethod
+  def init(backend, **kw):
+    if backend == "GitHub":
+      return MetaGit_GitHub(**kw)
+    elif backend == "Dummy":
+      return MetaGit_Dummy(**kw)
+    assert False, "You can only use GitHub or Dummy for now"
+
+  def __init__(self, rw=True):
     self.rate_left = 0
     self.rate_limit = 0
     self.rate_reset = 0
     self.rw = rw
+
+  @staticmethod
+  def split_repo_pr(full):
+    try:
+      repo,num = full.split("#", 1)
+      num = int(num)
+    except Exception:
+      raise MetaGitException("%s: invalid format" % full)
+    return repo,num
+
+  def get_status(self, pr, context):
+    # Return state and description for a single status, or None,None if not found
+    for _,d in self.get_statuses(pr, [context]).items():
+      return d.state,d.description
+    return None,None
+
+class MetaGit_Dummy(MetaGit):
+
+  def __init__(self, store="dummy", bot_user=None, rw=True, **kw):
+    super(MetaGit_Dummy, self).__init__(rw=rw)
+    assert bot_user, "Specify a bot user"
+    self.store = store
+    self.data = {}
+    self.bot_user = bot_user
+
+  def open(self, repo, num, ro=True):
+    try:
+      return open(os.path.join(self.store, repo, str(num), "update.yml"), "r" if ro else "w")
+    except IOError as e:
+      if not ro:
+        raise e
+      return open(os.path.join(self.store, repo, str(num), "status.yml"), "r")
+
+  def read(self, repo, num):
+    try:
+      return yaml.safe_load(self.open(repo, num))
+    except Exception as e:
+      raise MetaGitException("Cannot read %s#%s: %s" % (repo, num, e))
+
+  def write(self, repo, num, data):
+    if not self.rw:
+      info("Not writing changes to PR: dry run")
+      return
+    try:
+      with self.open(repo, num, ro=False) as f:
+        f.write(yaml.safe_dump(data, default_flow_style=False, width=1000000, indent=2))
+    except Exception as e:
+      raise MetaGitException("Cannot write %s#%s: %s" % (repo, num, e))
+
+  def get_rate_limit(self):
+    return 0,0,time()
+
+  def get_pull(self, pr, cached=False):
+    repo,num = self.split_repo_pr(pr)
+    raw = self.read(repo, num)
+    pull = MetaPull(name            = pr,
+                    repo            = repo,
+                    num             = num,
+                    title           = raw["title"],
+                    changed_files   = len(raw["files"]),
+                    sha             = raw["sha"],
+                    closed_at       = raw["closed_at"],
+                    mergeable       = True if raw["mergeable"] else False,  # beware, might be None too
+                    mergeable_state = "unknown" if raw["mergeable"] is None else ("clean" if raw["mergeable"] else "dirty"),
+                    who             = raw["author"],
+                    when            = raw["when"],
+                    get_files       = lambda: raw["files"])
+    return pull
+
+  def get_pulls(self, repo):
+    all_pulls = set()
+    for f in listdir("dummy/" + repo):
+      try:
+        f = int(f)
+        if self.read(repo, f).get("closed_at", None) is None:
+          all_pulls.add("%s#%d" % (repo,f))
+      except (OSError,IOError,ValueError,KeyError) as e:
+        pass
+    return all_pulls
+
+  def get_pull_from_sha(self, sha):
+    return None
+
+  def get_statuses(self, pr, contexts):
+    repo,num = self.split_repo_pr(pr)
+    raw = self.read(repo, num)
+    statuses = {}
+    for c in contexts:
+      s = raw.get("statuses", {}).get(c, None)
+      if s:
+        statuses.update({ c: MetaStatus(context=c, state=s["state"], description=s["description"]) })
+    return statuses
+
+  def set_status(self, pr, context, state, description="", force=False):
+    info("%s: setting %s=%s" % (pr, context, state))
+    repo,num = self.split_repo_pr(pr)
+    raw = self.read(repo, num)
+    raw["statuses"] = raw.get("statuses", {})
+    raw["statuses"].update({ context: { "state":state, "description":description } })
+    self.write(repo, num, raw)
+
+  def get_comments(self, pr):
+    repo,num = self.split_repo_pr(pr)
+    raw = self.read(repo, num)
+    for c in raw.get("comments", []):
+      cn = MetaComment(body  = c["body"],
+                       short = c["body"].split("\n", 1)[0].strip(),
+                       who   = c["author"],
+                       when  = c["created_at"])
+      yield cn
+
+  def add_comment(self, pr, comment):
+    info("%s: adding comment \"%s\"" % (pr, comment))
+    repo,num = self.split_repo_pr(pr)
+    raw = self.read(repo, num)
+    raw["comments"] = raw.get("comments", [])
+    raw["comments"].append({ "body": comment,
+                             "author": self.bot_user,
+                             "created_at": datetime.now() })
+    self.write(repo, num, raw)
+
+  def merge(self, pr):
+    repo,num = self.split_repo_pr(pr)
+    raw = self.read(repo, num)
+    raw["closed_at"] = datetime.now()
+    raw["mergeable"] = None
+    self.write(repo, num, raw)
+
+class MetaGit_GitHub(MetaGit):
+
+  def __init__(self, token, rw=True, **kw):
+    super(MetaGit_GitHub, self).__init__(rw=rw)
+    self.gh = Github(login_or_token=token)  # lazy
+    self.gh_commits = {}
+    self.gh_pulls = {}
+    self.gh_repos = {}
 
   def get_rate_limit(self):
     # Returns a tuple with three elements: API calls left, limit, reset time (s)
@@ -87,7 +227,8 @@ class MetaGit(object):
         raise MetaGitException("Cannot get commit %s from %s: %s" % (pull.sha, pr, e))
     def wrap_get_files(ghpr):
       try:
-        return ghpr.get_files()
+        for f in ghpr.get_files():
+          yield f.filename
       except GithubException as e:
         raise MetaGitException("Cannot get list of files from pull request: %s" % e)
     pull = MetaPull(name            = pr,
@@ -147,7 +288,7 @@ class MetaGit(object):
           sn = MetaStatus(context     = s.context,
                           state       = s.state,
                           description = s.description)
-          statuses.update({ pull.sha: sn })
+          statuses.update({ s.context: sn })
           if len(statuses) == len(contexts):
             break
     except GithubException as e:
@@ -155,19 +296,12 @@ class MetaGit(object):
     return statuses
 
   @apicalls
-  def get_status(self, pr, context):
-    # Return state and description for a single status, or None,None if not found
-    for _,d in self.get_statuses(pr, [context]).items():
-      return d.state,d.description
-    return None,None
-
-  @apicalls
   def set_status(self, pr, context, state, description="", force=False):
     # Set status for a given pr. If force==True set it even if it already exists
     if not self.rw:
       info("%s: not setting %s=%s (dry run)" % (pr, context, state))
       return
-    info("%s: setting %s=%s (dry run)" % (pr, context, state))
+    info("%s: setting %s=%s" % (pr, context, state))
     pull = self.get_pull(pr, cached=True)
     if not pull.sha in self.gh_commits:
       try:
@@ -230,12 +364,3 @@ class MetaGit(object):
       self.gh_pulls[pr].merge()
     except GithubException as e:
       raise MetaGitException("Cannot merge %s: %s" % (pr, e))
-
-  @staticmethod
-  def split_repo_pr(full):
-    try:
-      repo,num = full.split("#", 1)
-      num = int(num)
-    except Exception:
-      raise MetaGitException("%s: invalid format" % full)
-    return repo,num

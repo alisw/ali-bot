@@ -114,22 +114,22 @@ class State(object):
 
   def action_check_permissions(self, git, pr, perms, tests):
     pull = git.get_pull(pr, cached=True)
-    if pull.changed_files > 10:
+    if pull.changed_files > 50:
       # Too many changed files. It's not worth to check every single one of them. This would also
       # exhaust the API calls. Let's ask for the approval of the masters only.
-      info("this pull request has %d (> 10) changed files: requesting approval from the admins only" % \
+      info("this pull request has %d (> 50) changed files: requesting approval from the admins only" % \
            pull.changed_files)
       self.approvers.push(1, self.approvers.users_override)
     else:
       for fn in pull.get_files():
-        debug("determining permissions for file %s" % fn.filename)
+        debug("determining permissions for file %s" % fn)
         for rule in perms:
-          num_approve,approve = rule(fn.filename, pull.who)  # approve can be bool or set (not list)
+          num_approve,approve = rule(fn, pull.who)  # approve can be bool or set (not list)
           if approve:
-            debug("file %s matched by rule %s: %s" % (fn.filename, rule.path_regexp, approve))
+            debug("file %s matched by rule %s: %s" % (fn, rule.path_regexp, approve))
             self.approvers.push(num_approve, approve)
             break
-        assert approve, "this should not happen: for file %s no rule matches" % fn.filename
+        assert approve, "this should not happen: for file %s no rule matches" % fn
     debug("computed list of approvers: %s (override: %s)" % (self.approvers, self.approvers.users_override))
     self.approvers_unchanged = Approvers.from_str(str(self.approvers), users_override=self.approvers.users_override)
     self.action_approval_required(git, pr, perms, tests)
@@ -346,14 +346,17 @@ class PrRPC(object):
   app = Klein()
   items = set()
 
-  def __init__(self, host, port, bot_user, admins, processQueueEvery, processAllEvery, dryRun):
+  def __init__(self, host, port, bot_user, admins, processQueueEvery, processAllEvery,
+               dummyGit, dryRun):
     self.bot_user = bot_user
     self.admins = admins
     self.dryRun = dryRun
     self.must_exit = False
-    self.git = MetaGit(backend="GitHub",
-                       token=open(expanduser("~/.github-token")).read().strip(),
-                       rw=not dryRun)
+    self.git = MetaGit.init(backend="Dummy" if dummyGit else "GitHub",
+                            bot_user=bot_user,
+                            store="dummy",
+                            token=open(expanduser("~/.github-token")).read().strip(),
+                            rw=not dryRun)
 
     def set_must_exit():
       self.must_exit = True
@@ -670,6 +673,9 @@ if __name__ == "__main__":
                       help="Accumulate pull requests and process them every that many seconds")
   parser.add_argument("--process-all-every", dest="processAllEvery", default=600, type=int,
                       help="Process all pull requests every that many seconds (0: callbacks only)")
+  parser.add_argument("--dummy-git", dest="dummyGit",
+                      action="store_true", default=False,
+                      help="Use the dummy Git backend for testing")
   args = parser.parse_args()
   if args.more_debug:
     args.debug = True
@@ -697,4 +703,5 @@ if __name__ == "__main__":
                 admins=args.admins.split(","),
                 processQueueEvery=args.processQueueEvery,
                 processAllEvery=args.processAllEvery,
+                dummyGit=args.dummyGit,
                 dryRun=args.dryRun)
