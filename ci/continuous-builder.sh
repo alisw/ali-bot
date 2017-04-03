@@ -40,7 +40,9 @@ while true; do
   report_state looping
   for d in $(find . -maxdepth 2 -name .git -exec dirname {} \; | grep -v ali-bot); do
     pushd $d
-      git pull origin
+      if [[ `git rev-parse --abbrev-ref HEAD` != HEAD ]]; then
+        git pull origin
+      fi
     popd
   done
 
