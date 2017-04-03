@@ -90,7 +90,7 @@ class Logs(object):
         return join(pr.repo_name, pr.id, pr.commit, "fullLog.txt")
 
     def find(self):
-        search_path = join(self.work_dir, "BUILD/*/log")
+        search_path = join(self.work_dir, "BUILD/*latest*/log")
         print("Searching all logs matching: %s" % search_path, file=sys.stderr)
         globbed = glob(search_path)
 
