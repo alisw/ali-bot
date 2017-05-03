@@ -315,7 +315,6 @@ def parseGithubRef(s):
     pr_n = re.split("[@#]", s)[1] if "#" in s else None
     return (repo_name, pr_n, commit_ref)
 
-
 def setGithubStatus(cgh, args):
     repo_name, _, commit_ref = parseGithubRef(args.commit)
     state_context = args.status.rsplit("/", 1)[0] if "/" in args.status else ""
