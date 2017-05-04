@@ -201,7 +201,7 @@ class GithubCachedClient(object):
 
     def baseHeaders(self, stable_api=True):
         stableAPI = "application/vnd.github.v3+json"
-        unstableAPI = "application/vnd.github.korra-preview"
+        unstableAPI = "application/vnd.github.black-cat-preview+json"
         headers = {
             "Accept": stableAPI if stable_api else unstableAPI,
             "Authorization": "token %s" % self.token.strip()
