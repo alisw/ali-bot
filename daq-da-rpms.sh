@@ -7,7 +7,6 @@ ALIDIST_BRANCH=${ALIDIST_REPO##*:}
 ALIDIST_REPO=${ALIDIST_REPO%:*}
 OVERRIDE_TAGS="AliRoot=$ALIROOT_VERSION"
 DEFAULTS=daq
-DISABLE=AliEn-Runtime,GEANT4_VMC,GEANT3,fastjet,GCC-Toolchain,Vc,DPMJET
 REMOTE_STORE=rsync://repo.marathon.mesos/store/
 
 function getver() {
@@ -34,8 +33,7 @@ yum clean all
 yum install --disablerepo=rpmforge                                             \
             -y BWidget MySQL-shared MySQL-client MySQL-devel dim smi tcl-devel \
                tk-devel libcurl-devel libxml2-devel pciutils-devel mysqltcl    \
-               xinetd ksh tcsh pigz MySQL-server date amore ACT daqDA-lib      \
-#rpm -qa | grep ^root- | xargs -L1 rpm -e --nodeps
+               xinetd ksh tcsh pigz MySQL-server date amore ACT daqDA-lib
 yum clean all
 rm -fv /var/lib/rpm/__db*
 rpm --rebuilddb
@@ -64,15 +62,10 @@ echo $NODE_NAME > $WORKAREA/$WORKAREA_INDEX/current_slave
 alibuild/aliBuild --reference-sources $MIRROR          \
                   --debug                              \
                   --work-dir $WORKAREA/$WORKAREA_INDEX \
-                  init AliRoot
-alibuild/aliBuild --reference-sources $MIRROR          \
-                  --debug                              \
-                  --work-dir $WORKAREA/$WORKAREA_INDEX \
                   --architecture $ARCHITECTURE         \
                   --jobs ${JOBS:-8}                    \
                   --remote-store $REMOTE_STORE::rw     \
                   --defaults $DEFAULTS                 \
-                  --disable $DISABLE                   \
                   build AliRoot || BUILDERR=$?
 
 rm -f $WORKAREA/$WORKAREA_INDEX/current_slave
