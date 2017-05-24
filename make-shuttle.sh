@@ -5,6 +5,7 @@ mkdir -p ~/alibuild/sw/MIRROR && cd ~/alibuild
 [[ -d alidist/.git ]] || git clone https://github.com/alisw/alidist alidist/
 [[ -d sw/MIRROR/aliroot ]] || git clone --bare https://github.com/alisw/AliRoot sw/MIRROR/aliroot
 [[ -d AliRoot ]] || git clone --reference sw/MIRROR/aliroot https://github.com/alisw/AliRoot AliRoot/
+[[ -d AliRoot-OCDB ]] || git clone --depth 1 https://gitlab.cern.ch/alisw/AliRootOCDB.git AliRoot-OCDB/
 if [[ $1 != master && ! $MAKE_SHUTTLE_RETRY ]]; then
   [[ -d AliRoot_master ]] || git clone --reference sw/MIRROR/aliroot https://github.com/alisw/AliRoot AliRoot_master/
   pushd AliRoot_master
