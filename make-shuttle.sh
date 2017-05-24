@@ -22,7 +22,7 @@ pushd AliRoot
   git checkout master
   git reset --hard refs/tags/$1 || git reset --hard origin/$1 || git reset --hard $1
 popd
-[[ -d AliRoot_master && ! $MAKE_SHUTTLE_RETRY ]] && rsync -av --delete AliRoot_master/SHUTTLE/ AliRoot/SHUTTLE/ || true
+[[ $1 != master && ! $MAKE_SHUTTLE_RETRY ]] && rsync -av --delete AliRoot_master/SHUTTLE/ AliRoot/SHUTTLE/ || true
 ( cd AliRoot && git status )
 # If we are building the master and the build fails, fall back to the latest
 # working version. Do not fall back in case we are building a tag.
@@ -31,7 +31,7 @@ aliBuild build AliRoot --debug --defaults shuttle || \
   { export MAKE_SHUTTLE_RETRY=1; exec "$0" $(cat latest_working_hash); }
 LOCAL_HASH=$( cd AliRoot && git rev-parse HEAD )
 UPSTREAM_HASH=$( cd AliRoot && git rev-parse origin/master )
+SHUTTLE_HASH=$( cd AliRoot$([[ $1 != master && ! $MAKE_SHUTTLE_RETRY ]] && echo _master || true) && git log -1 --format=%H SHUTTLE )
 printf $LOCAL_HASH > latest_working_hash
-printf "\n\033[1;32mAliRoot SHUTTLE version $LOCAL_HASH compiled OK.\n"
-[[ $LOCAL_HASH == $UPSTREAM_HASH ]] && printf "This matches the upstream version.\033[m\n\n" \
-                                    || printf "\033[33mThis is different from the upstream version ($UPSTREAM_HASH).\033[m\n\n"
+printf "\n\033[1;32mAliRoot version $LOCAL_HASH ($1) compiled OK\n"
+printf "Last SHUTTLE commit taken is $SHUTTLE_HASH from upstream AliRoot $UPSTREAM_HASH\033[m\n\n"
