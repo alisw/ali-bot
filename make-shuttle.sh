@@ -10,7 +10,7 @@ if [[ $1 != master && ! $MAKE_SHUTTLE_RETRY ]]; then
   [[ -d AliRoot_master ]] || git clone --reference sw/MIRROR/aliroot https://github.com/alisw/AliRoot AliRoot_master/
   pushd AliRoot_master
     # Upstream master of AliRoot
-    git fetch --all --tags
+    git remote update -p && git fetch && git fetch --tags
     git clean -fxd
     git checkout master
     git reset --hard origin/master
@@ -18,7 +18,7 @@ if [[ $1 != master && ! $MAKE_SHUTTLE_RETRY ]]; then
 fi
 pushd AliRoot
   # Upstream user-defined tag of AliRoot
-  git fetch --all --tags
+  git remote update -p && git fetch && git fetch --tags
   git clean -fxd
   git checkout master
   git reset --hard refs/tags/$1 || git reset --hard origin/$1 || git reset --hard $1
