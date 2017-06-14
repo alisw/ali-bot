@@ -143,10 +143,12 @@ class MetaGit_Dummy(MetaGit):
   def get_pull_from_sha(self, sha):
     return None
 
-  def get_statuses(self, pr, contexts):
+  def get_statuses(self, pr, contexts=None):
     repo,num = self.split_repo_pr(pr)
     raw = self.read(repo, num)
     statuses = {}
+    if not contexts:
+      contexts = raw.get("statuses", {}).keys()
     for c in contexts:
       s = raw.get("statuses", {}).get(c, None)
       if s:
@@ -272,9 +274,9 @@ class MetaGit_GitHub(MetaGit):
     return None
 
   @apicalls
-  def get_statuses(self, pr, contexts):
-    # Given a pr and an array of contexts returns a dict of MetaStatus. If status is not found, it
-    # will not appear in the returned dict
+  def get_statuses(self, pr, contexts=None):
+    # Given a pr and an array of contexts returns a dict of MetaStatus. If the array of contexts is
+    # not given, get all statuses. If status is not found, it will not appear in the returned dict
     pull = self.get_pull(pr, cached=True)
     if not pull.sha in self.gh_commits:
       try:
@@ -284,12 +286,12 @@ class MetaGit_GitHub(MetaGit):
     statuses = {}
     try:
       for s in self.gh_commits[pull.sha].get_statuses():
-        if s.context in contexts and not s.context in statuses:
+        if (not contexts or s.context in contexts) and not s.context in statuses:
           sn = MetaStatus(context     = s.context,
                           state       = s.state,
                           description = s.description)
           statuses.update({ s.context: sn })
-          if len(statuses) == len(contexts):
+          if contexts and len(statuses) == len(contexts):
             break
     except GithubException as e:
       raise MetaGitException("Cannot get statuses for %s on %s: %s" % (pull.sha, pr, e))
