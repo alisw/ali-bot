@@ -18,7 +18,6 @@ if args.dummy:
 else:
   git = MetaGit.init(backend="GitHub", token=open(expanduser("~/.github-token")).read().strip())
 pr = git.get_pull(args.prid)
-nworkers = 4
 
 print("%(prid)s: %(title)s -- by %(author)s is %(closed)s" % \
        { "prid": args.prid,
@@ -32,4 +31,4 @@ print("CI status")
 for _,s in git.get_statuses(args.prid).iteritems():
   print(" * %(name)s: %(state)s" % { "name": s.context, "state": s.state })
 print("Tests on worker %d (note: zero-based, %d total workers)" % \
-      ((int(pr.sha[0], 16) % nworkers), nworkers))
+      ((int(pr.sha[0], 16) % args.nworkers), args.nworkers))
