@@ -1,7 +1,7 @@
 #!/bin/bash -e
-LIST=toClean.txt
-[[ -e $LIST ]]
-while read P; do
+LIST=({% for x in to_delete -%} \
+      "{{x}}" {% endfor -%})
+for P in "${LIST[@]}"; do
   PKGNAME=${P%% *}
   PKGVER=${P#* }
   [[ "$PKGNAME" != "$P" ]]
@@ -18,5 +18,5 @@ while read P; do
   alien -exec rmdir /alice/packages/$PKGNAME/$PKGVER > /dev/null 2>&1 || true
   alien -exec ls /alice/packages/$PKGNAME/$PKGVER 2>&1 | grep -q "no such file"
   echo done
-done < <(cat $LIST)
+done
 echo All condemned packages removed

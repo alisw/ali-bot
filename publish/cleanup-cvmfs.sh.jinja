@@ -1,12 +1,12 @@
 #!/bin/bash -e
-LIST=toClean.txt
+LIST=({% for x in to_delete -%} \
+      "{{x}}" {% endfor -%})
 MPREFIX=/cvmfs/alice.cern.ch/x86_64-2.6-gnu-4.1.2/Modules
 PPREFIX=$(cd $MPREFIX/../Packages;pwd)
 ENABLED_MPREFIX=$MPREFIX/modulefiles
 ARCHIVED_MPREFIX=$MPREFIX/archive
-REMOVE=1
-[[ -e $LIST ]]
-while read P; do
+REMOVE={{remove}}
+for P in "${LIST[@]}"; do
   PKGNAME=${P%% *}
   PKGVER=${P#* }
   [[ "$PKGNAME" != "$P" ]]
@@ -18,7 +18,7 @@ while read P; do
       || echo WARNING, cannot find either enabled or archived copy
     continue
   fi
-  if [[ "$REMOVE" == 1 ]]; then
+  if [[ $REMOVE == 1 ]]; then
     rm -rf $PPREFIX/$PKGNAME/$PKGVER \
            $ENABLED_MPREFIX/$PKGNAME/$PKGVER
   else
@@ -26,5 +26,5 @@ while read P; do
     mv $ENABLED_MPREFIX/$PKGNAME/$PKGVER $ARCHIVED_MPREFIX/$PKGNAME/$PKGVER
   fi
   echo done
-done < <(cat $LIST)
+done
 echo All condemned packages processed
