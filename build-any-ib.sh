@@ -42,6 +42,12 @@ for x in $OVERRIDE_TAGS; do
   OVERRIDE_TAG=$(echo $x | cut -f2 -d=)
   perl -p -i -e "s|tag: .*|tag: $OVERRIDE_TAG|" alidist/$OVERRIDE_PACKAGE.sh
 done
+for x in $OVERRIDE_VERSIONS; do
+  OVERRIDE_PACKAGE=$(echo $x | cut -f1 -d= | tr '[:upper:]' '[:lower:]')
+  OVERRIDE_VERSION=$(echo $x | cut -f2 -d=)
+  perl -p -i -e "s|version: .*|version: $OVERRIDE_VERSION|" alidist/$OVERRIDE_PACKAGE.sh
+done
+( cd alidist && git diff )
 
 # Allow to specify AliRoot and AliPhysics as a development packages
 if [[ "$ALIROOT_DEVEL_VERSION" != '' ]]; then
