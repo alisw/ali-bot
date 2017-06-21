@@ -19,9 +19,10 @@ else:
   git = MetaGit.init(backend="GitHub", token=open(expanduser("~/.github-token")).read().strip())
 pr = git.get_pull(args.prid)
 
-print("%(prid)s: %(title)s -- by %(author)s is %(closed)s" % \
+print("%(prid)s: %(title)s -- %(hash)s -- by %(author)s is %(closed)s" % \
        { "prid": args.prid,
          "title": pr.title,
+         "hash": pr.sha,
          "author": pr.who,
          "closed": "closed" if pr.closed_at else "open" })
 print("Files changed")
