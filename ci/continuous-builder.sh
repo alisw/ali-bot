@@ -68,7 +68,7 @@ while true; do
         git fetch origin
         git clean -fxd
         OLD_SIZE=`du --exclude=.git -sb . | awk '{print $1}'`
-        git rev-parse --verify HEAD
+        base_hash=$(git rev-parse --verify HEAD)  # reference upstream hash
         git merge $pr_hash || CANNOT_MERGE=1
         # clean up in case the merge fails
         git reset --hard HEAD
@@ -114,7 +114,8 @@ while true; do
     git credential-store --file ~/.git-creds store
     git config --global credential.helper "store --file ~/.git-creds"
 
-    ALIBUILD_PR_BASE=$pr_hash GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN=                      \
+    ALIBUILD_HEAD_HASH=$pr_hash ALIBUILD_BASE_HASH=$base_hash                              \
+    GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN=                                                \
     alibuild/aliBuild -j ${JOBS:-`nproc`}                                                  \
                        ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS}                 \
                        ${NO_ASSUME_CONSISTENT_EXTERNALS:+-z $(echo ${pr_number} | tr - _)} \
