@@ -347,11 +347,13 @@ class PrRPC(object):
   items = set()
 
   def __init__(self, host, port, bot_user, admins, processQueueEvery, processAllEvery,
-               dummyGit, dryRun):
+               processStuckThreshold, dummyGit, dryRun):
     self.bot_user = bot_user
     self.admins = admins
     self.dryRun = dryRun
     self.must_exit = False
+    self.processStartTime = 0
+    self.processStuckThreshold = processStuckThreshold
     self.git = MetaGit.init(backend="Dummy" if dummyGit else "GitHub",
                             bot_user=bot_user,
                             store="dummy",
@@ -365,6 +367,9 @@ class PrRPC(object):
     def schedule_process_pull_requests():
       items_to_process = self.items.copy()
       self.items = set()  # empty queue
+      self.processStartTime = time()
+      def resetStartTime(x):
+        self.processStartTime = 0
       d = threads.deferToThread(self.process_pull_requests, items_to_process,
                                                             self.bot_user,
                                                             self.admins,
@@ -372,6 +377,7 @@ class PrRPC(object):
       d.addCallback(lambda unprocessed: self.items.update(unprocessed))  # repush (requeue) unprocessed
       d.addErrback(lambda x: error("Uncaught exception during pull request test: %s" % str(x)))
       d.addBoth(lambda x: reactor.callLater(processQueueEvery, schedule_process_pull_requests))
+      d.addBoth(resetStartTime)
       return d
 
     if processAllEvery <= 0:
@@ -534,13 +540,18 @@ class PrRPC(object):
 
   @app.route("/list")
   def get_list(self, req):
-    return self.j(req, {"queued":list(self.items)})
+    return self.j(req, {"queued": list(self.items)})
 
   @app.route("/perms")
   def check_loaded_perms(self, req):
     perms,tests,usermap = load_perms("perms.yml", "groups.yml", "mapusers.yml", admins=self.admins)
     out = { "perms": perms, "tests": tests, "usermap": usermap }
     return self.j(req, out)
+
+  @app.route("/process/all")
+  def process_all(self, req):
+    self.add_all_open_prs()
+    return self.j(req, {"queued": list(self.items)})
 
   @app.route("/process/<group>/<repo>/<prid>")
   def process(self, req, group, repo, prid):
@@ -550,7 +561,15 @@ class PrRPC(object):
 
   @app.route("/health")
   def health(self, req):
-    return self.j(req, {"status": "ok"})
+    runningSince = time()-self.processStartTime if self.processStartTime else 0
+    if runningSince > self.processStuckThreshold:
+      req.setResponseCode(500)
+      status = "stuck"
+    else:
+      status = "ok"
+    return self.j(req, {"status"           : status,
+                        "running_since"    : runningSince,
+                        "stuck_threshold_s": self.processStuckThreshold })
 
 # Parse file
 def load_perms(f_perms, f_groups, f_mapusers, admins):
@@ -673,6 +692,8 @@ if __name__ == "__main__":
                       help="Accumulate pull requests and process them every that many seconds")
   parser.add_argument("--process-all-every", dest="processAllEvery", default=600, type=int,
                       help="Process all pull requests every that many seconds (0: callbacks only)")
+  parser.add_argument("--process-stuck-threshold", dest="processStuckThreshold", default=300, type=int,
+                      help="Report as unhealthy if too long in the process loop (defaults 300 s)")
   parser.add_argument("--dummy-git", dest="dummyGit",
                       action="store_true", default=False,
                       help="Use the dummy Git backend for testing")
@@ -703,5 +724,6 @@ if __name__ == "__main__":
                 admins=args.admins.split(","),
                 processQueueEvery=args.processQueueEvery,
                 processAllEvery=args.processAllEvery,
+                processStuckThreshold=args.processStuckThreshold,
                 dummyGit=args.dummyGit,
                 dryRun=args.dryRun)

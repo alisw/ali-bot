@@ -1,2 +1,4 @@
 /toClean.txt
 *.swp
+/cleanup-*.sh
+/test-cleanup-*.yaml

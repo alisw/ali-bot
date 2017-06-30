@@ -40,7 +40,9 @@ while true; do
   report_state looping
   for d in $(find . -maxdepth 2 -name .git -exec dirname {} \; | grep -v ali-bot); do
     pushd $d
-      git pull origin
+      if [[ `git rev-parse --abbrev-ref HEAD` != HEAD ]]; then
+        git pull origin
+      fi
     popd
   done
 
@@ -110,13 +112,14 @@ while true; do
     git credential-store --file ~/.git-creds store
     git config --global credential.helper "store --file ~/.git-creds"
 
-    GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= alibuild/aliBuild -j ${JOBS:-`nproc`}                       \
-                         ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS}  \
-                         ${NO_ASSUME_CONSISTENT_EXTERNALS:+-z $(echo ${pr_number} | tr - _)} \
-                         --reference-sources $MIRROR                          \
-                         ${REMOTE_STORE:+--remote-store $REMOTE_STORE}        \
-                         ${DEBUG:+--debug}                                    \
-                         build $PACKAGE || BUILD_ERROR=$?
+    ALIBUILD_PR_BASE=$pr_hash GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN=                      \
+    alibuild/aliBuild -j ${JOBS:-`nproc`}                                                  \
+                       ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS}                 \
+                       ${NO_ASSUME_CONSISTENT_EXTERNALS:+-z $(echo ${pr_number} | tr - _)} \
+                       --reference-sources $MIRROR                                         \
+                       ${REMOTE_STORE:+--remote-store $REMOTE_STORE}                       \
+                       ${DEBUG:+--debug}                                                   \
+                       build $PACKAGE || BUILD_ERROR=$?
     if [[ $BUILD_ERROR != '' ]]; then
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now

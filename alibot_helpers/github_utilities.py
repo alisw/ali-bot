@@ -201,7 +201,7 @@ class GithubCachedClient(object):
 
     def baseHeaders(self, stable_api=True):
         stableAPI = "application/vnd.github.v3+json"
-        unstableAPI = "application/vnd.github.korra-preview"
+        unstableAPI = "application/vnd.github.black-cat-preview+json"
         headers = {
             "Accept": stableAPI if stable_api else unstableAPI,
             "Authorization": "token %s" % self.token.strip()
@@ -314,7 +314,6 @@ def parseGithubRef(s):
     commit_ref = s.split("@")[1] if "@" in s else "master"
     pr_n = re.split("[@#]", s)[1] if "#" in s else None
     return (repo_name, pr_n, commit_ref)
-
 
 def setGithubStatus(cgh, args):
     repo_name, _, commit_ref = parseGithubRef(args.commit)

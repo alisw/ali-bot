@@ -1,0 +1,35 @@
+#!/usr/bin/env python
+from __future__ import print_function
+from metagit import MetaGit,MetaGitException
+from os.path import expanduser
+import sys
+from argparse import ArgumentParser
+
+ap = ArgumentParser()
+ap.add_argument("--nworkers", dest="nworkers", type=int, default=4,
+                help="Number of workers (default: 4)")
+ap.add_argument("--dummy-git", dest="dummy", default=False, action="store_true",
+                help="Use dummy Git interface")
+ap.add_argument("prid")
+args = ap.parse_args()
+
+if args.dummy:
+  git = MetaGit.init(backend="Dummy", bot_user="ali-bot")
+else:
+  git = MetaGit.init(backend="GitHub", token=open(expanduser("~/.github-token")).read().strip())
+pr = git.get_pull(args.prid)
+
+print("%(prid)s: %(title)s -- %(hash)s -- by %(author)s is %(closed)s" % \
+       { "prid": args.prid,
+         "title": pr.title,
+         "hash": pr.sha,
+         "author": pr.who,
+         "closed": "closed" if pr.closed_at else "open" })
+print("Files changed")
+for f in pr.get_files():
+  print(" * %s" % f)
+print("CI status")
+for _,s in git.get_statuses(args.prid).iteritems():
+  print(" * %(name)s: %(state)s" % { "name": s.context, "state": s.state })
+print("Tests on worker %d (note: zero-based, %d total workers)" % \
+      ((int(pr.sha[0], 16) % args.nworkers), args.nworkers))
