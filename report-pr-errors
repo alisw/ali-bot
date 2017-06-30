@@ -2,11 +2,9 @@
 from __future__ import print_function
 
 from argparse import ArgumentParser, Namespace
-import atexit
 from commands import getstatusoutput
 from glob import glob
 from os.path import dirname, join
-import os
 import sys
 
 from alibot_helpers.github_utilities import calculateMessageHash, github_token
@@ -96,7 +94,7 @@ class Logs(object):
 
         suffix = ("latest" + "-" + self.develPrefix).strip("-")
         logs = [x for x in globbed if dirname(x).endswith(suffix)]
-            
+
         print("Found:\n%s" % "\n".join(logs), file=sys.stderr)
         self.logs = logs
 
@@ -104,7 +102,9 @@ class Logs(object):
         """Grep for errors in the build logs, or, if none are found,
         return the last N lines where N is the limit argument.
         """
-        error_log = ""
+        # contains the error lines (or last N lines) of each of the
+        # build logs
+        error_log = []
         for log in self.logs:
             cmd = "cat %s | grep -e ': error:' -A 3 -B 3 " % log
             cmd += "|| tail -n %s %s" % (self.limit, log)
@@ -114,10 +114,12 @@ class Logs(object):
                 print(out, file=sys.stderr)
                 continue
 
-            error_log += log + "\n"
-            error_log += out
+            # add a title so we know what bits come from which log
+            error_log.append("--- {0} -------------------------\n".format(log))
+            error_log.append(out)
 
-        error_log = "\n".join(error_log.split("\n")[0:self.limit])
+        # error_log = "\n".join(error_log.split("\n")[0:self.limit])
+        error_log = "\n".join(error_log)
         error_log.strip(" \n\t")
         self.error_log = error_log
 
@@ -152,7 +154,8 @@ def handle_branch(cgh, pr, logs, args):
     if args.message:
         message += args.message
     else:
-        message += "```\n%s\n```\nFull log [here](%s).\n" % (logs.error_log, logs.url)
+        message += "```\n%s\n```\nFull log [here](%s).\n" % (logs.error_log,
+                                                             logs.url)
     messageSha = calculateMessageHash(message)
 
     openIssues = cgh.get('/repos/{repo_name}/issues?state=open')
@@ -207,7 +210,7 @@ def handle_branch(cgh, pr, logs, args):
             data = {"state": "closed"}
             cgh.patch(
                 "/repos/{repo_name}/issues/{number}/comments",
-                data,      
+                data,
                 repo_name=pr.repo_name,
                 number=issue["number"]
             )
@@ -224,7 +227,9 @@ def handle_branch(cgh, pr, logs, args):
 
     data = {
         "body": message,
-        "title": "Error while checking branch %s@%s:%s" % (pr.id, sha, messageSha)
+        "title": "Error while checking branch %s@%s:%s" % (pr.id,
+                                                           sha,
+                                                           messageSha)
     }
     cgh.post("/repos/{repo_name}/issues", data, repo_name=pr.repo_name)
     sys.exit(0)
@@ -240,8 +245,8 @@ def handle_pr_id(cgh, pr, logs, args):
     if args.message:
         message += args.message
     else:
-        message += "```\n%s\n```\nFull log [here](%s).\n" % (logs.error_log, logs.url)
-
+        message += "```\n%s\n```\nFull log [here](%s).\n" % (logs.error_log,
+                                                             logs.url)
 
     if args.dry_run:
         # commit does not exist...
