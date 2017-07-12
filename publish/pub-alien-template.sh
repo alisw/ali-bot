@@ -19,14 +19,20 @@ TAR="$(echo "%(package)s"|tr '[:upper:]' '[:lower:]')_%(version)s.%(arch)s.tar.g
 tar czf "$TAR" "%(version)s/"
 rm -rf "%(version)s/"
 DEPS="%(dependencies)s"
-SE=$(curl -L 'http://alimonitor.cern.ch/services/getBestSE.jsp?count=1&op=0' | \
-     head -n1 | grep -E '^[^: ]+::[^: ]+::[^: ]+$')
-[[ "$SE" != '' ]] || SE="ALICE::CERN::EOS"
-echo "Using SE $SE"
-alien -exec packman define "%(package)s" "%(version)s" \
-            "$TMPDIR/$TAR" \
-            ${DEPS:+dependencies=$DEPS} \
-            -vo -platform %(arch)s -se $SE
+BEST_SES=$(curl -sL 'http://alimonitor.cern.ch/services/getBestSE.jsp?count=4&op=0' | \
+           grep -E '^[^: ]+::[^: ]+::[^: ]+$' | sort -R)
+[[ "$BEST_SES" != '' ]] || BEST_SES="ALICE::CERN::EOS"
+echo "Best storage elements found: $BEST_SES"
+ERR=1
+for SE in $BEST_SES; do
+  echo "Trying SE $SE"
+  alien -exec packman define "%(package)s" "%(version)s" \
+              "$TMPDIR/$TAR"                             \
+              ${DEPS:+dependencies=$DEPS}                \
+              -vo -platform %(arch)s -se $SE || continue
+  ERR=0
+done
+[[ $ERR == 1 ]] && { echo "All storage elements failed"; exit 1; } || true
 cp -f "$TMPDIR/$TAR" "$TORDIR/$TAR"
 chmod a=rw "$TORDIR/$TAR"
 touch "$TORNOTIFY"
