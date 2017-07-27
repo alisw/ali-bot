@@ -15,7 +15,7 @@ ap.add_argument("--toplevel", dest="toplevel", default="AliPhysics",
                 help="Toplevel package (defaults to AliPhysics)")
 ap.add_argument("--cvmfs", dest="cvmfs", default="/cvmfs/alice.cern.ch",
                 help="CVMFS namespace (defaults to /cvmfs/alice.cern.ch)")
-ap.add_argument("--older-than-days", dest="days", default=60,
+ap.add_argument("--older-than-days", dest="days", default=60, type=int,
                 help="Remove tags older than those days")
 ap.add_argument("--delete-extra", dest="delete_extra", default="$nope",
                 help="Regexp forcing extra packages to be removed")
@@ -31,7 +31,7 @@ packages = [ x.split("::")[1]
                    if re.search("^VO_ALICE@%s::.*-[1-9]+[0-9]{0,2}$" % args.toplevel, x) ]
 packages.sort()
 
-dt = datetime.now(pytz.timezone("Europe/Zurich")) - timedelta(days=60)
+dt = datetime.now(pytz.timezone("Europe/Zurich")) - timedelta(days=args.days)
 thr_date = int("%04d%02d%02d" % (dt.year,dt.month,dt.day))
 
 skeep = "\033[32mKEEP\033[m"
