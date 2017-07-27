@@ -200,6 +200,23 @@ slc5_x86-64:
     vAN-20170301_GITHUB-1  : False
     v5-09-01-01-1          : True
     v5-09-01-01-newTPCsm1-1 : True
+    vAN-20170706-1 : False
+    vAN-20170707-1 : False
+    vAN-20170708-1 : False
+    vAN-20170709-1 : False
+    vAN-20170710-1 : False
+    vAN-20170711-1 : False
+    vAN-20170712-1 : False
+    vAN-20170713-1 : False
+    vAN-20170714-1 : False
+    vAN-20170715-1 : False
+    vAN-20170716-1 : False
+    vAN-20170717-1 : False
+    vAN-20170718-1 : False
+    vAN-20170719-1 : False
+    vAN-20170720-1 : False
+    vAN-20170721-1 : False
+    vAN-20170722-1 : False
 
 slc6_x86-64:
   cctools:
