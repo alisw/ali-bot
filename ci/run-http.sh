@@ -36,21 +36,23 @@ for X in $CONF_DIR/ci_conf/*; do
 done
 
 while [[ 1 ]]; do {
-  # Continuous ops: update
+  # Continuous configuration update. Operations here are not fatal
+  set +e
+  printf "%s: start egroups and conf sync\n" $(date --iso-8601=seconds)
   pushd conf
     git fetch --all
     git reset --hard origin/HEAD
     git clean -fxd
     pushd ci_conf
-      # Errors in both operations are not fatal
       $PROG_DIR/sync-egroups.py > groups.yml0 && mv groups.yml0 groups.yml || { rm -f groups.yml; git checkout groups.yml; }
       $PROG_DIR/sync-mapusers.py "$ALICE_GH_API" > mapusers.yml0 && mv -vf mapusers.yml0 mapusers.yml \
                                                                         || rm -f mapusers.yml0
-      git commit -a -m "CI e-groups/users mapping updated" || true
+      git commit -a -m "CI e-groups/users mapping updated"
       git push
     popd
   popd
   sleep $SLEEP
+  set -e
 } &>> update.log ; done &
 
 cd $PROG_DIR
