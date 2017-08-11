@@ -8,6 +8,8 @@ slc5_x86-64:
   AliGenerators:
     v20170331_STAGING_PWGMM-1: True
     v20161001-1 : False
+  FONLL:
+    v1.3.3-alice1-1: True
 
 slc6_x86-64:
   GCC-Toolchain:
