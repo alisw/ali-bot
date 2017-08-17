@@ -15,8 +15,14 @@ WORKAREA_INDEX=0
 [[ $ALIBUILD_REPO == */* ]] || ALIBUILD_REPO=$ALIBUILD_REPO/alibuild
 [[ $ALIDIST_REPO == */* ]] || ALIDIST_REPO=$ALIDIST_REPO/alidist
 rm -rf alibuild/ alidist/
-git clone -b $ALIBUILD_BRANCH https://github.com/$ALIBUILD_REPO alibuild/
 git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO alidist/
+
+# Get aliBuild with pip in a temporary directory. Gets all dependencies too
+export PYTHONUSERBASE=$(mktemp -d)
+export PATH=$PYTHONUSERBASE/bin:$PATH
+export LD_LIBRARY_PATH=$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH
+pip install --user git+https://github.com/$ALIBUILD_REPO/alibuild${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
+type aliBuild
 
 set -o pipefail
 
@@ -87,15 +93,15 @@ RWOPT='::rw'
 [[ "$PUBLISH_BUILDS" == "false" ]] && RWOPT=
 REMOTE_STORE="rsync://repo.marathon.mesos/store/$RWOPT"
 [[ "$USE_REMOTE_STORE" == "false" ]] && REMOTE_STORE=
-alibuild/aliBuild --reference-sources $MIRROR                   \
-                  --debug                                       \
-                  --work-dir $WORKAREA/$WORKAREA_INDEX          \
-                  --architecture $ARCHITECTURE                  \
-                  --jobs 16                                     \
-                  ${REMOTE_STORE:+--remote-store $REMOTE_STORE} \
-                  ${DEFAULTS:+--defaults $DEFAULTS}             \
-                  ${DISABLE:+--disable $DISABLE}                \
-                  build $PACKAGE_NAME || BUILDERR=$?
+aliBuild --reference-sources $MIRROR                   \
+         --debug                                       \
+         --work-dir $WORKAREA/$WORKAREA_INDEX          \
+         --architecture $ARCHITECTURE                  \
+         --jobs 16                                     \
+         ${REMOTE_STORE:+--remote-store $REMOTE_STORE} \
+         ${DEFAULTS:+--defaults $DEFAULTS}             \
+         ${DISABLE:+--disable $DISABLE}                \
+         build $PACKAGE_NAME || BUILDERR=$?
 
 rm -f $WORKAREA/$WORKAREA_INDEX/current_slave
 [[ "$BUILDERR" != '' ]] && exit $BUILDERR
@@ -110,7 +116,8 @@ echo ALIROOT_BUILD_NR=$BUILD_NUMBER >> results.props
 echo PACKAGE_NAME=$PACKAGE_NAME >> results.props
 
 ALIDIST_HASH=$(cd alidist && git rev-parse HEAD)
-ALIBUILD_HASH=$(cd alibuild && git rev-parse HEAD)
+ALIBUILD_HASH=$(aliBuild version 2> /dev/null || true)
+rm -rf $PYTHONUSERBASE
 
 case $PACKAGE_NAME in
   aliroot*|zlib*)
