@@ -21,7 +21,7 @@ git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO alidist/
 export PYTHONUSERBASE=$(mktemp -d)
 export PATH=$PYTHONUSERBASE/bin:$PATH
 export LD_LIBRARY_PATH=$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH
-pip install --user git+https://github.com/$ALIBUILD_REPO/alibuild${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
+pip install --user git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
 type aliBuild
 
 set -o pipefail
