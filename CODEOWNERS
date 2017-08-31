@@ -1,0 +1,8 @@
+*                          @ktf @dberzano @brinick
+/cvmfs/*                   @dberzano
+/ci/*                      @dberzano
+/ci/continuous-builder.sh  @ktf
+/es/*                      @ktf
+/riemann/*                 @ktf
+/scripts/*                 @ktf
+/publish/*                 @dberzano
