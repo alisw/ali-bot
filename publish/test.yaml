@@ -217,6 +217,8 @@ slc5_x86-64:
     vAN-20170720-1 : False
     vAN-20170721-1 : False
     vAN-20170722-1 : False
+    v5-09-15-01-1 : False
+    v5-09-16-01-1 : True
 
 slc6_x86-64:
   cctools:
