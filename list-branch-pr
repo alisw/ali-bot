@@ -315,7 +315,8 @@ if __name__ == "__main__":
                 err, out = getstatusoutput("sleep {0}".format(args.poll_time))
                 if err or timeSince(start) >= args.maxWait:
                     # return whatever we have (may be empty)
-                    prs = (grouped["not_successful"][:1] or 
-                           grouped["reviewed"][:1])
-                    sendToStdOut(prs)
+                    if grouped["not_successful"]:
+                      sendToStdOut([random.choice(grouped["not_successful"])])
+                    elif grouped["reviewed"]:
+                      sendToStdOut([random.choice(grouped["reviewed"])])
                     break
