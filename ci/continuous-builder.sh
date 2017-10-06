@@ -18,6 +18,13 @@ export ALIBOT_ANALYTICS_APP_NAME="continuous-builder.sh"
 MIRROR=${MIRROR:-/build/mirror}
 PACKAGE=${PACKAGE:-AliPhysics}
 
+# Pick right version of du
+TMPDU=$(mktemp -d)
+DU=du
+$DU -sb $TMPDU &> /dev/null || DU=gdu
+$DU -sb $TMPDU &> /dev/null || { echo "No suitable du/gdu found, aborting!"; exit 1; }
+rmdir $TMPDU
+
 # This is the check name. If CHECK_NAME is in the environment, use it. Otherwise
 # default to, e.g., build/AliRoot/release (build/<Package>/<Defaults>)
 CHECK_NAME=${CHECK_NAME:=build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}}
@@ -40,10 +47,16 @@ report_state started
 
 while true; do
   report_state looping
+
+  # Update all Git repositories (except ali-bot)
   for d in $(find . -maxdepth 2 -name .git -exec dirname {} \; | grep -v ali-bot); do
     pushd $d
-      if [[ `git rev-parse --abbrev-ref HEAD` != HEAD ]]; then
-        git pull origin
+      LOCAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+      if [[ $LOCAL_BRANCH != HEAD ]]; then
+        # Try to reset to corresponding remote branch (assume it's origin/<branch>)
+        git fetch origin
+        git reset --hard origin/$LOCAL_BRANCH
+        git clean -fxd
       fi
     popd
   done
@@ -63,17 +76,17 @@ while true; do
     if [[ "$PR_REPO" != "" ]]; then
       pushd ${PR_REPO_CHECKOUT:-$(basename $PR_REPO)}
         CANNOT_MERGE=0
-        git reset --hard origin/$PR_BRANCH
         git config --add remote.origin.fetch "+refs/pull/*/head:refs/remotes/origin/pr/*"
         git fetch origin
+        git reset --hard origin/$PR_BRANCH  # reset to branch target of PRs
         git clean -fxd
-        OLD_SIZE=`du --exclude=.git -sb . | awk '{print $1}'`
+        OLD_SIZE=`$DU --exclude=.git -sb . | awk '{print $1}'`
         base_hash=$(git rev-parse --verify HEAD)  # reference upstream hash
-        git merge $pr_hash || CANNOT_MERGE=1
+        git merge --no-edit $pr_hash || CANNOT_MERGE=1
         # clean up in case the merge fails
         git reset --hard HEAD
         git clean -fxd
-        NEW_SIZE=`du --exclude=.git -sb . | awk '{print $1}'`
+        NEW_SIZE=`$DU --exclude=.git -sb . | awk '{print $1}'`
         PR_REF=$pr_hash
       popd
       if [[ $CANNOT_MERGE == 1 ]]; then
