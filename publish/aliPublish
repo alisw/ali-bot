@@ -373,8 +373,9 @@ class AliEnPackMan(object):
 
 class RPM(object):
 
-  def __init__(self, repoDir, publishScriptTpl, connParams, dryRun=False):
+  def __init__(self, repoDir, publishScriptTpl, connParams, genUpdatableRpms, dryRun=False):
     self._dryRun = dryRun
+    self._genUpdatableRpms = genUpdatableRpms
     self._repoDir = repoDir
     self._publishScriptTpl = publishScriptTpl
     self._countChanges = 0
@@ -382,11 +383,21 @@ class RPM(object):
     self._archs = []
 
   def _kw(self, url, arch, pkgName, pkgVer, workDir=None, deps=None):
-    kw =  { "url": url, "package": pkgName, "version": pkgVer, "arch": arch, "dependencies": deps,
-            "repodir": self._repoDir+"/"+arch, "workdir": workDir }
+    kw =  { "url"          : url,
+            "package"      : pkgName,
+            "version"      : pkgVer,
+            "version_rpm"  : pkgVer.replace("-", "_"),
+            "arch"         : arch,
+            "dependencies" : deps,
+            "repodir"      : self._repoDir+"/"+arch,
+            "workdir"      : workDir,
+            "updatable"    : "1" if self._genUpdatableRpms else "" }
     kw.update(self._connParams)
     kw["http_ssl_verify"] = 1 if kw["http_ssl_verify"] else 0
-    kw.update({ "rpm": format("alisw-%(package)s+%(version)s-1-1.%(arch)s.rpm", **kw) })
+    if self._genUpdatableRpms:
+      kw.update({ "rpm": format("alisw-%(package)s-%(version_rpm)s-1.%(arch)s.rpm", **kw) })
+    else:
+      kw.update({ "rpm": format("alisw-%(package)s+%(version)s-1-1.%(arch)s.rpm", **kw) })
     return kw
 
   def installed(self, arch, pkgName, pkgVer):
@@ -883,10 +894,12 @@ def main():
       if not isinstance(conf.get("rpm_repo_dir", None), basestring):
         error("rpm_repo_dir must be a string")
         sys.exit(1)
+      conf["rpm_updatable"] = conf.get("rpm_updatable", False)
       archKey = "RPM"
       pub = RPM(repoDir=conf["rpm_repo_dir"],
                 publishScriptTpl=open(progDir+"/pub-rpms-template.sh").read(),
                 connParams=connParams,
+                genUpdatableRpms=conf["rpm_updatable"],
                 dryRun=args.dryRun)
     if args.abort:
       pub.abort(force=True)
