@@ -2,14 +2,12 @@
 from __future__ import print_function
 
 import functools
-import os
 import random
 import sys
 import time
 
 from commands import getstatusoutput
 from argparse import ArgumentParser
-from operator import itemgetter
 from alibot_helpers.github_utilities import GithubCachedClient
 from alibot_helpers.github_utilities import PickledCache, github_token
 
@@ -75,17 +73,20 @@ def get_all_statuses(repoName, ref):
 
 
 def get_trusted_team(args):
-    # Get the team for which we consider safe for test
+    """Get the team for which we consider safe for test, or None if either
+    args.trustedTeam was not set or the provided team is not in the org.
+    """
     trustedTeam = None
-    teams = cgh.get("/orgs/{org}/teams", org=args.org)
-    if not teams:
-        m = "You do not have permission to fetch team info. "
-        m += "Using the correct GITHUB_TOKEN?"
-        raise SystemExit(m)
-        
-    for team in teams:
-        if team["name"] == args.trustedTeam:
-            trustedTeam = team["id"]
+    if args.trustedTeam:
+        teams = cgh.get("/orgs/{org}/teams", org=args.org)
+        if not teams:
+            m = "You do not have permission to fetch team info. "
+            m += "Using the correct GITHUB_TOKEN?"
+            raise SystemExit(m)
+
+        for team in teams:
+            if team["name"] == args.trustedTeam:
+                trustedTeam = team["id"]
     return trustedTeam
 
 
@@ -101,7 +102,7 @@ def process_pulls(pulls, cgh, args):
 
 
 def process_pull(pull, cgh, args):
-    item = None 
+    item = None
     if should_process(pull["head"]["sha"][0], args):
         pn = pull["number"]
         print("Processing: %s" % pn, file=sys.stderr)
@@ -112,7 +113,6 @@ def process_pull(pull, cgh, args):
             print(e, file=sys.stderr)
 
     return item
-
 
 
 def _do_process_pull(pull, cgh, args):
@@ -142,10 +142,11 @@ def _do_process_pull(pull, cgh, args):
         if pull["user"]["login"] in args.trusted:
             item.update({"reviewed": True})
 
-        if args.trustedTeam and cgh.get(url="/teams/{team_id}/memberships/{login}",
-                                        team_id=args.trustedTeam,
-                                        login=pull["user"]["login"]):
-            item.update({"reviewed": True})
+        if args.trustedTeam:
+            if cgh.get(url="/teams/{team_id}/memberships/{login}",
+                       team_id=args.trustedTeam,
+                       login=pull["user"]["login"]):
+                item.update({"reviewed": True})
 
         if args.trustCollaborators:
             cgh.get("/repos/{repo_name}/collaborators/{login}/permission",
@@ -233,7 +234,7 @@ def parseArgs():
                         dest="maxWait",
                         type=int,
                         help=("Max seconds to wait before returning "
-                            "whatever PRs we have (default: 1200)"))
+                              "whatever PRs we have (default: 1200)"))
 
     parser.add_argument("--trusted",
                         default="review",
@@ -261,7 +262,7 @@ def parseArgs():
                         help="Total number of workers")
 
     args = parser.parse_args()
-    if args.maxWait < 0: 
+    if args.maxWait < 0:
         parser.error("max-wait should be positive")
 
     args.repo_name = args.branch.split("@")[0]
@@ -311,12 +312,12 @@ if __name__ == "__main__":
             else:
                 m = "No untested PRs, sleeping for {0}s".format(args.poll_time)
                 print(m, file=sys.stderr)
-                    
+
                 err, out = getstatusoutput("sleep {0}".format(args.poll_time))
                 if err or timeSince(start) >= args.maxWait:
                     # return whatever we have (may be empty)
                     if grouped["not_successful"]:
-                      sendToStdOut([random.choice(grouped["not_successful"])])
+                        sendToStdOut([random.choice(grouped["not_successful"])])
                     elif grouped["reviewed"]:
-                      sendToStdOut([random.choice(grouped["reviewed"])])
+                        sendToStdOut([random.choice(grouped["reviewed"])])
                     break
