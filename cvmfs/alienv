@@ -9,7 +9,9 @@ path=`dirname $prog`
 path=`cd "$path";pwd`
 [ x$ALIENV_DEBUG == x1 ] && printf "path=$path\nprog=$prog\n" >&2
 
-if [[ `basename $prog` == alienv && `basename $path` == bin ]]; then
+if [[ "$ALIENV_CVMFSDIR" != "" ]]; then
+  cvmfsdir="$ALIENV_CVMFSDIR"
+elif [[ `basename $prog` == alienv && `basename $path` == bin ]]; then
   cvmfsdir=`dirname "$path"`
 else
   [ x$ALIENV_DEBUG == x1 ] && printf "WARNING: cannot autodetect CVMFS path, falling back to $cvmfsdir\n" >&2
@@ -256,7 +258,7 @@ export ALIEN_ORGANISATION=$(tr "[:lower:]" "[:upper:]" <<< "${ALIEN_ORGANISATION
 # pick all packages consistently from a certain platform tree. When listing
 # packages we show them all, when we load a package e define a priority list and
 # we always have a fallback for backward compatibility.
-PLATFORM_PRIORITY="el6-x86_64 el5-x86_64"
+PLATFORM_PRIORITY="el7-x86_64 el6-x86_64 el5-x86_64"
 ARGS=("$@")
 PACKAGES=
 EXPECT_PACKAGES=
