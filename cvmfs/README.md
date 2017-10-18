@@ -75,7 +75,21 @@ architecture:
       GCC-Toolchain: ^v4\.9\.3-1$
 ```
 
-This way the package will be installed by aliPublish at its next run.
+This way the package will be installed by aliPublish at its next run. Note that
+syntaxes like:
+
+```yaml
+latest_gcc_conf: &latest_gcc
+  - ^v4\.9\.3-alice3-1$
+
+architecture:
+  ubt1604_x86-64:
+    dir: ubuntu1604-x86_64
+    include:
+      GCC-Toolchain: *latest_gcc
+```
+
+are YAML variable substitutions.
 
 In most cases (_e.g._ supercomputers) a decent GCC version (we use v4.9.3) is
 already provided with a [modulefile](http://modules.sourceforge.net/) that can
@@ -96,3 +110,27 @@ $PREFIX/ubuntu1604-x86_64/Modules/modulefiles/GCC-Toolchain/v4.9.3-alice3-1
 ```
 
 in case you have installed it with aliPublish.
+
+
+alienv architectures
+--------------------
+
+The `alienv` script used on the Grid for CVMFS contained in this directory
+currently supports the following way of selecting software architectures.
+
+When running:
+
+    alienv [enter|load|printenv] Package1/Ver1 Package2/Ver2...
+
+`alienv` looks for the given packages under a list of preferred architectures,
+defined by the variable `PLATFORM_PRIORITY`. The first architecture where all
+of the given packages are found is selected. Packages from mixed architectures
+cannot be loaded.
+
+`alienv` will anyways try to load the "runtime environment" (C++ compiler and
+libraries mostly) for the _currently detected architecture_, even if the rest
+of the packages are taken from another one.
+
+When a new platform is added to the system, the variable `PLATFORM_PRIORITY` has
+to be changed accordingly, and the new compiler toolchain must be added to the
+`etc/toolchain/modulefiles` directory as described in the previous paragraph.
