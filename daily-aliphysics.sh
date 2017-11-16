@@ -40,7 +40,7 @@ rm -rf $AUTOTAG_CLONE
 mkdir $AUTOTAG_CLONE
 pushd $AUTOTAG_CLONE
   [[ -e ../git-creds ]] || git config --global credential.helper "store --file ~/git-creds-autotag"  # backwards compat
-  git clone --bare \
+  git clone --bare                                         \
             ${AUTOTAG_MIRROR:+--reference=$AUTOTAG_MIRROR} \
             $AUTOTAG_REMOTE .
   AUTOTAG_HASH=$( (git ls-remote | grep refs/tags/$AUTOTAG_TAG || true) | tail -n1 | awk '{print $1}' )
@@ -78,58 +78,39 @@ done
 mkdir -p $WORKAREA/$WORKAREA_INDEX
 echo $NODE_NAME > $WORKAREA/$WORKAREA_INDEX/current_slave
 
-# Ordinary override, as given by user
-for x in $OVERRIDE_TAGS; do
-  OVERRIDE_PACKAGE=$(echo $x | cut -f1 -d= | tr '[:upper:]' '[:lower:]')
-  OVERRIDE_TAG=$(echo $x | cut -f2 -d=)
-  perl -p -i -e "s|tag: .*|tag: $OVERRIDE_TAG|" alidist/$OVERRIDE_PACKAGE.sh
-done
+# Process overrides by changing in-place the given defaults. This requires some
+# YAML processing so we are better off with Python.
+env AUTOTAG_BRANCH=$AUTOTAG_BRANCH python <<\EOF
+import yaml
+from os import environ
+f = "alidist/defaults-%s.sh" % environ["DEFAULTS"].lower()
+p = environ["PACKAGE_NAME"]
+d = yaml.safe_load(open(f).read().split("---")[0])
+d["overrides"] = d.get("overrides", {})
+d["overrides"][p] = d["overrides"].get(p, {})
+d["overrides"][p]["tag"] = environ["AUTOTAG_BRANCH"]
+open(f, "w").write(yaml.dump(d)+"\n---\n")
+EOF
+pushd alidist
+  git diff
+popd
 
-# Extra override for the toplevel package
-perl -p -i -e "s|version: .*|version: ${AUTOTAG_TAG}${DEFAULTS:+_$(echo ${DEFAULTS} | tr '[:lower:]' '[:upper:]')}|" $RECIPE
-perl -p -i -e "s|tag: .*|tag: $AUTOTAG_HASH|" $RECIPE
-
-RWOPT='::rw'
-[[ "$PUBLISH_BUILDS" == "false" ]] && RWOPT=
-REMOTE_STORE="rsync://repo.marathon.mesos/store/$RWOPT"
-[[ "$USE_REMOTE_STORE" == "false" ]] && REMOTE_STORE=
+REMOTE_STORE="rsync://repo.marathon.mesos/store/::rw"
 aliBuild --reference-sources $MIRROR                   \
          --debug                                       \
          --work-dir $WORKAREA/$WORKAREA_INDEX          \
          --architecture $ARCHITECTURE                  \
          --jobs 16                                     \
-         ${REMOTE_STORE:+--remote-store $REMOTE_STORE} \
+         --remote-store $REMOTE_STORE                  \
          ${DEFAULTS:+--defaults $DEFAULTS}             \
-         ${DISABLE:+--disable $DISABLE}                \
          build $PACKAGE_NAME || BUILDERR=$?
 
 rm -f $WORKAREA/$WORKAREA_INDEX/current_slave
+rm -rf $PYTHONUSERBASE
 [[ "$BUILDERR" != '' ]] && exit $BUILDERR
 
-# Now we tag. In case we should.
+# Now we tag, in case we should
 pushd $AUTOTAG_CLONE
   [[ "$AUTOTAG_TAG" == "$AUTOTAG_REF" ]] || git push origin $AUTOTAG_HASH:refs/tags/$AUTOTAG_TAG
   git push origin :refs/heads/$AUTOTAG_BRANCH || true  # error is not a big deal here
 popd
-
-echo ALIROOT_BUILD_NR=$BUILD_NUMBER >> results.props
-echo PACKAGE_NAME=$PACKAGE_NAME >> results.props
-
-ALIDIST_HASH=$(cd alidist && git rev-parse HEAD)
-ALIBUILD_HASH=$(aliBuild version 2> /dev/null || true)
-rm -rf $PYTHONUSERBASE
-
-case $PACKAGE_NAME in
-  aliroot*|zlib*)
-for x in gun ppbench PbPbbench; do
-cat << EOF > $x-tests.props
-ALIROOT_BUILD_NR=$BUILD_NUMBER
-PACKAGE_NAME=$PACKAGE_NAME
-ALIDIST_HASH=$ALIDIST_HASH
-ALIBUILD_HASH=$ALIBUILD_HASH
-TEST_TO_RUN=$x
-BUILD_DATE=$BUILD_DATE
-EOF
-done
-  ;;
-esac
