@@ -1,7 +1,7 @@
 #!groovy
 node ("slc7_x86-64-light") {
   try {
-    currentBuild.displayName = "#${env.BUILD_NUMBER} - $PACKAGE_NAME $OVERRIDE_TAGS $ARCHITECTURE"
+    currentBuild.displayName = "#${env.BUILD_NUMBER} - $PACKAGE_NAME $DEFAULTS $ARCHITECTURE"
 
     stage "Wait pull requests"
     if ("$WAIT_PR" == "true") {
@@ -83,11 +83,7 @@ node ("slc7_x86-64-light") {
                    "ALIBOT_REPO=${ALIBOT_REPO}",
                    "ARCHITECTURE=${ARCHITECTURE}",
                    "PACKAGE_NAME=${PACKAGE_NAME}",
-                   "OVERRIDE_TAGS=${OVERRIDE_TAGS}",
-                   "DISABLE=${DISABLE}",
                    "DEFAULTS=${DEFAULTS}",
-                   "PUBLISH_BUILDS=${PUBLISH_BUILDS}",
-                   "USE_REMOTE_STORE=${USE_REMOTE_STORE}",
                    "TEST_TAG=${TEST_TAG}",
                    "REMOVE_RC_BRANCH_FIRST=${REMOVE_RC_BRANCH_FIRST}"]) {
             sh '''
