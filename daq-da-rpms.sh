@@ -40,10 +40,14 @@ yum install --disablerepo=rpmforge                                             \
             -y BWidget MySQL-shared MySQL-client MySQL-devel dim smi tcl-devel \
                tk-devel libcurl-devel libxml2-devel pciutils-devel mysqltcl    \
                xinetd ksh tcsh pigz MySQL-server date amore ACT daqDA-lib
-yum clean all
-rm -fv /var/lib/rpm/__db*
-rpm --rebuilddb
-chmod a-w -R /var/lib/rpm/
+
+echo all ok
+exit 0
+
+#yum clean all
+#rm -fv /var/lib/rpm/__db*
+#rpm --rebuilddb
+#chmod a-w -R /var/lib/rpm/
 
 DAQ_VERSION=`getver date`-`getver amore`-`getver ACT`-`getver daqDA-lib`
 sed -i -e "s/^version:\s.*/version: \"$DAQ_VERSION\"/g" alidist/daq.sh
