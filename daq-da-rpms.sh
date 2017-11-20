@@ -1,6 +1,12 @@
 #!/bin/bash -ex
 set -o pipefail
 
+# Default values if script is launched outside Jenkins
+ALIBUILD_REPO=${ALIBUILD_REPO:-alisw/alibuild:master}
+ALIDIST_REPO=${ALIDIST_REPO:-alisw/alidist:master}
+ALIROOT_VERSION=${ALIROOT_VERSION:-master}
+ARCHITECTURE=${ARCHITECTURE:-slc6_x86-64}
+
 ALIBUILD_BRANCH=${ALIBUILD_REPO##*:}
 ALIBUILD_REPO=${ALIBUILD_REPO%:*}
 ALIDIST_BRANCH=${ALIDIST_REPO##*:}
