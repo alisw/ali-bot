@@ -23,6 +23,10 @@ protect=1
 gpgcheck=0
 EoF
 
+# User alicedaq and group z2 required by RPMs...
+getent group z2 || groupadd z2 -g 10000
+getent passwd alicedaq || useradd alicedaq -u 10000 -g 10000
+
 git clone -b $ALIBUILD_BRANCH https://github.com/$ALIBUILD_REPO alibuild && ( cd alibuild && git log --oneline -1 )
 git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO alidist && ( cd alidist && git log --oneline -1 )
 
