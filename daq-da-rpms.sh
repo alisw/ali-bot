@@ -59,6 +59,13 @@ done
 mkdir -p $WORKAREA/$WORKAREA_INDEX
 echo $NODE_NAME > $WORKAREA/$WORKAREA_INDEX/current_slave
 
+# AliRoot in development mode. Prevents unnecessarily creating/uploading tarball
+# by still allowing ROOT build to be cached
+rm -rf AliRoot/
+alibuild/aliBuild --reference-sources $MIRROR \
+                  --defaults $DEFAULTS        \
+                  init AliRoot
+
 alibuild/aliBuild --reference-sources $MIRROR          \
                   --debug                              \
                   --work-dir $WORKAREA/$WORKAREA_INDEX \
