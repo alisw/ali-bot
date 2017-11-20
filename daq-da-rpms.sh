@@ -1,6 +1,12 @@
 #!/bin/bash -ex
 set -o pipefail
 
+# Default values if script is launched outside Jenkins
+ALIBUILD_REPO=${ALIBUILD_REPO:-alisw/alibuild:master}
+ALIDIST_REPO=${ALIDIST_REPO:-alisw/alidist:master}
+ALIROOT_VERSION=${ALIROOT_VERSION:-master}
+ARCHITECTURE=${ARCHITECTURE:-slc6_x86-64}
+
 ALIBUILD_BRANCH=${ALIBUILD_REPO##*:}
 ALIBUILD_REPO=${ALIBUILD_REPO%:*}
 ALIDIST_BRANCH=${ALIDIST_REPO##*:}
@@ -34,10 +40,14 @@ yum install --disablerepo=rpmforge                                             \
             -y BWidget MySQL-shared MySQL-client MySQL-devel dim smi tcl-devel \
                tk-devel libcurl-devel libxml2-devel pciutils-devel mysqltcl    \
                xinetd ksh tcsh pigz MySQL-server date amore ACT daqDA-lib
-yum clean all
-rm -fv /var/lib/rpm/__db*
-rpm --rebuilddb
-chmod a-w -R /var/lib/rpm/
+
+echo all ok
+exit 0
+
+#yum clean all
+#rm -fv /var/lib/rpm/__db*
+#rpm --rebuilddb
+#chmod a-w -R /var/lib/rpm/
 
 DAQ_VERSION=`getver date`-`getver amore`-`getver ACT`-`getver daqDA-lib`
 sed -i -e "s/^version:\s.*/version: \"$DAQ_VERSION\"/g" alidist/daq.sh
