@@ -786,7 +786,7 @@ def main():
   jget = JGet(**connParams)
 
   # Resolve Riemann name via Mesos
-  if conf["riemann_host"].endswith(".mesos") and conf["mesos_dns"]:
+  if conf["riemann_host"].endswith(".mesos") and conf["mesos_dns"] and args.action != "test-rules":
     conf["riemann_host"] = choice(mesos_resolve(conf["riemann_host"], conf["mesos_dns"], jget))
 
   conf["package_dir"] = conf.get("package_dir", conf.get("cvmfs_package_dir", None))
@@ -814,7 +814,7 @@ def main():
 
   # Resolve base_url name via Mesos
   us = urlsplit(conf["base_url"])
-  if us.netloc.endswith(".mesos") and conf["mesos_dns"]:
+  if us.netloc.endswith(".mesos") and conf["mesos_dns"] and args.action != "test-rules":
     us = us._replace( netloc=choice(mesos_resolve(us.netloc, conf["mesos_dns"], jget)) )
     conf["base_url"] = urlunsplit(us)
 
