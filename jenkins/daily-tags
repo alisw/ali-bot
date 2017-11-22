@@ -85,6 +85,7 @@ node ("slc7_x86-64-light") {
                    "PACKAGE_NAME=${PACKAGE_NAME}",
                    "DEFAULTS=${DEFAULTS}",
                    "TEST_TAG=${TEST_TAG}",
+                   "AUTOTAG_PATTERN=${AUTOTAG_PATTERN}",
                    "REMOVE_RC_BRANCH_FIRST=${REMOVE_RC_BRANCH_FIRST}"]) {
             sh '''
               set -e
@@ -99,7 +100,7 @@ node ("slc7_x86-64-light") {
               export ALIDIST_REPO="${ALIDIST_REPO%:*}"
               echo "Using alibuild $ALIBUILD_REPO $ALIBUILD_BRANCH"
               echo "Using alidist $ALIDIST_REPO $ALIDIST_BRANCH"
-              ali-bot/daily-aliphysics.sh
+              ali-bot/daily-tags.sh
             '''
           }
         }
