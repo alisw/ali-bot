@@ -40,7 +40,8 @@ PACKAGE_LOWER=$(echo $PACKAGE_NAME | tr '[[:upper:]]' '[[:lower:]]')
 RECIPE=alidist/$PACKAGE_LOWER.sh
 AUTOTAG_REMOTE=$(grep -E '^(source:|write_repo:)' $RECIPE | sort -r | head -n1 | cut -d: -f2- | xargs echo)
 AUTOTAG_MIRROR=$MIRROR/$PACKAGE_LOWER
-AUTOTAG_TAG=vAN-$(LANG=C date +%Y%m%d)
+[[ $AUTOTAG_PATTERN ]] || { echo "FATAL: A tag pattern (AUTOTAG_PATTERN) must be defined."; exit 1; }
+AUTOTAG_TAG=$(LANG=C TZ=Europe/Rome date +"$AUTOTAG_PATTERN")
 [[ "$TEST_TAG" == "true" ]] && AUTOTAG_TAG=TEST-IGNORE-$AUTOTAG_TAG
 AUTOTAG_BRANCH=rc/$AUTOTAG_TAG
 AUTOTAG_REF=$AUTOTAG_BRANCH
@@ -71,7 +72,7 @@ pushd $AUTOTAG_CLONE
     fi
 
     if [[ "$AUTOTAG_HASH" == '' ]]; then
-      AUTOTAG_HASH=$( (git ls-remote | grep refs/heads/master || true) | tail -n1 | awk '{print $1}' )
+      AUTOTAG_HASH=$( (git ls-remote | grep -E '\sHEAD$' || true) | tail -n1 | awk '{print $1}' )
       [[ "$AUTOTAG_HASH" != '' ]]
       git push origin $AUTOTAG_HASH:refs/heads/$AUTOTAG_BRANCH
     fi
