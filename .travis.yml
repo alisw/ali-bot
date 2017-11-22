@@ -1,14 +1,28 @@
 ---
 sudo: required
-before_install:
-  - wget -qO - https://packages.elasticsearch.org/GPG-KEY-elasticsearch | sudo apt-key add -
-  - echo "deb http://packages.elasticsearch.org/logstash/2.3/debian stable main" | sudo tee -a /etc/apt/sources.list
-  - sudo apt-get update && sudo apt-get install logstash
-script: |
-  sudo /opt/logstash/bin/logstash-plugin install logstash-input-http_poller
-  sudo /opt/logstash/bin/logstash-plugin install logstash-filter-prune
-  sudo /opt/logstash/bin/logstash-plugin install logstash-output-riemann
-  /opt/logstash/bin/logstash --configtest -f logstash/
-  curl -O https://aphyr.com/riemann/riemann-0.2.11.tar.bz2
-  tar xjvf riemann-0.2.11.tar.bz2
-  riemann-0.2.11/bin/riemann test riemann/riemann.config
+script:
+  - |
+    git diff --name-only $TRAVIS_COMMIT_RANGE | grep -q ^riemann || return 0
+    curl -O https://aphyr.com/riemann/riemann-0.2.11.tar.bz2
+    tar xjvf riemann-0.2.11.tar.bz2
+    riemann-0.2.11/bin/riemann test riemann/riemann.config
+  - |
+    git diff --name-only $TRAVIS_COMMIT_RANGE | grep -q ^logstash/ || return 0
+    set -ex
+    wget -qO - https://packages.elasticsearch.org/GPG-KEY-elasticsearch | sudo apt-key add -
+    echo "deb http://packages.elasticsearch.org/logstash/2.3/debian stable main" | sudo tee -a /etc/apt/sources.list
+    sudo apt-get update && sudo apt-get install logstash
+    sudo /opt/logstash/bin/logstash-plugin install logstash-input-http_poller
+    sudo /opt/logstash/bin/logstash-plugin install logstash-filter-prune
+    sudo /opt/logstash/bin/logstash-plugin install logstash-output-riemann
+    /opt/logstash/bin/logstash --configtest -f logstash/
+  - |
+    git diff --name-only $TRAVIS_COMMIT_RANGE | grep -q ^publish/ || return 0
+    pushd publish
+      for CONF in aliPublish*.conf; do
+        TEST=${CONF/aliPublish/test}
+        TEST=${TEST/.conf/.yaml}
+        [[ -r $TEST ]] || continue
+        ./aliPublish test-rules --conf $CONF --test-conf $TEST --debug || { echo Testing $CONF against $TEST failed. >&2 ; return 1; }
+      done
+    popd
