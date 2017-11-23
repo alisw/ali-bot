@@ -1,0 +1,47 @@
+#!groovy
+node ("slc6_x86-64-relval") {
+  stage "Creating OCDB snapshot"
+  withCredentials([[$class        : 'FileBinding',
+                    credentialsId : 'GridProxy',
+                    variable      : 'THE_PROXY']]) {
+    withEnv (["ALIDIST=${ALIDIST}",
+              "DRYRUN=${DRYRUN}",
+              "ARCHITECTURE=${ARCHITECTURE}"]) {
+      retry (3) {
+        timeout (300) {
+          sh '''
+            set -ex
+            set -o pipefail
+            ls -l
+            export alien_API_USER=dberzano  # todo
+            ALIDIST_BRANCH=${ALIDIST##*:}
+            [[ "$ALIDIST_BRANCH" != "$ALIDIST" ]] || ALIDIST_BRANCH=
+            ALIDIST_REPO=${ALIDIST%:*}
+            rm -rf sw/ alidist/ alibuild/
+            git clone https://github.com/alisw/alibuild -b next
+            git clone https://github.com/$ALIDIST_REPO/ alidist/ ${ALIDIST_BRANCH:+-b "$ALIDIST_BRANCH"}
+            cp "$THE_PROXY" /tmp/x509up_u$UID
+            CMDENV="parrot_run /cvmfs/alice.cern.ch/bin/alienv setenv AliRoot/v5-08-17-1 -c"
+            $CMDENV alien-token-init
+            [[ $DRYRUN != false ]] || REMOTESTORE="rsync://repo.marathon.mesos/store/::rw"
+            for LINE in "package: defaults-createocdb"              \
+                        "version: v1"                               \
+                        "disable: [ AliEn-Runtime ]"                \
+                        "overrides:"                                \
+                        "  OCDB-Snapshot:"                          \
+                        "    tag: $(date|sha1sum|awk '{print $1}')" \
+                        "---"                                       ; do
+              printf -- "$LINE\n" >> alidist/defaults-createocdb.sh
+            done
+            $CMDENV alibuild/aliBuild -w sw                                       \
+                                      -a "$ARCHITECTURE"                          \
+                                      --debug                                     \
+                                      --defaults createocdb                       \
+                                      ${REMOTESTORE:+--remote-store $REMOTESTORE} \
+                                      build OCDB-Snapshot
+          '''
+        }
+      }
+    }
+  }
+}
