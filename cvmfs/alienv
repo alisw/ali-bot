@@ -293,12 +293,15 @@ if [[ x"$PACKAGES" != x ]]; then
     [ x$OK == x1 ] && break || { [ x$ALIENV_DEBUG == x1 ] && printf "WARNING: cannot find packages with MODULEPATH set to $MODULEPATH\n"; }
   done
 else
+  # PACKAGES is empty, meaning we are executing list operations. Use all paths
+  # in MODULEPATH because we want to list packages for all platforms.
   moduledirs="`echo "$modulepath
                      $cvmfsdir/x86_64-2.6-gnu-4.1.2
                      $cvmfsdir/x86_64-2.6-gnu-4.7.2
                      $cvmfsdir/x86_64-2.6-gnu-4.8.3
                      $cvmfsdir/x86_64-2.6-gnu-4.8.4
-                     $cvmfsdir/el6-x86_64"`"
+                     $cvmfsdir/el6-x86_64
+                     $cvmfsdir/el7-x86_64"`"
   export MODULEPATH=$(modulepath modulefiles $moduledirs)
   [ x$platform != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
 fi
