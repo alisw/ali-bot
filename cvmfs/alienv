@@ -193,6 +193,7 @@ EOF
 # Old modulefiles were not loading AliEn automatically as a dependency. For
 # those packages we must do it manually.
 function load_alien_if_missing {
+  echo $MODULEPATH | grep 'x86_64-2.6-gnu-4.1.2/Modules/modulefiles' -q || return 0  # load AliEn only on SLC5
   local REQ_ALIEN="ROOT GEANT3 GEANT4 AliRoot AliPhysics"
   if ! $moduleenv $modulecmd bash -t list 2>&1 | grep -q AliEn-Runtime; then
     for PKG in $REQ_ALIEN; do
