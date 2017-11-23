@@ -72,8 +72,9 @@ pushd $AUTOTAG_CLONE
     fi
 
     if [[ "$AUTOTAG_HASH" == '' ]]; then
-      AUTOTAG_HASH=$( (git ls-remote | grep -E '\sHEAD$' || true) | tail -n1 | awk '{print $1}' )
-      [[ "$AUTOTAG_HASH" != '' ]]
+      # sed + grep to make it work reliably on SLC5 too (grep does not support '\s' there)
+      AUTOTAG_HASH=$( (git ls-remote | sed -e 's/\t/ /g' | grep -E ' HEAD$' || true) | tail -n1 | awk '{print $1}' )
+      [[ $AUTOTAG_HASH ]] || { echo "FATAL: Cannot find any hash pointing to HEAD (repo's default branch)!" >&2; exit 1; }
       git push origin $AUTOTAG_HASH:refs/heads/$AUTOTAG_BRANCH
     fi
   fi
