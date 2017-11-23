@@ -6,7 +6,7 @@
         "format" : "dateOptionalTime"
       },
       "@version" : {
-        "type" : "long"
+        "type" : "string"
       },
       "column" : {
         "type" : "long"
