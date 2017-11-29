@@ -53,3 +53,14 @@ Parameters (as environment variables):
 * `CI_REPO`: GitHub `user/repo[:branch]` containing the scripts.
 * `SLEEP`: seconds to sleep after runs.
 * `PR_TOKEN`: GitHub token used to communicate with the GitHub API.
+
+
+run-continuous-builder.sh
+-------------------------
+Manually run the continuous builder. For CI checks of O2 on macOS, use:
+
+    env PR_REPO=AliceO2Group/AliceO2 PACKAGE=O2 CHECK_NAME=build/o2/macos PR_BRANCH=dev ALIBUILD_DEFAULTS=o2 ./run-continuous-builder.sh
+
+For AliRoot checks on macOS, use:
+
+    env TRUSTED_USERS= TRUST_COLLABORATORS= PR_REPO=alisw/AliRoot PACKAGE=AliRoot CHECK_NAME=build/AliRoot/macos PR_BRANCH=master ALIBUILD_DEFAULTS=root6 ./run-continuous-builder.sh
