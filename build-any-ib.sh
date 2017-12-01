@@ -75,10 +75,7 @@ else
   rm -rf AliPhysics
 fi
 
-RWOPT='::rw'
-[[ "$PUBLISH_BUILDS" == "false" ]] && RWOPT=
-REMOTE_STORE="${REMOTE_STORE:-rsync://repo.marathon.mesos/store/}$RWOPT"
-[[ "$USE_REMOTE_STORE" == "false" ]] && REMOTE_STORE=
+REMOTE_STORE="${REMOTE_STORE:-rsync://repo.marathon.mesos/store/}::rw"
 aliBuild --reference-sources $MIRROR                    \
          --debug                                        \
          --work-dir $WORKAREA/$WORKAREA_INDEX           \
