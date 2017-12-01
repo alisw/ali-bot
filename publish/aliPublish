@@ -831,9 +831,25 @@ def main():
     for r in rules.keys():
       rules[r][arch] = isinstance(maps, dict) and maps.get(r, {}) or {}
       for uk in set(conf[r].keys()+rules[r][arch].keys()):
-        a = rules[r][arch].get(uk, [])
-        b = conf[r].get(uk, [])
-        rules[r][arch][uk] = (a == True or b == True) or (a + b)
+
+        # Specific (per-arch) rule always wins
+        general  = conf[r].get(uk, [])
+        specific = rules[r][arch].get(uk, [])
+
+        if isinstance(general, list) and isinstance(specific, list):
+          rules[r][arch][uk] = specific + general
+        elif not specific and specific != False:
+          # specific not specified: general wins
+          rules[r][arch][uk] = general
+        elif isinstance(specific, bool):
+          # specific overrides all (it's a bool)
+          rules[r][arch][uk] = specific
+        elif isinstance(general, bool):
+          # specific overrides all, again (it's a list)
+          rules[r][arch][uk] = specific
+        else:
+          assert False, "Unhandled case: %s rule for %s (%s): general=%s, specific=%s" % (r, uk, arch, general, specific)
+
   debug("Per architecture include/exclude rules: %s" % json.dumps(rules, indent=2))
 
   if args.action in [ "sync-cvmfs", "sync-dir", "sync-alien", "sync-rpms" ]:
