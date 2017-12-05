@@ -17,8 +17,8 @@ slc6_x86-64:
     v4.9.3-alice3-1        : True
     v6.2.0-alice1-1        : True
   O2:
-    nightly-20171130-1     : True
-    nightly-20171201-1     : True
+    nightly-20171130-1     : False
+    nightly-20171201-1     : False
 
 slc7_x86-64:
   GCC-Toolchain:
@@ -29,6 +29,7 @@ slc7_x86-64:
     nightly-20171123-1     : False
     nightly-20171122-1     : False
     nightly-22171122-1     : False
+    nightly-20171205-1     : True
 
 ubt14_x86-64:
   GCC-Toolchain:
