@@ -23,7 +23,7 @@ cvmfs_lazy_transaction() {
 }
 
 cvmfs_lazy_publish() {
-  [[ $CVMFS_IN_TRANSACTION ]] && cvmfs_server publish || return $?
+  [[ $CVMFS_IN_TRANSACTION ]] && { cvmfs_server publish || return $?; }
   return 0
 }
 
