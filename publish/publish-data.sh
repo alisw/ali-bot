@@ -1,4 +1,34 @@
 #!/bin/bash -ex
+
+# Use FORCE=1 to force this script to tag data dir even if we are before 4pm.
+# Use DRYRUN=1 to dump tree to /tmp/cvmfs/... instead of the real CVMFS server.
+#
+# You can do that by running:
+#   env DRYRUN=1 FORCE=1 ./publish-data.sh
+
+dieabort() {
+  rm -rf $DEST
+  cvmfs_server abort -f || true
+  exit 1
+}
+
+cvmfs_lazy_transaction() {
+  [[ $CVMFS_IN_TRANSACTION ]] && return 0
+  for I in {0..7}; do
+    ERR=0
+    cvmfs_server transaction && CVMFS_IN_TRANSACTION=1 || ERR=$?
+    [[ $ERR == 0 ]] && break || sleep 7
+  done
+  return $ERR
+}
+
+cvmfs_lazy_publish() {
+  [[ $CVMFS_IN_TRANSACTION ]] && cvmfs_server publish || return $?
+  return 0
+}
+
+CVMFS_IN_TRANSACTION=
+export PATH=$HOME/opt/bin:$PATH
 cvmfs_server &> /dev/null || [[ $? != 127 ]]
 sshpass &> /dev/null || [[ $? != 127 ]]
 [[ -e $HOME/.eossynccreds ]]
@@ -6,24 +36,61 @@ REPO=$(cvmfs_server info | grep 'Repository name' | cut -d: -f2 | xargs echo)
 [[ $REPO == *.cern.ch ]] || REPO=alice.cern.ch
 [[ $DRYRUN ]] && cvmfs_server() { echo "[fake] cvmfs_server $*"; } || true
 SRC=lxplus.cern.ch:/eos/experiment/alice/analysis-data
-DEST=/cvmfs/$REPO/data/analysis/$(TZ=Europe/Rome date +%Y/vAN-%Y%m%d)
-[[ $DRYRUN ]] && DEST=/tmp$DEST || true
-[[ -d $DEST && ! $FORCE ]] && { echo "Published already: $DEST"; exit 0; } || true
-[[ $(TZ=Europe/Rome date +%_H%M) -lt 1600 && ! $FORCE ]] && { echo "Before 4pm, doing nothing"; exit 0; } || true
-for I in {0..7}; do
-  ERR=0
-  cvmfs_server transaction || ERR=$?
-  [[ $ERR == 0 ]] && break || sleep 7
+RO_DEST_PREFIX=/cvmfs/$REPO/data/analysis
+[[ $DRYRUN ]] && DEST_PREFIX=/tmp$RO_DEST_PREFIX || DEST_PREFIX=$RO_DEST_PREFIX
+
+if [[ ! -d $DEST_PREFIX ]]; then
+  cvmfs_lazy_transaction || dieabort
+  mkdir -p $DEST_PREFIX
+fi
+
+for ARCH_DIR in /cvmfs/$REPO/{el*,ubuntu*}; do
+  ARCH_DIR=$ARCH_DIR/Modules/modulefiles/AliPhysics
+  [[ -d $ARCH_DIR ]] || continue
+  pushd $ARCH_DIR &> /dev/null
+    for ALIPHYSICS in *; do
+      [[ -e $ALIPHYSICS ]] || continue  # deal with * not expanded
+      [[ $ALIPHYSICS != vAN-* ]] || continue  # exclude AN tags
+      [[ $ALIPHYSICS != v5-06* && $ALIPHYSICS != v5-07* && $ALIPHYSICS != v5-08* ]] || continue  # from v5-09 on
+
+      SNAPSHOT_DEST=$(cd $DEST_PREFIX/..;pwd)/prod/${ALIPHYSICS%-*}
+      [[ -e $SNAPSHOT_DEST ]] && continue  # already exists: skipping
+
+      TAG_CREATION_TIMESTAMP=$(stat -c%Y $ALIPHYSICS)
+
+      # We don't fetch data from EOS. Instead, we re-snapshot the most recent
+      # daily snapshot. We start from the tag creation date, and we go back up
+      # to two days (three total attempts). No suitable snapshot --> failure.
+      # We only symlink instead of copying data (even if CVMFS deduplicates).
+      echo Need to create snapshot for tag: $SNAPSHOT_DEST
+      for ((I=0; I<3; I++)); do
+        SNAPSHOT_DATE=$(date -u -d @$((TAG_CREATION_TIMESTAMP-86400*I)) +%Y/vAN-%Y%m%d)
+        SNAPSHOT_SOURCE=$RO_DEST_PREFIX/$SNAPSHOT_DATE
+        [[ -d $SNAPSHOT_SOURCE ]] || { echo does not exist, $SNAPSHOT_SOURCE; continue; }
+        cvmfs_lazy_transaction || dieabort
+        mkdir -p $(dirname $SNAPSHOT_DEST)
+        ln -nfs ../analysis/$SNAPSHOT_DATE $SNAPSHOT_DEST
+        break
+      done
+      [[ -L $SNAPSHOT_DEST && -d $SNAPSHOT_SOURCE ]] || dieabort
+      echo Created from $SNAPSHOT_SOURCE
+
+    done
+  popd &> /dev/null
 done
-[[ $ERR == 0 ]]
-dieabort() {
-  rm -rf $DEST
-  cvmfs_server abort -f || true
-  exit 1
-}
+
+# Take care of today's snapshot from EOS
+DEST=$DEST_PREFIX/$(TZ=Europe/Rome date +%Y/vAN-%Y%m%d)
+[[ -d $DEST && ! $FORCE ]] && { echo "Published already: $DEST"; cvmfs_lazy_publish; exit $?; } || true
+[[ $(TZ=Europe/Rome date +%_H%M) -lt 1600 && ! $FORCE ]] && { echo "Before 4pm, doing nothing"; exit 0; } || true
+cvmfs_lazy_transaction || dieabort
 mkdir -p $DEST && [[ -d $DEST ]] || dieabort
 rsync -av --delete --rsh="sshpass -p `cat $HOME/.eossynccreds|cut -d: -f2-` ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no -l `cat $HOME/.eossynccreds|cut -d: -f1`" $SRC/ $DEST/ || dieabort
 chmod -R u=rwX,g=rX,o=rX $DEST/
 touch $DEST
-cvmfs_server publish || dieabort
+while read FILE; do
+  mv -v $FILE ${FILE%*.no_access}
+done < <(find $DEST -name *.no_access)
+find /cvmfs/alice.cern.ch/data/analysis/2017/vAN-20171208/ -name *.no_access
+cvmfs_lazy_publish || dieabort
 echo "All OK"
