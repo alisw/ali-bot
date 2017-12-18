@@ -7,6 +7,7 @@
 #   env DRYRUN=1 FORCE=1 ./publish-data.sh
 
 dieabort() {
+  cd /
   rm -rf $DEST
   cvmfs_server abort -f || true
   exit 1
@@ -91,6 +92,5 @@ touch $DEST
 while read FILE; do
   mv -v $FILE ${FILE%*.no_access}
 done < <(find $DEST -name *.no_access)
-find /cvmfs/alice.cern.ch/data/analysis/2017/vAN-20171208/ -name *.no_access
 cvmfs_lazy_publish || dieabort
 echo "All OK"
