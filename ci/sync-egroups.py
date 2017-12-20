@@ -20,6 +20,12 @@ def egroup_members(egroup):
     return sorted(list(set(members)))
   return []
 
+# If egroups are provided as params, print them to stdout and quit
+for eg in sys.argv[1:]:
+  print("%s: %s" % (eg, " ".join(egroup_members(eg))))
+if len(sys.argv) > 1:
+  sys.exit(0)
+
 # Open perms.yml: read all groups that are not defined in place
 perms = yaml.safe_load(open("perms.yml"))
 def_groups = perms.get("groups", {}).keys()  # list of group names
