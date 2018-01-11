@@ -17,6 +17,8 @@ export ALIBOT_ANALYTICS_APP_NAME="continuous-builder.sh"
 
 MIRROR=${MIRROR:-/build/mirror}
 PACKAGE=${PACKAGE:-AliPhysics}
+TIMEOUT_CMD="timeout -s9 ${TIMEOUT:-600}"
+LONG_TIMEOUT_CMD="timeout -s9 ${LONG_TIMEOUT:-36000}"
 
 # Pick right version of du
 TMPDU=$(mktemp -d)
@@ -32,15 +34,15 @@ CHECK_NAME=${CHECK_NAME:=build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}
 pushd alidist
   ALIDIST_REF=`git rev-parse --verify HEAD`
 popd
-set-github-status -c alisw/alidist@$ALIDIST_REF -s $CHECK_NAME/pending
+$TIMEOUT_CMD set-github-status -c alisw/alidist@$ALIDIST_REF -s $CHECK_NAME/pending
 
 function report_state() {
   CURRENT_STATE=$1
   # Push some metric about being up and running to monalisa.
-  report-metric-monalisa --metric-path github-pr-checker.${CI_NAME:+$CI_NAME}_Nodes/$ALIBOT_ANALYTICS_USER_UUID \
-                         --metric-name state                                                                    \
-                         --metric-value $CURRENT_STATE
-  report-analytics screenview --cd $CURRENT_STATE
+  $TIMEOUT_CMD report-metric-monalisa --metric-path github-pr-checker.${CI_NAME:+$CI_NAME}_Nodes/$ALIBOT_ANALYTICS_USER_UUID \
+                                      --metric-name state                                                                    \
+                                      --metric-value $CURRENT_STATE
+  $TIMEOUT_CMD report-analytics screenview --cd $CURRENT_STATE
 }
 
 report_state started
@@ -54,7 +56,7 @@ while true; do
       LOCAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
       if [[ $LOCAL_BRANCH != HEAD ]]; then
         # Try to reset to corresponding remote branch (assume it's origin/<branch>)
-        git fetch origin
+        $TIMEOUT_CMD git fetch origin
         git reset --hard origin/$LOCAL_BRANCH
         git clean -fxd
       fi
@@ -62,7 +64,7 @@ while true; do
   done
 
   if [[ "$PR_REPO" != "" ]]; then
-    HASHES=`list-branch-pr --show-main-branch --check-name $CHECK_NAME ${TRUST_COLLABORATORS:+--trust-collaborators} ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} ${DELAY:+--max-wait $DELAY} || report-analytics exception --desc "list-branch-pr failed"`
+    HASHES=`$TIMEOUT_CMD list-branch-pr --show-main-branch --check-name $CHECK_NAME ${TRUST_COLLABORATORS:+--trust-collaborators} ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} ${DELAY:+--max-wait $DELAY} || $TIMEOUT_CMD report-analytics exception --desc "list-branch-pr failed"`
   else
     HASHES="0@0"
   fi
@@ -77,7 +79,7 @@ while true; do
       pushd ${PR_REPO_CHECKOUT:-$(basename $PR_REPO)}
         CANNOT_MERGE=0
         git config --add remote.origin.fetch "+refs/pull/*/head:refs/remotes/origin/pr/*"
-        git fetch origin
+        $TIMEOUT_CMD git fetch origin
         git reset --hard origin/$PR_BRANCH  # reset to branch target of PRs
         git clean -fxd
         OLD_SIZE=`$DU --exclude=.git -sb . | awk '{print $1}'`
@@ -92,26 +94,26 @@ while true; do
       if [[ $CANNOT_MERGE == 1 ]]; then
         # We do not want to kill the system is github is not working
         # so we ignore the result code for now
-        set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s $CHECK_NAME/error -m "Cannot merge PR into test area" || report-analytics exception --desc "set-github-status fail on cannot merge"
+        $TIMEOUT_CMD set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s $CHECK_NAME/error -m "Cannot merge PR into test area" || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on cannot merge"
         continue
       fi
       if [[ $(($NEW_SIZE - $OLD_SIZE)) -gt ${MAX_DIFF_SIZE:-4000000} ]]; then
         # We do not want to kill the system is github is not working
         # so we ignore the result code for now
-        set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s $CHECK_NAME/error -m "Diff too big. Rejecting." || report-analytics exception --desc "set-github-status fail on merge too big"
-        report-pr-errors --default $BUILD_SUFFIX  \
-                         --pr "${PR_REPO:-alisw/alidist}#${pr_id}" \
-                         -s $CHECK_NAME -m "Your pull request exceeded the allowed size. If you need to commit large files, please refer to <http://alisw.github.io/git-advanced/#how-to-use-large-data-files-for-analysis>" || report-analytics exception --desc "report-pr-errors fail on merge diff too big"
+        $TIMEOUT_CMD set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s $CHECK_NAME/error -m "Diff too big. Rejecting." || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on merge too big"
+        $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX  \
+                                      --pr "${PR_REPO:-alisw/alidist}#${pr_id}" \
+                                      -s $CHECK_NAME -m "Your pull request exceeded the allowed size. If you need to commit large files, [have a look here](http://alisw.github.io/git-advanced/#how-to-use-large-data-files-for-analysis)." || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on merge diff too big"
         continue
       fi
     fi
 
-    alibuild/aliDoctor ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} $PACKAGE || DOCTOR_ERROR=$?
+    $TIMEOUT_CMD alibuild/aliDoctor ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} $PACKAGE || DOCTOR_ERROR=$?
     STATUS_REF=${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF}
     if [[ $DOCTOR_ERROR != '' ]]; then
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
-      set-github-status -c ${STATUS_REF} -s $CHECK_NAME/error -m 'aliDoctor error' || report-analytics exception --desc "set-github-status fail on aliDoctor error"
+      $TIMEOUT_CMD set-github-status -c ${STATUS_REF} -s $CHECK_NAME/error -m 'aliDoctor error' || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on aliDoctor error"
       # If doctor fails, we can move on to the next PR, since we know it will not work.
       # We do not report aliDoctor being ok, because that's really a granted.
       continue
@@ -129,6 +131,7 @@ while true; do
 
     ALIBUILD_HEAD_HASH=$pr_hash ALIBUILD_BASE_HASH=$base_hash                              \
     GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN=                                                \
+    $LONG_TIMEOUT_CMD                                                                      \
     alibuild/aliBuild -j ${JOBS:-`nproc`}                                                  \
                        ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS}                 \
                        ${NO_ASSUME_CONSISTENT_EXTERNALS:+-z $(echo ${pr_number} | tr - _)} \
@@ -139,12 +142,12 @@ while true; do
     if [[ $BUILD_ERROR != '' ]]; then
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
-      report-pr-errors --default $BUILD_SUFFIX                                              \
-                       --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $CHECK_NAME || report-analytics exception --desc "report-pr-errors fail on build error"
+      $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX \
+                                    --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $CHECK_NAME || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on build error"
     else
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
-      set-github-status -c ${STATUS_REF} -s $CHECK_NAME/success || report-analytics exception --desc "set-github-status fail on build success"
+      $TIMEOUT_CMD set-github-status -c ${STATUS_REF} -s $CHECK_NAME/success || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on build success"
     fi
     report_state pr_processing_done
   done
