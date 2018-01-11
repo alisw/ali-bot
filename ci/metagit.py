@@ -10,6 +10,7 @@ MetaPull = namedtuple("MetaPull", [ "name", "repo", "num", "title", "changed_fil
                                     "get_files" ])
 MetaComment = namedtuple("MetaComment", [ "body", "short", "who", "when" ])
 MetaStatus = namedtuple("MetaStatus", [ "context", "state", "description" ])
+MetaRepo = namedtuple("MetaRepo", [ "owner", "size" ])
 
 # Allow to use debug(), info(), etc. with a custom logger name
 logger = logging.getLogger(__name__)
@@ -112,6 +113,9 @@ class MetaGit_Dummy(MetaGit):
   def get_rate_limit(self):
     return 0,0,time()
 
+  def get_repo_info(self, repo):
+    return MetaRepo(owner=self.bot_user, size=123456)
+
   def get_pull(self, pr, cached=False):
     repo,num = self.split_repo_pr(pr)
     raw = self.read(repo, num)
@@ -206,6 +210,16 @@ class MetaGit_GitHub(MetaGit):
       return a,b,self.gh.rate_limiting_resettime
     except GithubException as e:
       raise MetaGitException("Cannot get GitHub rate limiting")
+
+  @apicalls
+  def get_repo_info(self, repo):
+    if not repo in self.gh_repos:
+      try:
+        self.gh_repos[repo] = self.gh.get_repo(repo)
+      except GithubException as e:
+        raise MetaGitException("Cannot get repository %s: %s" % (repo, e))
+    return MetaRepo(owner = self.gh_repos[repo].owner.login,
+                    size  = self.gh_repos[repo].size)
 
   @apicalls
   def get_pull(self, pr, cached=False):
