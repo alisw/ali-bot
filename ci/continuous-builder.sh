@@ -20,6 +20,11 @@ PACKAGE=${PACKAGE:-AliPhysics}
 TIMEOUT_CMD="timeout -s9 ${TIMEOUT:-600}"
 LONG_TIMEOUT_CMD="timeout -s9 ${LONG_TIMEOUT:-36000}"
 
+# If INFLUXDB_WRITE_URL starts with insecure_https://, then strip "insecure" and
+# set the proper option to curl
+INFLUX_INSECURE=
+[[ $INFLUXDB_WRITE_URL == insecure_https:* ]] && { INFLUX_INSECURE=-k; INFLUXDB_WRITE_URL=${INFLUXDB_WRITE_URL:9}; }
+
 # Pick right version of du
 TMPDU=$(mktemp -d)
 DU=du
@@ -31,6 +36,9 @@ rmdir $TMPDU
 # default to, e.g., build/AliRoot/release (build/<Package>/<Defaults>)
 CHECK_NAME=${CHECK_NAME:=build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}}
 
+# Worker index, zero-based. Set to 0 if unset (i.e. when not running on Aurora)
+WORKER_INDEX=${WORKER_INDEX:-0}
+
 pushd alidist
   ALIDIST_REF=`git rev-parse --verify HEAD`
 popd
@@ -38,11 +46,17 @@ $TIMEOUT_CMD set-github-status -c alisw/alidist@$ALIDIST_REF -s $CHECK_NAME/pend
 
 function report_state() {
   CURRENT_STATE=$1
-  # Push some metric about being up and running to monalisa.
+  # Push some metric about being up and running to Monalisa
   $TIMEOUT_CMD report-metric-monalisa --metric-path github-pr-checker.${CI_NAME:+$CI_NAME}_Nodes/$ALIBOT_ANALYTICS_USER_UUID \
                                       --metric-name state                                                                    \
                                       --metric-value $CURRENT_STATE
   $TIMEOUT_CMD report-analytics screenview --cd $CURRENT_STATE
+  # Also push to InfluxDB if possible
+  if [[ $INFLUXDB_WRITE_URL ]]; then
+    TIMESTAMP=$(($(date -u +%s)*1000000000))
+    DATA="prcheck,checkname=$CHECK_NAME/$WORKER_INDEX host=\"$(hostname -s)\",state=\"$CURRENT_STATE\" $TIMESTAMP"
+    curl $INFLUX_INSECURE --max-time 20 -XPOST "$INFLUXDB_WRITE_URL" --data-binary "$DATA" || true
+  fi
 }
 
 report_state started
@@ -108,6 +122,7 @@ while true; do
       fi
     fi
 
+    GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= INFLUXDB_WRITE_URL= \
     $TIMEOUT_CMD alibuild/aliDoctor ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} $PACKAGE || DOCTOR_ERROR=$?
     STATUS_REF=${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF}
     if [[ $DOCTOR_ERROR != '' ]]; then
@@ -130,7 +145,7 @@ while true; do
     git config --global credential.helper "store --file ~/.git-creds"
 
     ALIBUILD_HEAD_HASH=$pr_hash ALIBUILD_BASE_HASH=$base_hash                              \
-    GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN=                                                \
+    GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= INFLUXDB_WRITE_URL=                            \
     $LONG_TIMEOUT_CMD                                                                      \
     alibuild/aliBuild -j ${JOBS:-`nproc`}                                                  \
                        ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS}                 \
