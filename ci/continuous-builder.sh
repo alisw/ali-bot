@@ -145,6 +145,7 @@ while true; do
     git config --global credential.helper "store --file ~/.git-creds"
 
     ALIBUILD_HEAD_HASH=$pr_hash ALIBUILD_BASE_HASH=$base_hash                              \
+    PR_NUMBER=${pr_number} PR_BRANCH=${PR_BRANCH}                                          \
     GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= INFLUXDB_WRITE_URL=                            \
     $LONG_TIMEOUT_CMD                                                                      \
     alibuild/aliBuild -j ${JOBS:-`nproc`}                                                  \
