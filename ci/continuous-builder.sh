@@ -122,7 +122,7 @@ while true; do
       fi
     fi
 
-    GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= INFLUXDB_WRITE_URL= \
+    GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= INFLUXDB_WRITE_URL= CODECOV_TOKEN= \
     $TIMEOUT_CMD alibuild/aliDoctor ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} $PACKAGE || DOCTOR_ERROR=$?
     STATUS_REF=${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF}
     if [[ $DOCTOR_ERROR != '' ]]; then
@@ -138,6 +138,9 @@ while true; do
     # we build.
     mkdir -p sw/BUILD
     find sw/BUILD/ -maxdepth 1 -name "*latest*" -delete
+    # Delete coverage files from one run to the next to avoid
+    # reporting them twice under erroneous circumstances
+    find sw/BUILD/ -maxdepth 4 -name coverage.info -delete
 
     # GitLab credentials for private ALICE repositories
     printf "protocol=https\nhost=gitlab.cern.ch\nusername=$GITLAB_USER\npassword=$GITLAB_PASS\n" | \
@@ -145,7 +148,7 @@ while true; do
     git config --global credential.helper "store --file ~/.git-creds"
 
     ALIBUILD_HEAD_HASH=$pr_hash ALIBUILD_BASE_HASH=$base_hash                              \
-    GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= INFLUXDB_WRITE_URL=                            \
+    GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= INFLUXDB_WRITE_URL= CODECOV_TOKEN=             \
     $LONG_TIMEOUT_CMD                                                                      \
     alibuild/aliBuild -j ${JOBS:-`nproc`}                                                  \
                        ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS}                 \
@@ -163,6 +166,26 @@ while true; do
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
       $TIMEOUT_CMD set-github-status -c ${STATUS_REF} -s $CHECK_NAME/success || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on build success"
+    fi
+
+    # Look for any code coverage file for the given pull request
+    COVERAGE_SOURCES=$PWD/${PR_REPO_CHECKOUT:-$(basename $PR_REPO)}
+
+    # Push the coverage information to codecov
+    COVERAGE_INFO_DIR=$(find sw/BUILD/ -maxdepth 4 -name coverage.info | head -1 | xargs dirname)
+    if [[ ${COVERAGE_INFO_DIR} ]]; then
+      pushd ${COVERAGE_INFO_DIR}
+        COVERAGE_COMMIT_HASH=${ALIBUILD_HEAD_HASH}
+        if [[ $COVERAGE_COMMIT_HASH == 0 ]]; then
+          COVERAGE_COMMIT_HASH=${ALIBUILD_BASE_HASH}
+        fi
+        $TIMEOUT_CMD bash <(curl --max-time 600 -s https://codecov.io/bash) -y .codecov.yml \
+                                                -R $COVERAGE_SOURCES                        \
+                                                -f coverage.info                            \
+                                                -C ${COVERAGE_COMMIT_HASH}                  \
+                                                ${PR_BRANCH:+-B $PR_BRANCH}                 \
+                                                ${pr_number:+-P $pr_number} || true
+      popd
     fi
     report_state pr_processing_done
   done
