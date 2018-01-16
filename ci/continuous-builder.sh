@@ -171,7 +171,7 @@ while true; do
     # Look for any code coverage file for the given commit and push
     # it to codecov.io
     COVERAGE_SOURCES=$PWD/${PR_REPO_CHECKOUT:-$(basename $PR_REPO)}
-    COVERAGE_INFO_DIR=$(find sw/BUILD/ -maxdepth 4 -name coverage.info | head -1 | xargs dirname)
+    COVERAGE_INFO_DIR=$(find sw/BUILD/ -maxdepth 4 -name coverage.info | head -1 | xargs dirname || true)
     if [[ ${COVERAGE_INFO_DIR} ]]; then
       pushd ${COVERAGE_INFO_DIR}
         COVERAGE_COMMIT_HASH=${ALIBUILD_HEAD_HASH}
