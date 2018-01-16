@@ -174,9 +174,9 @@ while true; do
     COVERAGE_INFO_DIR=$(find sw/BUILD/ -maxdepth 4 -name coverage.info | head -1 | xargs dirname || true)
     if [[ ${COVERAGE_INFO_DIR} ]]; then
       pushd ${COVERAGE_INFO_DIR}
-        COVERAGE_COMMIT_HASH=${ALIBUILD_HEAD_HASH}
+        COVERAGE_COMMIT_HASH=${pr_hash}
         if [[ $COVERAGE_COMMIT_HASH == 0 ]]; then
-          COVERAGE_COMMIT_HASH=${ALIBUILD_BASE_HASH}
+          COVERAGE_COMMIT_HASH=${base_hash}
         fi
         $TIMEOUT_CMD bash <(curl --max-time 600 -s https://codecov.io/bash) -y .codecov.yml \
                                                 -R $COVERAGE_SOURCES                        \
