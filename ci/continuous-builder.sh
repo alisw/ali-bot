@@ -168,10 +168,9 @@ while true; do
       $TIMEOUT_CMD set-github-status -c ${STATUS_REF} -s $CHECK_NAME/success || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on build success"
     fi
 
-    # Look for any code coverage file for the given pull request
+    # Look for any code coverage file for the given commit and push
+    # it to codecov.io
     COVERAGE_SOURCES=$PWD/${PR_REPO_CHECKOUT:-$(basename $PR_REPO)}
-
-    # Push the coverage information to codecov
     COVERAGE_INFO_DIR=$(find sw/BUILD/ -maxdepth 4 -name coverage.info | head -1 | xargs dirname)
     if [[ ${COVERAGE_INFO_DIR} ]]; then
       pushd ${COVERAGE_INFO_DIR}
