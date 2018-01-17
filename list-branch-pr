@@ -179,9 +179,11 @@ def _do_process_main_branch(branch, cgh, args):
 
 def group_pulls(pulls):
     reviewed = [p for p in pulls if p["reviewed"]]
+    tested = [p for p in reviewed if p["tested"]]
     not_tested = [p for p in reviewed if not p["tested"]]
     not_successful = [p for p in reviewed if p["tested"] and not p["success"]]
     return {
+        "tested": tested,
         "reviewed": reviewed,
         "not_tested": not_tested,
         "not_successful": not_successful
@@ -316,8 +318,8 @@ if __name__ == "__main__":
                 err, out = getstatusoutput("sleep {0}".format(args.poll_time))
                 if err or timeSince(start) >= args.maxWait:
                     # return whatever we have (may be empty)
-                    if grouped["not_successful"]:
-                        sendToStdOut([random.choice(grouped["not_successful"])])
+                    if grouped["not_successful"] or grouped["tested"]:
+                        sendToStdOut([random.choice(grouped["not_successful"] + grouped["tested"])])
                     elif grouped["reviewed"]:
                         sendToStdOut([random.choice(grouped["reviewed"])])
                     break
