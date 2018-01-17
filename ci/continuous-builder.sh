@@ -15,6 +15,9 @@ export ALIBOT_ANALYTICS_USER_UUID=`hostname -s`-$WORKER_INDEX${CI_NAME:+-$CI_NAM
 export ALIBOT_ANALYTICS_ARCHITECTURE=slc7_x86-64
 export ALIBOT_ANALYTICS_APP_NAME="continuous-builder.sh"
 
+TIME_STARTED=$(date -u +%s)
+CI_HASH=$(cd "$(dirname "$0")" && git rev-parse HEAD)
+
 MIRROR=${MIRROR:-/build/mirror}
 PACKAGE=${PACKAGE:-AliPhysics}
 TIMEOUT_CMD="timeout -s9 ${TIMEOUT:-600}"
@@ -51,10 +54,14 @@ function report_state() {
                                       --metric-name state                                                                    \
                                       --metric-value $CURRENT_STATE
   $TIMEOUT_CMD report-analytics screenview --cd $CURRENT_STATE
-  # Also push to InfluxDB if possible
+  # Push to InfluxDB if configured
   if [[ $INFLUXDB_WRITE_URL ]]; then
-    TIMESTAMP=$(($(date -u +%s)*1000000000))
-    DATA="prcheck,checkname=$CHECK_NAME/$WORKER_INDEX host=\"$(hostname -s)\",state=\"$CURRENT_STATE\" $TIMESTAMP"
+    TIME_NOW=$(date -u +%s)
+    TIME_NOW_NS=$((TIME_NOW*1000000000))
+    PRTIME=
+    [[ $CURRENT_STATE == pr_processing ]] && TIME_PR_STARTED=$TIME_NOW
+    [[ $CURRENT_STATE == pr_processing_done ]] && PRTIME=",prtime=$((TIME_NOW-TIME_PR_STARTED))"
+    DATA="prcheck,checkname=$CHECK_NAME/$WORKER_INDEX host=\"$(hostname -s)\",state=\"$CURRENT_STATE\",cihash=\"$CI_HASH\",uptime=$((TIME_NOW-TIME_STARTED))$PRTIME $TIME_NOW_NS"
     curl $INFLUX_INSECURE --max-time 20 -XPOST "$INFLUXDB_WRITE_URL" --data-binary "$DATA" || true
   fi
 }
@@ -147,16 +154,18 @@ while true; do
     git credential-store --file ~/.git-creds store
     git config --global credential.helper "store --file ~/.git-creds"
 
-    ALIBUILD_HEAD_HASH=$pr_hash ALIBUILD_BASE_HASH=$base_hash                              \
-    GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= INFLUXDB_WRITE_URL= CODECOV_TOKEN=             \
-    $LONG_TIMEOUT_CMD                                                                      \
-    alibuild/aliBuild -j ${JOBS:-`nproc`}                                                  \
-                       ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS}                 \
-                       ${NO_ASSUME_CONSISTENT_EXTERNALS:+-z $(echo ${pr_number} | tr - _)} \
-                       --reference-sources $MIRROR                                         \
-                       ${REMOTE_STORE:+--remote-store $REMOTE_STORE}                       \
-                       ${DEBUG:+--debug}                                                   \
-                       build $PACKAGE || BUILD_ERROR=$?
+    FETCH_REPOS=$(alibuild/aliBuild build --help | grep fetch-repos)
+    ALIBUILD_HEAD_HASH=$pr_hash ALIBUILD_BASE_HASH=$base_hash                             \
+    GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= INFLUXDB_WRITE_URL= CODECOV_TOKEN=            \
+    $LONG_TIMEOUT_CMD                                                                     \
+    alibuild/aliBuild -j ${JOBS:-`nproc`}                                                 \
+                      ${FETCH_REPOS:+--fetch-repos}                                       \
+                      ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS}                 \
+                      ${NO_ASSUME_CONSISTENT_EXTERNALS:+-z $(echo ${pr_number} | tr - _)} \
+                      --reference-sources $MIRROR                                         \
+                      ${REMOTE_STORE:+--remote-store $REMOTE_STORE}                       \
+                      ${DEBUG:+--debug}                                                   \
+                      build $PACKAGE || BUILD_ERROR=$?
     if [[ $BUILD_ERROR != '' ]]; then
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
