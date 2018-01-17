@@ -18,10 +18,14 @@ export ALIBOT_ANALYTICS_APP_NAME="continuous-builder.sh"
 TIME_STARTED=$(date -u +%s)
 CI_HASH=$(cd "$(dirname "$0")" && git rev-parse HEAD)
 
+# timeout vs. gtimeout (macOS with Homebrew)
+TIMEOUT_EXEC=timeout
+type timeout > /dev/null 2>&1 || TIMEOUT_EXEC=gtimeout
+
 MIRROR=${MIRROR:-/build/mirror}
 PACKAGE=${PACKAGE:-AliPhysics}
-TIMEOUT_CMD="timeout -s9 ${TIMEOUT:-600}"
-LONG_TIMEOUT_CMD="timeout -s9 ${LONG_TIMEOUT:-36000}"
+TIMEOUT_CMD="$TIMEOUT_EXEC -s9 ${TIMEOUT:-600}"
+LONG_TIMEOUT_CMD="$TIMEOUT_EXEC -s9 ${LONG_TIMEOUT:-36000}"
 
 # If INFLUXDB_WRITE_URL starts with insecure_https://, then strip "insecure" and
 # set the proper option to curl
