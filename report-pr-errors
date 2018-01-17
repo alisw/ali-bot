@@ -13,6 +13,16 @@ from alibot_helpers.github_utilities import calculateMessageHash, github_token
 from alibot_helpers.github_utilities import setGithubStatus, parseGithubRef
 from alibot_helpers.github_utilities import GithubCachedClient, PickledCache
 
+def to_unicode(s):
+  if sys.version_info[0] >= 3:
+    if isinstance(s, bytes):
+      return s.decode("utf-8")  # to get newlines as such and not as escaped \n
+    return str(s)
+  elif isinstance(s, str):
+    return unicode(s, "utf-8")  # utf-8 is a safe assumption
+  elif not isinstance(s, unicode):
+    return unicode(str(s))
+  return s
 
 def parse_args():
     parser = ArgumentParser()
@@ -240,7 +250,7 @@ def handle_pr_id(cgh, pr, logs, args):
     if args.message:
         message += args.message
     else:
-        message += "```\n%s\n```\nFull log [here](%s).\n" % (logs.error_log, logs.url)
+        message += "```\n%s\n```\nFull log [here](%s).\n" % (to_unicode(logs.error_log), to_unicode(logs.url))
 
 
     if args.dry_run:
