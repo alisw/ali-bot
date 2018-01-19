@@ -57,10 +57,20 @@ Parameters (as environment variables):
 
 run-continuous-builder.sh
 -------------------------
-Manually run the continuous builder. For CI checks of O2 on macOS, use:
+This script is used to run the continuous builder without Aurora. This is useful for running it on
+macOS, for instance.
 
-    env PR_REPO=AliceO2Group/AliceO2 PACKAGE=O2 CHECK_NAME=build/o2/macos PR_BRANCH=dev ALIBUILD_DEFAULTS=o2 ./run-continuous-builder.sh
+Usage:
 
-For AliRoot checks on macOS, use:
+```bash
+./run-continuous-builder.sh <profile> [--test-build] [--test-doctor] [--list]
+```
 
-    env TRUSTED_USERS= TRUST_COLLABORATORS= PR_REPO=alisw/AliRoot PACKAGE=AliRoot CHECK_NAME=build/AliRoot/macos PR_BRANCH=master ALIBUILD_DEFAULTS=root6 ./run-continuous-builder.sh
+`<profile>` refers to `<path_to_this_script>/conf/<profile>.sh`, containing a configuration in the
+form of shell variables (the script will be sourced).
+
+* `--list`: list PRs to process and exit. Useful to test the GitHub API
+* `--test-doctor`: run aliDoctor and exit. Useful to test system dependencies
+* `--test-build`: run aliBuild once without testing any PR and exit. Useful to warm up the CI
+
+Normal, non-interactive operations require no option.
