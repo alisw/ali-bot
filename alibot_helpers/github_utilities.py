@@ -11,6 +11,7 @@ import sys
 
 import requests
 
+from alibot_helpers.utilities import to_unicode
 
 def trace(func):
     """Simple function to trace enter and exit of a function/method
@@ -303,9 +304,9 @@ class GithubCachedClient(object):
 
 def calculateMessageHash(message):
     # Anything which can resemble a hash or a date is filtered out.
-    subbed = re.sub("[0-9a-f-A-F]", "", message)
+    subbed = re.sub("[0-9a-f-A-F]", "", to_unicode(message))
     sortedSubbed = sorted(subbed.split("\n"))
-    sha = sha1("\n".join(sortedSubbed))
+    sha = sha1("\n".join(sortedSubbed).encode("ascii", "ignore"))
     return sha.hexdigest()[0:10]
 
 
