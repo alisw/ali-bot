@@ -12,17 +12,7 @@ import sys
 from alibot_helpers.github_utilities import calculateMessageHash, github_token
 from alibot_helpers.github_utilities import setGithubStatus, parseGithubRef
 from alibot_helpers.github_utilities import GithubCachedClient, PickledCache
-
-def to_unicode(s):
-  if sys.version_info[0] >= 3:
-    if isinstance(s, bytes):
-      return s.decode("utf-8")  # to get newlines as such and not as escaped \n
-    return str(s)
-  elif isinstance(s, str):
-    return unicode(s, "utf-8")  # utf-8 is a safe assumption
-  elif not isinstance(s, unicode):
-    return unicode(str(s))
-  return s
+from alibot_helpers.utilities import to_unicode
 
 def parse_args():
     parser = ArgumentParser()
@@ -160,9 +150,9 @@ def handle_branch(cgh, pr, logs, args):
 
     message = "Error while checking %s for %s:\n" % (args.status, sha)
     if args.message:
-        message += args.message
+        message += to_unicode(args.message)
     else:
-        message += "```\n%s\n```\nFull log [here](%s).\n" % (logs.error_log, logs.url)
+        message += "```\n%s\n```\nFull log [here](%s).\n" % (to_unicode(logs.error_log), to_unicode(logs.url))
     messageSha = calculateMessageHash(message)
 
     openIssues = cgh.get('/repos/{repo_name}/issues?state=open')
