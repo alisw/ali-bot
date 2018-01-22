@@ -158,7 +158,7 @@ while true; do
     git credential-store --file ~/.git-creds store
     git config --global credential.helper "store --file ~/.git-creds"
 
-    FETCH_REPOS=$(alibuild/aliBuild build --help | grep fetch-repos)
+    FETCH_REPOS="$(alibuild/aliBuild build --help | grep fetch-repos || true)"
     ALIBUILD_HEAD_HASH=$pr_hash ALIBUILD_BASE_HASH=$base_hash                             \
     GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= INFLUXDB_WRITE_URL= CODECOV_TOKEN=            \
     $LONG_TIMEOUT_CMD                                                                     \
