@@ -194,7 +194,7 @@ while true; do
         # If not a number, it's the branch name
         re='^[0-9]+$'
         if ! [[ $pr_number =~ $re ]] ; then
-          unset $pr_number
+          unset pr_number
         fi
         $TIMEOUT_CMD bash <(curl --max-time 600 -s https://codecov.io/bash) -y .codecov.yml \
                                                 -R $COVERAGE_SOURCES                        \
