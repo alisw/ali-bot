@@ -191,6 +191,11 @@ while true; do
         if [[ $COVERAGE_COMMIT_HASH == 0 ]]; then
           COVERAGE_COMMIT_HASH=${base_hash}
         fi
+        # If not a number, it's the branch name
+        re='^[0-9]+$'
+        if ! [[ $pr_number =~ $re ]] ; then
+          unset $pr_number
+        fi
         $TIMEOUT_CMD bash <(curl --max-time 600 -s https://codecov.io/bash) -y .codecov.yml \
                                                 -R $COVERAGE_SOURCES                        \
                                                 -f coverage.info                            \

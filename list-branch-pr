@@ -174,6 +174,9 @@ def _do_process_main_branch(branch, cgh, args):
     all_statuses = get_all_statuses(args.repo_name, branch["commit"]["sha"])
     item = {"number": args.branch_ref, "sha": branch["commit"]["sha"]}
     item.update(getStatusInfo(all_statuses, args))
+    # We consider main branches as always reviewed, since they are already in
+    # the main repository.
+    item["reviewed"] = True
     return item
 
 
