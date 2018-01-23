@@ -68,6 +68,10 @@ def is_on_cvmfs(pkg, tag):
     return is_on_cvmfs_posix(pkg, tag)
   return is_on_cvmfs_http(pkg, tag)
 
+def update_health_check():
+  with open("/tmp/check-daily-slack-health", "w") as hc:
+    hc.write("healthy")
+
 @quench
 def is_on_cvmfs_posix(pkg, tag):
   # Check if found on CVMFS on at least one architecture
@@ -141,4 +145,6 @@ while True:
       debug("Not OK (AliEn: %s, CVMFS: %s) but within grace time" % (status_alien, status_cvmfs))
   else:
     debug("Already verified to be OK")
-  sleep(300)
+  for _ in range(5):
+    update_health_check()
+    sleep(60)
