@@ -1,4 +1,27 @@
 #!/usr/bin/env python
+
+# check-daily-slack.py -- Check for the daily AliPhysics tag, notify on Slack.
+#
+# This script continuously checks for the presence of the AliPhysics daily tag
+# every 300 seconds, on AliEn and CVMFS. If it's past 4pm it checks for today's
+# daily, if it's before, it checks for yesterday's. In case the tag is found on
+# both AliEn and CVMFS, a successful notification is sent and no further
+# notification will occur (until the next daily tag). In case it's not found,
+# a nagging notification is sent every 15 minutes.
+#
+# Time checks are all explicitly performed using the Geneva time zone, and
+# notifications are sent on a certain Slack channel.
+#
+# Configuration is done via environment variables:
+#
+# SLACK_PRIVATE_URL
+#   The Slack API URL used to write to the configured channel
+# SLACK_DEBUG (optional)
+#   Set to 1 to print output on stdout (quiet otherwise)
+# CVMFS_CHECK_POSIX (optional)
+#   Set to 1 to check on mounted /cvmfs or Parrot-provided /cvmfs (by default
+#   tries to use the CVMFS monitor HTTP interface)
+
 from __future__ import print_function
 import json
 import os
@@ -40,21 +63,27 @@ def debug(msg):
     return
   print("%s> %s" % (datetime.isoformat(datetime.utcnow()), msg))
 
+def is_on_cvmfs(pkg, tag):
+  if os.environ.get("CVMFS_CHECK_POSIX", "0").lower() in [ "1", "yes", "true", "on" ]:
+    return is_on_cvmfs_posix(pkg, tag)
+  return is_on_cvmfs_http(pkg, tag)
+
 @quench
-def is_on_cvmfs_parrot(pkg, tag):
-  # Check if found on CVMFS on at least one architecture (use parrot)
+def is_on_cvmfs_posix(pkg, tag):
+  # Check if found on CVMFS on at least one architecture
   parrot = [ "env",
              "HTTP_PROXY=DIRECT;",
              "PARROT_ALLOW_SWITCHING_CVMFS_REPOSITORIES=yes",
              "PARROT_CVMFS_REPO=<default-repositories>",
              "parrot_run" ]
-  for d in getout(parrot + ["ls", "-1", "/cvmfs/alice.cern.ch"])[0].split("\n"):
-    if getout(parrot + ["bash", "-c", "ls -1 /cvmfs/alice.cern.ch/%s/Modules/modulefiles/%s/%s*" % (d, pkg, ver)])[1] == 0:
-      return True
+  for cmdprefix in ([], parrot):
+    for d in getout(cmdprefix + ["ls", "-1", "/cvmfs/alice.cern.ch"])[0].split("\n"):
+      if getout(cmdprefix + ["bash", "-c", "ls -1 /cvmfs/alice.cern.ch/%s/Modules/modulefiles/%s/%s*" % (d, pkg, ver)])[1] == 0:
+        return True
   return False
 
 @quench
-def is_on_cvmfs(pkg, tag):
+def is_on_cvmfs_http(pkg, tag):
   path_prefix = "/cvmfs-monitor/cb/browser/alice.cern.ch/latest"
   url_prefix = "http://cernvm-monitor.cern.ch/%s" % path_prefix
   for i in requests.get(url_prefix, stream=True).iter_lines():
