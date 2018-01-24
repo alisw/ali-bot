@@ -30,7 +30,7 @@ done
 
 JOBS_DEFAULT=$(sysctl -n hw.ncpu || echo 4)
 [[ `uname` == Darwin ]] && OS=macos || OS=linux
-export CI_NAME=$(echo $PR_REPO_CHECKOUT|tr '[[:upper:]]' '[[:lower:]]')_checker_${OS}_${ALIBUILD_DEFAULTS}_ci
+export CI_NAME=$(echo ${PR_REPO_CHECKOUT:-$PACKAGE}|tr '[[:upper:]]' '[[:lower:]]')_checker_${OS}_${ALIBUILD_DEFAULTS}_ci
 
 # We allow variables to be set externally, and to be set to empty strings as well.
 # This is why we use '-' instead of ':-' in the default expansion.
