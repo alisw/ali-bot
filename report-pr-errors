@@ -96,7 +96,7 @@ class Logs(object):
 
         suffix = ("latest" + "-" + self.develPrefix).strip("-")
         logs = [x for x in globbed if dirname(x).endswith(suffix)]
-            
+
         print("Found:\n%s" % "\n".join(logs), file=sys.stderr)
         self.logs = logs
 
@@ -155,7 +155,7 @@ def handle_branch(cgh, pr, logs, args):
         message += "```\n%s\n```\nFull log [here](%s).\n" % (to_unicode(logs.error_log), to_unicode(logs.url))
     messageSha = calculateMessageHash(message)
 
-    openIssues = cgh.get('/repos/{repo_name}/issues?state=open')
+    openIssues = cgh.get('/repos/{repo_name}/issues?state=open', repo_name=pr.repo_name)
     for issue in openIssues:
         # Look for open issues:
         # - If we find one which was opened for the same
@@ -207,7 +207,7 @@ def handle_branch(cgh, pr, logs, args):
             data = {"state": "closed"}
             cgh.patch(
                 "/repos/{repo_name}/issues/{number}/comments",
-                data,      
+                data,
                 repo_name=pr.repo_name,
                 number=issue["number"]
             )
