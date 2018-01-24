@@ -28,9 +28,7 @@ for V in GITHUB_TOKEN GITLAB_USER GITLAB_PASS PR_REPO PACKAGE CHECK_NAME PR_BRAN
 done
 [[ $ERR == 1 ]] && exit 1
 
-JOBS_DEFAULT=$(sysctl -n hw.ncpu || echo 4)
-[[ `uname` == Darwin ]] && OS=macos || OS=linux
-export CI_NAME=$(echo ${PR_REPO_CHECKOUT:-$PACKAGE}|tr '[[:upper:]]' '[[:lower:]]')_checker_${OS}_${ALIBUILD_DEFAULTS}_ci
+JOBS_DEFAULT=$(sysctl -n hw.ncpu 2> /dev/null || grep -c bogomips /proc/cpuinfo 2> /dev/null || echo 4)
 
 # We allow variables to be set externally, and to be set to empty strings as well.
 # This is why we use '-' instead of ':-' in the default expansion.
@@ -42,7 +40,7 @@ export NO_ASSUME_CONSISTENT_EXTERNALS=${NO_ASSUME_CONSISTENT_EXTERNALS-true}
 export BUILD_SUFFIX=${BUILD_SUFFIX-master}
 export TRUSTED_USERS=${TRUSTED_USERS-ktf,dberzano}
 export TRUST_COLLABORATORS=${TRUST_COLLABORATORS-true}
-export PR_REPO_CHECKOUT="$PACKAGE"
+export PR_REPO_CHECKOUT=${PR_REPO_CHECKOUT:-$PACKAGE}
 export JOBS=${JOBS-$JOBS_DEFAULT}
 export ALIBUILD_O2_TESTS=1
 export ALIBUILD_REPO="alisw/alibuild"
@@ -52,6 +50,9 @@ export MAX_DIFF_SIZE=20000000
 export DELAY=20
 export DEBUG=true
 export MIRROR=/build/mirror
+
+[[ `uname` == Darwin ]] && OS=macos || OS=linux
+export CI_NAME=$(echo $PR_REPO_CHECKOUT|tr '[[:upper:]]' '[[:lower:]]')_checker_${OS}_${ALIBUILD_DEFAULTS}_ci
 
 # Setup working directory
 ALIBOT="$(cd ..;pwd)"
