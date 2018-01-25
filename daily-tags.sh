@@ -108,11 +108,13 @@ pushd alidist
 popd
 
 REMOTE_STORE="rsync://repo.marathon.mesos/store/::rw"
+FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
 aliBuild --reference-sources $MIRROR                   \
          --debug                                       \
          --work-dir $WORKAREA/$WORKAREA_INDEX          \
          --architecture $ARCHITECTURE                  \
          --jobs 16                                     \
+         ${FETCH_REPOS:+--fetch-repos}                 \
          --remote-store $REMOTE_STORE                  \
          ${DEFAULTS:+--defaults $DEFAULTS}             \
          build $PACKAGE_NAME || BUILDERR=$?
