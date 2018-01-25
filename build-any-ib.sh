@@ -1,5 +1,19 @@
 #!/bin/bash -ex
 
+# Specify alibuild version: <group>/<repo>[@branch]
+ALIBUILD_REPO=${ALIBUILD_SLUG%%@*}
+[[ $ALIBUILD_SLUG == *@* ]] && ALIBUILD_BRANCH=${ALIBUILD_SLUG#*@} || ALIBUILD_BRANCH=
+
+# Two ways of specifying alidist: <group>/<repo>[@<branch>], <group>/<repo>#<prnum>
+ALIDIST_BRANCH= ALIDIST_REPO=
+case "$ALIDIST_SLUG" in
+  *@*)  ALIDIST_REPO=${ALIDIST_SLUG%%@*}
+        ALIDIST_BRANCH=${ALIDIST_SLUG#*@} ;;
+  *\#*) ALIDIST_REPO=${ALIDIST_SLUG%%#*}
+        ALIDIST_PRNUM=${ALIDIST_SLUG#*#} ;;
+  *)    ALIDIST_REPO=$ALIDIST_SLUG ;;
+esac
+
 hostname
 echo $RIEMANN_HOST
 which lsb_release > /dev/null 2>&1 && lsb_release -a
@@ -19,18 +33,19 @@ WORKAREA_INDEX=0
 export PYTHONUSERBASE=$(mktemp -d)
 export PATH=$PYTHONUSERBASE/bin:$PATH
 export LD_LIBRARY_PATH=$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH
-pip install --user git+https://github.com/$ALIBUILD_REPO/alibuild${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
+pip install --user git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
 type aliBuild
 
-if [[ $ALIDIST_BRANCH =~ pull/ ]]; then
-  git clone https://github.com/$ALIDIST_REPO/alidist
+if [[ $ALIDIST_PRNUM ]]; then
+  ALIDIST_BRANCH=pull/${ALIDIST_PRNUM}/head
+  git clone https://github.com/${ALIDIST_REPO}
   pushd alidist
     ALIDIST_LOCAL_BRANCH=$(echo $ALIDIST_BRANCH|sed -e 's|/|_|g')
     git fetch origin $ALIDIST_BRANCH:$ALIDIST_LOCAL_BRANCH
     git checkout $ALIDIST_LOCAL_BRANCH
   popd
 else
-  git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO/alidist
+  git clone ${ALIDIST_BRANCH:+-b $ALIDIST_BRANCH} https://github.com/${ALIDIST_REPO}
 fi
 
 CURRENT_SLAVE=unknown
