@@ -70,11 +70,13 @@ alibuild/aliBuild --reference-sources $MIRROR \
                   --defaults $DEFAULTS        \
                   init AliRoot
 
+FETCH_REPOS="$(alibuild/aliBuild build --help | grep fetch-repos || true)"
 alibuild/aliBuild --reference-sources $MIRROR          \
                   --debug                              \
                   --work-dir $WORKAREA/$WORKAREA_INDEX \
                   --architecture $ARCHITECTURE         \
                   --jobs ${JOBS:-8}                    \
+                  ${FETCH_REPOS:+--fetch-repos}        \
                   --remote-store $REMOTE_STORE::rw     \
                   --defaults $DEFAULTS                 \
                   build AliRoot || BUILDERR=$?

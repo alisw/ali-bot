@@ -94,9 +94,11 @@ RWOPT='::rw'
 [[ "$PUBLISH_BUILDS" == "false" ]] && RWOPT=
 REMOTE_STORE="${REMOTE_STORE:-rsync://repo.marathon.mesos/store/}$RWOPT"
 [[ "$USE_REMOTE_STORE" == "false" ]] && REMOTE_STORE=
+FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
 aliBuild --reference-sources $MIRROR                    \
          --debug                                        \
          --work-dir $WORKAREA/$WORKAREA_INDEX           \
+         ${FETCH_REPOS:+--fetch-repos}                  \
          --architecture $ARCHITECTURE                   \
          --jobs 16                                      \
          ${REMOTE_STORE:+--remote-store $REMOTE_STORE}  \
