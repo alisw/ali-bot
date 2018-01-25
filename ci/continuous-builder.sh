@@ -196,7 +196,7 @@ while true; do
         if ! [[ $pr_number =~ $re ]] ; then
           unset pr_number
         fi
-        $TIMEOUT_CMD bash <(curl --max-time 600 -s https://codecov.io/bash) -y .codecov.yml \
+        $TIMEOUT_CMD bash <(curl --max-time 600 -s https://codecov.io/bash)                 \
                                                 -R $COVERAGE_SOURCES                        \
                                                 -f coverage.info                            \
                                                 -C ${COVERAGE_COMMIT_HASH}                  \
