@@ -177,7 +177,7 @@ def handle_branch(cgh, pr, logs, args):
         if issueTitle.startswith("Error while checking branch %s@%s" % (pr.id, sha)):
             print("Issue is about something different. Updating.", file=sys.stderr)
 
-            newBody = "Error for commit %s has changed.\n" % (sha + message)
+            newBody = "Error for commit %s has changed.\n%s" % (sha, message)
             cgh.post(
                 "/repos/{repo_name}/issues/{number}/comments",
                 {"body": newBody},
