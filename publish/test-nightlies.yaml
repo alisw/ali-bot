@@ -10,6 +10,11 @@ slc5_x86-64:
     v20161001-1 : False
   FONLL:
     v1.3.3-alice1-1: True
+  AliDPG:
+    v5-09-XX-34: False
+    v5-09-XX-35: True
+    v5-09-XX-35-1: True
+    v5-09-XX-36-rc1: True
 
 slc6_x86-64:
   GCC-Toolchain:
