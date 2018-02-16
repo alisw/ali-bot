@@ -26,6 +26,7 @@ MIRROR=${MIRROR:-/build/mirror}
 PACKAGE=${PACKAGE:-AliPhysics}
 TIMEOUT_CMD="$TIMEOUT_EXEC -s9 ${TIMEOUT:-600}"
 LONG_TIMEOUT_CMD="$TIMEOUT_EXEC -s9 ${LONG_TIMEOUT:-36000}"
+LAST_PR=
 
 # If INFLUXDB_WRITE_URL starts with insecure_https://, then strip "insecure" and
 # set the proper option to curl
@@ -65,7 +66,7 @@ function report_state() {
     PRTIME=
     [[ $CURRENT_STATE == pr_processing ]] && TIME_PR_STARTED=$TIME_NOW
     [[ $CURRENT_STATE == pr_processing_done ]] && PRTIME=",prtime=$((TIME_NOW-TIME_PR_STARTED))"
-    DATA="prcheck,checkname=$CHECK_NAME/$WORKER_INDEX host=\"$(hostname -s)\",state=\"$CURRENT_STATE\",cihash=\"$CI_HASH\",uptime=$((TIME_NOW-TIME_STARTED))$PRTIME $TIME_NOW_NS"
+    DATA="prcheck,checkname=$CHECK_NAME/$WORKER_INDEX host=\"$(hostname -s)\",state=\"$CURRENT_STATE\",cihash=\"$CI_HASH\",uptime=$((TIME_NOW-TIME_STARTED))${PRTIME}${LAST_PR:+,prnum=$LAST_PR}${LAST_PR_OK:+,prok=$LAST_PR_OK} $TIME_NOW_NS"
     curl $INFLUX_INSECURE --max-time 20 -XPOST "$INFLUXDB_WRITE_URL" --data-binary "$DATA" || true
   fi
 }
@@ -95,11 +96,13 @@ while true; do
   fi
 
   for pr_id in $HASHES; do
-    report_state pr_processing
     DOCTOR_ERROR=""
     BUILD_ERROR=""
     pr_number=${pr_id%@*}
     pr_hash=${pr_id#*@}
+    LAST_PR=$pr_number
+    LAST_PR_OK=
+    report_state pr_processing
     if [[ "$PR_REPO" != "" ]]; then
       pushd ${PR_REPO_CHECKOUT:-$(basename $PR_REPO)}
         CANNOT_MERGE=0
@@ -171,7 +174,7 @@ while true; do
                       ${DEBUG:+--debug}                                                   \
                       build $PACKAGE || BUILD_ERROR=$?
     if [[ $BUILD_ERROR != '' ]]; then
-      # We do not want to kill the system is github is not working
+      # We do not want to kill the system if GitHub is not working
       # so we ignore the result code for now
       $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX \
                                     --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $CHECK_NAME || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on build error"
@@ -180,6 +183,7 @@ while true; do
       # so we ignore the result code for now
       $TIMEOUT_CMD set-github-status -c ${STATUS_REF} -s $CHECK_NAME/success || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on build success"
     fi
+    [[ $BUILD_ERROR ]] && LAST_PR_OK=0 || LAST_PR_OK=1  # 1:errored; 0:ok
 
     # Look for any code coverage file for the given commit and push
     # it to codecov.io
