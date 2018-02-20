@@ -66,7 +66,7 @@ function report_state() {
     PRTIME=
     [[ $CURRENT_STATE == pr_processing ]] && TIME_PR_STARTED=$TIME_NOW
     [[ $CURRENT_STATE == pr_processing_done ]] && PRTIME=",prtime=$((TIME_NOW-TIME_PR_STARTED))"
-    DATA="prcheck,checkname=$CHECK_NAME/$WORKER_INDEX host=\"$(hostname -s)\",state=\"$CURRENT_STATE\",cihash=\"$CI_HASH\",uptime=$((TIME_NOW-TIME_STARTED))${PRTIME}${LAST_PR:+,prnum=$LAST_PR}${LAST_PR_OK:+,prok=$LAST_PR_OK} $TIME_NOW_NS"
+    DATA="prcheck,checkname=$CHECK_NAME/$WORKER_INDEX host=\"$(hostname -s)\",state=\"$CURRENT_STATE\",cihash=\"$CI_HASH\",uptime=$((TIME_NOW-TIME_STARTED))${PRTIME}${LAST_PR:+,prid=\"$LAST_PR\"}${LAST_PR_OK:+,prok=$LAST_PR_OK} $TIME_NOW_NS"
     curl $INFLUX_INSECURE --max-time 20 -XPOST "$INFLUXDB_WRITE_URL" --data-binary "$DATA" || true
   fi
 }
