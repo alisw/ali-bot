@@ -101,6 +101,7 @@ while true; do
     pr_number=${pr_id%@*}
     pr_hash=${pr_id#*@}
     LAST_PR=$pr_number
+    [[ $LAST_PR =~ ^[0-9]$ ]] || LAST_PR=  # only send actual PR IDs, not branch names
     LAST_PR_OK=
     report_state pr_processing
     if [[ "$PR_REPO" != "" ]]; then
