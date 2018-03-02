@@ -183,7 +183,7 @@ while true; do
       # so we ignore the result code for now
       $TIMEOUT_CMD set-github-status -c ${STATUS_REF} -s $CHECK_NAME/success || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on build success"
     fi
-    [[ $BUILD_ERROR ]] && LAST_PR_OK=0 || LAST_PR_OK=1  # 1:errored; 0:ok
+    [[ $BUILD_ERROR ]] && LAST_PR_OK=0 || LAST_PR_OK=1
 
     # Look for any code coverage file for the given commit and push
     # it to codecov.io

@@ -51,6 +51,10 @@ export DELAY=20
 export DEBUG=true
 export MIRROR=/build/mirror
 
+# Disable aliBuild analytics prompt
+mkdir -p $HOME/.config/alibuild
+touch $HOME/.config/alibuild/disable-analytics
+
 [[ `uname` == Darwin ]] && OS=macos || OS=linux
 export CI_NAME=$(echo $PR_REPO_CHECKOUT|tr '[[:upper:]]' '[[:lower:]]')_checker_${OS}_${ALIBUILD_DEFAULTS}_ci
 
@@ -60,20 +64,38 @@ CI_WORK_DIR=/build/ci_checks/${CI_NAME}_${WORKER_INDEX}
 export PYTHONUSERBASE="$CI_WORK_DIR/python_local"
 export PATH="$PYTHONUSERBASE/bin:$PATH"
 mkdir -p "$CI_WORK_DIR" "$PYTHONUSERBASE"
+
+# We need a workaround to install ali-bot on Python 2.6
+python -c 'import platform;print(platform.python_version())' | grep -qE '^2\.6' \
+  && { pip install --upgrade --user setuptools==22.0.2 importlib==1.0.4 || exit 1; } \
+  || true
 pip install --user -e "$ALIBOT"
+
+# aliBuild repository slug: <group>/<repo>[@<branch>]
+ALIBUILD_SLUG=${ALIBUILD_SLUG:-alisw/alibuild}
+ALIBUILD_REPO=${ALIBUILD_SLUG%%@*}
+ALIBUILD_BRANCH=${ALIBUILD_SLUG#*@}
+[[ $ALIBUILD_REPO == $ALIBUILD_SLUG ]] && ALIBUILD_BRANCH= || true
+
 set -x
 cd "$CI_WORK_DIR"
 [[ -d alidist/.git ]]             || git clone https://github.com/alisw/alidist
-[[ -d alibuild/.git ]]            || git clone https://github.com/alisw/alibuild
+[[ -d alibuild/.git ]]            || git clone https://github.com/${ALIBUILD_REPO} ${ALIBUILD_BRANCH:+-b $ALIBUILD_BRANCH}
 [[ -d "$PR_REPO_CHECKOUT/.git" ]] || git clone "https://github.com/$PR_REPO" "$PR_REPO_CHECKOUT"
 
 if [[ $2 != --test* ]]; then
-  ( cd alidist;           git fetch --all; git checkout master;       git reset --hard origin/master; )
-  ( cd alibuild;          git fetch --all; git checkout master;       git reset --hard origin/master; )
+  ( cd alidist;           git fetch --all; git checkout master; git reset --hard origin/master; )
+  ( cd alibuild;          git remote set-url origin https://github.com/${ALIBUILD_REPO}; git fetch --all; [[ $ALIBUILD_BRANCH ]] && { git checkout $ALIBUILD_BRANCH; git reset --hard origin/$ALIBUILD_BRANCH; } || true; )
   ( cd $PR_REPO_CHECKOUT; git fetch --all; git checkout "$PR_BRANCH"; git reset --hard "origin/$PR_BRANCH"; )
 else
   echo "Test mode: will not update repositories" >&2
 fi
+
+# Setup Git user under checked out repository
+pushd $PR_REPO_CHECKOUT
+  git config user.name alibuild
+  git config user.email alibuild@cern.ch
+popd
 
 case "$2" in
 
