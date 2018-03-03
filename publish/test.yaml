@@ -5,6 +5,7 @@ slc5_x86-64:
     v1.0-1                 : False
   AliGenerators:
     v20160829-1            : True
+    v20180203_PWGMMTEST-1  : False
   AliDPG:
     v5-08-XX-12            : True
     v5-08-XX-Titan-2       : True
@@ -219,8 +220,6 @@ slc5_x86-64:
     vAN-20170722-1 : False
     v5-09-15-01-1 : False
     v5-09-16-01-1 : True
-  GCC-Toolchain:
-    v6.2.0-alice1-1 : False
 
 slc6_x86-64:
   cctools:
@@ -230,14 +229,14 @@ slc6_x86-64:
   GCC-Toolchain:
     v4.9.3-alice2-1        : False
     v4.9.3-alice3-1        : True
-    v6.2.0-alice1-1        : True
-    v6.2.0-alice1-4        : False
+  AliGenerators:
+    v20180203-1            : True
+    v20180203_PWGMMTEST-1  : False
 
 slc7_x86-64:
   GCC-Toolchain:
     v4.9.3-2               : False
     v4.9.3-alice3-1        : True
-    v6.2.0-alice1-1        : True
 
 ubt14_x86-64:
   GCC-Toolchain:

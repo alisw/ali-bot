@@ -25,6 +25,9 @@ slc6_x86-64:
   O2:
     nightly-20171130-1     : False
     nightly-20171201-1     : False
+  AliGenerators:
+    v20180101-1            : False
+    v20180203_PWGMMTEST-1  : True
 
 slc7_x86-64:
   GCC-Toolchain:
