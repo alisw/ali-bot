@@ -76,6 +76,9 @@ report_state started
 while true; do
   report_state looping
 
+  # Run preliminary cleanup command
+  alibuild/aliBuild clean ${DEBUG:+--debug}
+
   # Update all Git repositories (except ali-bot)
   for d in $(find . -maxdepth 2 -name .git -exec dirname {} \; | grep -v ali-bot); do
     pushd $d
@@ -191,6 +194,9 @@ while true; do
       $TIMEOUT_CMD set-github-status -c ${STATUS_REF} -s $CHECK_NAME/success || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on build success"
     fi
     [[ $BUILD_ERROR ]] && LAST_PR_OK=0 || LAST_PR_OK=1
+
+    # Run post-build cleanup command
+    alibuild/aliBuild clean ${DEBUG:+--debug}
 
     # Look for any code coverage file for the given commit and push
     # it to codecov.io
