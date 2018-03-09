@@ -90,7 +90,14 @@ while true; do
   done
 
   if [[ "$PR_REPO" != "" ]]; then
-    HASHES=`$TIMEOUT_CMD list-branch-pr --show-main-branch --check-name $CHECK_NAME ${TRUST_COLLABORATORS:+--trust-collaborators} ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} ${DELAY:+--max-wait $DELAY} || $TIMEOUT_CMD report-analytics exception --desc "list-branch-pr failed"`
+    HASHES=$(cat force-hashes 2> /dev/null || true)
+    if [[ ! $HASHES ]]; then
+      HASHES=`$TIMEOUT_CMD list-branch-pr --show-main-branch --check-name $CHECK_NAME ${TRUST_COLLABORATORS:+--trust-collaborators} ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} ${DELAY:+--max-wait $DELAY} || $TIMEOUT_CMD report-analytics exception --desc "list-branch-pr failed"`
+    else
+      echo "Note: using hashes from $PWD/force-hashes, here is the list:"
+      cat $PWD/force-hashes
+      echo
+    fi
   else
     HASHES="0@0"
   fi
