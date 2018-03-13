@@ -232,6 +232,9 @@ slc6_x86-64:
   AliGenerators:
     v20180203-1            : True
     v20180203_PWGMMTEST-1  : False
+  AliPhysics:
+    v5-09-24-01_ROOT6-1    : True
+    v5-09-22-01_ROOT6-1    : False
 
 slc7_x86-64:
   GCC-Toolchain:
