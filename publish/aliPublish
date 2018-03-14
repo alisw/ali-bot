@@ -740,7 +740,16 @@ def main():
                       help="Write PID to this file and do not run if already running")
   parser.add_argument("--cache-deps-dir", dest="cacheDepsDir", default=None,
                       help="Directory where to cache package dependencies (optional)")
+  parser.add_argument("--override", dest="override", nargs="+",
+                      help="Override configuration options in JSON format")
   args = parser.parse_args()
+
+  overrideConf = {}
+  try:
+    for o in args.override if args.override else {}:
+      overrideConf.update(json.loads(o))
+  except:
+    parser.error("Malformed JSON in --override")
 
   logger = logging.getLogger()
   loggerHandler = logging.StreamHandler()
@@ -763,6 +772,10 @@ def main():
   except (IOError, YAMLError) as e:
     error(format("While reading %(configFile)s: " + str(e), configFile=args.configFile))
     sys.exit(1)
+
+  if overrideConf:
+    debug("Overriding configuration: " + json.dumps(overrideConf, indent=2))
+    conf.update(overrideConf)
 
   if conf is None: conf = {}
   if conf.get("include", None) is None: conf["include"] = {}
