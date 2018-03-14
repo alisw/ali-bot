@@ -344,6 +344,29 @@ do
        [ x$ALIENV_DEBUG == x1 ] && test_toolchain
        shift 1
        ;;
+     checkenv)
+       shift 1
+       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'`
+       Eval $moduleenv $modulecmd bash load $args || exit 1
+       load_alien_if_missing || exit 1
+       PREV_PKG=
+       PREV_VER=
+       PKG_ERR=
+       while read LMF; do
+         VER=${LMF##*/}
+         PKG=${LMF%/*}
+         PKG=${PKG##*/}
+         if [[ $PKG == $PREV_PKG && $VER != $PREV_VER ]]; then
+           printf "ERROR: attempting to load $PKG $VER when conflicting version $PREV_VER already loaded\n" >&2
+           PKG_ERR=1
+         fi
+         PREV_PKG=$PKG
+         PREV_VER=$VER
+       done < <(echo $_LMFILES_ | sed -e 's/:/\n/g' | sort)
+       [[ $PKG_ERR ]] && exit 1
+       [[ $ALIENV_DEBUG == 1 ]] && printf "NOTICE: all packages loaded successfully\n" >&2
+       exit 0
+       ;;
      printenv)
        shift 1
        if [ x$1 = x ]
