@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 if [[ -x /home/monalisa/bin/alien ]]; then
   export PATH="/home/monalisa/bin:$PATH"
   CMD=sync-alien
-  OVERRIDE='{"auto_include_deps":false, "notification_email":{}}'
+  OVERRIDE='{"notification_email":{}}'
 elif [[ -d /lustre/atlas/proj-shared/csc108 && -d /lustre/atlas/proj-shared/csc108 ]]; then
   # Titan needs some magic.
   source /usr/share/Modules/init/bash
