@@ -5,6 +5,7 @@ cd "$(dirname "$0")"
 if [[ -x /home/monalisa/bin/alien ]]; then
   export PATH="/home/monalisa/bin:$PATH"
   CMD=sync-alien
+  OVERRIDE='{"auto_include_deps":false, "notification_email":{}}'
 elif [[ -d /lustre/atlas/proj-shared/csc108 && -d /lustre/atlas/proj-shared/csc108 ]]; then
   # Titan needs some magic.
   source /usr/share/Modules/init/bash
@@ -56,12 +57,13 @@ CACHE=$PWD/cache
 mkdir -p $CACHE
 ( cd $DEST/publish
   echo "Running version $(git rev-parse HEAD)"
-  ./aliPublish --debug                        \
-               ${DRYRUN:+--dry-run}           \
-               ${NO_NOTIF:+--no-notification} \
-               ${CONF:+--config "$CONF"}      \
-               --cache-deps-dir $CACHE        \
-               --pidfile /tmp/aliPublish.pid  \
+  ./aliPublish --debug                             \
+               ${DRYRUN:+--dry-run}                \
+               ${NO_NOTIF:+--no-notification}      \
+               ${CONF:+--config "$CONF"}           \
+               ${OVERRIDE:+--override "$OVERRIDE"} \
+               --cache-deps-dir $CACHE             \
+               --pidfile /tmp/aliPublish.pid       \
                $CMD
   [[ $PUB_DATA != 1 ]] || ./publish-data.sh ) 2>&1 | tee -a $LOG.error || ERR=1
 [[ $ERR ]] && echo "Something went wrong" \
