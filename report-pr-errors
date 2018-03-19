@@ -6,6 +6,7 @@ import atexit
 from commands import getstatusoutput
 from glob import glob
 from os.path import dirname, join
+import re
 import os
 import sys
 
@@ -74,6 +75,7 @@ class Logs(object):
         self.work_dir = args.workDir
         self.develPrefix = args.develPrefix
         self.limit = args.limit
+        self.norm_status = re.sub('[^a-zA-Z0-9_-]', '_', args.status)
         self.full_log = self.constructFullLogName(args.pr)
         self.rsync_dest = args.logsDest
         self.url = join(args.logsUrl, self.full_log)
@@ -87,7 +89,7 @@ class Logs(object):
     def constructFullLogName(self, pr):
         # file to which we cat all the individual logs
         pr = parse_pr(pr)
-        return join(pr.repo_name, pr.id, pr.commit, "fullLog.txt")
+        return join(pr.repo_name, pr.id, pr.commit, self.norm_status, "fullLog.txt")
 
     def find(self):
         search_path = join(self.work_dir, "BUILD/*latest*/log")
