@@ -40,6 +40,9 @@ $DU -sb $TMPDU &> /dev/null || DU=gdu
 $DU -sb $TMPDU &> /dev/null || { echo "No suitable du/gdu found, aborting!"; exit 1; }
 rmdir $TMPDU
 
+# Last time `git gc` was run
+LAST_GIT_GC=0
+
 # This is the check name. If CHECK_NAME is in the environment, use it. Otherwise
 # default to, e.g., build/AliRoot/release (build/<Package>/<Defaults>)
 CHECK_NAME=${CHECK_NAME:=build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}}
@@ -79,11 +82,18 @@ while true; do
   # Run preliminary cleanup command
   alibuild/aliBuild clean ${DEBUG:+--debug}
 
-  # Update all Git repositories (except ali-bot)
+  # Update and cleanup all Git repositories (except ali-bot)
   for d in $(find . -maxdepth 2 -name .git -exec dirname {} \; | grep -v ali-bot); do
     pushd $d
       LOCAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
       if [[ $LOCAL_BRANCH != HEAD ]]; then
+        # Cleanup first (if more than 4h passed after last gc)
+        git update-ref -d refs/remotes/origin/pr/* || true
+        if [[ $(( $(date -u +%s) - $LAST_GIT_GC )) -gt 14400 ]]; then
+          git reflog expire --expire=now --all || true
+          git gc --prune=now || true
+          LAST_GIT_GC=$(date -u +%s)
+        fi
         # Try to reset to corresponding remote branch (assume it's origin/<branch>)
         $TIMEOUT_CMD git fetch origin
         git reset --hard origin/$LOCAL_BRANCH
