@@ -66,10 +66,12 @@ export PATH="$PYTHONUSERBASE/bin:$PATH"
 mkdir -p "$CI_WORK_DIR" "$PYTHONUSERBASE"
 
 # We need a workaround to install ali-bot on Python 2.6
-python -c 'import platform;print(platform.python_version())' | grep -qE '^2\.6' \
-  && { pip install --upgrade --user setuptools==22.0.2 importlib==1.0.4 || exit 1; } \
-  || true
-pip install --user -e "$ALIBOT"
+if [[ ! $RUN_CI ]]; then
+  python -c 'import platform;print(platform.python_version())' | grep -qE '^2\.6' \
+    && { pip install --upgrade --user setuptools==22.0.2 importlib==1.0.4 || exit 1; } \
+    || true
+  pip install --user -e "$ALIBOT"
+fi
 
 # aliBuild repository slug: <group>/<repo>[@<branch>]
 ALIBUILD_SLUG=${ALIBUILD_SLUG:-alisw/alibuild}
@@ -79,6 +81,16 @@ ALIBUILD_BRANCH=${ALIBUILD_SLUG#*@}
 
 set -x
 cd "$CI_WORK_DIR"
+
+if [[ $RUN_CI ]]; then
+  # Production command
+  while ! bash -ex "$ALIBOT"/ci/continuous-builder.sh; do
+    echo Something failed in the continuous builder script, restarting in 10 seconds...
+    sleep 10
+  done
+  exit 0
+fi
+
 [[ -d alidist/.git ]]             || git clone https://github.com/alisw/alidist
 [[ -d alibuild/.git ]]            || git clone https://github.com/${ALIBUILD_REPO} ${ALIBUILD_BRANCH:+-b $ALIBUILD_BRANCH}
 [[ -d "$PR_REPO_CHECKOUT/.git" ]] || git clone "https://github.com/$PR_REPO" "$PR_REPO_CHECKOUT"
@@ -86,7 +98,7 @@ cd "$CI_WORK_DIR"
 if [[ $2 != --test* ]]; then
   ( cd alidist;           git fetch --all; git checkout master; git reset --hard origin/master; )
   ( cd alibuild;          git remote set-url origin https://github.com/${ALIBUILD_REPO}; git fetch --all; [[ $ALIBUILD_BRANCH ]] && { git checkout $ALIBUILD_BRANCH; git reset --hard origin/$ALIBUILD_BRANCH; } || true; )
-  ( cd $PR_REPO_CHECKOUT; git fetch --all; git checkout "$PR_BRANCH"; git reset --hard "origin/$PR_BRANCH"; )
+  ( cd $PR_REPO_CHECKOUT; git fetch origin $PR_BRANCH; git checkout "$PR_BRANCH"; git reset --hard "origin/$PR_BRANCH"; )
 else
   echo "Test mode: will not update repositories" >&2
 fi
@@ -129,10 +141,5 @@ case "$2" in
 esac
 
 # Not in a screen? Switch to a screen!
+export RUN_CI=1
 [[ $STY ]] || exec screen -dmS ${CI_NAME}_${WORKER_INDEX} "$PROG" "$@"
-
-# Production command
-while ! bash -ex "$ALIBOT"/ci/continuous-builder.sh; do
-  echo Something failed in the continuous builder script, restarting in 10 seconds...
-  sleep 10
-done
