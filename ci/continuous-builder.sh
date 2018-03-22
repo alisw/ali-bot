@@ -95,7 +95,7 @@ while true; do
           LAST_GIT_GC=$(date -u +%s)
         fi
         # Try to reset to corresponding remote branch (assume it's origin/<branch>)
-        $TIMEOUT_CMD git fetch origin
+        $TIMEOUT_CMD git fetch origin $PR_BRANCH
         git reset --hard origin/$LOCAL_BRANCH
         git clean -fxd
       fi
@@ -127,7 +127,8 @@ while true; do
       pushd ${PR_REPO_CHECKOUT:-$(basename $PR_REPO)}
         CANNOT_MERGE=0
         git config --add remote.origin.fetch "+refs/pull/*/head:refs/remotes/origin/pr/*"
-        $TIMEOUT_CMD git fetch origin
+        $TIMEOUT_CMD git fetch origin $PR_BRANCH
+        [[ $pr_number =~ ^[0-9]*$ ]] && $TIMEOUT_CMD git fetch origin pull/$pr_number/head
         git reset --hard origin/$PR_BRANCH  # reset to branch target of PRs
         git clean -fxd
         OLD_SIZE=`$DU --exclude=.git -sb . | awk '{print $1}'`
