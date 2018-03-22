@@ -27,6 +27,7 @@ PACKAGE=${PACKAGE:-AliPhysics}
 TIMEOUT_CMD="$TIMEOUT_EXEC -s9 ${TIMEOUT:-600}"
 LONG_TIMEOUT_CMD="$TIMEOUT_EXEC -s9 ${LONG_TIMEOUT:-36000}"
 LAST_PR=
+PR_REPO_CHECKOUT=${PR_REPO_CHECKOUT:-$(basename "$PR_REPO")}
 
 # If INFLUXDB_WRITE_URL starts with insecure_https://, then strip "insecure" and
 # set the proper option to curl
@@ -95,7 +96,7 @@ while true; do
           LAST_GIT_GC=$(date -u +%s)
         fi
         # Try to reset to corresponding remote branch (assume it's origin/<branch>)
-        $TIMEOUT_CMD git fetch origin $PR_BRANCH
+        $TIMEOUT_CMD git fetch origin $LOCAL_BRANCH
         git reset --hard origin/$LOCAL_BRANCH
         git clean -fxd
       fi
@@ -124,9 +125,10 @@ while true; do
     LAST_PR_OK=
     report_state pr_processing
     if [[ "$PR_REPO" != "" ]]; then
-      pushd ${PR_REPO_CHECKOUT:-$(basename $PR_REPO)}
+      pushd $PR_REPO_CHECKOUT
         CANNOT_MERGE=0
         git config --add remote.origin.fetch "+refs/pull/*/head:refs/remotes/origin/pr/*"
+        # Only fetch destination branch for PRs (for merging), and the PR we are checking now
         $TIMEOUT_CMD git fetch origin $PR_BRANCH
         [[ $pr_number =~ ^[0-9]*$ ]] && $TIMEOUT_CMD git fetch origin pull/$pr_number/head
         git reset --hard origin/$PR_BRANCH  # reset to branch target of PRs

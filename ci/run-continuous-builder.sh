@@ -96,9 +96,9 @@ fi
 [[ -d "$PR_REPO_CHECKOUT/.git" ]] || git clone "https://github.com/$PR_REPO" "$PR_REPO_CHECKOUT"
 
 if [[ $2 != --test* ]]; then
-  ( cd alidist;           git fetch --all; git checkout master; git reset --hard origin/master; )
+  ( cd alidist;           git fetch origin master; git checkout master; git reset --hard origin/master; )
   ( cd alibuild;          git remote set-url origin https://github.com/${ALIBUILD_REPO}; git fetch --all; [[ $ALIBUILD_BRANCH ]] && { git checkout $ALIBUILD_BRANCH; git reset --hard origin/$ALIBUILD_BRANCH; } || true; )
-  ( cd $PR_REPO_CHECKOUT; git fetch origin $PR_BRANCH; git checkout "$PR_BRANCH"; git reset --hard "origin/$PR_BRANCH"; )
+  ( cd $PR_REPO_CHECKOUT; git fetch origin "$PR_BRANCH"; git checkout "$PR_BRANCH"; git reset --hard "origin/$PR_BRANCH"; )
 else
   echo "Test mode: will not update repositories" >&2
 fi
