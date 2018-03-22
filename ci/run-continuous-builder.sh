@@ -140,6 +140,7 @@ case "$2" in
 
 esac
 
-# Not in a screen? Switch to a screen!
+# Not in a screen? Switch to a screen if appropriate!
 export RUN_CI=1
 [[ $STY ]] || exec screen -dmS ${CI_NAME}_${WORKER_INDEX} "$PROG" "$@"
+exec "$PROG" "$@"
