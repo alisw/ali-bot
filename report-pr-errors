@@ -208,7 +208,7 @@ def handle_branch(cgh, pr, logs, args):
 
             data = {"state": "closed"}
             cgh.patch(
-                "/repos/{repo_name}/issues/{number}/comments",
+                "/repos/{repo_name}/issues/{number}",
                 data,
                 repo_name=pr.repo_name,
                 number=issue["number"]
