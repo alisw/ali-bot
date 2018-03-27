@@ -391,8 +391,7 @@ do
        ;;
      -c)
        shift 1
-       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'`
-       exec env PS1="[$args] \W > " bash -c "$*"
+       exec bash -c "$*"
        ;;
      -alien-version|--alien-version)
        shift 1
