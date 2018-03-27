@@ -37,6 +37,10 @@ pt "run alienv from a non-standard path (/tmp/alienv_symlink/bin) with relative 
 export PATH=/cvmfs/alice.cern.ch/bin:$PATH
 [[ `which alienv` == /cvmfs/alice.cern.ch/bin/alienv ]]
 
+pt "test package reordering"
+ALIENV_DEBUG=1 alienv setenv VO_ALICE@AliEn-Runtime::v2-19-le-21,VO_ALICE@ROOT::v5-34-30-alice7-2,VO_ALICE@AliPhysics::vAN-20170301-1 -c true 2>&1 | \
+  grep 'normalized to AliPhysics/vAN-20170301-1 ROOT/v5-34-30-alice7-2 AliEn-Runtime/v2-19-le-21'
+
 pt "test checkenv command with a successful combination"
 EC=0
 alienv checkenv AliPhysics/vAN-20170301-1,AliRoot/v5-08-22-1 || EC=$?
