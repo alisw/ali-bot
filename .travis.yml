@@ -1,5 +1,8 @@
 ---
 sudo: required
+cache:
+  directories:
+    - $HOME/cached
 script:
   - |
     git diff --name-only $TRAVIS_COMMIT_RANGE | grep -q ^riemann || return 0
@@ -29,6 +32,27 @@ script:
   - |
     git diff --name-only $TRAVIS_COMMIT_RANGE | grep -q ^cvmfs/ || return 0
     set -ex
+    # Install and configure an old bash
+    function get_bash() {
+      rm -rf $HOME/cached $HOME/scratch
+      mkdir -p $HOME/cached $HOME/scratch
+      pushd $HOME/scratch
+        wget -q https://ftp.gnu.org/gnu/bash/bash-3.2.48.tar.gz
+        tar xzf bash-3.2.48.tar.gz
+        pushd bash-3.2.48
+          ./configure --prefix=$HOME/cached
+          make -j4
+          make install
+        popd
+      popd
+    }
+    $HOME/cached/bin/bash --version || get_bash
+    # Patch alienv and make it use our own, old, bash
+    pushd cvmfs
+      sed -i.deleteme -e "1 s|^#!/bin/bash\(.*\)$|#!$HOME/cached/bin/bash\1|" alienv
+      rm -f *.deleteme
+      git diff
+    popd
     # Install and configure CVMFS
     wget -q https://ecsft.cern.ch/dist/cvmfs/cvmfs-release/cvmfs-release-latest_all.deb
     sudo dpkg -i cvmfs-release-latest_all.deb
