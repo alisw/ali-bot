@@ -150,8 +150,9 @@ then
 fi
 
 unset MODULESHOME
+export ALIEN_ORGANISATION=$(tr "[:lower:]" "[:upper:]" <<< "${ALIEN_ORGANISATION:=ALICE}")
 
-function modulepath {
+function modulepath() {
   local dir
   local colon
   local subdir
@@ -167,7 +168,7 @@ function modulepath {
   printf "\n"
 }
 
-function test_toolchain {
+function test_toolchain() {
   local TMPPREF=/tmp/alienv_helloworld
   cat > $TMPPREF.cpp <<EOF
 #include <iostream>
@@ -192,7 +193,7 @@ EOF
 
 # Old modulefiles were not loading AliEn automatically as a dependency. For
 # those packages we must do it manually.
-function load_alien_if_missing {
+function load_alien_if_missing() {
   echo $MODULEPATH | grep 'x86_64-2.6-gnu-4.1.2/Modules/modulefiles' -q || return 0  # load AliEn only on SLC5
   local REQ_ALIEN="ROOT GEANT3 GEANT4 AliRoot AliPhysics"
   if ! $moduleenv $modulecmd bash -t list 2>&1 | grep -q AliEn-Runtime; then
@@ -208,6 +209,36 @@ function load_alien_if_missing {
     done
   fi
   return 0
+}
+
+# Transform a comma-separated packages list from "ALICE format" to modulecmd
+# format, i.e.:
+#
+#   VO_ALICE@Package::v1.0.0 ==> Package/v1.0.0
+#
+# Returned list (on stdout) is also sorted: packages with a certain priority
+# are moved at the beginning of the list.
+function normalize_sort_packages() {
+  local PRIO ORIG NORM P J K
+  PRIO=( O2 AliPhysics AliRoot ROOT AliGenerators )
+  ORIG=( $(echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g') )
+  NORM=()
+  for P in "${PRIO[@]}"; do
+    for J in "${ORIG[@]}"; do
+      if [[ $J == $P/* ]]; then
+        # Remove $J from ${ORIG[@]}
+        ORIG=( $(for K in "${ORIG[@]}"; do
+          [[ $K == $J ]] && continue
+          echo $K
+        done) )
+        # Push to sorted
+        NORM+=("$J")
+      fi
+    done
+  done
+  NORM+=("${ORIG[@]}")
+  [[ $ALIENV_DEBUG == 1 ]] && printf "NOTICE: list of packages normalized to ${NORM[*]}\n" >&2
+  echo ${NORM[*]}
 }
 
 export PATH=$PATH:$path
@@ -237,11 +268,7 @@ fi
 
 tclsh <<EOF >/dev/null 2>&1
 EOF
-
-if [ $? -eq 0 ]
-then
-  moduleenv=""
-fi
+[[ $? == 0 ]] && moduleenv=
 
 command=""
 
@@ -253,8 +280,6 @@ else
 fi
 alien="AliEn"
 
-export ALIEN_ORGANISATION=$(tr "[:lower:]" "[:upper:]" <<< "${ALIEN_ORGANISATION:=ALICE}")
-
 # We cannot cross-pick pacakages among different platforms but we have to
 # pick all packages consistently from a certain platform tree. When listing
 # packages we show them all, when we load a package e define a priority list and
@@ -265,7 +290,7 @@ PACKAGES=
 EXPECT_PACKAGES=
 for ARG in "$@"; do
   if [[ $EXPECT_PACKAGES == 1 ]]; then
-    PACKAGES=`echo $ARG | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'`
+    PACKAGES=$(normalize_sort_packages "$ARG")
     break
   elif [[ "$ARG" == enter || "$ARG" == printenv || "$ARG" == setenv ]]; then
     EXPECT_PACKAGES=1
@@ -273,7 +298,7 @@ for ARG in "$@"; do
     EXPECT_PACKAGES=
   fi
 done
-if [[ x"$PACKAGES" != x ]]; then
+if [[ $PACKAGES ]]; then
   for P in $PLATFORM_PRIORITY; do
     [[ "${P:0:3}" == el5 ]] && P="$cvmfsdir/x86_64-2.6-gnu-4.1.2
                                   $cvmfsdir/x86_64-2.6-gnu-4.7.2
@@ -290,7 +315,7 @@ if [[ x"$PACKAGES" != x ]]; then
       # this is not the case then fallback on the next platform.
       echo $LOADED | grep -q $X || { OK=0; break; }
     done
-    [ x$OK == x1 ] && break || { [ x$ALIENV_DEBUG == x1 ] && printf "WARNING: cannot find packages with MODULEPATH set to $MODULEPATH\n"; }
+    [[ $OK == 1 ]] && break || { [[ $ALIENV_DEBUG == 1 ]] && printf "WARNING: cannot find packages with MODULEPATH set to $MODULEPATH\n"; }
   done
 else
   # PACKAGES is empty, meaning we are executing list operations. Use all paths
@@ -313,7 +338,7 @@ do
   case $1 in
      enter)
        shift 1
-       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'`
+       args=$(normalize_sort_packages "$1")
        before=`printenv`
        Eval $moduleenv $modulecmd bash load $args || exit 1
        load_alien_if_missing || exit 1
@@ -338,7 +363,7 @@ do
        ;;
      setenv)
        shift 1
-       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'`
+       args=$(normalize_sort_packages "$1")
        Eval $moduleenv $modulecmd bash load $args || exit 1
        load_alien_if_missing || exit 1
        [ x$ALIENV_DEBUG == x1 ] && test_toolchain
@@ -346,7 +371,7 @@ do
        ;;
      checkenv)
        shift 1
-       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'`
+       args=$(normalize_sort_packages "$1")
        Eval $moduleenv $modulecmd bash load $args || exit 1
        load_alien_if_missing || exit 1
        PREV_PKG=
@@ -373,7 +398,7 @@ do
        then
           echo $_LM_ENV
        fi
-       args=`echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g'`
+       args=$(normalize_sort_packages "$1")
        $moduleenv $modulecmd bash load $args \
          $(Eval $moduleenv $modulecmd bash load $args > /dev/null 2>&1 && \
            load_alien_if_missing --print-alien-package) || exit 1
