@@ -20,6 +20,9 @@ fi
 path=$(cd $(dirname $0) && pwd) # appended to PATH later on
 printvar=""
 
+# If using modulecmd from the system, and ver >= 4, this var enables 3.x compat mode
+export MODULES_USE_COMPAT_VERSION=1
+
 [ x$ALIENV_DEBUG == x1 ] && printf "cvmfsdir=$cvmfsdir\npath=$path\n" >&2
 
 Eval(){
@@ -109,8 +112,14 @@ case $distro_name in
               distro_xrelease=6.x
               ;;
            8.*|8)
-              distro_xrelease=6.x
+              # Required from system: apt install libx11-6 environment-modules
+              distro_xrelease=
               platform=ubuntu1404
+              ;;
+           9.*|9)
+              # Required from system: apt install libx11-6 environment-modules
+              distro_xrelease=
+              platform=ubuntu1604
               ;;
         esac
         ;;
@@ -126,8 +135,9 @@ case $distro_name in
               distro_xrelease=6.x
               platform=ubuntu1404
               ;;
-           16.*)
-              distro_xrelease=6.x
+           16.*|17.*|18.*)
+              # Required from system: apt install libx11-6 environment-modules
+              distro_xrelease=
               platform=ubuntu1604
               ;;
         esac
@@ -254,15 +264,19 @@ fi
 
 if [[ ! -f $modulecmd ]]; then
   # Fallback on system-installed
+  [[ $ALIENV_DEBUG == 1 ]] && printf "NOTICE: using modulecmd from the system\n" >&2
   modulecmd=modulecmd
   moduleenv=
 fi
 
 [[ $ALIENV_DEBUG == 1 ]] && printf "modulecmd=$modulecmd\nmoduleenv=$moduleenv\n" >&2
 
-$modulecmd > /dev/null 2>&1
+T=`mktemp`
+$moduleenv $modulecmd &> $T
 if [[ $? == 127 ]]; then
       echo "Unknown distribution release: $distro_name $distro_release"
+      [[ $ALIENV_DEBUG == 1 ]] && printf "ERROR: full error message is: `cat $T`\n" >&2
+      rm -f $T
       exit 1
 fi
 
@@ -432,18 +446,18 @@ do
        alien_environment=`echo $1 | sed -e 's%,%; %g'`
        eval $alien_environment
        alien_services=`echo $2 | sed -e 's%,% %g'`
-       Eval $modulecmd bash load $alien$alien_version || exit 1
+       Eval $moduleenv $modulecmd bash load $alien$alien_version || exit 1
        mkdir -p $HOME/.alien
        echo $alien_environment > $HOME/.alien/Environment
        echo "AliEnServices=$alien_services" > $HOME/.alien/etc/aliend/startup.conf
        exec  $ALIEN_ROOT/etc/rc.d/init.d/aliend start
        ;;
      q|query)
-       $modulecmd bash -t avail  2>&1 | grep -v : | awk -v org=$ALIEN_ORGANISATION -F/ '{printf("VO_%s@%s::%s\n",org,$1,$2)}'
+       $moduleenv $modulecmd bash -t avail  2>&1 | grep -v : | awk -v org=$ALIEN_ORGANISATION -F/ '{printf("VO_%s@%s::%s\n",org,$1,$2)}'
        exit $?
        ;;
      *)
-       $modulecmd bash $*
+       $moduleenv $modulecmd bash $*
        exit
      ;;
     esac
