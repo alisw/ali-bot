@@ -20,7 +20,7 @@ rm -rf alibuild/ alidist/
 git clone https://github.com/$ALIDIST_REPO alidist/
 if [[ $ALIDIST_BRANCH == *'<latest>'* ]]; then
   ALIDIST_BRANCH=${ALIDIST_BRANCH/<latest>/[0-9a-zA-Z_-]\+}
-  ALIDIST_BRANCH=$(cd alidist; git log --date-order --graph --tags --simplify-by-decoration --pretty=format:'%d' | grep -oE "$ALIDIST_BRANCH" | head -n1)
+  ALIDIST_BRANCH=$(cd alidist; git log --date-order --graph --tags --simplify-by-decoration --pretty=format:'%d' | sed -e 's/tag://g' | grep -oE "$ALIDIST_BRANCH" | head -n1)
   [[ $ALIDIST_BRANCH ]] || { echo "Cannot find latest tag matching expression!"; exit 1; }
 fi
 pushd alidist
