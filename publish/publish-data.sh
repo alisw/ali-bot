@@ -99,7 +99,7 @@ touch $DEST
 while read FILE; do
   mv -v $FILE ${FILE%*.no_access}
 done < <(find $DEST -name *.no_access)
-if diff --brief -r $SRC_YESTERDAY/ $DEST/ &> /dev/null; then
+if diff -x .cvmfscatalog --brief -r $SRC_YESTERDAY/ $DEST/ &> /dev/null; then
   # Nothing changed from yesterday: replace directory with a symlink.
   # If yesterday's source is already a symlink, resolve it first
   LINKDEST=$(readlink $SRC_YESTERDAY 2> /dev/null || true)
