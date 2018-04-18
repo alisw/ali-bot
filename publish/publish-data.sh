@@ -30,7 +30,7 @@ cvmfs_lazy_publish() {
 
 CVMFS_IN_TRANSACTION=
 export PATH=$HOME/opt/bin:$PATH
-cvmfs_server &> /dev/null || [[ $? != 127 ]]
+[[ $DRYRUN ]] || { cvmfs_server &> /dev/null || [[ $? != 127 ]]; }
 sshpass &> /dev/null || [[ $? != 127 ]]
 [[ -e $HOME/.eossynccreds ]]
 REPO=$(cvmfs_server info | grep 'Repository name' | cut -d: -f2 | xargs echo)
@@ -86,11 +86,26 @@ DEST=$DEST_PREFIX/$(TZ=Europe/Rome date +%Y/vAN-%Y%m%d)
 [[ $(TZ=Europe/Rome date +%_H%M) -lt 1600 && ! $FORCE ]] && { echo "Before 4pm, doing nothing"; exit 0; } || true
 cvmfs_lazy_transaction || dieabort
 mkdir -p $DEST && [[ -d $DEST ]] || dieabort
+SRC_YESTERDAY_SHORT=$( date -d @$(($(TZ=Europe/Rome date +%s) - 86400)) +%Y/vAN-%Y%m%d )
+SRC_YESTERDAY=$DEST_PREFIX/$SRC_YESTERDAY_SHORT
+if [[ -d $SRC_YESTERDAY ]]; then
+  # CVMFS's local disk is much faster than EOS, and OADB does not change frequently: we first rsync
+  # yesterday's dir into today's, and then we rsync (--delete) from EOS to today's dir
+  rsync -av --delete $SRC_YESTERDAY/ $DEST/ || dieabort
+fi
 rsync -av --delete --rsh="sshpass -p `cat $HOME/.eossynccreds|cut -d: -f2-` ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no -l `cat $HOME/.eossynccreds|cut -d: -f1`" $SRC/ $DEST/ || dieabort
 chmod -R u=rwX,g=rX,o=rX $DEST/
 touch $DEST
 while read FILE; do
   mv -v $FILE ${FILE%*.no_access}
 done < <(find $DEST -name *.no_access)
+if diff --brief -r $SRC_YESTERDAY/ $DEST/ &> /dev/null; then
+  # Nothing changed from yesterday: replace directory with a symlink.
+  # If yesterday's source is already a symlink, resolve it first
+  LINKDEST=$(readlink $SRC_YESTERDAY 2> /dev/null || true)
+  [[ $LINKDEST ]] || LINKDEST=../$SRC_YESTERDAY_SHORT
+  rm -rf $DEST  # no final slash!
+  ln -nfs $LINKDEST $DEST
+fi
 cvmfs_lazy_publish || dieabort
 echo "All OK"
