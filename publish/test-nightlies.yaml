@@ -41,6 +41,7 @@ slc7_x86-64:
     nightly-20171122-1     : False
     nightly-22171122-1     : False
     nightly-20171205-1     : True
+    nightly-20180425-1     : False
 
 ubt14_x86-64:
   GCC-Toolchain:
