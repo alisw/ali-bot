@@ -220,6 +220,11 @@ slc5_x86-64:
     vAN-20170722-1 : False
     v5-09-15-01-1 : False
     v5-09-16-01-1 : True
+  FLUKA_VMC:
+    2011.2c-vmc1-1: False
+    2011.2c-vmc1-2: False
+    2011.2c-vmc2-1: True
+    2011.2c-vmc3-1: True
 
 slc6_x86-64:
   cctools:
