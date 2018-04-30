@@ -71,12 +71,14 @@ def parse_args():
 
 
 class Logs(object):
-    def __init__(self, args):
+    def __init__(self, args, is_branch):
         self.work_dir = args.workDir
         self.develPrefix = args.develPrefix
         self.limit = args.limit
         self.norm_status = re.sub('[^a-zA-Z0-9_-]', '_', args.status)
         self.full_log = self.constructFullLogName(args.pr)
+        self.is_branch = is_branch
+        self.full_log_latest = self.constructFullLogName(args.pr, latest=True)
         self.rsync_dest = args.logsDest
         self.url = join(args.logsUrl, self.full_log)
 
@@ -84,12 +86,13 @@ class Logs(object):
         self.find()
         self.grep()
         self.cat(self.full_log)
+        if self.is_branch: self.cat(self.full_log_latest, no_delete=True)
         self.rsync(self.rsync_dest)
 
-    def constructFullLogName(self, pr):
+    def constructFullLogName(self, pr, latest=False):
         # file to which we cat all the individual logs
         pr = parse_pr(pr)
-        return join(pr.repo_name, pr.id, pr.commit, self.norm_status, "fullLog.txt")
+        return join(pr.repo_name, pr.id, "latest" if latest else pr.commit, self.norm_status, "fullLog.txt")
 
     def find(self):
         search_path = join(self.work_dir, "BUILD/*latest*/log")
@@ -123,8 +126,8 @@ class Logs(object):
         error_log.strip(" \n\t")
         self.error_log = error_log
 
-    def cat(self, tgtFile):
-        cmd = "rm -fr copy-logs && mkdir -p `dirname copy-logs/%s`" % tgtFile
+    def cat(self, tgtFile, no_delete=False):
+        cmd = "%s && mkdir -p `dirname copy-logs/%s`" % ("true" if no_delete else "rm -rf copy-logs", tgtFile)
         err, out = getstatusoutput(cmd)
         if err:
             print(out, file=sys.stderr)
@@ -157,78 +160,11 @@ def handle_branch(cgh, pr, logs, args):
         message += "```\n%s\n```\nFull log [here](%s).\n" % (to_unicode(logs.error_log), to_unicode(logs.url))
     messageSha = calculateMessageHash(message)
 
-    openIssues = cgh.get('/repos/{repo_name}/issues?state=open', repo_name=pr.repo_name)
-    for issue in openIssues:
-        # Look for open issues:
-        # - If we find one which was opened for the same
-        #   branch / sha / error message sha triplet, we consider
-        #   having already commented.
-        # - If we find one which was opened for the same branch / sha,
-        #   but with a different error message sha, we close it
-        #   (as we assume the error message is now different).
-        # - If we find one which was opened for a different branch / sha
-        #   pair, close it (as we assume it's now obsolete since the
-        #   branch points to something else).
-        # - If no issue was found for the given branch, create one
-        #   and add a comment about the failure.
-        issueTitle = issue["title"]
-        if issueTitle.startswith("Error while checking branch %s@%s:%s" % (pr.id, sha, messageSha)):
-            print("Issue still valid. Exiting.", file=sys.stderr)
-            sys.exit(0)
-
-        if issueTitle.startswith("Error while checking branch %s@%s" % (pr.id, sha)):
-            print("Issue is about something different. Updating.", file=sys.stderr)
-
-            newBody = "Error for commit %s has changed.\n%s" % (sha, message)
-            cgh.post(
-                "/repos/{repo_name}/issues/{number}/comments",
-                {"body": newBody},
-                repo_name=pr.repo_name,
-                number=issue["number"]
-            )
-
-            newTitle = "Error while checking branch "
-            newTitle += "%s@%s:%s" % (pr.id, sha, messageSha)
-            cgh.patch(
-                "/repos/{repo_name}/issues/{number}/comments",
-                {"title": newTitle},
-                repo_name=pr.repo_name,
-                number=issue["number"]
-            )
-            sys.exit(0)
-
-        if issueTitle.startswith("Error while checking branch %s@" % pr.id):
-            data = {"body": "Branch was updated. Closing issue."}
-            cgh.post(
-                "/repos/{repo_name}/issues/{number}/comments",
-                data,
-                repo_name=pr.repo_name,
-                number=issue["number"]
-            )
-
-            data = {"state": "closed"}
-            cgh.patch(
-                "/repos/{repo_name}/issues/{number}",
-                data,
-                repo_name=pr.repo_name,
-                number=issue["number"]
-            )
-
-            continue
-
-    # The first time we report an issue with a commit, we do so as issue body.
-    # Subsequent changes will be reported as comments.
     ns = Namespace(commit=args.pr,
                    status=args.status + "/error",
                    message="",
                    url="")
     setGithubStatus(cgh, ns)
-
-    data = {
-        "body": message,
-        "title": "Error while checking branch %s@%s:%s" % (pr.id, sha, messageSha)
-    }
-    cgh.post("/repos/{repo_name}/issues", data, repo_name=pr.repo_name)
     sys.exit(0)
 
 
@@ -291,11 +227,10 @@ def parse_pr(pr):
 
 def main():
     args = parse_args()
-    logs = Logs(args)
+    pr = parse_pr(args.pr)
+    logs = Logs(args, is_branch=not pr.id.isdigit())
     if not args.message:
         logs.parse()
-
-    pr = parse_pr(args.pr)
 
     cache = PickledCache('.cached-commits')
     with GithubCachedClient(token=github_token(), cache=cache) as cgh:

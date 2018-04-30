@@ -75,6 +75,28 @@ function report_state() {
   fi
 }
 
+function badge() {
+  [[ $(( $pr_number + 0 )) == $pr_number ]] && return || true
+  local DEST_DIR=copy-badge/${PR_REPO}/${PR_BRANCH}
+  local DEST_FILE=$DEST_DIR/"${CHECK_NAME//\//_}".svg
+  local STATE_SUFFIX
+  [[ $1 == passing ]] && STATE_SUFFIX='passing-brightgreen' || STATE_SUFFIX='failing-red'
+  mkdir -p $DEST_DIR
+  curl -L -o $DEST_FILE https://img.shields.io/badge/${CHECK_NAME//\//%2F}%20${PR_BRANCH//\//%2F}-${STATE_SUFFIX}.svg || true
+  rsync -a copy-badge/ rsync://repo.marathon.mesos/store/buildstatus/ || true
+  rm -rf copy-badge
+}
+
+function emptylog() {
+  [[ $(( $pr_number + 0 )) == $pr_number ]] && return || true
+  local DEST_DIR="copy-emptylog/${PR_REPO}/${PR_BRANCH}/latest/${CHECK_NAME//\//_}"
+  local DEST_FILE=$DEST_DIR/fullLog.txt
+  mkdir -p $DEST_DIR
+  echo "Build of the ${PR_BRANCH} branch of ${PR_REPO} successful at $(LANG=C TZ=Europe/Rome date)" > "$DEST_FILE"
+  rsync -a copy-emptylog/ rsync://repo.marathon.mesos/store/logs/ || true
+  rm -rf copy-emptylog
+}
+
 report_state started
 
 while true; do
@@ -199,11 +221,14 @@ while true; do
     if [[ $BUILD_ERROR != '' ]]; then
       # We do not want to kill the system if GitHub is not working
       # so we ignore the result code for now
+      badge failing
       $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX \
                                     --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $CHECK_NAME || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on build error"
     else
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
+      badge passing
+      emptylog
       $TIMEOUT_CMD set-github-status -c ${STATUS_REF} -s $CHECK_NAME/success || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on build success"
     fi
     [[ $BUILD_ERROR ]] && LAST_PR_OK=0 || LAST_PR_OK=1
