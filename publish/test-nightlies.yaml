@@ -18,6 +18,7 @@ slc5_x86-64:
     v5-09-XX-35: True
     v5-09-XX-35-1: True
     v5-09-XX-36-rc1: True
+    rc20180521-1: True
 
 slc6_x86-64:
   GCC-Toolchain:
