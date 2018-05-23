@@ -5,6 +5,7 @@ slc5_x86-64:
     v5-08-18-01-rc2-1: True
     v5-08-18-01_ROOT6-1: True
     v5-09-02-01-rc1-1: True
+    rc20180521-1: True
   AliGenerators:
     v20170331_STAGING_PWGMM-1: False
     v20161001-1 : False
