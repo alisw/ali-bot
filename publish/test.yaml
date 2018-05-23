@@ -13,6 +13,7 @@ slc5_x86-64:
     v5-09-XX-1             : True
     rc20180521-1           : False
   AliPhysics:
+    rc20180521-1           : False
     vAN-20151110-1         : False
     vAN-20151201-1         : False
     vAN-20151201-2         : False
