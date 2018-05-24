@@ -5,7 +5,8 @@ slc5_x86-64:
     v5-08-18-01-rc2-1: True
     v5-08-18-01_ROOT6-1: True
     v5-09-02-01-rc1-1: True
-    rc20180521-1: True
+    rc20180521-1: False
+    v9-99-99-01-rc20180524-1: True
   AliGenerators:
     v20170331_STAGING_PWGMM-1: False
     v20161001-1 : False
@@ -19,7 +20,8 @@ slc5_x86-64:
     v5-09-XX-35: True
     v5-09-XX-35-1: True
     v5-09-XX-36-rc1: True
-    rc20180521-1: True
+    rc20180521-1: False
+    v9-99-XX-rc20180524-1: True
 
 slc6_x86-64:
   GCC-Toolchain:
