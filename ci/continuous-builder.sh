@@ -223,6 +223,7 @@ while true; do
       # so we ignore the result code for now
       badge failing
       $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX \
+                                    ${DONT_USE_COMMENTS:+--no-comments} \
                                     --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $CHECK_NAME || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on build error"
     else
       # We do not want to kill the system is github is not working

@@ -30,6 +30,12 @@ def parse_args():
                         help=("Pull request which was checked in "
                               "<org>/<project>#<nr>@ref format"))
 
+    parser.add_argument("--no-comments",
+                        action="store_true",
+                        dest="noComments",
+                        default=False,
+                        help="Use Details button, do not post a comment")
+
     parser.add_argument("--status", "-s",
                         required=True,
                         help="Check which had the error")
@@ -180,12 +186,19 @@ def handle_pr_id(cgh, pr, logs, args):
     else:
         message += "```\n%s\n```\nFull log [here](%s).\n" % (to_unicode(logs.error_log), to_unicode(logs.url))
 
-
     if args.dry_run:
         # commit does not exist...
         print("Will annotate %s" % commit)
         print(message)
         sys.exit(0)
+
+    # Set status
+    ns = Namespace(commit=args.pr, status=args.status + "/error", message="", url=logs.url)
+    setGithubStatus(cgh, ns)
+
+    # Comment if appropriate
+    if args.noComments:
+        return
 
     prIssueComments = cgh.get("/repos/{repo_name}/issues/{pr_id}/comments",
                               repo_name=pr.repo_name,
@@ -207,8 +220,6 @@ def handle_pr_id(cgh, pr, logs, args):
             print("Found same comment for the same commit", file=sys.stderr)
             sys.exit(0)
 
-    ns = Namespace(commit=args.pr, status=args.status + "/error", message="", url="")
-    setGithubStatus(cgh, ns)
 
     cgh.post(
         "repos/{repo_name}/issues/{pr_id}/comments",
