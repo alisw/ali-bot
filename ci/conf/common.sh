@@ -17,3 +17,6 @@ PR_BRANCH=master
 
 # What is the default to use
 ALIBUILD_DEFAULTS=o2
+
+# Do not use comments in PRs (use Details instead)
+DONT_USE_COMMENTS=1

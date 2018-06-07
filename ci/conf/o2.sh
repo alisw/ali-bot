@@ -20,3 +20,6 @@ TRUSTED_USERS=
 
 # Start PR if author has already contributed to the PR
 TRUST_COLLABORATORS=true
+
+# Do not use comments in PRs (use Details instead)
+DONT_USE_COMMENTS=1
