@@ -35,6 +35,8 @@ slc6_x86-64:
   AliGenerators:
     v20180101-1            : False
     v20180203_PWGMMTEST-1  : True
+  JAliEn:
+    0.0.0-1                : True
 
 slc7_x86-64:
   GCC-Toolchain:
