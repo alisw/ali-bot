@@ -54,7 +54,11 @@ script:
       git diff
     popd
     # Install and configure CVMFS
-    wget -q https://ecsft.cern.ch/dist/cvmfs/cvmfs-release/cvmfs-release-latest_all.deb
+    URL=https://ecsft.cern.ch/dist/cvmfs/cvmfs-release/cvmfs-release-latest_all.deb
+    wget -q $URL || ERR=$?
+    [[ $ERR == 5 ]] && wget --no-check-certificate -q $URL
+    unset ERR
+    unset URL
     sudo dpkg -i cvmfs-release-latest_all.deb
     rm -f cvmfs-release-latest_all.deb
     sudo apt-get update
