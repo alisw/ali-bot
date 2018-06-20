@@ -7,8 +7,23 @@ function pt() { printf "\n\033[35m*** TEST: $1 ***\033[m\n" >&2; }
 function pg() { printf "\033[32mSUCCESS:\033[m $1\n" >&2; }
 
 # Check if required conditions to run the test are met
-[[ -d .git ]] || { pe "you must run from the Git repository root"; }
-[[ $FATAL ]] && exit 1 || true
+[[ -d .git ]] || { pe "you must run from the Git repository root"; exit 1; }
+
+# We normally test `alienv` faked as being on CVMFS. For local tests we might
+# want to override it
+ALIENV="/cvmfs/alice.cern.ch/bin/alienv"     # Use CVMFS version on Travis
+[[ $TRAVIS ]] || ALIENV="$PWD/cvmfs/alienv"  # Use local version everywhere else
+pi "Testing alienv from $ALIENV"
+
+# Compute relative path for a test
+ALIENV_RELATIVE=
+ALIENV_DIRNAME=$ALIENV
+while [[ $ALIENV_DIRNAME != / ]]; do
+  ALIENV_DIRNAME=$(dirname "$ALIENV_DIRNAME")
+  ALIENV_RELATIVE="${ALIENV_RELATIVE}../"
+done
+ALIENV_RELATIVE=${ALIENV_RELATIVE:3}${ALIENV}
+unset ALIENV_DIRNAME
 
 # Define an "old" and "new" version of AliPhysics to check for. "new" has AliEn
 # as dependency, "old" does not
@@ -22,7 +37,7 @@ pi "Overriding platform to $ALIENV_OVERRIDE_PLATFORM"
 for NP in /tmp/alienv_bin /tmp/alienv_path/bin; do
   pt "run alienv from a non-standard path ($NP) with full symlink"
   ( mkdir -p $NP
-    ln -nfs /cvmfs/alice.cern.ch/bin/alienv $NP/alienv
+    ln -nfs "$ALIENV" $NP/alienv
     export PATH=$NP:$PATH
     ALIENV_DEBUG=1 alienv q | grep AliPhysics | tail -n1
   )
@@ -30,12 +45,12 @@ done
 
 pt "run alienv from a non-standard path (/tmp/alienv_symlink/bin) with relative symlink"
 ( mkdir -p /tmp/alienv_symlink/bin
-  ln -nfs ../../../cvmfs/alice.cern.ch/bin/alienv /tmp/alienv_symlink/bin/alienv
+  ln -nfs "$ALIENV_RELATIVE" /tmp/alienv_symlink/bin/alienv
   export PATH=/tmp/alienv_symlink/bin:$PATH
   ALIENV_DEBUG=1 alienv q | grep AliPhysics | tail -n1
 )
-export PATH=/cvmfs/alice.cern.ch/bin:$PATH
-[[ `which alienv` == /cvmfs/alice.cern.ch/bin/alienv ]]
+export PATH=$(dirname "$ALIENV"):$PATH
+[[ $(which alienv) == $ALIENV ]]
 
 pt "test package reordering"
 ALIENV_DEBUG=1 alienv setenv VO_ALICE@AliEn-Runtime::v2-19-le-21,VO_ALICE@ROOT::v5-34-30-alice7-2,VO_ALICE@AliPhysics::vAN-20170301-1 -c true 2>&1 | \
