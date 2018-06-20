@@ -306,7 +306,7 @@ for ARG in "$@"; do
   if [[ $EXPECT_PACKAGES == 1 ]]; then
     PACKAGES=$(normalize_sort_packages "$ARG")
     break
-  elif [[ "$ARG" == enter || "$ARG" == printenv || "$ARG" == setenv ]]; then
+  elif [[ "$ARG" == enter || "$ARG" == printenv || "$ARG" == setenv || "$ARG" == checkenv ]]; then
     EXPECT_PACKAGES=1
   else
     EXPECT_PACKAGES=
@@ -329,7 +329,7 @@ if [[ $PACKAGES ]]; then
       # this is not the case then fallback on the next platform.
       echo $LOADED | grep -q $X || { OK=0; break; }
     done
-    [[ $OK == 1 ]] && break || { [[ $ALIENV_DEBUG == 1 ]] && printf "WARNING: cannot find packages with MODULEPATH set to $MODULEPATH\n"; }
+    [[ $OK == 1 ]] && break || { [[ $ALIENV_DEBUG == 1 ]] && printf "NOTICE: cannot find packages with MODULEPATH=$MODULEPATH\n" >&2 ; }
   done
 else
   # PACKAGES is empty, meaning we are executing list operations. Use all paths
