@@ -53,6 +53,11 @@ EC=0
 grep -q 'conflicting version' log.txt || { pe "could not find expected output message"; rm -f log.txt; exit 1; }
 rm -f log.txt
 
+pt "test checkenv command with dependencies from multiple platforms"
+EC=0
+alienv checkenv AliGenerators/v20180424-1 || EC=$?
+[[ $EC == 0 ]] || { pe "expected 0, returned $EC"; exit 1; }
+
 pt "list AliPhysics packages"
 alienv q | grep AliPhysics | tail -n5
 function alienv_test() {
