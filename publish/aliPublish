@@ -721,7 +721,7 @@ def mesos_resolve(host, dns, jget):
 
 def main():
   parser = ArgumentParser()
-  parser.add_argument("action")
+  parser.add_argument("action", metavar="sync-cvmfs|sync-dir|sync-alien|sync-rpms|test-rules")
   parser.add_argument("--pkgname", dest="pkgName")
   parser.add_argument("--pkgver", dest="pkgVer")
   parser.add_argument("--pkgarch", dest="pkgArch")
@@ -957,17 +957,32 @@ def main():
     sys.exit(0 if r else 1)
   elif args.action == "test-rules":
     testRules = {}
-    if args.testConf:
+
+    if args.pkgName and args.pkgVer and args.pkgArch:
+      # Test rules using command-line arguments
+      if args.testConf:
+        parser.error("cannot specify at the same time a test file and --pkg* arguments")
+      testRules = { args.pkgArch: { args.pkgName: { args.pkgVer: True } } }
+
+    else:
+      # Test rules by reading them from a configuration file
+      if args.pkgName or args.pkgVer or args.pkgArch:
+        parser.error("not all required --pkg* arguments were specified")
+
+      # Do we need to use a default test file?
+      if not args.testConf:
+        m = search("^aliPublish(|.*)\.conf$", args.configFile)
+        if m:
+          args.testConf = "test%s.yaml" % m.group(1)
+          debug("Using %s as default configuration file for tests" % args.testConf)
+
       try:
         testRules = yaml.safe_load(open(args.testConf).read())
       except (IOError, YAMLError) as e:
         error("Cannot open rules to test: %s" % e)
         sys.exit(1)
-    if not testRules and not (args.pkgName and args.pkgVer and args.pkgArch):
-      error("No rules to test. Please specify a package name, version and architecture")
-      sys.exit(1)
-    if not testRules:
-      testRules = { args.pkgArch: { args.pkgName: { args.pkgVer: True } } }
+
+    # At this point we have everything in testRules, let's test them
     for arch in testRules:
       for pkg in testRules[arch]:
         for ver in testRules[arch][pkg]:
@@ -982,11 +997,11 @@ def main():
             error(msg + (match and " but it should not" or " but it should"))
             sys.exit(1)
           info(msg)
-    info("All rules tested with success")
+    info("All rules%s tested with success" % (" in "+args.testConf if args.testConf else ""))
     sys.exit(0)
+
   else:
-    error("Wrong action, use: sync-cvmfs, sync-dir, sync-alien, sync-rpms, test-rules")
-    sys.exit(1)
+    parser.error("wrong action, see --help")
 
 if __name__ == "__main__":
   main()
