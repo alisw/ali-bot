@@ -82,7 +82,14 @@ function badge() {
   local STATE_SUFFIX
   [[ $1 == passing ]] && STATE_SUFFIX='passing-brightgreen' || STATE_SUFFIX='failing-red'
   mkdir -p $DEST_DIR
-  curl -L -o $DEST_FILE https://img.shields.io/badge/${CHECK_NAME//\//%2F}%20${PR_BRANCH//\//%2F}-${STATE_SUFFIX}.svg || true
+  LEFTHAND_BADGE="$CHECK_NAME $PR_BRANCH"
+  LEFTHAND_BADGE=${LEFTHAND_BADGE//-/--}
+  LEFTHAND_BADGE=${LEFTHAND_BADGE//_/__}
+  LEFTHAND_BADGE=${LEFTHAND_BADGE// /_}
+  LEFTHAND_BADGE=${LEFTHAND_BADGE//\//%2F}
+  curl -L -o $DEST_FILE https://img.shields.io/badge/${LEFTHAND_BADGE}-${STATE_SUFFIX}.svg || true
+  #                                                  ^^^^^^^^^^^^^^^^^ ^^^^^^^^^^^^^^^
+  #                                                       lefthand      right - color
   rsync -a copy-badge/ rsync://repo.marathon.mesos/store/buildstatus/ || true
   rm -rf copy-badge
 }
