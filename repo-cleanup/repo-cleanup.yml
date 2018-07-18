@@ -1,0 +1,107 @@
+---
+# Configuration file for repo-cleanup.py.
+#
+# You decide what packages to keep/purge here, just copy the examples. Every
+# package mentioned here not matching any version rule is *kept* by default.
+#
+# All the other packages not mentioned here are considered non-toplevel and are
+# removed if no toplevel package needs them.
+#
+# Note that there are two rules possible for each version regexp:
+#   purgeOlderThan: [days|"never"]
+#     will purge if older than days, or never
+#   excludeFromPurge: ["firstOfMonth"|"lastOfMonth"]
+#     will group packages containing a date in the format YYYYMMDD in monthly
+#     groups and retain either the first one or the last of the month
+
+# General configuration
+repo_cleanup:
+ tarballs_prefix: /build/reports/repo/TARS
+
+# O2: remove all nightly builds of all flavours (e.g. release, _TEST, etc.)
+# older than 30 days. Do not keep any old build
+O2:
+  - ^nightly-[0-9]{8}-:
+      purgeOlderThan: 30
+
+# flpproto: remove all builds older than one year. TODO: verify whether we can
+# actually remove all flpproto packages
+flpproto:
+  - .*:
+      purgeOlderThan: 365
+
+# FONLL: this package has been requested once and never used much. Since it does
+# not take much space we just keep it. TODO: see if we can purge it
+FONLL:
+  - .*:
+      purgeOlderThan: never
+
+# AliGenerators: they are kept forever, except for special builds that are kept
+# for half a year. This has an impact on the dependencies since it has many!
+AliGenerators:
+  - ^v[0-9]{8}-[0-9]+$:
+      purgeOlderThan: never
+  - .*:
+      purgeOlderThan: 180
+
+# mesos-workqueue: used to create the workqueue-scheduler Docker container, see
+# github.com/alisw/docks. Never purge them! They are small in any case
+mesos-workqueue:
+  - .*:
+      purgeOlderThan: never
+
+# mesos: TODO: unclear whether we need it or not. Keep it for now
+mesos:
+  - .*:
+      purgeOlderThan: never
+
+# mesos-agent: TODO: unclear whether we need it or not. Keep it for now
+mesos-agent:
+  - .*:
+      purgeOlderThan: never
+
+# AliDPG: keep standard builds forever. Remove others after half a year
+AliDPG:
+  - ^v[0-9]-[0-9]+-XX-[0-9]+(-[0-9]+)?$:
+      purgeOlderThan: never
+  - .*:
+      purgeOlderThan: 180
+
+# JAliEn: keep everything. TODO: change policy maybe when tests are over?
+JAliEn:
+  - .*:
+      purgeOlderThan: never
+
+# GCC-Toolchain: keep standard builds only
+GCC-Toolchain:
+  - ^v[0-9]+\.[0-9]+\.[0-9]+(-alice[0-9]+)?-[0-9]+$:
+      purgeOlderThan: never
+  - .*:
+      purgeOlderThan: 180
+
+# AliPhysics: various cleanup policies
+AliPhysics:
+  # Release candidates must go in 60 days
+  - -rc[0-9]+:
+      purgeOlderThan: 60
+  # Until 20160430 (included): keep *last* tag of the month
+  - ^vAN-201(5[0-9]{2}|60[1234])[0-9]{2}-[0-9]+$:
+      purgeOlderThan: 90
+      excludeFromPurge: lastOfMonth
+  # Later: keep *first* tag of the month
+  - ^vAN-[0-9]{8}-[0-9]+$:
+      purgeOlderThan: 90
+      excludeFromPurge: firstOfMonth
+  # Keep forever all normal tags in the form: v5-09-33(a)(-p1)-01(-bahbah)-1
+  - ^v[0-9]-[0-9]+-[0-9]+[a-z]*(-p[0-9]+)?-[0-9]+(-[a-z0-9]+)?-[0-9]+:
+      purgeOlderThan: never
+  # What is the rest? Unknown, remove in half a year
+  - .*:
+      purgeOlderThan: 180
+
+# AliRoot: retain all versions prior to AliRoot/AliPhysics split
+AliRoot:
+  - ^v5-0[45]-:
+      purgeOlderThan: never
+  - .*:
+      purgeOlderThan: 180
