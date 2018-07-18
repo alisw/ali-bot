@@ -38,6 +38,9 @@ slc6_x86-64:
   JAliEn:
     0.0.0-1                : True
     1.0.0-1                : False
+  AliPhysics:
+    v5-09-34-01_ROOT6-1    : True
+    v5-09-35-01_ROOT6-2    : False
 
 slc7_x86-64:
   GCC-Toolchain:
