@@ -224,6 +224,8 @@ slc5_x86-64:
     vAN-20170722-1 : False
     v5-09-15-01-1 : False
     v5-09-16-01-1 : True
+    v5-09-34-01_ROOT6-1 : True
+    v5-09-35-01_ROOT6-2 : False
   FLUKA_VMC:
     2011.2c-vmc1-1: False
     2011.2c-vmc1-2: False
