@@ -41,6 +41,9 @@ slc6_x86-64:
   AliPhysics:
     v5-09-34-01_ROOT6-1    : True
     v5-09-35-01_ROOT6-2    : False
+    v6-99-99-01-rc20180730-1 : True
+  AliDPG:
+    v9-99-XX-rc20180730-1 : True
 
 slc7_x86-64:
   GCC-Toolchain:
