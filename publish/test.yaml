@@ -1,4 +1,8 @@
 slc5_x86-64:
+  pythia6:
+    421-alice1-1           : True
+    425-alice1-1           : True
+    123-alice1-1           : False
   cctools:
     v5.4.1-1               : False
   AliEn-WorkQueue:
