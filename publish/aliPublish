@@ -458,6 +458,15 @@ def nameVerFromTar(tar, arch, validPacks):
       return { "name": vm.group(1), "ver": vm.group(2) }
   return None
 
+if hasattr(datetime, "total_seconds"):
+  # Python 2.7+
+  def getTotalSeconds(dt):
+    return dt.total_seconds()
+else:
+  # Python 2.6
+  def getTotalSeconds(dt):
+    return (dt.microseconds + (dt.seconds + dt.days * 24 * 3600) * 1000000) / 1000000
+
 def getTimestamp(s):
   # Convert a given string in the format "Thu, 03 Aug 2017 01:12:54 GMT" to
   # an UTC Unix timestamp and return it. Only strings ending with GMT or UTC
@@ -470,7 +479,7 @@ def getTimestamp(s):
     error("Cannot parse time string {timestring}: {exception}".format(
       timestring=s, exception=str(e)))
     return 0
-  return (dt - datetime(1970, 1, 1)).total_seconds()  # yes, it's a mess
+  return getTotalSeconds(dt - datetime(1970, 1, 1))  # yes, it's a mess
 
 def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, autoIncludeDeps,
          notifEmail, riemann, dryRun, jget):
