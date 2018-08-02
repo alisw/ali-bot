@@ -520,16 +520,14 @@ def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, 
         pkgVer = nameVer["ver"]
         pkgTime = getTimestamp(pkgTar["mtime"])  # UTC seconds since Unix epoch
         # Here we decide whether to include/exclude it
-        debug("{arch} / {pkg} / {ver}: timestamp: {mtime}".format(
-              arch=arch, pkg=pkgName, ver=pkgVer, mtime=pkgTime))
         if not applyFilter(pkgVer,
                            pkgTime,
                            rules["include"][arch].get(pkgName, None),
                            rules["exclude"][arch].get(pkgName, None),
                            includeFirst,
                            excludeOlderThanSec):
-          debug(format("%(arch)s / %(pack)s / %(ver)s: excluded",
-                arch=arch, pack=pkgName, ver=pkgVer))
+          debug(format("%(arch)s / %(pack)s / %(ver)s: excluded (timestamp: %(mtime)d)",
+                arch=arch, pack=pkgName, ver=pkgVer, mtime=pkgTime))
           continue
 
         if not autoIncludeDeps:
