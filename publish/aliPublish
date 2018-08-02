@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
+import logging, sys, json, yaml, requests, urllib3
 from argparse import ArgumentParser
 from commands import getstatusoutput
 import logging, sys, json, yaml, requests
+from datetime import datetime
 from requests import RequestException
 from time import sleep, time
 from yaml import YAMLError
@@ -39,7 +41,9 @@ def searchMany(name, exprs):
     return True
   return False
 
-def applyFilter(name, includeRules, excludeRules, includeFirst):
+def applyFilter(name, timestamp, includeRules, excludeRules, includeFirst, excludeOlderThanSec):
+  if excludeOlderThanSec > 0 and time()-timestamp > excludeOlderThanSec:
+    return False  # excluding because too old (excludeOlderThanSec == 0: never exclude)
   if includeFirst:
     if searchMany(name, includeRules):
       return not searchMany(name, excludeRules)
@@ -454,7 +458,21 @@ def nameVerFromTar(tar, arch, validPacks):
       return { "name": vm.group(1), "ver": vm.group(2) }
   return None
 
-def sync(pub, architectures, baseUrl, rules, includeFirst, autoIncludeDeps,
+def getTimestamp(s):
+  # Convert a given string in the format "Thu, 03 Aug 2017 01:12:54 GMT" to
+  # an UTC Unix timestamp and return it. Only strings ending with GMT or UTC
+  # are supported! In case of errors, zero is returned
+  if not s.endswith("GMT") and not s.endswith("UTC"):
+    return 0
+  try:
+    dt = datetime.strptime(s, "%a, %d %b %Y %H:%M:%S %Z")
+  except Exception as e:
+    error("Cannot parse time string {timestring}: {exception}".format(
+      timestring=s, exception=str(e)))
+    return 0
+  return (dt - datetime(1970, 1, 1)).total_seconds()  # yes, it's a mess
+
+def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, autoIncludeDeps,
          notifEmail, riemann, dryRun, jget):
 
   newPackages = {}
@@ -500,11 +518,16 @@ def sync(pub, architectures, baseUrl, rules, includeFirst, autoIncludeDeps,
         if nameVer is None:
           continue
         pkgVer = nameVer["ver"]
+        pkgTime = getTimestamp(pkgTar["mtime"])  # UTC seconds since Unix epoch
         # Here we decide whether to include/exclude it
+        debug("{arch} / {pkg} / {ver}: timestamp: {mtime}".format(
+              arch=arch, pkg=pkgName, ver=pkgVer, mtime=pkgTime))
         if not applyFilter(pkgVer,
+                           pkgTime,
                            rules["include"][arch].get(pkgName, None),
                            rules["exclude"][arch].get(pkgName, None),
-                           includeFirst):
+                           includeFirst,
+                           excludeOlderThanSec):
           debug(format("%(arch)s / %(pack)s / %(ver)s: excluded",
                 arch=arch, pack=pkgName, ver=pkgVer))
           continue
@@ -785,6 +808,7 @@ def main():
   conf["conn_retries"]      = conf.get("conn_retries"     , 3)
   conf["conn_dethrottle_s"] = conf.get("conn_dethrottle_s", 0)
   conf["kill_after_s"]      = conf.get("kill_after_s"     , 3600)
+  conf["exclude_older_d"]   = conf.get("exclude_older_d"  , 0)  # in days; 0 == don't exclude
 
   doExit = False
 
@@ -943,6 +967,7 @@ def main():
              architectures=architectures,
              baseUrl=conf["base_url"],
              rules=rules,
+             excludeOlderThanSec=conf["exclude_older_d"] * 86400,
              includeFirst=includeFirst,
              autoIncludeDeps=conf["auto_include_deps"],
              notifEmail=conf["notification_email"],
@@ -987,9 +1012,11 @@ def main():
       for pkg in testRules[arch]:
         for ver in testRules[arch][pkg]:
           match = applyFilter(ver,
+                              0,
                               rules["include"].get(arch, {}).get(pkg, None),
                               rules["exclude"].get(arch, {}).get(pkg, None),
-                              includeFirst)
+                              includeFirst,
+                              0)
           msg = format(match and "%(arch)s: %(pkg)s ver %(ver)s matches filters"
                              or "%(arch)s: %(pkg)s ver %(ver)s does NOT match filters",
                        arch=arch, pkg=pkg, ver=ver)
