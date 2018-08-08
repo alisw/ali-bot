@@ -27,10 +27,17 @@ EoF
 getent group z2 || groupadd z2 -g 10000
 getent passwd alicedaq || useradd alicedaq -u 10000 -g 10000
 
-git clone -b $ALIBUILD_BRANCH https://github.com/$ALIBUILD_REPO alibuild
+# Clone alidist
 git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO alidist
-echo -n "aliBuild version: " ; ( cd alibuild && git log --oneline -1 )
-echo -n "alidist version: " ; ( cd alidist && git log --oneline -1 )
+echo "alidist version" ; ( cd alidist && git log --oneline -1 )
+
+# Use aliBuild from pip (install in a temporary directory)
+# Note: using pip ensures all relevant dependencies are installed as well
+export PYTHONUSERBASE=$(mktemp -d)
+export PATH=$PYTHONUSERBASE/bin:$PATH
+export LD_LIBRARY_PATH=$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH
+pip install --user git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
+type aliBuild
 
 rpm -e mysql-libs mysql mysql-devel postfix || true
 rm -rf /var/lib/mysql/
@@ -68,20 +75,20 @@ echo $NODE_NAME > $WORKAREA/$WORKAREA_INDEX/current_slave
 # AliRoot in development mode. Prevents unnecessarily creating/uploading tarball
 # by still allowing ROOT build to be cached
 rm -rf AliRoot/
-alibuild/aliBuild --reference-sources $MIRROR \
-                  --defaults $DEFAULTS        \
-                  init AliRoot
+aliBuild --reference-sources $MIRROR \
+         --defaults $DEFAULTS        \
+         init AliRoot
 
 FETCH_REPOS="$(alibuild/aliBuild build --help | grep fetch-repos || true)"
-alibuild/aliBuild --reference-sources $MIRROR          \
-                  --debug                              \
-                  --work-dir $WORKAREA/$WORKAREA_INDEX \
-                  --architecture $ARCHITECTURE         \
-                  --jobs ${JOBS:-8}                    \
-                  ${FETCH_REPOS:+--fetch-repos}        \
-                  --remote-store $REMOTE_STORE::rw     \
-                  --defaults $DEFAULTS                 \
-                  build AliRoot || BUILDERR=$?
+aliBuild --reference-sources $MIRROR          \
+         --debug                              \
+         --work-dir $WORKAREA/$WORKAREA_INDEX \
+         --architecture $ARCHITECTURE         \
+         --jobs ${JOBS:-8}                    \
+         ${FETCH_REPOS:+--fetch-repos}        \
+         --remote-store $REMOTE_STORE::rw     \
+         --defaults $DEFAULTS                 \
+         build AliRoot || BUILDERR=$?
 
 rm -f $WORKAREA/$WORKAREA_INDEX/current_slave
 [[ "$BUILDERR" != '' ]] && exit $BUILDERR

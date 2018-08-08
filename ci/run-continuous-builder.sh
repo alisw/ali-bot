@@ -59,11 +59,12 @@ touch $HOME/.config/alibuild/disable-analytics
 [[ `uname` == Darwin ]] && OS=macos || OS=linux
 export CI_NAME=$(echo $PR_REPO_CHECKOUT|tr '[[:upper:]]' '[[:lower:]]')_checker_${OS}_${ALIBUILD_DEFAULTS}_ci
 
-# Setup working directory
+# Setup working directory and local Python installation
 ALIBOT="$(cd ..;pwd)"
 CI_WORK_DIR=/build/ci_checks/${CI_NAME}_${WORKER_INDEX}
 export PYTHONUSERBASE="$CI_WORK_DIR/python_local"
 export PATH="$PYTHONUSERBASE/bin:$PATH"
+export LD_LIBRARY_PATH="$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH"
 mkdir -p "$CI_WORK_DIR" "$PYTHONUSERBASE"
 
 # We need a workaround to install ali-bot on Python 2.6
@@ -80,6 +81,10 @@ ALIBUILD_REPO=${ALIBUILD_SLUG%%@*}
 ALIBUILD_BRANCH=${ALIBUILD_SLUG#*@}
 [[ $ALIBUILD_REPO == $ALIBUILD_SLUG ]] && ALIBUILD_BRANCH= || true
 
+# Install aliBuild through pip (ensures dependencies are installed as well)
+pip install --user git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
+type aliBuild
+
 set -x
 cd "$CI_WORK_DIR"
 
@@ -93,7 +98,6 @@ if [[ $RUN_CI ]]; then
 fi
 
 [[ -d alidist/.git ]]             || git clone https://github.com/alisw/alidist
-[[ -d alibuild/.git ]]            || git clone https://github.com/${ALIBUILD_REPO} ${ALIBUILD_BRANCH:+-b $ALIBUILD_BRANCH}
 [[ -d "$PR_REPO_CHECKOUT/.git" ]] || git clone "https://github.com/$PR_REPO" "$PR_REPO_CHECKOUT"
 
 if [[ $2 != --test* ]]; then
