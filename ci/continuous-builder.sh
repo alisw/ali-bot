@@ -110,7 +110,7 @@ while true; do
   report_state looping
 
   # Run preliminary cleanup command
-  alibuild/aliBuild clean ${DEBUG:+--debug}
+  aliBuild clean ${DEBUG:+--debug}
 
   # Update and cleanup all Git repositories (except ali-bot)
   for d in $(find . -maxdepth 2 -name .git -exec dirname {} \; | grep -v ali-bot); do
@@ -189,7 +189,7 @@ while true; do
     fi
 
     GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= INFLUXDB_WRITE_URL= CODECOV_TOKEN= \
-    $TIMEOUT_CMD alibuild/aliDoctor ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} $PACKAGE || DOCTOR_ERROR=$?
+    $TIMEOUT_CMD aliDoctor ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} $PACKAGE || DOCTOR_ERROR=$?
     STATUS_REF=${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF}
     if [[ $DOCTOR_ERROR != '' ]]; then
       # We do not want to kill the system is github is not working
@@ -213,18 +213,18 @@ while true; do
     git credential-store --file ~/.git-creds store
     git config --global credential.helper "store --file ~/.git-creds"
 
-    FETCH_REPOS="$(alibuild/aliBuild build --help | grep fetch-repos || true)"
-    ALIBUILD_HEAD_HASH=$pr_hash ALIBUILD_BASE_HASH=$base_hash                             \
-    GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= INFLUXDB_WRITE_URL= CODECOV_TOKEN=            \
-    $LONG_TIMEOUT_CMD                                                                     \
-    alibuild/aliBuild -j ${JOBS:-`nproc`}                                                 \
-                      ${FETCH_REPOS:+--fetch-repos}                                       \
-                      ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS}                 \
-                      ${NO_ASSUME_CONSISTENT_EXTERNALS:+-z $(echo ${pr_number} | tr - _)} \
-                      --reference-sources $MIRROR                                         \
-                      ${REMOTE_STORE:+--remote-store $REMOTE_STORE}                       \
-                      ${DEBUG:+--debug}                                                   \
-                      build $PACKAGE || BUILD_ERROR=$?
+    FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
+    ALIBUILD_HEAD_HASH=$pr_hash ALIBUILD_BASE_HASH=$base_hash                    \
+    GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= INFLUXDB_WRITE_URL= CODECOV_TOKEN=   \
+    $LONG_TIMEOUT_CMD                                                            \
+    aliBuild -j ${JOBS:-`nproc`}                                                 \
+             ${FETCH_REPOS:+--fetch-repos}                                       \
+             ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS}                 \
+             ${NO_ASSUME_CONSISTENT_EXTERNALS:+-z $(echo ${pr_number} | tr - _)} \
+             --reference-sources $MIRROR                                         \
+             ${REMOTE_STORE:+--remote-store $REMOTE_STORE}                       \
+             ${DEBUG:+--debug}                                                   \
+             build $PACKAGE || BUILD_ERROR=$?
     if [[ $BUILD_ERROR != '' ]]; then
       # We do not want to kill the system if GitHub is not working
       # so we ignore the result code for now
@@ -242,7 +242,7 @@ while true; do
     [[ $BUILD_ERROR ]] && LAST_PR_OK=0 || LAST_PR_OK=1
 
     # Run post-build cleanup command
-    alibuild/aliBuild clean ${DEBUG:+--debug}
+    aliBuild clean ${DEBUG:+--debug}
 
     # Look for any code coverage file for the given commit and push
     # it to codecov.io
