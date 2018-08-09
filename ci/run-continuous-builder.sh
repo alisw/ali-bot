@@ -124,14 +124,14 @@ case "$2" in
   --test-build)
     set -x
     PACKAGE=${3-$PACKAGE}
-    alibuild/aliBuild init $PACKAGE --defaults $ALIBUILD_DEFAULTS --reference-source $MIRROR
-    exec alibuild/aliBuild build $PACKAGE --defaults $ALIBUILD_DEFAULTS ${DEBUG:+--debug} --reference-source $MIRROR
+    aliBuild init $PACKAGE --defaults $ALIBUILD_DEFAULTS --reference-source $MIRROR
+    exec aliBuild build $PACKAGE --defaults $ALIBUILD_DEFAULTS ${DEBUG:+--debug} --reference-source $MIRROR
   ;;
 
   --test-doctor)
     set -x
     PACKAGE=${3-$PACKAGE}
-    exec alibuild/aliDoctor $PACKAGE --defaults $ALIBUILD_DEFAULTS ${DEBUG:+--debug}
+    exec aliDoctor $PACKAGE --defaults $ALIBUILD_DEFAULTS ${DEBUG:+--debug}
   ;;
 
   "")
