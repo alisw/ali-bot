@@ -79,7 +79,7 @@ aliBuild --reference-sources $MIRROR \
          --defaults $DEFAULTS        \
          init AliRoot
 
-FETCH_REPOS="$(alibuild/aliBuild build --help | grep fetch-repos || true)"
+FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
 aliBuild --reference-sources $MIRROR          \
          --debug                              \
          --work-dir $WORKAREA/$WORKAREA_INDEX \
@@ -93,5 +93,5 @@ aliBuild --reference-sources $MIRROR          \
 rm -f $WORKAREA/$WORKAREA_INDEX/current_slave
 [[ "$BUILDERR" != '' ]] && exit $BUILDERR
 
-ALIROOT_PREFIX=`alibuild/alienv -w $WORKAREA/$WORKAREA_INDEX setenv AliRoot/latest -c sh -c 'echo $ALICE_ROOT'`
+ALIROOT_PREFIX=$(alienv -w $WORKAREA/$WORKAREA_INDEX setenv AliRoot/latest -c sh -c 'echo $ALICE_ROOT')
 rsync -av $ALIROOT_PREFIX/darpms/x86_64/ $REMOTE_STORE/RPMS/DAQ/$ARCHITECTURE/
