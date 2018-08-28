@@ -27,10 +27,12 @@ elif [[ -d /cvmfs/alice-nightlies.cern.ch ]]; then
   CONF=aliPublish-nightlies.conf
   CMD=sync-cvmfs
   PUB_DATA=1
+  PUB_CERT=1
   export PATH=$HOME/opt/bin:$PATH
 elif [[ -d /cvmfs/alice.cern.ch ]]; then
   CMD=sync-cvmfs
   PUB_DATA=1
+  PUB_CERT=1
   export PATH=$HOME/opt/bin:$PATH
 elif [[ -d /cvmfs ]]; then
   CMD=sync-cvmfs
@@ -65,7 +67,8 @@ mkdir -p $CACHE
                --cache-deps-dir $CACHE             \
                --pidfile /tmp/aliPublish.pid       \
                $CMD
-  [[ $PUB_DATA != 1 ]] || ./publish-data.sh ) 2>&1 | tee -a $LOG.error || ERR=1
+  [[ $PUB_DATA != 1 ]] || ./publish-data.sh
+  [[ $PUB_CERT != 1 ]] || ./publish-cert.sh ) 2>&1 | tee -a $LOG.error || ERR=1
 [[ $ERR ]] && echo "Something went wrong" \
            || { echo "All OK"; mv -v $LOG.error $LOG; ln -nfs $(basename $LOG) log/latest; }
 [[ -x $DEST/publish/get-and-run.sh ]] && cp -v $DEST/publish/get-and-run.sh .
