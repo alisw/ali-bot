@@ -51,17 +51,17 @@ CERT_DST="/cvmfs/$REPO/etc/grid-security/certificates"
 
 # Do we need to run today? Check timestamp of destination. If it's today's, or greater's, then exit.
 # This method ensures that we keep trying until we get today's run done
-DEST_TIMESTAMP=2000010100  # e.g. YYYYMMDDHH (we stop at hours)
-TODAY_TIMESTAMP=$(date +%Y%m%d%H)  # we are assuming the timezone on the running machine is OK
+DEST_TIMESTAMP=20000101  # e.g. YYYYMMDD
+TODAY_TIMESTAMP=$(date +%Y%m%d)  # we are assuming the timezone on the running machine is OK
 TODAY_HOUR=$(date +%H)
-[[ -d $CERT_DST ]] && DEST_TIMESTAMP=$(date -d @$(stat -c %Y "$CERT_DST") +%Y%m%d%H)
+[[ -d $CERT_DST ]] && DEST_TIMESTAMP=$(date -d @$(stat -c %Y "$CERT_DST") +%Y%m%d)
 if [[ $FORCE ]]; then
   echo "Forcing syncing as requested"
 elif [[ $TODAY_HOUR -lt 5 ]]; then
   echo "Not syncing before 5am, exiting"
   exit 0
 elif [[ $DEST_TIMESTAMP -ge $TODAY_TIMESTAMP ]]; then
-  echo "Certificates had already been updated from $CERT_SRC to $CERT_DST today, exiting"
+  echo "Certificates have already been updated to $CERT_DST today, exiting"
   exit 0
 fi
 
