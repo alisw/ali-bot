@@ -17,6 +17,9 @@ slc5_x86-64:
     v5-09-XX-1             : True
     rc20180521-1           : False
     v9-99-XX-rc20180524-1  : False
+    prod-201808-01-2       : True
+    prod-201899-02-1       : False
+    prod-201912-04-1       : True
   AliPhysics:
     v9-99-99-01-rc20180524-1 : False
     rc20180521-1           : False
@@ -235,6 +238,10 @@ slc5_x86-64:
     2011.2c-vmc3-1: True
 
 slc6_x86-64:
+  AliDPG:
+    prod-201808-01-2       : True
+    prod-201899-02-1       : False
+    prod-201912-04-1       : True
   cctools:
     v5.4.1-2               : True
   AliEn-WorkQueue:
