@@ -53,7 +53,7 @@ CERT_DST="/cvmfs/$REPO/etc/grid-security/certificates"
 # This method ensures that we keep trying until we get today's run done
 DEST_TIMESTAMP=20000101  # e.g. YYYYMMDD
 TODAY_TIMESTAMP=$(date +%Y%m%d)  # we are assuming the timezone on the running machine is OK
-TODAY_HOUR=$(date +%H)
+TODAY_HOUR=$(date +%_H)
 [[ -d $CERT_DST ]] && DEST_TIMESTAMP=$(date -d @$(stat -c %Y "$CERT_DST") +%Y%m%d)
 if [[ $FORCE ]]; then
   echo "Forcing syncing as requested"
