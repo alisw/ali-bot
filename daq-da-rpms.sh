@@ -8,9 +8,10 @@ ALIDIST_REPO=${ALIDIST_REPO%:*}
 OVERRIDE_TAGS="AliRoot=$ALIROOT_VERSION"
 DEFAULTS=daq
 REMOTE_STORE=rsync://repo.marathon.mesos/store/
+YUM_DISABLEREPO=rpmforge,epel,cernvm
 
 function getver() {
-  yum --disablerepo=rpmforge,epel info $1 | grep ^Version | cut -d: -f2 | xargs -I{} echo $1_{}
+  yum ${YUM_DISABLEREPO:+--disablerepo $YUM_DISABLEREPO} $1 | grep ^Version | cut -d: -f2 | xargs -I{} echo $1_{}
 }
 
 cat > /etc/yum.repos.d/yum-alice-daq.slc6_64.repo <<EoF
@@ -43,7 +44,7 @@ rpm -e mysql-libs mysql mysql-devel postfix || true
 rm -rf /var/lib/mysql/
 rpm --rebuilddb
 yum clean all
-yum install --disablerepo=rpmforge                                             \
+yum install ${YUM_DISABLEREPO:+--disablerepo $YUM_DISABLEREPO}                 \
             -y BWidget MySQL-shared MySQL-client MySQL-devel dim smi tcl-devel \
                tk-devel libcurl-devel libxml2-devel pciutils-devel mysqltcl    \
                xinetd ksh tcsh pigz MySQL-server date amore ACT daqDA-lib
