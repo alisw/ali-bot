@@ -51,6 +51,7 @@ slc7_x86-64:
     v4.9.3-2               : False
     v4.9.3-alice3-1        : True
     v6.2.0-alice1-1        : True
+    v7.3.0-alice1-1        : True
   O2:
     nightly-20171123-1     : False
     nightly-20171122-1     : False

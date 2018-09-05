@@ -1,4 +1,6 @@
 slc5_x86-64:
+  GCC-Toolchain:
+    v7.3.0-alice1-1        : False
   pythia6:
     421-alice1-1           : True
     425-alice1-1           : True
@@ -260,12 +262,15 @@ slc7_x86-64:
   GCC-Toolchain:
     v4.9.3-2               : False
     v4.9.3-alice3-1        : True
+    v7.3.0-alice1-1        : True
 
 ubt14_x86-64:
   GCC-Toolchain:
     v4.9.3-8               : False
     v4.9.3-alice3-1        : True
+    v7.3.0-alice1-1        : False
 
 ubt1604_x86-64:
   GCC-Toolchain:
     v4.9.3-alice3-1        : True
+    v7.3.0-alice1-1        : True
