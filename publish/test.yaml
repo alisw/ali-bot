@@ -23,6 +23,7 @@ slc5_x86-64:
     prod-201899-02-1       : False
     prod-201912-04-1       : True
   AliPhysics:
+    v5-09-37a-01_ROOT6-1   : False
     v9-99-99-01-rc20180524-1 : False
     rc20180521-1           : False
     vAN-20151110-1         : False
@@ -233,6 +234,7 @@ slc5_x86-64:
     vAN-20170722-1 : False
     v5-09-15-01-1 : False
     v5-09-16-01-1 : True
+    vAN-20180918_ROOT6-1 : False
   FLUKA_VMC:
     2011.2c-vmc1-1: False
     2011.2c-vmc1-2: False
@@ -262,6 +264,11 @@ slc6_x86-64:
   JAliEn:
     1.0.0-1                : True
     1.1.0-27               : True
+  AliPhysics:
+    v5-09-37a-01_ROOT6-1   : True
+    vAN-20181231_ROOT6-1   : True
+    vAN-20180918_ROOT6-1   : True
+
 
 slc7_x86-64:
   GCC-Toolchain:
