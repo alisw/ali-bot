@@ -213,6 +213,10 @@ while true; do
     git credential-store --file ~/.git-creds store
     git config --global credential.helper "store --file ~/.git-creds"
 
+    # Ensure build names do not clash across different PR jobs (O2-373)
+    BUILD_IDENTIFIER=${NO_ASSUME_CONSISTENT_EXTERNALS:+$(echo ${pr_number} | tr - _)}
+    [[ $BUILD_IDENTIFIER ]] || BUILD_IDENTIFIER=${CHECK_NAME//\//_}
+
     FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
     ALIBUILD_HEAD_HASH=$pr_hash ALIBUILD_BASE_HASH=$base_hash                    \
     GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= INFLUXDB_WRITE_URL= CODECOV_TOKEN=   \
@@ -220,7 +224,7 @@ while true; do
     aliBuild -j ${JOBS:-`nproc`}                                                 \
              ${FETCH_REPOS:+--fetch-repos}                                       \
              ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS}                 \
-             ${NO_ASSUME_CONSISTENT_EXTERNALS:+-z $(echo ${pr_number} | tr - _)} \
+             -z $BUILD_IDENTIFIER                                                \
              --reference-sources $MIRROR                                         \
              ${REMOTE_STORE:+--remote-store $REMOTE_STORE}                       \
              ${DEBUG:+--debug}                                                   \
