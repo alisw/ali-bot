@@ -11,7 +11,7 @@ REMOTE_STORE=rsync://repo.marathon.mesos/store/
 YUM_DISABLEREPO=rpmforge,epel,cernvm
 
 function getver() {
-  yum ${YUM_DISABLEREPO:+--disablerepo $YUM_DISABLEREPO} $1 | grep ^Version | cut -d: -f2 | xargs -I{} echo $1_{}
+  yum ${YUM_DISABLEREPO:+--disablerepo $YUM_DISABLEREPO} info $1 | grep ^Version | cut -d: -f2 | xargs -I{} echo $1_{}
 }
 
 cat > /etc/yum.repos.d/yum-alice-daq.slc6_64.repo <<EoF
