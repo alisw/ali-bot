@@ -83,7 +83,7 @@ done
 # Take care of today's snapshot from EOS
 DEST=$DEST_PREFIX/$(TZ=Europe/Rome date +%Y/vAN-%Y%m%d)
 [[ -d $DEST && ! $FORCE ]] && { echo "Published already: $DEST"; cvmfs_lazy_publish; exit $?; } || true
-[[ $(TZ=Europe/Rome date +%_H%M) -lt 1600 && ! $FORCE ]] && { echo "Before 4pm, doing nothing"; exit 0; } || true
+[[ $(TZ=Europe/Rome date +%_H%M) -lt 1600 && ! $FORCE ]] && { echo "Before 4pm, doing nothing"; cvmfs_lazy_publish; exit 0; } || true
 cvmfs_lazy_transaction || dieabort
 mkdir -p $DEST && [[ -d $DEST ]] || dieabort
 SRC_YESTERDAY_SHORT=$( date -d @$(($(TZ=Europe/Rome date +%s) - 86400)) +%Y/vAN-%Y%m%d )
