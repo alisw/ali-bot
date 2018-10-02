@@ -44,7 +44,7 @@ AUTOTAG_MIRROR=$MIRROR/$PACKAGE_LOWER
 AUTOTAG_TAG=$(LANG=C TZ=Europe/Rome date +"$AUTOTAG_PATTERN")
 [[ "$TEST_TAG" == "true" ]] && AUTOTAG_TAG=TEST-IGNORE-$AUTOTAG_TAG
 AUTOTAG_BRANCH=rc/$AUTOTAG_TAG
-AUTOTAG_REF=$AUTOTAG_BRANCH
+AUTOTAG_REF=$AUTOTAG_BRANCH  # this will be either equal to the branch, or the tag
 AUTOTAG_CLONE=$PWD/$PACKAGE_LOWER.git
 [[ -d $AUTOTAG_MIRROR ]] || AUTOTAG_MIRROR=
 rm -rf $AUTOTAG_CLONE
@@ -59,7 +59,7 @@ pushd $AUTOTAG_CLONE
     # Tag exists. Use it.
     # NOTE: TAG==REF is the condition for *not* creating the tag afterwards.
     AUTOTAG_REF=$AUTOTAG_TAG
-    echo "Tag $AUTOTAG_TAG exists already as $AUTOTAG_HASH"
+    echo "Tag $AUTOTAG_TAG exists already as $AUTOTAG_HASH. We will use it directly. No branch is being created."
   else
     # Tag does not exist. Create release candidate branch, if not existing.
 
@@ -92,7 +92,10 @@ echo $NODE_NAME > $WORKAREA/$WORKAREA_INDEX/current_slave
 
 # Process overrides by changing in-place the given defaults. This requires some
 # YAML processing so we are better off with Python.
-env AUTOTAG_BRANCH=$AUTOTAG_BRANCH python <<\EOF
+env AUTOTAG_REF=$AUTOTAG_REF   \
+    PACKAGE_NAME=$PACKAGE_NAME \
+    DEFAULTS=$DEFAULTS         \
+python <<\EOF
 import yaml
 from os import environ
 f = "alidist/defaults-%s.sh" % environ["DEFAULTS"].lower()
@@ -100,7 +103,7 @@ p = environ["PACKAGE_NAME"]
 d = yaml.safe_load(open(f).read().split("---")[0])
 d["overrides"] = d.get("overrides", {})
 d["overrides"][p] = d["overrides"].get(p, {})
-d["overrides"][p]["tag"] = environ["AUTOTAG_BRANCH"]
+d["overrides"][p]["tag"] = environ["AUTOTAG_REF"]
 open(f, "w").write(yaml.dump(d)+"\n---\n")
 EOF
 pushd alidist
