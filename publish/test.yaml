@@ -242,6 +242,9 @@ slc5_x86-64:
     2011.2c-vmc3-1: True
 
 slc6_x86-64:
+  jemalloc:
+    5.1.0-1 : True
+    3.6.0-1 : False
   AliDPG:
     prod-201808-01-2       : True
     prod-201899-02-1       : False
