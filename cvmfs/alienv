@@ -279,6 +279,8 @@ if [[ $? == 127 ]]; then
       rm -f $T
       exit 1
 fi
+rm -f $T
+unset T
 
 tclsh <<EOF >/dev/null 2>&1
 EOF
