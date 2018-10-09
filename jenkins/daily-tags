@@ -20,7 +20,12 @@ node ("slc7_x86-64-light") {
               ALIBOT_BRANCH="${ALIBOT_REPO##*:}"
               ALIBOT_REPO="${ALIBOT_REPO%:*}"
               git clone "https://github.com/$ALIBOT_REPO" -b "$ALIBOT_BRANCH" ali-bot/
-              while ! ali-bot/ci/check-open-pr.py $WAIT_PR_LIMIT alisw/$PACKAGE_NAME; do
+              if [[ $PACKAGE_NAME == AliPhysics ]]; then
+                WAIT_TESTS="build/AliPhysics/release build/AliPhysics/root6"
+              else
+                WAIT_TESTS="build/$PACKAGE_NAME/release"
+              fi
+              while ! ali-bot/ci/check-open-pr.py $WAIT_PR_LIMIT alisw/$PACKAGE_NAME $WAIT_TESTS; do
                 echo "Waiting for all pull requests to be merged"
                 sleep 120
               done
