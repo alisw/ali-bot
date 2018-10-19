@@ -1,6 +1,13 @@
 #!/bin/bash -ex
 set -o pipefail
 
+# Check for required variables
+for V in ALIDIST_REPO ALIBUILD_REPO ALIROOT_VERSION NODE_NAME; do
+  [[ $(eval echo \$$V) ]] || { echo "Required variable $V not defined!"; ERR=1; continue; }
+  eval "export $V"
+done
+[[ $ERR == 1 ]] && exit 1 || true
+
 ALIBUILD_BRANCH=${ALIBUILD_REPO##*:}
 ALIBUILD_REPO=${ALIBUILD_REPO%:*}
 ALIDIST_BRANCH=${ALIDIST_REPO##*:}
@@ -11,7 +18,9 @@ REMOTE_STORE=rsync://repo.marathon.mesos/store/
 YUM_DISABLEREPO=rpmforge,epel,cernvm
 
 function getver() {
-  yum ${YUM_DISABLEREPO:+--disablerepo $YUM_DISABLEREPO} info $1 | grep ^Version | cut -d: -f2 | xargs -I{} echo $1_{}
+  local PKGVER
+  PKGVER=$(yum ${YUM_DISABLEREPO:+--disablerepo $YUM_DISABLEREPO} info $1 | grep ^Version | cut -d: -f2 | xargs -I{} echo $1_{})
+  [[ $PKGVER ]] && echo $PKGVER || echo ERROR
 }
 
 cat > /etc/yum.repos.d/yum-alice-daq.slc6_64.repo <<EoF
@@ -53,9 +62,17 @@ rm -fv /var/lib/rpm/__db*
 rpm --rebuilddb
 chmod a-w -R /var/lib/rpm/
 
-DAQ_VERSION=`getver date`-`getver amore`-`getver ACT`-`getver daqDA-lib`
+DAQ_VERSION=$(getver date)-$(getver amore)-$(getver ACT)-$(getver daqDA-lib)
+if [[ $DAQ_VERSION == *ERROR* ]]; then
+  echo "Error getting version of Yum packages"
+  exit 1
+fi
 sed -i -e "s/^version:\s.*/version: \"$DAQ_VERSION\"/g" alidist/daq.sh
 sed -i -e "s/^tag:\s.*/tag: \"$ALIROOT_VERSION\"/g" alidist/aliroot.sh
+
+pushd alidist &> /dev/null
+  git diff
+popd &> /dev/null
 
 BUILD_DATE=$(echo 2015$(echo "$(date -u +%s) / (86400 * 3)" | bc))
 
