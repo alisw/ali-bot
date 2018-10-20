@@ -58,17 +58,35 @@ done
 mkdir -p $WORKAREA/$WORKAREA_INDEX
 echo $NODE_NAME > $WORKAREA/$WORKAREA_INDEX/current_slave
 
-for x in $OVERRIDE_TAGS; do
-  OVERRIDE_PACKAGE=$(echo $x | cut -f1 -d= | tr '[:upper:]' '[:lower:]')
-  OVERRIDE_TAG=$(echo $x | cut -f2 -d=)
-  perl -p -i -e "s|tag: .*|tag: $OVERRIDE_TAG|" alidist/$OVERRIDE_PACKAGE.sh
-done
-for x in $OVERRIDE_VERSIONS; do
-  OVERRIDE_PACKAGE=$(echo $x | cut -f1 -d= | tr '[:upper:]' '[:lower:]')
-  OVERRIDE_VERSION=$(echo $x | cut -f2 -d=)
-  perl -p -i -e "s|version: .*|version: $OVERRIDE_VERSION|" alidist/$OVERRIDE_PACKAGE.sh
-done
-( cd alidist && git diff )
+# If no "defaults" is specified, default to "release"
+: ${DEFAULTS:=release}
+
+# Process overrides by changing in-place the given defaults. This requires some
+# YAML processing so we are better off with Python.
+env OVERRIDE_TAGS="$OVERRIDE_TAGS"         \
+    OVERRIDE_VERSIONS="$OVERRIDE_VERSIONS" \
+    DEFAULTS="$DEFAULTS"                   \
+python <<\EOF
+import yaml
+from os import environ
+f = "alidist/defaults-%s.sh" % environ["DEFAULTS"].lower()
+d = yaml.safe_load(open(f).read().split("---")[0])
+open(f+".old", "w").write(yaml.dump(d)+"\n---\n")
+d["overrides"] = d.get("overrides", {})
+for t in environ.get("OVERRIDE_TAGS", "").split():
+  p,t = t.split("=", 1)
+  d["overrides"][p] = d["overrides"].get(p, {})
+  d["overrides"][p]["tag"] = t
+for v in environ.get("OVERRIDE_VERSIONS", "").split():
+  p,v = v.split("=", 1)
+  d["overrides"][p] = d["overrides"].get(p, {})
+  d["overrides"][p]["version"] = v
+open(f, "w").write(yaml.dump(d)+"\n---\n")
+EOF
+
+# List differences applied to the selected defaults
+DEFAULTS_LOWER=$(echo $DEFAULTS | tr '[[:upper:]]' '[[:lower:]]')
+diff -rupN alidist/defaults-${DEFAULTS_LOWER}.sh.old alidist/defaults-${DEFAULTS_LOWER}.sh || true
 
 # Allow to specify AliRoot and AliPhysics as a development packages
 if [[ "$ALIROOT_DEVEL_VERSION" != '' ]]; then
