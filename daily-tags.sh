@@ -103,6 +103,12 @@ pushd $AUTOTAG_CLONE &> /dev/null
   if [[ "$AUTOTAG_HASH" != '' ]]; then
     echo "Tag $AUTOTAG_TAG exists already as $AUTOTAG_HASH, using it"
     AUTOTAG_ORIGIN=tag
+  elif [[ $DO_NOT_CREATE_NEW_TAG == true ]]; then
+    # Tag does not exist, but we have requested this job to forcibly use an existing one.
+    # Will abort the job.
+    echo "Tag $AUTOTAG_TAG was not found, however we have been requested to not create a new one" \
+         "(DO_NOT_CREATE_NEW_TAG is true). Aborting with error"
+    exit 1
   else
     # Tag does not exist. Create release candidate branch, if not existing.
 
