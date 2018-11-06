@@ -25,6 +25,9 @@ node ("slc7_x86-64-light") {
               else
                 WAIT_TESTS="build/$PACKAGE_NAME/release"
               fi
+              # Possibly missing packages (for check-open-pr.py)
+              python -c 'import github' || pip install PyGithub==1.39
+              python -c 'import pytz' || pip install pytz==2018.7
               while ! ali-bot/ci/check-open-pr.py $WAIT_PR_LIMIT alisw/$PACKAGE_NAME $WAIT_TESTS; do
                 echo "Waiting for all pull requests to be merged"
                 sleep 120
