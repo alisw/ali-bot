@@ -70,9 +70,9 @@ mkdir -p "$CI_WORK_DIR" "$PYTHONUSERBASE"
 # We need a workaround to install ali-bot on Python 2.6
 if [[ ! $RUN_CI ]]; then
   python -c 'import platform;print(platform.python_version())' | grep -qE '^2\.6' \
-    && { pip install --user --ignore-install --upgrade setuptools==22.0.2 importlib==1.0.4 || exit 1; } \
+    && { pip install --user --ignore-installed --upgrade setuptools==22.0.2 importlib==1.0.4 || exit 1; } \
     || true
-  pip install --user --ignore-install --upgrade -e "$ALIBOT"
+  pip install --user --ignore-installed --upgrade -e "$ALIBOT"
 fi
 
 # aliBuild repository slug: <group>/<repo>[@<branch>]
@@ -82,7 +82,7 @@ ALIBUILD_BRANCH=${ALIBUILD_SLUG#*@}
 [[ $ALIBUILD_REPO == $ALIBUILD_SLUG ]] && ALIBUILD_BRANCH= || true
 
 # Install aliBuild through pip (ensures dependencies are installed as well)
-pip install --user --ignore-install --upgrade git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
+pip install --user --ignore-installed --upgrade git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
 type aliBuild
 
 set -x
