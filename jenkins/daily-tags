@@ -16,19 +16,20 @@ node ("slc7_x86-64-light") {
               set -e
               echo $GITHUB_TOKEN > ~/.github-token
               chmod 0600 ~/.github-token
-              rm -rf ali-bot/
               ALIBOT_BRANCH="${ALIBOT_REPO##*:}"
               ALIBOT_REPO="${ALIBOT_REPO%:*}"
-              git clone "https://github.com/$ALIBOT_REPO" -b "$ALIBOT_BRANCH" ali-bot/
+              # Use pip to get the Python scripts (with all the correct dependencies)
+              export PYTHONUSERBASE="$PWD/localpython"
+              export PATH="$PYTHONUSERBASE/bin:$PATH"
+              rm -rf "$PYTHONUSERBASE"
+              pip install --user --upgrade --ignore-install "git+https://github.com/${ALIBOT_REPO}@${ALIBOT_BRANCH}"
+              type check-open-pr
               if [[ $PACKAGE_NAME == AliPhysics ]]; then
                 WAIT_TESTS="build/AliPhysics/release build/AliPhysics/root6"
               else
                 WAIT_TESTS="build/$PACKAGE_NAME/release"
               fi
-              # Possibly missing packages (for check-open-pr.py)
-              python -c 'import github' || pip install PyGithub==1.39
-              python -c 'import pytz' || pip install pytz==2018.7
-              while ! ali-bot/ci/check-open-pr.py $WAIT_PR_LIMIT alisw/$PACKAGE_NAME $WAIT_TESTS; do
+              while ! check-open-pr $WAIT_PR_LIMIT alisw/$PACKAGE_NAME $WAIT_TESTS; do
                 echo "Waiting for all pull requests to be merged"
                 sleep 120
               done
