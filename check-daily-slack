@@ -10,7 +10,8 @@
 # a nagging notification is sent every 15 minutes.
 #
 # Time checks are all explicitly performed using the Geneva time zone, and
-# notifications are sent on a certain Slack channel.
+# notifications are sent on a certain Slack channel. It can also be used with
+# Mattermost since the API is identical.
 #
 # Configuration is done via environment variables:
 #

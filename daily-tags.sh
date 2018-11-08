@@ -75,7 +75,7 @@ echo "Will be using aliBuild from $ALIBUILD_REPO${ALIBUILD_BRANCH:+, branch $ALI
 export PYTHONUSERBASE=$(mktemp -d)
 export PATH=$PYTHONUSERBASE/bin:$PATH
 export LD_LIBRARY_PATH=$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH
-swallow "Installing aliBuild" pip install --user git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
+swallow "Installing aliBuild" pip install --user --ignore-install --upgrade git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
 type aliBuild
 
 PACKAGE_LOWER=$(echo $PACKAGE_NAME | tr '[[:upper:]]' '[[:lower:]]')
