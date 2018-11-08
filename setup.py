@@ -64,7 +64,7 @@ setup(
 
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().
-    packages=find_packages(exclude=['yaml']),
+    packages=find_packages(),
 
     # Alternatively, if you want to distribute just a my_module.py, uncomment
     # this:
@@ -74,7 +74,7 @@ setup(
     # your project is installed. For an analysis of "install_requires" vs pip's
     # requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
-    install_requires=['PyGithub','argparse', 'requests', 'pytz'],
+    install_requires=['PyGithub', 'argparse', 'requests', 'pytz', 'klein', 'python-ldap'],
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). You can install these using the following syntax,
@@ -108,6 +108,12 @@ setup(
                # Check daily tags
                "check-daily-slack",
                # Wait for open Pull Requests before daily tags
-               "ci/check-open-pr"
+               "ci/check-open-pr",
+               # Process PR permissions
+               "ci/process-pull-request-http.py",
+               "ci/sync-egroups.py",
+               "ci/sync-mapusers.py",
+               # Get PR information
+               "ci/prinfo"
               ]
 )
