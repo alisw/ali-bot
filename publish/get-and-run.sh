@@ -84,7 +84,7 @@ pushd $DEST/publish
                --cache-deps-dir $CACHE             \
                --pidfile /tmp/aliPublish.pid       \
                $CMD                                \
-               | tee -a $LOG.error
+               2>&1 | tee -a $LOG.error
   [[ ${PIPESTATUS[0]} == 0 ]] || ERR="$ERR packages"
 
   # Data publisher (e.g. OADB)
