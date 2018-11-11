@@ -1,6 +1,13 @@
 #!groovy
 node ("slc7_x86-64-light") {
 
+  stage "Get Ansible"
+  sh '''
+    set -e
+    set -o pipefail
+    pip install --ignore-installed ansible
+  '''
+
   try {
     stage "Get configuration"
     retry (3) {
