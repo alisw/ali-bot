@@ -1,4 +1,6 @@
 slc7_x86-64:
+  O2Suite:
+    1.0.0-1: True
   O2:
     f4b35472b6_O2_DAQ-1: True
     f4b35472b6_O2-1: False
