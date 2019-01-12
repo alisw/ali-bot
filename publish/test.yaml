@@ -272,6 +272,8 @@ slc6_x86-64:
     v5-09-37a-01_ROOT6-1   : True
     vAN-20181231_ROOT6-1   : True
     vAN-20180918_ROOT6-1   : True
+    vAN-20190110-1         : True
+    v5-09-44a-01-1         : True
     v5-09-20fa-01-1        : True
 
 slc7_x86-64:
