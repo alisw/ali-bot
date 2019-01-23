@@ -13,3 +13,6 @@ slc7_x86-64:
     v1.2.5-1: False
   InfoLogger:
     v1.0.5-2: False
+  qcg:
+    v1.4.4-2: True
+    qcg-v1.4.4-1: False
