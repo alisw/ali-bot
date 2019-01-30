@@ -101,9 +101,13 @@ class Logs(object):
         return join(pr.repo_name, pr.id, "latest" if latest else pr.commit, self.norm_status, "fullLog.txt")
 
     def find(self):
-        search_path = join(self.work_dir, "BUILD/*latest*/log")
-        print("Searching all logs matching: %s" % search_path, file=sys.stderr)
-        globbed = glob(search_path)
+        # Python's glob * matches at least one char
+        search_paths = [join(self.work_dir, "BUILD/*latest*/log"),
+                        join(self.work_dir, "BUILD/*latest/log")]
+        print("Searching all logs matching: %s" % ", ".join(search_paths), file=sys.stderr)
+        globbed = []
+        for sp in search_paths:
+            globbed.extend(glob(sp))
 
         suffix = ("latest" + "-" + self.develPrefix).strip("-")
         logs = [x for x in globbed if dirname(x).endswith(suffix)]

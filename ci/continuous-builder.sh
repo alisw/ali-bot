@@ -15,8 +15,19 @@ export ALIBOT_ANALYTICS_USER_UUID=`hostname -s`-$WORKER_INDEX${CI_NAME:+-$CI_NAM
 export ALIBOT_ANALYTICS_ARCHITECTURE=slc7_x86-64
 export ALIBOT_ANALYTICS_APP_NAME="continuous-builder.sh"
 
+# Mesos DNSes
+: ${MESOS_DNS:=128.142.140.147,188.184.185.24}
+export MESOS_DNS
+
 TIME_STARTED=$(date -u +%s)
 CI_HASH=$(cd "$(dirname "$0")" && git rev-parse HEAD)
+
+# Timeout between calls of list-branch-pr
+LIST_BRANCH_PR_TIMEOUT=
+if [[ $ONESHOT == true ]]; then
+  LIST_BRANCH_PR_TIMEOUT=1
+  DELAY=1
+fi
 
 # timeout vs. gtimeout (macOS with Homebrew)
 TIMEOUT_EXEC=timeout
@@ -56,6 +67,19 @@ pushd alidist
 popd
 $TIMEOUT_CMD set-github-status -c alisw/alidist@$ALIDIST_REF -s $CHECK_NAME/pending
 
+# Generate example of force-hashes file. This is used to override what to check for testing
+cat > force-hashes <<EOF
+# Example (this is a comment):
+# pr_number@hash
+# You can also use:
+# branch_name@hash
+EOF
+
+function get_timestamp() {
+  # Get current timestamp, YYYYMMDD-HHMMSS in UTC
+  date -u +%Y%m%d-%H%M%S
+}
+
 function report_state() {
   CURRENT_STATE=$1
   # Push some metric about being up and running to Monalisa
@@ -90,7 +114,7 @@ function badge() {
   curl -L -o $DEST_FILE https://img.shields.io/badge/${LEFTHAND_BADGE}-${STATE_SUFFIX}.svg || true
   #                                                  ^^^^^^^^^^^^^^^^^ ^^^^^^^^^^^^^^^
   #                                                       lefthand      right - color
-  rsync -a copy-badge/ rsync://repo.marathon.mesos/store/buildstatus/ || true
+  rsync -a copy-badge/ rsync://$(mesos-dns-lookup repo.marathon.mesos)/store/buildstatus/ || true
   rm -rf copy-badge
 }
 
@@ -100,7 +124,7 @@ function emptylog() {
   local DEST_FILE=$DEST_DIR/fullLog.txt
   mkdir -p $DEST_DIR
   echo "Build of the ${PR_BRANCH} branch of ${PR_REPO} successful at $(LANG=C TZ=Europe/Rome date)" > "$DEST_FILE"
-  rsync -a copy-emptylog/ rsync://repo.marathon.mesos/store/logs/ || true
+  rsync -a copy-emptylog/ rsync://$(mesos-dns-lookup repo.marathon.mesos)/store/logs/ || true
   rm -rf copy-emptylog
 }
 
@@ -150,9 +174,9 @@ while true; do
   done
 
   if [[ "$PR_REPO" != "" ]]; then
-    HASHES=$(cat force-hashes 2> /dev/null || true)
+    HASHES=$(cat force-hashes | grep -vE '^#' 2> /dev/null || true)
     if [[ ! $HASHES ]]; then
-      HASHES=`$TIMEOUT_CMD list-branch-pr --show-main-branch --check-name $CHECK_NAME ${TRUST_COLLABORATORS:+--trust-collaborators} ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} ${DELAY:+--max-wait $DELAY} || $TIMEOUT_CMD report-analytics exception --desc "list-branch-pr failed"`
+      HASHES=`$TIMEOUT_CMD list-branch-pr ${LIST_BRANCH_PR_TIMEOUT:+--timeout $LIST_BRANCH_PR_TIMEOUT} --show-main-branch --check-name $CHECK_NAME ${TRUST_COLLABORATORS:+--trust-collaborators} ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} ${DELAY:+--max-wait $DELAY} || $TIMEOUT_CMD report-analytics exception --desc "list-branch-pr failed"`
     else
       echo "Note: using hashes from $PWD/force-hashes, here is the list:"
       cat $PWD/force-hashes
@@ -163,12 +187,29 @@ while true; do
   fi
 
   for pr_id in $HASHES; do
+
     DOCTOR_ERROR=""
     BUILD_ERROR=""
     pr_number=${pr_id%@*}
     pr_hash=${pr_id#*@}
     LAST_PR=$pr_number
     LAST_PR_OK=
+
+    # We are looping over several build hashes here. We will have one log per build.
+    SLOG_DIR="separate_logs/$(get_timestamp)-${pr_number}-${pr_hash}"
+    mkdir -p "$SLOG_DIR"
+
+    # Restore fds 1, 2 from 3, 4. If this is the first run, it may fail and this is fine
+    exec 1>&3 3>&- || true
+    exec 2>&4 4>&- || true
+
+    # Back up file descriptors 1, 2 to 3, 4 (will restore them later)
+    exec 3>&1
+    exec 4>&2
+
+    # Redirecting all output to current stdout/stderr, plus separate logfile
+    exec > >(tee "$SLOG_DIR/log.txt") 2>&1
+
     report_state pr_processing
     if [[ "$PR_REPO" != "" ]]; then
       pushd $PR_REPO_CHECKOUT
@@ -199,6 +240,7 @@ while true; do
         # so we ignore the result code for now
         $TIMEOUT_CMD set-github-status -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s $CHECK_NAME/error -m "Diff too big. Rejecting." || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on merge too big"
         $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX  \
+                                      --logs-dest rsync://$(mesos-dns-lookup repo.marathon.mesos)/store/logs \
                                       --pr "${PR_REPO:-alisw/alidist}#${pr_id}" \
                                       -s $CHECK_NAME -m "Your pull request exceeded the allowed size. If you need to commit large files, [have a look here](http://alisw.github.io/git-advanced/#how-to-use-large-data-files-for-analysis)." || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on merge diff too big"
         continue
@@ -252,6 +294,7 @@ while true; do
       badge failing
       $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX \
                                     ${DONT_USE_COMMENTS:+--no-comments} \
+                                    --logs-dest rsync://$(mesos-dns-lookup repo.marathon.mesos)/store/logs \
                                     --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $CHECK_NAME || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on build error"
     else
       # We do not want to kill the system is github is not working
@@ -289,7 +332,12 @@ while true; do
       popd
     fi
     report_state pr_processing_done
-  done
+  done  # end processing a single PR
+
+  # Restore fds 1, 2 in case of premature exit from the loop (may fail: it's fine)
+  exec 1>&3 3>&- || true
+  exec 2>&4 4>&- || true
+
   report_state looping_done
   if [[ $ONESHOT = true ]]; then
     echo "Called with ONESHOT=true. Exiting."
