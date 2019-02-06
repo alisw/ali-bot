@@ -26,7 +26,18 @@ for V in GITHUB_TOKEN GITLAB_USER GITLAB_PASS PR_REPO PACKAGE CHECK_NAME PR_BRAN
   [[ $(eval echo \$$V) ]] || { echo "Required variable $V not defined!"; ERR=1; continue; }
   eval "export $V"
 done
+if [[ $WORKERS_POOL_SIZE && ! $WORKER_INDEX ]]; then
+  echo "When defining WORKERS_POOL_SIZE one should define WORKER_INDEX as well!"
+  ERR=1
+fi
 [[ $ERR == 1 ]] && exit 1
+
+# If we are in a virtual environment do not install with --user
+if [[ $VIRTUAL_ENV ]]; then
+  PIP_USER=
+else
+  PIP_USER='--user'
+fi
 
 JOBS_DEFAULT=$(sysctl -n hw.ncpu 2> /dev/null || grep -c bogomips /proc/cpuinfo 2> /dev/null || echo 4)
 
@@ -70,9 +81,9 @@ mkdir -p "$CI_WORK_DIR" "$PYTHONUSERBASE"
 # We need a workaround to install ali-bot on Python 2.6
 if [[ ! $RUN_CI ]]; then
   python -c 'import platform;print(platform.python_version())' | grep -qE '^2\.6' \
-    && { pip install --user --ignore-installed --upgrade setuptools==22.0.2 importlib==1.0.4 || exit 1; } \
+    && { pip install ${PIP_USER} --ignore-installed --upgrade setuptools==22.0.2 importlib==1.0.4 || exit 1; } \
     || true
-  pip install --user --ignore-installed --upgrade -e "$ALIBOT"
+  pip install ${PIP_USER} --ignore-installed --upgrade -e "$ALIBOT"
 fi
 
 # aliBuild repository slug: <group>/<repo>[@<branch>]
@@ -82,7 +93,7 @@ ALIBUILD_BRANCH=${ALIBUILD_SLUG#*@}
 [[ $ALIBUILD_REPO == $ALIBUILD_SLUG ]] && ALIBUILD_BRANCH= || true
 
 # Install aliBuild through pip (ensures dependencies are installed as well)
-pip install --user --ignore-installed --upgrade git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
+pip install ${PIP_USER} --ignore-installed --upgrade git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
 type aliBuild
 
 set -x
@@ -99,6 +110,17 @@ fi
 
 [[ -d alidist/.git ]]             || git clone https://github.com/alisw/alidist
 [[ -d "$PR_REPO_CHECKOUT/.git" ]] || git clone "https://github.com/$PR_REPO" "$PR_REPO_CHECKOUT"
+
+# Extra repositories to download are in array EXTRA_REPOS. Each element is in the form:
+#   repo=alisw/alidist [branch=dev] [checkout=AliDist]
+# where branch, checkout are optional.
+for EXTRA in "${EXTRA_REPOS[@]}"; do
+  unset repo branch checkout
+  EXTRA_REPO=$(eval "$EXTRA"; echo $repo)
+  EXTRA_BRANCH=$(eval "$EXTRA"; echo $branch)
+  EXTRA_CHECKOUT=$(eval "$EXTRA"; echo $checkout)
+  [[ -d "$EXTRA_CHECKOUT/.git" ]] || git clone https://github.com/$EXTRA_REPO ${EXTRA_BRANCH:+-b $EXTRA_BRANCH} ${EXTRA_CHECKOUT:+$EXTRA_CHECKOUT/}
+done
 
 if [[ $2 != --test* ]]; then
   ( cd alidist;           git fetch origin master; git checkout master; git reset --hard origin/master; )

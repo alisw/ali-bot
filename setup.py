@@ -114,6 +114,8 @@ setup(
                "ci/sync-egroups.py",
                "ci/sync-mapusers.py",
                # Get PR information
-               "ci/prinfo"
+               "ci/prinfo",
+               # Resolve Mesos DNS
+               "mesos-dns-lookup"
               ]
 )
