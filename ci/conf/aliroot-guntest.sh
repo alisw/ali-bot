@@ -3,8 +3,11 @@
 # GitHub slug of the repository accepting PRs
 PR_REPO=alisw/AliRoot
 
+# Where to check out that repository (build $PACKAGE with changes from $PR_REPO)
+PR_REPO_CHECKOUT=AliRoot
+
 # What is the package to rebuild
-PACKAGE=AliRoot
+PACKAGE=AliRoot-guntest
 
 # How to name the check
 CHECK_NAME=build/AliRoot/macos
@@ -13,7 +16,7 @@ CHECK_NAME=build/AliRoot/macos
 PR_BRANCH=master
 
 # What is the default to use
-ALIBUILD_DEFAULTS=root6
+ALIBUILD_DEFAULTS=next-root6
 
 # Start PR check if PR comes from one of them (comma-separated)
 TRUSTED_USERS=
