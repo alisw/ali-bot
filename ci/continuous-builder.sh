@@ -68,12 +68,14 @@ popd
 $TIMEOUT_CMD set-github-status -c alisw/alidist@$ALIDIST_REF -s $CHECK_NAME/pending
 
 # Generate example of force-hashes file. This is used to override what to check for testing
-cat > force-hashes <<EOF
+if [[ ! -e force-hashes ]]; then
+  cat > force-hashes <<EOF
 # Example (this is a comment):
 # pr_number@hash
 # You can also use:
 # branch_name@hash
 EOF
+fi
 
 function get_timestamp() {
   # Get current timestamp, YYYYMMDD-HHMMSS in UTC
@@ -119,6 +121,7 @@ function badge() {
 }
 
 function emptylog() {
+  # Works for branches only: it will silently exit on PRs
   [[ $(( $pr_number + 0 )) == $pr_number ]] && return || true
   local DEST_DIR="copy-emptylog/${PR_REPO}/${PR_BRANCH}/latest/${CHECK_NAME//\//_}"
   local DEST_FILE=$DEST_DIR/fullLog.txt
@@ -172,6 +175,10 @@ while true; do
       fi
     popd
   done
+
+  # Remove logs older than 5 days
+  find separate_logs/ -type f -mtime +5 -delete || true
+  find separate_logs/ -type d -empty -delete || true
 
   if [[ "$PR_REPO" != "" ]]; then
     HASHES=$(cat force-hashes | grep -vE '^#' 2> /dev/null || true)
@@ -288,6 +295,7 @@ while true; do
              ${REMOTE_STORE:+--remote-store $REMOTE_STORE}                       \
              ${DEBUG:+--debug}                                                   \
              build $PACKAGE || BUILD_ERROR=$?
+
     if [[ $BUILD_ERROR != '' ]]; then
       # We do not want to kill the system if GitHub is not working
       # so we ignore the result code for now
@@ -300,8 +308,17 @@ while true; do
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
       badge passing
-      emptylog
-      $TIMEOUT_CMD set-github-status -c ${STATUS_REF} -s $CHECK_NAME/success || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on build success"
+      if [[ $(( $pr_number + 0 )) == $pr_number ]]; then
+        # This is a PR. Use the error function (with --success) to still provide logs
+        $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX \
+                                      --success \
+                                      --logs-dest rsync://$(mesos-dns-lookup repo.marathon.mesos)/store/logs \
+                                      --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $CHECK_NAME || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on build success"
+      else
+        # This is a branch
+        emptylog
+        $TIMEOUT_CMD set-github-status -c ${STATUS_REF} -s $CHECK_NAME/success || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on build success"
+      fi
     fi
     [[ $BUILD_ERROR ]] && LAST_PR_OK=0 || LAST_PR_OK=1
 
