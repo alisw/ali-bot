@@ -36,6 +36,12 @@ def parse_args():
                         default=False,
                         help="Use Details button, do not post a comment")
 
+    parser.add_argument("--success",
+                        action="store_true",
+                        dest="success",
+                        default=False,
+                        help="Signal a green status, not error")
+
     parser.add_argument("--status", "-s",
                         required=True,
                         help="Check which had the error")
@@ -197,11 +203,12 @@ def handle_pr_id(cgh, pr, logs, args):
         sys.exit(0)
 
     # Set status
-    ns = Namespace(commit=args.pr, status=args.status + "/error", message="", url=logs.url)
+    ghStatus = "/success" if args.success else "/error"
+    ns = Namespace(commit=args.pr, status=args.status + ghStatus, message="", url=logs.url)
     setGithubStatus(cgh, ns)
 
     # Comment if appropriate
-    if args.noComments:
+    if args.noComments or args.success:
         return
 
     prIssueComments = cgh.get("/repos/{repo_name}/issues/{pr_id}/comments",
