@@ -240,6 +240,7 @@ slc5_x86-64:
     2011.2c-vmc1-2: False
     2011.2c-vmc2-1: True
     2011.2c-vmc3-1: True
+    2011.2x-vmc1-1: True
 
 slc6_x86-64:
   jemalloc:
