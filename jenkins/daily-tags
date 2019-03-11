@@ -95,6 +95,7 @@ node ("slc7_x86-64-light") {
                    "DEFAULTS=${DEFAULTS}",
                    "TEST_TAG=${TEST_TAG}",
                    "AUTOTAG_PATTERN=${AUTOTAG_PATTERN}",
+                   "AUTOTAG_OVERRIDE_VERSION=${AUTOTAG_OVERRIDE_VERSION}",
                    "MESOS_QUEUE_SIZE=${MESOS_QUEUE_SIZE}",
                    "REMOVE_RC_BRANCH_FIRST=${REMOVE_RC_BRANCH_FIRST}"]) {
             sh '''

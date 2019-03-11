@@ -171,6 +171,9 @@ open(f+".old", "w").write(yaml.dump(d)+"\n---\n")
 d["overrides"] = d.get("overrides", {})
 d["overrides"][p] = d["overrides"].get(p, {})
 d["overrides"][p]["tag"] = environ["AUTOTAG_BRANCH"]
+v = environ.get("AUTOTAG_OVERRIDE_VERSION")
+if v:
+    d["overrides"][p]["version"] = v
 open(f, "w").write(yaml.dump(d)+"\n---\n")
 EOF
 
