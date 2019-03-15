@@ -11,7 +11,7 @@ from yaml import YAMLError
 from logging import debug, error, info
 from re import search, escape, sub
 from os.path import isdir, isfile, realpath, dirname, getmtime, join
-from os import chmod, remove, chdir, getcwd, getpid, kill
+from os import chmod, remove, chdir, getcwd, getpid, kill, makedirs
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, mkdtemp
 from subprocess import Popen, PIPE, STDOUT
@@ -435,7 +435,14 @@ class RPM(object):
            npkgs=self._countChanges))
       if not self._dryRun:
         for arch in self._archs:
-          if execute([ "createrepo", self._repoDir+"/"+arch ]) == 0:
+          cachedir = join(self._repoDir, "createrepo_cachedir", arch)
+          archdir = join(self._repoDir, arch)
+          try:
+            makedirs(cachedir)
+          except OSError:
+            error(format("RPM: error creating createrepo cachedir %(cachedir)s", cachedir=cachedir))
+            return False
+          if execute([ "time", "createrepo", "--cachedir", cachedir, "--update", archdir ]) == 0:
             info(format("RPM: repository updated for %(arch)s", arch=arch))
           else:
             error(format("RPM: error updating repository for %(arch)s", arch=arch))
