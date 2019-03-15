@@ -1,9 +1,8 @@
 #!/usr/bin/env python
 
-import logging, sys, json, yaml, requests, urllib3
+import logging, sys, json, yaml, requests, urllib3, errno
 from argparse import ArgumentParser
 from commands import getstatusoutput
-import logging, sys, json, yaml, requests
 from datetime import datetime
 from requests import RequestException
 from time import sleep, time
@@ -439,9 +438,10 @@ class RPM(object):
           archdir = join(self._repoDir, arch)
           try:
             makedirs(cachedir)
-          except OSError:
-            error(format("RPM: error creating createrepo cachedir %(cachedir)s", cachedir=cachedir))
-            return False
+          except OSError as exc:
+            if not isdir(cachedir) or exc.errno != errno.EEXIST:
+              error(format("RPM: error creating createrepo cachedir %(cachedir)s", cachedir=cachedir))
+              return False
           if execute([ "time", "createrepo", "--cachedir", cachedir, "--update", archdir ]) == 0:
             info(format("RPM: repository updated for %(arch)s", arch=arch))
           else:
