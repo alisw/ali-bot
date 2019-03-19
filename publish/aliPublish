@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import logging, sys, json, yaml, requests, urllib3, errno
+from glob import glob
 from argparse import ArgumentParser
 from commands import getstatusoutput
 from datetime import datetime
@@ -9,8 +10,8 @@ from time import sleep, time
 from yaml import YAMLError
 from logging import debug, error, info
 from re import search, escape, sub
-from os.path import isdir, isfile, realpath, dirname, getmtime, join
-from os import chmod, remove, chdir, getcwd, getpid, kill, makedirs
+from os.path import isdir, isfile, realpath, dirname, getmtime, join, basename
+from os import chmod, remove, chdir, getcwd, getpid, kill, makedirs, rename
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, mkdtemp
 from subprocess import Popen, PIPE, STDOUT
@@ -380,12 +381,13 @@ class RPM(object):
     self._dryRun = dryRun
     self._genUpdatableRpms = genUpdatableRpms
     self._repoDir = repoDir
+    self._stageDir = join(repoDir, "staging")
     self._publishScriptTpl = publishScriptTpl
     self._countChanges = 0
     self._connParams = connParams
     self._archs = []
 
-  def _kw(self, url, arch, pkgName, pkgVer, workDir=None, deps=None):
+  def _kw(self, url, arch, pkgName, pkgVer, workDir=None, stageDir=None, deps=None):
     kw =  { "url"          : url,
             "package"      : pkgName,
             "version"      : pkgVer,
@@ -394,6 +396,7 @@ class RPM(object):
             "dependencies" : deps,
             "repodir"      : self._repoDir+"/"+arch,
             "workdir"      : workDir,
+            "stagedir"     : stageDir,
             "updatable"    : "1" if self._genUpdatableRpms else "" }
     kw.update(self._connParams)
     kw["http_ssl_verify"] = 1 if kw["http_ssl_verify"] else 0
@@ -409,10 +412,26 @@ class RPM(object):
     return isfile(format("%(repodir)s/%(rpm)s", **kw))
 
   def install(self, url, arch, pkgName, pkgVer, deps, allDeps):
-    workDir = mkdtemp(prefix="aliPublish-RPM-")
-    kw = self._kw(url, arch, pkgName, pkgVer, workDir,
+    # All RPMs are created in workDir (temporary, destroyed after creation). Eventually they are
+    # moved to stageDirArch (not the repository)
+
+    stageDirArch = join(self._stageDir, arch)
+    workDir = mkdtemp(prefix=join(self._stageDir, "tmp", "aliPublish-RPM-"))
+
+    kw = self._kw(url, arch, pkgName, pkgVer, workDir, stageDirArch,
                   " ".join(["alisw-%s+%s" % (x["name"], x["ver"]) for x in deps]))
+
     debug(format("RPM: created temporary working directory %(workdir)s", **kw))
+
+    if not self._dryRun:
+      debug(format("RPM: creating staging directory %(staging)s", staging=stageDirArch))
+      try:
+        makedirs(stageDirArch)
+      except OSError as exc:
+        if not isdir(stageDirArch) or exc.errno != errno.EEXIST:
+          error(format("RPM: error creating staging directory %(staging)s", staging=stageDirArch))
+          return 1
+
     rv = runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
     if rv == 0:
       if not arch in self._archs:
@@ -423,6 +442,18 @@ class RPM(object):
     return rv
 
   def transaction(self):
+    if not self._dryRun:
+      debug(format("RPM: cleaning up staging dir %(staging)s", staging=self._stageDir))
+      rmrf(self._stageDir)
+      if not self._dryRun:
+        stagingTmp = join(self._stageDir, "tmp")
+        debug(format("RPM: creating staging tempdir %(staging)s", staging=stagingTmp))
+        try:
+          makedirs(stagingTmp)
+        except OSError as exc:
+          if not isdir(stagingTmp) or exc.errno != errno.EEXIST:
+            error(format("RPM: error creating staging tempdir %(staging)s", staging=stagingTmp))
+            return False
     return True
 
   def abort(self, force=False):
@@ -430,18 +461,43 @@ class RPM(object):
 
   def publish(self):
     if self._countChanges > 0:
-      info(format("RPM: updating repository data, %(npkgs)s new package(s)",
+      info(format("RPM: updating repository: %(npkgs)s new package(s)",
            npkgs=self._countChanges))
       if not self._dryRun:
         for arch in self._archs:
           cachedir = join(self._repoDir, "createrepo_cachedir", arch)
           archdir = join(self._repoDir, arch)
+          stagedir = join(self._stageDir, arch)
+
           try:
             makedirs(cachedir)
           except OSError as exc:
             if not isdir(cachedir) or exc.errno != errno.EEXIST:
               error(format("RPM: error creating createrepo cachedir %(cachedir)s", cachedir=cachedir))
               return False
+
+          try:
+            makedirs(archdir)
+          except OSError as exc:
+            if not isdir(archdir) or exc.errno != errno.EEXIST:
+              error(format("RPM: error creating repository dir %(archdir)s", archdir=archdir))
+              return False
+
+          info(format("RPM: moving newly created packages from %(staging)s to %(repo)s",
+                      staging=stagedir, repo=archdir))
+          for srcRpm in glob(join(stagedir, "*.rpm")):
+            try:
+              error(format("RPM: moving %(staged)s to %(archdir)s", staged=srcRpm, archdir=archdir))
+              rename(srcRpm, join(archdir, basename(srcRpm)))
+            except OSError:
+              error(format("RPM: cannot move %(staged)s to %(archdir)s",
+                    staged=srcRpm, archdir=archdir))
+
+          # We can already remove the staging directory before calling `createrepo`. Errors here are
+          # not fatal
+          debug(format("RPM: removing staging directory %(staging)s", staging=self._stageDir))
+          rmrf(self._stageDir)
+
           if execute([ "time", "createrepo", "--cachedir", cachedir, "--update", archdir ]) == 0:
             info(format("RPM: repository updated for %(arch)s", arch=arch))
           else:
