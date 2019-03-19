@@ -38,6 +38,9 @@ for repo in perms:
         if g.startswith("@") and not g[1:] in def_groups:
           ldap_groups[g[1:]] = []
       break
+  for adm in perms[repo].get("admins", "").split(","):
+    if adm and adm.startswith("@") and not adm[1:] in def_groups:
+      ldap_groups[adm[1:]] = []
 
 # Open LDAP connection: try to get definitions for each group
 for g in ldap_groups:

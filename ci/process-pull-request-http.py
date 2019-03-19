@@ -620,6 +620,10 @@ def load_perms(f_perms, f_groups, f_mapusers, admins):
     except (KeyError,TypeError) as e:
       warning("config %s: wrong syntax for rules in repo %s" % (f_perms, repo))
       rules = []
+    try:
+      repo_admins = c[repo]["admins"].split(",")  # admins are mentioned as approvers in every PR
+    except (KeyError,TypeError) as e:
+      repo_admins = []
     perms[repo] = []
     for path_rule in rules:
       if not isinstance(path_rule, dict):
@@ -639,6 +643,7 @@ def load_perms(f_perms, f_groups, f_mapusers, admins):
               warning("config %s: invalid %s for repo %s path %s: fallback to 1" % \
                       (cf, a, repo, path_regexp))
               num_approve = 1
+        approve += repo_admins  # add admins as approvers to every PR
 
         auth = [ x for x in auth if not "=" in x ]
         # Append rule to perms
@@ -647,7 +652,7 @@ def load_perms(f_perms, f_groups, f_mapusers, admins):
                                  approve=approve,
                                  num_approve=num_approve))
 
-  # Expand groups (unknown discarded)
+  # Resolve groups (unknown discarded)
   for repo in perms:
     for path_rule in perms[repo]:
       for k in ["authorized", "approve"]:
