@@ -281,6 +281,8 @@ slc6_x86-64:
     v5-09-20fa-01-1        : True
     vAN-20190213-1         : False
     vAN-20190213_ROOT6-1   : False
+    v5-09-46a-01_TESTROOT5-1 : True
+    v5-09-46a-01_TESTROOT6-1 : True
 
 slc7_x86-64:
   GCC-Toolchain:
