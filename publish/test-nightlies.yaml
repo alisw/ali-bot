@@ -45,6 +45,8 @@ slc6_x86-64:
     v9-99-99-01-rc20180830-1 : True
     v5-09-45-01-rc20190112-1 : True
     v5-09-44a-1              : False
+    v5-09-46a-01_TESTPYTHONROOT5-1 : True
+    v5-09-46a-01_TESTPYTHONROOT6-1 : True
   AliDPG:
     v9-99-XX-rc20180730-1 : True
     alidpg_aligenmc-2     : True
