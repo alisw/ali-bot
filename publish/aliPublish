@@ -497,7 +497,7 @@ class RPM(object):
                       staging=stagedir, repo=archdir))
           for srcRpm in glob(join(stagedir, "*.rpm")):
             try:
-              error(format("RPM: moving %(staged)s to %(archdir)s", staged=srcRpm, archdir=archdir))
+              info(format("RPM: moving %(staged)s to %(archdir)s", staged=srcRpm, archdir=archdir))
               rename(srcRpm, join(archdir, basename(srcRpm)))
             except OSError:
               error(format("RPM: cannot move %(staged)s to %(archdir)s",
