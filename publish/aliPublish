@@ -66,7 +66,7 @@ def runInstallScript(script, dryRun, **kwsub):
   with NamedTemporaryFile(delete=False) as fp:
     fn = fp.name
     fp.write(format(script, **kwsub))
-  chmod(fn, 0700)
+  chmod(fn, 0o700)
   debug(format("Created unpack script: %(file)s", file=fn))
   rv = execute(fn)
   remove(fn)
@@ -100,6 +100,14 @@ class JGet(object):
     self.count_req         = 0
     self.count_req_retries = 0
     self.cache_dir         = cache_dir
+    if cache_dir:
+      try:
+        makedirs(cache_dir)
+      except OSError as exc:
+        if not isdir(cache_dir) or exc.errno != errno.EEXIST:
+          error(format("Cannot create cache dir for package deps %(cache)s: disabling",
+                       cache=cache_dir))
+          self.cache_dir = None
     self.urls              = []
     self.cachable          = '/[^/]+/(dist|dist-runtime|dist-direct)/[^/]+/[^/]+/$'
   def __call__(self, url):
@@ -386,6 +394,7 @@ class RPM(object):
     self._countChanges = 0
     self._connParams = connParams
     self._archs = []
+    self._inRpmTransaction = False
 
   def _kw(self, url, arch, pkgName, pkgVer, workDir=None, stageDir=None, deps=None):
     kw =  { "url"          : url,
@@ -416,14 +425,16 @@ class RPM(object):
     # moved to stageDirArch (not the repository)
 
     stageDirArch = join(self._stageDir, arch)
-    workDir = mkdtemp(prefix=join(self._stageDir, "tmp", "aliPublish-RPM-"))
+    if not self._dryRun:
+      workDir = mkdtemp(prefix=join(self._stageDir, "tmp", "aliPublish-RPM-"))
+    else:
+      workDir = "/dryrun_doesnotexist"
 
     kw = self._kw(url, arch, pkgName, pkgVer, workDir, stageDirArch,
                   " ".join(["alisw-%s+%s" % (x["name"], x["ver"]) for x in deps]))
 
-    debug(format("RPM: created temporary working directory %(workdir)s", **kw))
-
     if not self._dryRun:
+      debug(format("RPM: created temporary working directory %(workdir)s", **kw))
       debug(format("RPM: creating staging directory %(staging)s", staging=stageDirArch))
       try:
         makedirs(stageDirArch)
@@ -442,21 +453,25 @@ class RPM(object):
     return rv
 
   def transaction(self):
-    if not self._dryRun:
+    if not self._inRpmTransaction and not self._dryRun:
+      self._inRpmTransaction = True
       debug(format("RPM: cleaning up staging dir %(staging)s", staging=self._stageDir))
       rmrf(self._stageDir)
-      if not self._dryRun:
-        stagingTmp = join(self._stageDir, "tmp")
-        debug(format("RPM: creating staging tempdir %(staging)s", staging=stagingTmp))
-        try:
-          makedirs(stagingTmp)
-        except OSError as exc:
-          if not isdir(stagingTmp) or exc.errno != errno.EEXIST:
-            error(format("RPM: error creating staging tempdir %(staging)s", staging=stagingTmp))
-            return False
+      stagingTmp = join(self._stageDir, "tmp")
+      debug(format("RPM: creating staging tempdir %(staging)s", staging=stagingTmp))
+      try:
+        makedirs(stagingTmp)
+      except OSError as exc:
+        if not isdir(stagingTmp) or exc.errno != errno.EEXIST:
+          error(format("RPM: error creating staging tempdir %(staging)s", staging=stagingTmp))
+          return False
     return True
 
   def abort(self, force=False):
+    if self._inRpmTransaction and not self._dryRun:
+      debug(format("RPM: aborting: cleaning up staging dir %(staging)s", staging=self._stageDir))
+      rmrf(self._stageDir)
+      self._inRpmTransaction = False
     return True
 
   def publish(self):
@@ -487,7 +502,7 @@ class RPM(object):
                       staging=stagedir, repo=archdir))
           for srcRpm in glob(join(stagedir, "*.rpm")):
             try:
-              error(format("RPM: moving %(staged)s to %(archdir)s", staged=srcRpm, archdir=archdir))
+              info(format("RPM: moving %(staged)s to %(archdir)s", staged=srcRpm, archdir=archdir))
               rename(srcRpm, join(archdir, basename(srcRpm)))
             except OSError:
               error(format("RPM: cannot move %(staged)s to %(archdir)s",
