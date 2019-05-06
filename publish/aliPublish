@@ -66,7 +66,7 @@ def runInstallScript(script, dryRun, **kwsub):
   with NamedTemporaryFile(delete=False) as fp:
     fn = fp.name
     fp.write(format(script, **kwsub))
-  chmod(fn, 0700)
+  chmod(fn, 0o700)
   debug(format("Created unpack script: %(file)s", file=fn))
   rv = execute(fn)
   remove(fn)
@@ -100,6 +100,14 @@ class JGet(object):
     self.count_req         = 0
     self.count_req_retries = 0
     self.cache_dir         = cache_dir
+    if cache_dir:
+      try:
+        makedirs(cache_dir)
+      except OSError as exc:
+        if not isdir(cache_dir) or exc.errno != errno.EEXIST:
+          error(format("Cannot create cache dir for package deps %(cache)s: disabling",
+                       cache=cache_dir))
+          self.cache_dir = None
     self.urls              = []
     self.cachable          = '/[^/]+/(dist|dist-runtime|dist-direct)/[^/]+/[^/]+/$'
   def __call__(self, url):
