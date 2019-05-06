@@ -424,14 +424,16 @@ class RPM(object):
     # moved to stageDirArch (not the repository)
 
     stageDirArch = join(self._stageDir, arch)
-    workDir = mkdtemp(prefix=join(self._stageDir, "tmp", "aliPublish-RPM-"))
+    if not self._dryRun:
+      workDir = mkdtemp(prefix=join(self._stageDir, "tmp", "aliPublish-RPM-"))
+    else:
+      workDir = "/dryrun_doesnotexist"
 
     kw = self._kw(url, arch, pkgName, pkgVer, workDir, stageDirArch,
                   " ".join(["alisw-%s+%s" % (x["name"], x["ver"]) for x in deps]))
 
-    debug(format("RPM: created temporary working directory %(workdir)s", **kw))
-
     if not self._dryRun:
+      debug(format("RPM: created temporary working directory %(workdir)s", **kw))
       debug(format("RPM: creating staging directory %(staging)s", staging=stageDirArch))
       try:
         makedirs(stageDirArch)
