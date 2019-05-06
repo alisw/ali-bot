@@ -394,6 +394,7 @@ class RPM(object):
     self._countChanges = 0
     self._connParams = connParams
     self._archs = []
+    self._inRpmTransaction = False
 
   def _kw(self, url, arch, pkgName, pkgVer, workDir=None, stageDir=None, deps=None):
     kw =  { "url"          : url,
@@ -452,21 +453,25 @@ class RPM(object):
     return rv
 
   def transaction(self):
-    if not self._dryRun:
+    if not self._inRpmTransaction and not self._dryRun:
+      self._inRpmTransaction = True
       debug(format("RPM: cleaning up staging dir %(staging)s", staging=self._stageDir))
       rmrf(self._stageDir)
-      if not self._dryRun:
-        stagingTmp = join(self._stageDir, "tmp")
-        debug(format("RPM: creating staging tempdir %(staging)s", staging=stagingTmp))
-        try:
-          makedirs(stagingTmp)
-        except OSError as exc:
-          if not isdir(stagingTmp) or exc.errno != errno.EEXIST:
-            error(format("RPM: error creating staging tempdir %(staging)s", staging=stagingTmp))
-            return False
+      stagingTmp = join(self._stageDir, "tmp")
+      debug(format("RPM: creating staging tempdir %(staging)s", staging=stagingTmp))
+      try:
+        makedirs(stagingTmp)
+      except OSError as exc:
+        if not isdir(stagingTmp) or exc.errno != errno.EEXIST:
+          error(format("RPM: error creating staging tempdir %(staging)s", staging=stagingTmp))
+          return False
     return True
 
   def abort(self, force=False):
+    if self._inRpmTransaction and not self._dryRun:
+      debug(format("RPM: aborting: cleaning up staging dir %(staging)s", staging=self._stageDir))
+      rmrf(self._stageDir)
+      self._inRpmTransaction = False
     return True
 
   def publish(self):
