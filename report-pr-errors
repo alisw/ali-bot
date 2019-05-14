@@ -116,7 +116,7 @@ class Logs(object):
             globbed.extend(glob(sp))
 
         suffix = ("latest" + "-" + self.develPrefix).strip("-")
-        logs = { x for x in globbed if dirname(x).endswith(suffix) }
+        logs = {x for x in globbed if dirname(x).endswith(suffix)}
 
         print("Found:\n%s" % "\n".join(logs), file=sys.stderr)
         self.logs = logs
