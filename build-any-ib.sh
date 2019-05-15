@@ -36,6 +36,7 @@ export LD_LIBRARY_PATH=$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH
 pip install --user --ignore-installed --upgrade git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
 type aliBuild
 
+rm -rf alidist
 if [[ $ALIDIST_PRNUM ]]; then
   ALIDIST_BRANCH=pull/${ALIDIST_PRNUM}/head
   git clone https://github.com/${ALIDIST_REPO}
