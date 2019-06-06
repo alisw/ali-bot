@@ -215,7 +215,21 @@ while true; do
     exec 4>&2
 
     # Redirecting all output to current stdout/stderr, plus separate logfile
-    exec > >(tee "$SLOG_DIR/log.txt") 2>&1
+    # Mitigate zombie processes
+    #
+    # This will create a zombie process when executed in something which does fork
+    # + exec + wait on children process.  This is because >(tee "$LOG") will
+    # actually create a new process which is unknown to the parent.
+    #
+    # Under normal conditions this should not be a problem, given the bash
+    # executing the continuous-builder.sh should reap the zombie process. However
+    # continuous-builder.sh itself does the same and the zombie ends up escaping
+    # the bash and gets attached to the python agent, which only reaps the
+    # processes it knows about.
+    #
+    # Bottomline is that this trick is looking for troubles and should never be
+    # used.
+    # exec > >(tee "$SLOG_DIR/log.txt") 2>&1
 
     report_state pr_processing
     if [[ "$PR_REPO" != "" ]]; then
