@@ -230,6 +230,7 @@ while true; do
     # Bottomline is that this trick is looking for troubles and should never be
     # used.
     # exec > >(tee "$SLOG_DIR/log.txt") 2>&1
+    echo "No separate logs for now" > "$SLOG_DIR/log.txt"
 
     report_state pr_processing
     if [[ "$PR_REPO" != "" ]]; then
