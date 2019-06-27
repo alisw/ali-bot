@@ -15,12 +15,12 @@ for CONF in aliPublish*-rpms.conf; do
   echo === $(LANG=C date) :: syncing to CERN IT EOS repo === >&2
   timeout -s 9 1800 \
     rsync --progress \
-          --size-only \
+          --update \
           --delete \
           --rsh="sshpass -p '$SYNC_PASS' ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no -l $SYNC_USER" \
           -rv \
-          /repo/RPMS/el7.x86_64/ \
-          lxplus.cern.ch:/eos/user/a/alibot/www/RPMS/el7.x86_64/ >&2
+          /repo/*RPMS --exclude '**/DAQ/' --exclude '**/createrepo_cachedir/' --exclude '**/el5.x86_64/' \
+          lxplus.cern.ch:/eos/user/a/alibot/www/ >&2
   printf "\n\n\n\n" >&2
 
 done
