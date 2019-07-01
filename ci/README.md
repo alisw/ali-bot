@@ -1,6 +1,28 @@
 Pull requests processor
 =======================
 
+This folder contains the helper scripts which run our continuous integration.
+
+The core of the testing is the `continuous-builder.sh` script which loops on
+the open pull requests of a given repository and invokes `aliBuild` of a given
+package after merging the contents of a given pull request to a local checkout
+of the given repository. This means that we have the following tradeoffs:
+
+* We can test PRs for a single repository per builder.
+* We keep testing broken pull requests, although with less frequency compared to 
+  newly introduced ones, which get precedence.
+
+This allows us to be more resistant to transient errors, since we keep retesting until
+something is merged.
+
+Parallelisation happens by partitioning the git hashes space among sever workers in a predefined manner.
+This could introduce some latency and inefficiencies in the case there are two pull requests
+which end up in the same partition, but it avoids having to maintain a central scheduler for our jobs.
+
+Tools details
+=============
+
+
 process-pull-requests
 ---------------------
 
