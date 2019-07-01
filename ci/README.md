@@ -15,21 +15,6 @@ configured repositories in `perms.yml`. Configuration files:
   and GitHub users; for instance, maps CERN accounts with GitHub
 
 
-convert-from-gitolite.py
-------------------------
-
-Utility to convert permissions from legacy Gitolite format to the format
-expected by `perms.yml`. This is not a generic conversion tool but it
-specifically aims the special format conventions used in ALICE.
-
-    ./convert-from-gitolite.py gitoliteRepo1.conf:alisw/Repo1 \
-                               gitoliteRepo2.conf:alisw/Repo2 \
-                               ...
-
-All input files (_e.g._ `gitoliteRepo1.conf`) are mapped to a certain GitHub
-repository (_e.g._ `alisw/Repo1`, in the format `user/repo`).
-
-
 sync-egroups.py
 ---------------
 
