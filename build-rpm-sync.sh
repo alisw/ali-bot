@@ -12,33 +12,72 @@ function pp() {
   printf "[BuildRPM] $1\n" >&2
 }
 
+function clexit() {
+  if [[ -d "$SCRATCH" ]]; then
+    rm -rf "$SCRATCH"
+  fi
+  exit $1
+}
+
 function check_rpms() {
-  local TMP_LIST="tmp_list.txt"
+  local TMP_LIST="$SCRATCH/tmp_list.txt"
   local RSYNC_START_TIME=$(date +%s)
   if [[ $1 == --pkg ]]; then
     pp "Checking for new RPMs for $PACKAGE_NAME"
-    local RSYNC_FILTER='alisw-'${PACKAGE_NAME}'\+.*\.rpm'
   elif [[ $1 == --repodata ]]; then
     pp "Checking if createrepo is in progress"
-    local RSYNC_FILTER='\.repodata'
   else
     pp "FATAL: invalid option to check_rpms"
-    exit 3
+    clexit 3
   fi
-  while ! rsync --list-only -r ${REMOTE_STORE_LIST}/RPMS > "$TMP_LIST"; do
-    if [[ $(( $(date +%s) - RSYNC_START_TIME )) -gt 600 ]]; then
-      pp "FATAL: timed out while attempting to fetch list of RPMs"
-      exit 2
-    fi
-    pp "Error calling rsync: retrying in 5 seconds"
-    sleep 5
+  rm -f "$TMP_LIST"
+  for RPM_REPO in $REMOTE_RPM_REPOS; do
+    while ! rsync --list-only -r ${REMOTE_STORE_LIST}/${RPM_REPO} >> "$TMP_LIST"; do
+      if [[ $(( $(date +%s) - RSYNC_START_TIME )) -gt 600 ]]; then
+        pp "FATAL: timed out while attempting to fetch list of RPMs"
+        clexit 2
+      fi
+      pp "Error calling rsync: retrying in 5 seconds"
+      sleep 5
+    done
   done
-  grep -oE "$RSYNC_FILTER" -- "$TMP_LIST" | sort -u
+  if [[ $1 == --pkg ]]; then
+    local RPM
+    while read RPM; do
+      if [[ $RPM =~ ^(.*)-(.*)-(.*)\.(.*)\.(.*)\.rpm$ ]]; then
+        local RPM_NAME=${BASH_REMATCH[1]}
+        if [[ $RPM_NAME == alisw-${PACKAGE_NAME}+* || $RPM_NAME == alisw-${PACKAGE_NAME} ]]; then
+          echo $RPM
+        fi
+      fi
+    done < <(grep -oE alisw-.*rpm "$TMP_LIST") | sort -u
+  elif [[ $1 == --repodata ]]; then
+    grep -oE '\.repodata$' -- "$TMP_LIST" | sort -u
+  fi
   rm -f "$TMP_LIST"
 }
 
 # What remote store to use. Variable is consistent with build-any-ib.sh
 REMOTE_STORE_LIST="${REMOTE_STORE:-rsync://repo.marathon.mesos/store/}"
+
+# Is package name set?
+if [[ ! $PACKAGE_NAME ]]; then
+  pp "No PACKAGE_NAME set, cannot continue"
+  clexit 6
+fi
+
+# Remote RPM repositories
+REMOTE_RPM_REPOS=
+COUNT_ATTEMPTS=0
+while [[ ! $REMOTE_RPM_REPOS && $COUNT_ATTEMPTS -lt 10 ]]; do
+  REMOTE_RPM_REPOS=$(rsync --list-only "$REMOTE_STORE_LIST" | grep RPMS | awk '{ print $NF }' 2> /dev/null | xargs echo)
+  COUNT_ATTEMPTS=$((COUNT_ATTEMPTS + 1))
+done
+if [[ ! $REMOTE_RPM_REPOS ]]; then
+  pp "Cannot get list of RPM repositories, aborting"
+  clexit 5
+fi
+pp "We will check for new RPMs in repositories: $REMOTE_RPM_REPOS"
 
 # Configure defaults for build-any-ib.sh (other vars come from Jenkins)
 export PUBLISH_BUILDS="true"
@@ -47,20 +86,26 @@ export USE_REMOTE_STORE="true"
 : ${WAIT_RPMS_TIMEOUT:=7200}    # Timeout [s] waiting for RPMs
 : ${WAIT_RPMS_RETRY_SLEEP:=60}  # How much time [s] to sleep between RPM checks
 
-check_rpms --pkg > list_rpms_before.txt
-pp "Found $(cat list_rpms_before.txt | wc -l | xargs echo) RPMs for $PACKAGE_NAME"
+SCRATCH=$(mktemp -d)
+check_rpms --pkg > "$SCRATCH/list_rpms_before.txt"
+pp "Found $(cat "$SCRATCH/list_rpms_before.txt" | wc -l | xargs echo) RPMs for $PACKAGE_NAME"
 
-pp "Launching aliBuild"
-PROG_DIR=$(cd "$(dirname "$0")"; pwd)
-"$PROG_DIR"/build-any-ib.sh
+if [[ $JENKINS_URL ]]; then
+  pp "Launching aliBuild"
+  PROG_DIR=$(cd "$(dirname "$0")"; pwd)
+  "$PROG_DIR"/build-any-ib.sh
+else
+  # Not running through Jenkins: test mode
+  pp "Not running aliBuild because not on Jenkins"
+fi
 
 START_TIME=$(date +%s)
 
 # Wait for new RPMs to appear
 while [[ 1 ]]; do
-  check_rpms --pkg > list_rpms_after.txt
+  check_rpms --pkg > "$SCRATCH/list_rpms_after.txt"
   ERR=0
-  diff list_rpms_before.txt list_rpms_after.txt | grep '> ' || ERR=$?
+  diff "$SCRATCH/list_rpms_before.txt" "$SCRATCH/list_rpms_after.txt" | grep '> ' || ERR=$?
   if [[ $ERR == 0 ]]; then
     pp "New RPM found for $PACKAGE_NAME"
     break
@@ -70,7 +115,7 @@ while [[ 1 ]]; do
   LEFT_TIME=$(( WAIT_RPMS_TIMEOUT - ELAPSED_TIME ))
   if [[ $ELAPSED_TIME -gt $WAIT_RPMS_TIMEOUT ]]; then
     pp "FATAL: timed out while waiting for new RPMs, sorry"
-    exit 1
+    clexit 1
   fi
   pp "No new RPM found yet for $PACKAGE_NAME: checking in $WAIT_RPMS_RETRY_SLEEP s"
   pp "Will keep checking for the next $LEFT_TIME s"
@@ -86,7 +131,7 @@ while [[ 1 ]]; do
     LEFT_TIME=$(( WAIT_RPMS_TIMEOUT - ELAPSED_TIME ))
     if [[ $ELAPSED_TIME -gt $WAIT_RPMS_TIMEOUT ]]; then
       pp "FATAL: timed out while waiting for RPM repository update, sorry"
-      exit 4
+      clexit 4
     fi
     pp "RPM repository update is in progress: checking in $WAIT_RPMS_RETRY_SLEEP s"
     pp "Will keep checking for the next $LEFT_TIME s"
@@ -97,4 +142,4 @@ while [[ 1 ]]; do
   fi
 done
 
-exit 0
+clexit 0
