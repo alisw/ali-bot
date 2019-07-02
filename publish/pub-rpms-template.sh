@@ -101,8 +101,18 @@ pushd unpack_rpm
   while read BAD_FILE; do
     mv -v "$BAD_FILE" "${BAD_FILE//\'/_}"
   done < <(find . -name "*'*" || true)
+  # Add extra dependencies, if applicable
+  if [[ -e $RPM_ROOT/.rpm-extra-deps ]]; then
+    OLD_IFS="$IFS"
+    IFS=$'\n'
+    for D in $(cat "$RPM_ROOT/.rpm-extra-deps" | sed -e 's/ *\(.*\) */\1/g; /^$/d'); do
+      DEPS+=("--depends" "$D")
+    done
+    IFS="$OLD_IFS"
+  fi
   # Remove useless files conflicting between packages
   rm -rfv $RPM_ROOT/.build-hash            \
+          $RPM_ROOT/.rpm-extra-deps        \
           $RPM_ROOT/etc/profile.d/init.sh* \
           $RPM_ROOT/.original-unrelocated
 popd
