@@ -23,7 +23,8 @@ slc5_x86-64:
     prod-201899-02-1       : False
     prod-201912-04-1       : True
   AliPhysics:
-    v5-09-02-devel-itsgeom1-1 : True
+    v5-09-02-devel-itsgeom1-1 : False
+    v5-09-02-devel-itsgeom1-01-1 : True
     v5-09-37a-01_ROOT6-1   : False
     v9-99-99-01-rc20180524-1 : False
     rc20180521-1           : False
