@@ -42,6 +42,9 @@ function check_rpms() {
     done
   done
   if [[ $1 == --pkg ]]; then
+    if [[ ! $JENKINS_URL ]]; then
+      grep "$PACKAGE_NAME" "$TMP_LIST" >&2 || true
+    fi
     local RPM
     while read RPM; do
       if [[ $RPM =~ ^(.*)-(.*)-(.*)\.(.*)\.(.*)\.rpm$ ]]; then
@@ -50,7 +53,7 @@ function check_rpms() {
           echo $RPM
         fi
       fi
-    done < <(grep -oE alisw-.*rpm "$TMP_LIST") | sort -u
+    done < <( (grep -v '/staging/' "$TMP_LIST" || true) | (grep -oE alisw-.*rpm || true) | sort -u )
   elif [[ $1 == --repodata ]]; then
     grep -oE '\.repodata$' -- "$TMP_LIST" | sort -u
   fi
@@ -97,6 +100,7 @@ if [[ $JENKINS_URL ]]; then
 else
   # Not running through Jenkins: test mode
   pp "Not running aliBuild because not on Jenkins"
+  WAIT_RPMS_RETRY_SLEEP=10
 fi
 
 START_TIME=$(date +%s)
