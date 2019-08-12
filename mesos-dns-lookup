@@ -4,7 +4,10 @@
 import os, sys
 from random import random, choice
 from requests import get
-dns = os.environ["MESOS_DNS"].split(",")
+dns = os.environ.get("MESOS_DNS", "alimesos01.cern.ch,alimesos02.cern.ch,alimesos03.cern.ch").split(",")
+if len(sys.argv) != 2:
+    print("Usage: mesos-dns-lookup <service>.<framework>.mesos")
+    sys.exit(1)
 what = sys.argv[1]
 for d in sorted(dns, key=lambda k: random()):
     try:
@@ -14,3 +17,5 @@ for d in sorted(dns, key=lambda k: random()):
         ips = []
 if ips:
     print(choice(ips))
+else:
+    print(what)
