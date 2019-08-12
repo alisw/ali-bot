@@ -15,6 +15,13 @@ from alibot_helpers.github_utilities import setGithubStatus, parseGithubRef
 from alibot_helpers.github_utilities import GithubCachedClient, PickledCache
 from alibot_helpers.utilities import to_unicode
 
+# Allow uploading logs to S3
+try:
+    from boto3.s3.transfer import S3Transfer
+    import boto3
+except:
+    pass
+
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--work-dir", "-w", default="sw", dest="workDir")
@@ -62,7 +69,7 @@ def parse_args():
     parser.add_argument("--logs-dest",
                         dest="logsDest",
                         default="rsync://repo.marathon.mesos/store/logs",
-                        help="Destination path for logs")
+                        help="Destination store for logs. Either rsync://<rsync server enpoint> or s3://<bucket>.<server>")
 
     parser.add_argument("--log-url",
                         dest="logsUrl",
@@ -91,7 +98,7 @@ class Logs(object):
         self.full_log = self.constructFullLogName(args.pr)
         self.is_branch = is_branch
         self.full_log_latest = self.constructFullLogName(args.pr, latest=True)
-        self.rsync_dest = args.logsDest
+        self.dest = args.logsDest
         self.url = join(args.logsUrl, self.full_log)
 
     def parse(self):
@@ -99,7 +106,12 @@ class Logs(object):
         self.grep()
         self.cat(self.full_log)
         if self.is_branch: self.cat(self.full_log_latest, no_delete=True)
-        self.rsync(self.rsync_dest)
+        if self.dest.startswith("rsync:"):
+            self.rsync(self.dest)
+        elif self.dest.startswith("s3"):
+            self.s3Upload(self.dest)
+        else:
+            print("Unknown destination url %s" % self.dest)
 
     def constructFullLogName(self, pr, latest=False):
         # file to which we cat all the individual logs
@@ -160,6 +172,26 @@ class Logs(object):
             print("Error while copying logs to store.", file=sys.stderr)
             print(out, file=sys.stderr)
 
+    def s3Upload(self, dest):
+        m = re.compile("^s3://([^.]+)[.](.*)").match(dest)
+        bucket_name = m.group(1)
+        server = m.group(2)
+        s3_client = boto3.client('s3',
+                                 aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+                                 aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+                                 endpoint_url="https://%s" % (server))
+        s3_client.list_buckets()
+        transfer = S3Transfer(s3_client)
+        matches = []
+        for root, dirnames, filenames in os.walk('copy-logs'):
+            for filename in filenames:
+                matches.append(os.path.join(root, filename))
+        for src in matches:
+            try:
+                dst = re.compile('^copy-logs/').sub('', src)
+                transfer.upload_file(src, bucket_name, dst)
+            except Exception, e:
+                print("Failed to upload %s to %s in bucket %s.%s" % (src, dst, bucket_name, server))
 
 def handle_branch(cgh, pr, logs, args):
     # pr_id in this case is in fact a branch name
