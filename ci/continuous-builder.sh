@@ -16,7 +16,7 @@ export ALIBOT_ANALYTICS_ARCHITECTURE=slc7_x86-64
 export ALIBOT_ANALYTICS_APP_NAME="continuous-builder.sh"
 
 # Mesos DNSes
-: ${MESOS_DNS:=137.138.62.94,137.138.31.52}
+: ${MESOS_DNS:=alimesos01.cern.ch,alimesos02.cern.ch,alimesos03.cern.ch}
 export MESOS_DNS
 
 TIME_STARTED=$(date -u +%s)
