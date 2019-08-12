@@ -131,9 +131,11 @@ class PickledCache(object):
         except IOError:
             pass
         except EOFError:
-            message = "Malformed cache file"
+            message = "Malformed cache file %s" % self.filename
         except pickle.PickleError:
-            message = "Could not read commit cache"
+            message = "Could not read commit cache %s" % self.filename
+        except:
+            message = "Generic error while decoding %s" % self.filename
 
         message and print(message, file=sys.stderr)
         self.cache = OrderedDict()
