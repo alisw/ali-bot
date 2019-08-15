@@ -42,6 +42,12 @@ def parse_args():
                         default=False,
                         help="Target url for the report")
 
+    parser.add_argument("--dry-run", "-n",
+                        action="store_true",
+                        dest="dryRun",
+                        default=False,
+                        help="Dry run. Do not actually modify the state")
+
     args = parser.parse_args()
 
     if args.debug:
@@ -53,8 +59,11 @@ def parse_args():
 
 
 def main():
-    token = github_token()
     args = parse_args()
+    if args.dryRun:
+        print("Dry run specified. Not executing")
+        sys.exit(0)
+    token = github_token()
 
     cache = PickledCache(".cached-commits")
     with GithubCachedClient(token=token, cache=cache) as cgh:
