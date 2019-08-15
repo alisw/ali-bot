@@ -174,6 +174,7 @@ while true; do
   [ -f config/jobs ] && JOBS=`cat config/jobs 2>/dev/null | head -n 1`
   [ -f config/timeout ] && TIMEOUT=`cat config/jobs 2>/dev/null | head -n 1`
   [ -f config/long-timeout ] && LONG_TIMEOUT=`cat config/jobs 2>/dev/null | head -n 1`
+  [ -f config/silent ] && SILENT=`cat config/silent 2>/dev/null | head -n 1`
 
   # Run preliminary cleanup command
   aliBuild clean ${DEBUG:+--debug}
