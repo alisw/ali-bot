@@ -159,6 +159,7 @@ while true; do
   [ -f config/workers-pool-size ] && WORKERS_POOL_SIZE=`cat config/workers-pool-size 2>/dev/null | head -n 1`
   [ -f config/worker-index ] && WORKER_INDEX=`cat config/worker-index 2>/dev/null | head -n 1`
   [ -f config/debug ] && DEBUG=`cat config/debug 2>/dev/null | head -n 1`
+  [ -f config/profile ] && PROFILE=`cat config/profile 2>/dev/null | head -n 1`
   [ -f config/jobs ] && JOBS=`cat config/jobs 2>/dev/null | head -n 1`
   [ -f config/timeout ] && TIMEOUT=`cat config/jobs 2>/dev/null | head -n 1`
   [ -f config/long-timeout ] && LONG_TIMEOUT=`cat config/jobs 2>/dev/null | head -n 1`
