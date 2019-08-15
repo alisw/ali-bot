@@ -152,6 +152,16 @@ report_state started
 
 while true; do
   report_state looping
+  # Allow overriding a number of variables by fly, so that we can change the
+  # behavior of the job without restarting it.
+  # This comes handy when scaling up / down a job, so that we do not quit the
+  # currently running workers simply to adapt to the new ensamble.
+  [ -f config/workers-pool-size ] && WORKERS_POOL_SIZE=`cat config/workers-pool-size 2>/dev/null | head -n 1`
+  [ -f config/worker-index ] && WORKER_INDEX=`cat config/worker-index 2>/dev/null | head -n 1`
+  [ -f config/debug ] && DEBUG=`cat config/debug 2>/dev/null | head -n 1`
+  [ -f config/jobs ] && JOBS=`cat config/jobs 2>/dev/null | head -n 1`
+  [ -f config/timeout ] && TIMEOUT=`cat config/jobs 2>/dev/null | head -n 1`
+  [ -f config/long-timeout ] && LONG_TIMEOUT=`cat config/jobs 2>/dev/null | head -n 1`
 
   # Run preliminary cleanup command
   aliBuild clean ${DEBUG:+--debug}
