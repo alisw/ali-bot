@@ -16,3 +16,4 @@ ali_bot.egg-info/
 .cached-commits
 .test_cache
 .cached_github_client_cache
+.envrc

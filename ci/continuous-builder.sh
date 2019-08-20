@@ -150,16 +150,7 @@ export LC_ALL="en_US.UTF-8"
 
 report_state started
 
-# Pull request checkers start in "silent" mode by default (no reporting 
-# to the PR pages is done regardless of the state). One must enable
-# reporting by hand by removing the config/silent file. This is
-# done to allow transparent scaling up of the builders, where the steps are:
-# * Scale up the number of builders
-# * Wait for the new builders to be "warm"
-# * Change the pool size to the new size
-# * Make the new builders report results
 mkdir -p config
-echo 1 > config/silent
 
 while true; do
   report_state looping
