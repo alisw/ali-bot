@@ -275,7 +275,7 @@ while true; do
         # We do not want to kill the system is github is not working
         # so we ignore the result code for now
         $TIMEOUT_CMD set-github-status ${SILENT:+-n} -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s $CHECK_NAME/error -m "Diff too big. Rejecting." || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on merge too big"
-        if [ -z ${AWS_ACCESS_KEY_ID+x} ]; then
+        if [ ! "X${AWS_ACCESS_KEY_ID}" = X ]; then
           $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX                            \
                                         ${SILENT:+--dry-run}                               \
                                         --logs-dest s3://alice-build-logs.s3.cern.ch       \
@@ -341,7 +341,7 @@ while true; do
       # We do not want to kill the system if GitHub is not working
       # so we ignore the result code for now
       badge failing
-      if [ -z ${AWS_ACCESS_KEY_ID+x} ]; then
+      if [ ! "X${AWS_ACCESS_KEY_ID}" = X ]; then
         $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX                            \
                                       ${SILENT:+--dry-run}                               \
                                       ${DONT_USE_COMMENTS:+--no-comments}                \
@@ -361,7 +361,7 @@ while true; do
       badge passing
       if [[ $(( $pr_number + 0 )) == $pr_number ]]; then
         # This is a PR. Use the error function (with --success) to still provide logs
-        if [ -z ${AWS_ACCESS_KEY_ID+x} ]; then
+        if [ ! "X${AWS_ACCESS_KEY_ID}" = X ]; then
           $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX                            \
                                         ${SILENT:+--dry-run}                               \
                                         --success                                          \
