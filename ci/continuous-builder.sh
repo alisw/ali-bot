@@ -417,6 +417,9 @@ while true; do
   exec 2>&4 4>&- || true
 
   report_state looping_done
+  # Mark the fact we have run at least once.
+  mkdir -p state
+  touch state/ready
   if [[ $ONESHOT = true ]]; then
     echo "Called with ONESHOT=true. Exiting."
     exit 0
