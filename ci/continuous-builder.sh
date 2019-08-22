@@ -166,6 +166,11 @@ while true; do
   [ -f config/timeout ] && TIMEOUT=`cat config/jobs 2>/dev/null | head -n 1`
   [ -f config/long-timeout ] && LONG_TIMEOUT=`cat config/jobs 2>/dev/null | head -n 1`
   [ -f config/silent ] && SILENT=`cat config/silent 2>/dev/null | head -n 1`
+  # In case the files are gone, unset some of the variables so that we can
+  # revert the state.
+  [ ! -f config/silent ] && unset SILENT
+  [ ! -f config/debug ] && unset DEBUG
+  [ ! -f config/profile ] && unset PROFILE
 
   # Run preliminary cleanup command
   aliBuild clean ${DEBUG:+--debug}
@@ -212,6 +217,11 @@ while true; do
     [ -f config/profile ] && PROFILE=`cat config/profile 2>/dev/null | head -n 1`
     [ -f config/jobs ] && JOBS=`cat config/jobs 2>/dev/null | head -n 1`
     [ -f config/silent ] && SILENT=`cat config/silent 2>/dev/null | head -n 1`
+    # In case the files are gone, unset some of the variables so that we can
+    # revert the state.
+    [ ! -f config/silent ] && unset SILENT
+    [ ! -f config/debug ] && unset DEBUG
+    [ ! -f config/profile ] && unset PROFILE
 
     DOCTOR_ERROR=""
     BUILD_ERROR=""
