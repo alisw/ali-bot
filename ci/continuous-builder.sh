@@ -208,6 +208,10 @@ while true; do
   fi
 
   for pr_id in $HASHES; do
+    [ -f config/debug ] && DEBUG=`cat config/debug 2>/dev/null | head -n 1`
+    [ -f config/profile ] && PROFILE=`cat config/profile 2>/dev/null | head -n 1`
+    [ -f config/jobs ] && JOBS=`cat config/jobs 2>/dev/null | head -n 1`
+    [ -f config/silent ] && SILENT=`cat config/silent 2>/dev/null | head -n 1`
 
     DOCTOR_ERROR=""
     BUILD_ERROR=""
