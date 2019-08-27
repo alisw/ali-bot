@@ -22,7 +22,7 @@ CONF="$PROGDIR/conf/$1.sh"
 source "$CONF"
 source ~/.continuous-builder || true
 ERR=0
-for V in GITHUB_TOKEN GITLAB_USER GITLAB_PASS PR_REPO PACKAGE CHECK_NAME PR_BRANCH ALIBUILD_DEFAULTS INFLUXDB_WRITE_URL; do
+for V in GITHUB_TOKEN GITLAB_USER GITLAB_PASS PR_REPO PACKAGE CHECK_NAME PR_BRANCH ALIBUILD_DEFAULTS INFLUXDB_WRITE_URL AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
   [[ $(eval echo \$$V) ]] || { echo "Required variable $V not defined!"; ERR=1; continue; }
   eval "export $V"
 done
