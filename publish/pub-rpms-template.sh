@@ -105,7 +105,7 @@ pushd unpack_rpm
   if [[ -e $RPM_ROOT/.rpm-extra-deps ]]; then
     OLD_IFS="$IFS"
     IFS=$'\n'
-    for D in $(cat "$RPM_ROOT/.rpm-extra-deps" | sed -e 's/ *\(.*\) */\1/g; /^$/d'); do
+    for D in $(cat "$RPM_ROOT/.rpm-extra-deps" | sed -e 's/[ ]*#.*//;s/ *\(.*\) */\1/g; /^$/d'); do
       DEPS+=("--depends" "$D")
     done
     IFS="$OLD_IFS"
