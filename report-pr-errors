@@ -172,7 +172,15 @@ class Logs(object):
             print(out, file=sys.stderr)
 
         for log in self.logs:
+            cmd = "echo '## Begin %s' >> %s" % (log, tgtFile)
+            print(cmd, file=sys.stderr)
+            err, out = getstatusoutput(cmd)
+            print(out, file=sys.stderr)
             cmd = "cat %s >> copy-logs/%s" % (log, tgtFile)
+            print(cmd, file=sys.stderr)
+            err, out = getstatusoutput(cmd)
+            print(out, file=sys.stderr)
+            cmd = "echo '## End %s' >> %s" % (log, tgtFile)
             print(cmd, file=sys.stderr)
             err, out = getstatusoutput(cmd)
             print(out, file=sys.stderr)
