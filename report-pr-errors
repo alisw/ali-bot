@@ -160,13 +160,13 @@ class Logs(object):
         if err:
             print(out, file=sys.stderr)
 
-        cmd = "echo 'The following files are present in the log:'"
+        cmd = "echo 'The following files are present in the log:' >> %s" % tgtFile
         print(cmd, file=sys.stderr)
         err, out = getstatusoutput(cmd)
         print(out, file=sys.stderr)
 
         for log in self.logs:
-            cmd = "echo '- %s'" % (log)
+            cmd = "echo '- %s' >> %s" % (log, tgtFile)
             print(cmd, file=sys.stderr)
             err, out = getstatusoutput(cmd)
             print(out, file=sys.stderr)
