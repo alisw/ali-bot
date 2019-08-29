@@ -160,12 +160,18 @@ class Logs(object):
         if err:
             print(out, file=sys.stderr)
 
-        print("The following files are present in the log:", file=sys.stderr)
-        for log in self.logs:
-            print("- %s" % log, file=sys.stderr)
+        cmd = "echo 'The following files are present in the log:'"
+        print(cmd, file=sys.stderr)
+        err, out = getstatusoutput(cmd)
+        print(out, file=sys.stderr)
 
         for log in self.logs:
-            print("# Now displaying %s" % log, file=sys.stderr)
+            cmd = "echo '- %s'" % (log)
+            print(cmd, file=sys.stderr)
+            err, out = getstatusoutput(cmd)
+            print(out, file=sys.stderr)
+
+        for log in self.logs:
             cmd = "cat %s >> copy-logs/%s" % (log, tgtFile)
             print(cmd, file=sys.stderr)
             err, out = getstatusoutput(cmd)
