@@ -208,7 +208,7 @@ class Logs(object):
         for src in matches:
             try:
                 dst = re.compile('^copy-logs/').sub('', src)
-                transfer.upload_file(src, bucket_name, dst, extra_args={'ContentType': 'text/ascii',
+                transfer.upload_file(src, bucket_name, dst, extra_args={'ContentType': 'text/plain',
                                                                         'ContentDisposition': 'inline'})
             except Exception, e:
                 print("Failed to upload %s to %s in bucket %s.%s" % (src, dst, bucket_name, server))
