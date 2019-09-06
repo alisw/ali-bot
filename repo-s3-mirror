@@ -1,0 +1,40 @@
+#!/usr/bin/env python
+# Script to create a mirror of alibuild repository on 
+# and S3 bucket
+from argparse import ArgumentParser
+import os
+import boto3
+from boto3.s3.transfer import S3Transfer
+from glob import glob
+import re
+import logging
+
+if __name__ == "__main__":
+    boto3.set_stream_logger('boto3.resources', logging.DEBUG)
+    parser = ArgumentParser()
+    parser.add_argument("--bucket", type=str, default="alibuild-repo")
+    parser.add_argument("--endpoint", type=str, default="s3.cern.ch")
+    parser.add_argument("--web", type=str, default="https://s3.cern.ch/swift/v1/alibuild-repo")
+    parser.add_argument("path", type=str, default="s3.cern.ch")
+    args = parser.parse_args()
+
+    s3_client = boto3.client('s3',
+                             aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+                             aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+                             endpoint_url="https://%s" % (args.endpoint))
+    transfer = S3Transfer(s3_client)
+    for src in glob('**/TARS/*/store/**/*', recursive=True):
+        dst = src[len(args.path)+1:]
+        if not os.path.isfile(src):
+            continue
+        transfer.upload_file(src, args.bucket, dst, extra_args={'ContentType': 'application/gzip',
+                                                                'ContentDisposition': 'attachment'})
+
+    for src in glob('**/TARS/*/dist*/**/*', recursive=True):
+        dst = src[len(args.path)+1:]
+        if not os.path.islink(src):
+            continue
+        redirect = re.sub("([.]{2}/)+", "", os.readlink(src))
+        redirect = os.path.join(args.web, redirect)
+        print(dst, redirect)
+        s3_client.put_object(Body=redirect, Bucket=args.bucket, Key=dst, WebsiteRedirectLocation=redirect)
