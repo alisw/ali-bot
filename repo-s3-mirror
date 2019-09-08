@@ -27,6 +27,7 @@ if __name__ == "__main__":
         dst = src[len(args.path)+1:]
         if not os.path.isfile(src):
             continue
+        print(dst)
         transfer.upload_file(src, args.bucket, dst, extra_args={'ContentType': 'application/gzip',
                                                                 'ContentDisposition': 'attachment'})
 
