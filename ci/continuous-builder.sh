@@ -9,6 +9,8 @@
 # processing and events to indicate all the things we would consider as
 # fatal in a non deamon process but that here simly make us go to the
 # next step.
+echo ALIBUILD_O2_FORCE_GPU: $ALIBUILD_O2_FORCE_GPU
+echo AMDAPPSDKROOT: $AMDAPPSDKROOT
 export ALIBOT_ANALYTICS_ID=$ALIBOT_ANALYTICS_ID
 export ALIBOT_ANALYTICS_USER_UUID=`hostname -s`-$WORKER_INDEX${CI_NAME:+-$CI_NAME}
 # Hardcode for now
