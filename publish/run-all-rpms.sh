@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Check if variables are provided.
+[ X${DEBUG:-1} = X1 ] && set -x
 [ X${SYNC_USER:+1} = X ] && { echo "Variables SYNC_USER missing, aborting"; exit 1; } 
 [ X${SYNC_PASS:+1} = X ] && { echo "Variables SYNC_PASS missing, aborting"; exit 1; } 
 
@@ -16,7 +17,7 @@ for CONF in aliPublish*-rpms.conf; do
           --update                                                                                                    \
           --delete                                                                                                    \
           --chown $SYNC_USER:z2                                                                                       \
-          --rsh="sshpass -p '$SYNC_PASS' ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no -l $SYNC_USER" \
+          --rsh="sshpass -p '$SYNC_PASS' ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o GSSAPIAuthentication=no  -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no -l $SYNC_USER" \
           -rv                                                                                                         \
           /repo/*RPMS --exclude '**/DAQ/' --exclude '**/createrepo_cachedir/' --exclude '**/el5.x86_64/'              \
           lxplus.cern.ch:/eos/user/a/alibot/www/ >&2
