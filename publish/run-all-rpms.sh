@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Check if variables are provided.
+[ X${DEBUG:-1} = X1 ] && set -x
 [ X${SYNC_USER:+1} = X ] && { echo "Variables SYNC_USER missing, aborting"; exit 1; } 
 [ X${SYNC_PASS:+1} = X ] && { echo "Variables SYNC_PASS missing, aborting"; exit 1; } 
 
