@@ -17,7 +17,7 @@ for CONF in aliPublish*-rpms.conf; do
           --update                                                                                                    \
           --delete                                                                                                    \
           --chown $SYNC_USER:z2                                                                                       \
-          --rsh="sshpass -p '$SYNC_PASS' ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no -l $SYNC_USER" \
+          --rsh="sshpass -p '$SYNC_PASS' ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o GSSAPIAuthentication=no  -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no -l $SYNC_USER" \
           -rv                                                                                                         \
           /repo/*RPMS --exclude '**/DAQ/' --exclude '**/createrepo_cachedir/' --exclude '**/el5.x86_64/'              \
           lxplus.cern.ch:/eos/user/a/alibot/www/ >&2
