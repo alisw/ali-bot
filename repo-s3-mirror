@@ -23,13 +23,15 @@ if __name__ == "__main__":
                              aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
                              endpoint_url="https://%s" % (args.endpoint))
     transfer = S3Transfer(s3_client)
-    for src in glob('**/TARS/*/store/**/*', recursive=True):
-        dst = src[len(args.path)+1:]
-        if not os.path.isfile(src):
-            continue
-        print(dst)
-        transfer.upload_file(src, args.bucket, dst, extra_args={'ContentType': 'application/gzip',
-                                                                'ContentDisposition': 'attachment'})
+    for folder in glob('**/TARS/*/store/*'):
+        print("Processing %s." % folder)
+        for src in glob(os.path.join(folder, '*'), recursive=True):
+            dst = src[len(args.path)+1:]
+            if not os.path.isfile(src):
+                continue
+            print(dst)
+            transfer.upload_file(src, args.bucket, dst, extra_args={'ContentType': 'application/gzip',
+                                                                    'ContentDisposition': 'attachment'})
 
     for src in glob('**/TARS/*/dist*/**/*', recursive=True):
         dst = src[len(args.path)+1:]
