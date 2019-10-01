@@ -24,9 +24,13 @@ if __name__ == "__main__":
                              endpoint_url="https://%s" % (args.endpoint))
     transfer = S3Transfer(s3_client)
     print("Starting to process %s" % args.path)
-    folders = glob('%s/**/TARS/*/store/*' % args.path)
+    if not os.path.exists(args.path):
+        print("Unable to find %s" % args.path)
+        sys.exit(1)
+    globexp = '%s/**/TARS/*/store/*' % args.path
+    folders = glob(globexp, recursive=True)
     if not folders:
-        print("No folders to be processed found")
+        print("No folders matching %s found." % globexp)
         sys.exit(1)
     for folder in folders:
         print("Processing %s." % folder)
