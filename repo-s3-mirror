@@ -6,7 +6,7 @@ import os
 import boto3
 from boto3.s3.transfer import S3Transfer
 from glob import glob
-import re
+import re, sys
 import logging
 
 if __name__ == "__main__":
@@ -24,7 +24,11 @@ if __name__ == "__main__":
                              endpoint_url="https://%s" % (args.endpoint))
     transfer = S3Transfer(s3_client)
     print("Starting to process %s" % args.path)
-    for folder in glob('**/TARS/*/store/*'):
+    folders = glob('%s/**/TARS/*/store/*' % args.path)
+    if not folders:
+        print("No folders to be processed found")
+        sys.exit(1)
+    for folder in folders:
         print("Processing %s." % folder)
         for src in glob(os.path.join(folder, '*'), recursive=True):
             dst = src[len(args.path)+1:]
@@ -34,7 +38,7 @@ if __name__ == "__main__":
             transfer.upload_file(src, args.bucket, dst, extra_args={'ContentType': 'application/gzip',
                                                                     'ContentDisposition': 'attachment'})
 
-    for src in glob('**/TARS/*/dist*/**/*', recursive=True):
+    for src in glob('%s/**/TARS/*/dist*/**/*' % args.path, recursive=True):
         dst = src[len(args.path)+1:]
         if not os.path.islink(src):
             continue
