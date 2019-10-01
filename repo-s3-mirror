@@ -15,7 +15,7 @@ if __name__ == "__main__":
     parser.add_argument("--bucket", type=str, default="alibuild-repo")
     parser.add_argument("--endpoint", type=str, default="s3.cern.ch")
     parser.add_argument("--web", type=str, default="https://s3.cern.ch/swift/v1/alibuild-repo")
-    parser.add_argument("path", type=str, default="s3.cern.ch")
+    parser.add_argument("path", type=str, default="/build/repo")
     args = parser.parse_args()
 
     s3_client = boto3.client('s3',
@@ -23,6 +23,7 @@ if __name__ == "__main__":
                              aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
                              endpoint_url="https://%s" % (args.endpoint))
     transfer = S3Transfer(s3_client)
+    print("Starting to process %s" % args.path)
     for folder in glob('**/TARS/*/store/*'):
         print("Processing %s." % folder)
         for src in glob(os.path.join(folder, '*'), recursive=True):
