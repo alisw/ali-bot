@@ -169,6 +169,7 @@ pushd unpack_rpm
       --version "$RPM_VERSION"         \
       --iteration 1.$FLAVOUR           \
       --name "$RPM_PACKAGE"            \
+      --exclude compile_commands.json  \
       --after-install $AFTER_INSTALL   \
       --after-remove $AFTER_REMOVE     \
       "$RPM_UNPACK_DIR"
