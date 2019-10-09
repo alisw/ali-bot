@@ -1,6 +1,6 @@
 #!/bin/sh -ex
-REPO=${REPO:-http://ali-ci.cern.ch/repo/RPMS/el7.x86_64}
-PKG=${PKG:- alisw-O2Suite+1.0.0-16}
+REPO=${REPO:-https://alirepo.web.cern.ch/alirepo/RPMS/el7.x86_64}
+PKG=${PKG:-alisw-flpproto+v0.9.2-9.x86_64}
 
 curl -I $REPO/repodata/repomd.xml
 cat << EOF >/etc/yum.repos.d/alice-test.repo
@@ -11,5 +11,8 @@ enabled=1
 gpgcheck=0
 EOF
 yum update --disablerepo='*' --enablerepo=alice-test -y
-yum search ${PKG}
+yum list available | grep alisw
+yum search rpm-test
+yum search flpsuite
+yum install -y alisw-rpm-test+1.0-1.x86_64
 yum install -y ${PKG}
