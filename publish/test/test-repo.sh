@@ -14,5 +14,4 @@ yum update --disablerepo='*' --enablerepo=alice-test -y
 yum list available | grep alisw
 yum search rpm-test
 yum search flpsuite
-yum install -y alisw-rpm-test+1.0-1.x86_64
 yum install -y ${PKG}
