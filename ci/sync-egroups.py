@@ -11,6 +11,8 @@ def egroup_members(egroup):
   rtype,rdata = ld.result(ldap_sid, 0)
   if rdata and rtype == ldap.RES_SEARCH_ENTRY:
     members = []
+    if len(rdata) < 1 or len(rdata[0]) < 2 or not "member" in rdata[0][1]:
+      return []
     for m in rdata[0][1]["member"]:
       cn = [ x[3:] for x in m.split(",") if x.startswith("CN=") ][0]
       if "OU=Users" in m:
