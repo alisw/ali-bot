@@ -74,8 +74,9 @@ export CI_NAME=$(echo $PR_REPO_CHECKOUT|tr '[[:upper:]]' '[[:lower:]]')_checker_
 ALIBOT="$(cd ..;pwd)"
 CI_WORK_DIR=/Users/alibuild/build/ci_checks/${CI_NAME}_${WORKER_INDEX}
 BREW_PATH=/usr/local/bin
+ALIBOT_PATH=/Users/alibuild/build/ali-bot
 export PYTHONUSERBASE="$CI_WORK_DIR/python_local"
-export PATH="$PYTHONUSERBASE/bin:$BREW_PATH:$PATH"
+export PATH="$PYTHONUSERBASE/bin:$BREW_PATH:$ALIBOT_PATH:$PATH"
 export LD_LIBRARY_PATH="$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH"
 mkdir -p "$CI_WORK_DIR" "$PYTHONUSERBASE" "$CI_WORK_DIR/logs"
 
