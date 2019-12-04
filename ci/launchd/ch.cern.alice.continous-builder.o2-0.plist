@@ -14,7 +14,7 @@
 	<key>GroupName</key>
 	<string>staff</string>
 	<key>WorkingDirectory</key>
-	<string>/Users/alibuild/build/</string>
+	<string>/Users/alibuild/build/ali-bot</string>
 
 	<key>StandardOutPath</key>
 	<string>/Users/alibuild/build/ci_checks/alidist_checker_macos_o2_ci_0/logs/stdout</string>
@@ -24,6 +24,6 @@
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
-	<true/>
+	<false/>
 </dict>
 </plist>
