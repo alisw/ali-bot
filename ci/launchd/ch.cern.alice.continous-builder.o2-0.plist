@@ -17,9 +17,9 @@
 	<string>/Users/alibuild/build/</string>
 
 	<key>StandardOutPath</key>
-	<string>/Users/alibuild/build/alidist_o2-0/logs/stdout</string>
+	<string>/Users/alibuild/build/ci_checks/alidist_ckecker_macos_o2_ci_0/logs/stdout</string>
 	<key>StandardErrorPath</key>
-	<string>/Users/alibuild/build/alidist_o2-0/logs/stderr</string>
+	<string>/Users/alibuild/build/ci_checks/alidist_ckecker_macos_o2_ci_0/logs/stderr</string>
 
 	<key>RunAtLoad</key>
 	<true/>
