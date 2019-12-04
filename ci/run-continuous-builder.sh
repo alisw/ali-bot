@@ -61,7 +61,7 @@ export MONALISA_PORT=8885
 export MAX_DIFF_SIZE=20000000
 export DELAY=20
 export DEBUG=true
-export MIRROR=/build/mirror
+export MIRROR=/User/alibuild/build/mirror
 
 # Disable aliBuild analytics prompt
 mkdir -p $HOME/.config/alibuild
@@ -72,19 +72,11 @@ export CI_NAME=$(echo $PR_REPO_CHECKOUT|tr '[[:upper:]]' '[[:lower:]]')_checker_
 
 # Setup working directory and local Python installation
 ALIBOT="$(cd ..;pwd)"
-CI_WORK_DIR=/build/ci_checks/${CI_NAME}_${WORKER_INDEX}
+CI_WORK_DIR=/User/alibuild/build/ci_checks/${CI_NAME}_${WORKER_INDEX}
 export PYTHONUSERBASE="$CI_WORK_DIR/python_local"
 export PATH="$PYTHONUSERBASE/bin:$PATH"
 export LD_LIBRARY_PATH="$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH"
-mkdir -p "$CI_WORK_DIR" "$PYTHONUSERBASE"
-
-# We need a workaround to install ali-bot on Python 2.6
-if [[ ! $RUN_CI ]]; then
-  python -c 'import platform;print(platform.python_version())' | grep -qE '^2\.6' \
-    && { pip install ${PIP_USER} --ignore-installed --upgrade setuptools==22.0.2 importlib==1.0.4 || exit 1; } \
-    || true
-  pip install ${PIP_USER} --ignore-installed --upgrade -e "$ALIBOT"
-fi
+mkdir -p "$CI_WORK_DIR" "$PYTHONUSERBASE" "$CI_WORK_DIR/logs"
 
 # aliBuild repository slug: <group>/<repo>[@<branch>]
 ALIBUILD_SLUG=${ALIBUILD_SLUG:-alisw/alibuild}
@@ -165,8 +157,3 @@ case "$2" in
   ;;
 
 esac
-
-# Not in a screen? Switch to a screen if appropriate!
-export RUN_CI=1
-[[ $STY ]] || exec screen -dmS ${CI_NAME}_${WORKER_INDEX} "$PROG" "$@"
-exec "$PROG" "$@"
