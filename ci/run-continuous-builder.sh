@@ -75,8 +75,9 @@ ALIBOT="$(cd ..;pwd)"
 CI_WORK_DIR=/Users/alibuild/build/ci_checks/${CI_NAME}_${WORKER_INDEX}
 BREW_PATH=/usr/local/bin
 ALIBOT_PATH=/Users/alibuild/build/ali-bot
+ALIBOT_SUBDIRS=$( find $ALIBOT_PATH -type d -printf "%p:" )
 export PYTHONUSERBASE="$CI_WORK_DIR/python_local"
-export PATH="$PYTHONUSERBASE/bin:$BREW_PATH:$ALIBOT_PATH:$PATH"
+export PATH="$PYTHONUSERBASE/bin:$BREW_PATH:$ALIBOT_PATH:$ALIBOT_SUBDIRS:$PATH"
 export LD_LIBRARY_PATH="$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH"
 mkdir -p "$CI_WORK_DIR" "$PYTHONUSERBASE" "$CI_WORK_DIR/logs"
 
