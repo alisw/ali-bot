@@ -61,7 +61,7 @@ export MONALISA_PORT=8885
 export MAX_DIFF_SIZE=20000000
 export DELAY=20
 export DEBUG=true
-export MIRROR=/User/alibuild/build/mirror
+export MIRROR=/Users/alibuild/build/mirror
 
 # Disable aliBuild analytics prompt
 mkdir -p $HOME/.config/alibuild
@@ -72,7 +72,7 @@ export CI_NAME=$(echo $PR_REPO_CHECKOUT|tr '[[:upper:]]' '[[:lower:]]')_checker_
 
 # Setup working directory and local Python installation
 ALIBOT="$(cd ..;pwd)"
-CI_WORK_DIR=/User/alibuild/build/ci_checks/${CI_NAME}_${WORKER_INDEX}
+CI_WORK_DIR=/Users/alibuild/build/ci_checks/${CI_NAME}_${WORKER_INDEX}
 export PYTHONUSERBASE="$CI_WORK_DIR/python_local"
 export PATH="$PYTHONUSERBASE/bin:$PATH"
 export LD_LIBRARY_PATH="$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH"
