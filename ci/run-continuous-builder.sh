@@ -85,7 +85,7 @@ ALIBUILD_BRANCH=${ALIBUILD_SLUG#*@}
 [[ $ALIBUILD_REPO == $ALIBUILD_SLUG ]] && ALIBUILD_BRANCH= || true
 
 # Install aliBuild through pip (ensures dependencies are installed as well)
-pip install ${PIP_USER} --ignore-installed --upgrade git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
+/usr/local/bin/pip install ${PIP_USER} --ignore-installed --upgrade git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
 type aliBuild
 
 set -x
