@@ -73,8 +73,9 @@ export CI_NAME=$(echo $PR_REPO_CHECKOUT|tr '[[:upper:]]' '[[:lower:]]')_checker_
 # Setup working directory and local Python installation
 ALIBOT="$(cd ..;pwd)"
 CI_WORK_DIR=/Users/alibuild/build/ci_checks/${CI_NAME}_${WORKER_INDEX}
+BREW_PATH=/usr/local/bin
 export PYTHONUSERBASE="$CI_WORK_DIR/python_local"
-export PATH="$PYTHONUSERBASE/bin:$PATH"
+export PATH="$PYTHONUSERBASE/bin:$BREW_PATH:$PATH"
 export LD_LIBRARY_PATH="$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH"
 mkdir -p "$CI_WORK_DIR" "$PYTHONUSERBASE" "$CI_WORK_DIR/logs"
 
@@ -85,7 +86,7 @@ ALIBUILD_BRANCH=${ALIBUILD_SLUG#*@}
 [[ $ALIBUILD_REPO == $ALIBUILD_SLUG ]] && ALIBUILD_BRANCH= || true
 
 # Install aliBuild through pip (ensures dependencies are installed as well)
-/usr/local/bin/pip install ${PIP_USER} --ignore-installed --upgrade git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
+pip install ${PIP_USER} --ignore-installed --upgrade git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
 type aliBuild
 
 set -x
