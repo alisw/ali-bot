@@ -93,15 +93,6 @@ type aliBuild
 set -x
 cd "$CI_WORK_DIR"
 
-if [[ $RUN_CI ]]; then
-  # Production command
-  while ! bash -ex "$ALIBOT"/ci/continuous-builder.sh; do
-    echo Something failed in the continuous builder script, restarting in 10 seconds...
-    sleep 10
-  done
-  exit 0
-fi
-
 [[ -d alidist/.git ]]             || git clone https://github.com/alisw/alidist
 [[ -d "$PR_REPO_CHECKOUT/.git" ]] || git clone "https://github.com/$PR_REPO" "$PR_REPO_CHECKOUT"
 
@@ -160,5 +151,8 @@ case "$2" in
 
 esac
 
-export RUN_CI=1
-exec "$PROG" "$@"
+set -x
+cd "$CI_WORK_DIR"
+bash -ex "$ALIBOT"/ci/continuous-builder.sh
+echo `date` : Something failed in the continuous builder script, terminating.
+exit 1

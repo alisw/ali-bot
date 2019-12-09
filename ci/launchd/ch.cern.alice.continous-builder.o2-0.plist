@@ -22,7 +22,7 @@
 	<string>/Users/alibuild/build/ci_checks/alidist_checker_macos_o2_ci_0/logs/stderr</string>
 
 	<key>RunAtLoad</key>
-	<true/>
+	<false/>
 	<key>KeepAlive</key>
 	<false/>
 </dict>
