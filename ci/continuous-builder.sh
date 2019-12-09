@@ -238,12 +238,12 @@ while true; do
     mkdir -p "$SLOG_DIR"
 
     # Restore fds 1, 2 from 3, 4. If this is the first run, it may fail and this is fine
-    exec 1>&3 3>&- || true
-    exec 2>&4 4>&- || true
+    #exec 1>&3 3>&- || true
+    #exec 2>&4 4>&- || true
 
     # Back up file descriptors 1, 2 to 3, 4 (will restore them later)
-    exec 3>&1
-    exec 4>&2
+    #exec 3>&1
+    #exec 4>&2
 
     # Redirecting all output to current stdout/stderr, plus separate logfile
     # Mitigate zombie processes
@@ -430,8 +430,8 @@ while true; do
   done  # end processing a single PR
 
   # Restore fds 1, 2 in case of premature exit from the loop (may fail: it's fine)
-  exec 1>&3 3>&- || true
-  exec 2>&4 4>&- || true
+  #exec 1>&3 3>&- || true
+  #exec 2>&4 4>&- || true
 
   report_state looping_done
   # Mark the fact we have run at least once.
