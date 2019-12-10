@@ -72,9 +72,10 @@ export CI_NAME=$(echo $PR_REPO_CHECKOUT|tr '[[:upper:]]' '[[:lower:]]')_checker_
 
 # Setup working directory and local Python installation
 ALIBOT="$(cd ..;pwd)"
+ALIBOT_PATH=/usr/local/build/ali-bot
 CI_WORK_DIR=/usr/local/build/ci_checks/${CI_NAME}_${WORKER_INDEX}
 export PYTHONUSERBASE="$CI_WORK_DIR/python_local"
-export PATH="$PYTHONUSERBASE/bin:$ALIBOT:$ALIBOT/analytics:$ALIBOT/ci:$PATH"
+export PATH="$PYTHONUSERBASE/bin:$ALIBOT_PATH:$ALIBOT_PATH/analytics:$ALIBOT_PATH/ci:$PATH"
 export LD_LIBRARY_PATH="$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH"
 mkdir -p "$CI_WORK_DIR" "$PYTHONUSERBASE"
 
