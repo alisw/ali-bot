@@ -22,6 +22,11 @@ ALISWMOD_VERSION=2
 ALISWMOD_RPM="alisw-aliswmod-$ALISWMOD_VERSION-1.%(arch)s.rpm"
 if [[ ! -e "%(repodir)s/$ALISWMOD_RPM" ]]; then
   mkdir -p aliswmod/bin
+  mkdir -p aliswmod/etc/environment.d
+  cat > aliswmod/etc/environment.d/99-aliswmod.conf << \EOF
+export LD_LIBRARY_PATH=/opt/alisw/el7/lib:/opt/alisw/el7/lib64:$LD_LIBRARY_PATH
+export PATH=/opt/alisw/el7/bin:$PATH
+EOF
   cat > aliswmod/bin/aliswmod <<EOF
 #!/bin/bash -e
 export MODULEPATH=$INSTALLPREFIX/$FLAVOUR/modulefiles:$INSTALLPREFIX/$FLAVOUR/etc/Modules/modulefiles:\$MODULEPATH
