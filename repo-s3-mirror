@@ -18,9 +18,9 @@ mirror_repo() {
   PREFIX=$1
   REPO=$2
   pushd $PREFIX
-    find $REPO/store -type d -max-depth 1 -exec s3cmd sync --host $ENDPOINT --host-bucket $BUCKET.ENDPOINT $REPO/store/{}/ s3://$BUCKET/$REPO/store/{}/ \;
+    find $REPO/store -mindepth 1 -maxdepth 1 -type d -print0 | xargs -n1 -0 -P16 -I{} s3cmd sync -v --host $ENDPOINT --host-bucket $BUCKET.$ENDPOINT {}/ s3://$BUCKET
     find . -type l -exec copy_link {} \;
   popd
 }
 
-mirror_repo /build/reports/repo TARS/slc7_x86-64/store
+mirror_repo /build/reports/repo TARS/slc7_x86-64
