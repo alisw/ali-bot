@@ -97,6 +97,7 @@ setup(
                # Continuous Integration
                "set-github-status",
                "report-pr-errors",
+               "repo-s3-mirror",
                "list-branch-pr",
                # Analytics
                "analytics/report-analytics",
