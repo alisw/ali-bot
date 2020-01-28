@@ -23,4 +23,6 @@ mirror_repo() {
   popd
 }
 
+# Create dummy config file
+touch .s3cfg
 mirror_repo /build/reports/repo TARS/slc7_x86-64
