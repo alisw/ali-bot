@@ -104,36 +104,6 @@ function report_state() {
   fi
 }
 
-function badge() {
-  [[ $(( $pr_number + 0 )) == $pr_number ]] && return || true
-  local DEST_DIR=copy-badge/${PR_REPO}/${PR_BRANCH}
-  local DEST_FILE=$DEST_DIR/"${CHECK_NAME//\//_}".svg
-  local STATE_SUFFIX
-  [[ $1 == passing ]] && STATE_SUFFIX='passing-brightgreen' || STATE_SUFFIX='failing-red'
-  mkdir -p $DEST_DIR
-  LEFTHAND_BADGE="$CHECK_NAME $PR_BRANCH"
-  LEFTHAND_BADGE=${LEFTHAND_BADGE//-/--}
-  LEFTHAND_BADGE=${LEFTHAND_BADGE//_/__}
-  LEFTHAND_BADGE=${LEFTHAND_BADGE// /_}
-  LEFTHAND_BADGE=${LEFTHAND_BADGE//\//%2F}
-  curl -L -o $DEST_FILE https://img.shields.io/badge/${LEFTHAND_BADGE}-${STATE_SUFFIX}.svg || true
-  #                                                  ^^^^^^^^^^^^^^^^^ ^^^^^^^^^^^^^^^
-  #                                                       lefthand      right - color
-  rsync -a copy-badge/ rsync://$(mesos-dns-lookup repo.marathon.mesos)/store/buildstatus/ || true
-  rm -rf copy-badge
-}
-
-function emptylog() {
-  # Works for branches only: it will silently exit on PRs
-  [[ $(( $pr_number + 0 )) == $pr_number ]] && return || true
-  local DEST_DIR="copy-emptylog/${PR_REPO}/${PR_BRANCH}/latest/${CHECK_NAME//\//_}"
-  local DEST_FILE=$DEST_DIR/fullLog.txt
-  mkdir -p $DEST_DIR
-  echo "Build of the ${PR_BRANCH} branch of ${PR_REPO} successful at $(LANG=C TZ=Europe/Rome date)" > "$DEST_FILE"
-  rsync -a copy-emptylog/ rsync://$(mesos-dns-lookup repo.marathon.mesos)/store/logs/ || true
-  rm -rf copy-emptylog
-}
-
 # Explicitly set UTF-8 support (Python needs it!)
 export LANG="en_US.UTF-8"
 export LANGUAGE="en_US.UTF-8"
@@ -292,20 +262,12 @@ while true; do
         # We do not want to kill the system is github is not working
         # so we ignore the result code for now
         $TIMEOUT_CMD set-github-status ${SILENT:+-n} -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s $CHECK_NAME/error -m "Diff too big. Rejecting." || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on merge too big"
-        if [ ! "X${AWS_ACCESS_KEY_ID}" = X ]; then
-          $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX                            \
-                                        ${SILENT:+--dry-run}                               \
-                                        --logs-dest s3://alice-build-logs.s3.cern.ch       \
-                                        --log-url https://ali-ci.cern.ch/alice-build-logs/ \
-                                        --pr "${PR_REPO:-alisw/alidist}#${pr_id}"          \
-                                        -s $CHECK_NAME -m "Your pull request exceeded the allowed size. If you need to commit large files, [have a look here](http://alisw.github.io/git-advanced/#how-to-use-large-data-files-for-analysis)." || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on merge diff too big"
-        else
-          $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX                                                \
-                                        ${SILENT:+--dry-run}                                                   \
-                                        --logs-dest rsync://$(mesos-dns-lookup repo.marathon.mesos)/store/logs \
-                                        --pr "${PR_REPO:-alisw/alidist}#${pr_id}"                              \
-                                        -s $CHECK_NAME -m "Your pull request exceeded the allowed size. If you need to commit large files, [have a look here](http://alisw.github.io/git-advanced/#how-to-use-large-data-files-for-analysis)." || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on merge diff too big"
-        fi
+        $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX                            \
+                                      ${SILENT:+--dry-run}                               \
+                                      --logs-dest s3://alice-build-logs.s3.cern.ch       \
+                                      --log-url https://ali-ci.cern.ch/alice-build-logs/ \
+                                      --pr "${PR_REPO:-alisw/alidist}#${pr_id}"          \
+                                      -s $CHECK_NAME -m "Your pull request exceeded the allowed size. If you need to commit large files, [have a look here](http://alisw.github.io/git-advanced/#how-to-use-large-data-files-for-analysis)." || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on merge diff too big"
         continue
       fi
     fi
@@ -357,44 +319,25 @@ while true; do
     if [[ $BUILD_ERROR != '' ]]; then
       # We do not want to kill the system if GitHub is not working
       # so we ignore the result code for now
-      badge failing
-      if [ ! "X${AWS_ACCESS_KEY_ID}" = X ]; then
-        $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX                            \
-                                      ${SILENT:+--dry-run}                               \
-                                      ${DONT_USE_COMMENTS:+--no-comments}                \
-                                      --logs-dest s3://alice-build-logs.s3.cern.ch       \
-                                      --log-url https://ali-ci.cern.ch/alice-build-logs/ \
-                                      --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $CHECK_NAME || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on build error"
-      else
-        $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX                                                                                                                           \
-                                      ${SILENT:+--dry-run}                                                                                                                              \
-                                      ${DONT_USE_COMMENTS:+--no-comments}                                                                                                               \
-                                      --logs-dest rsync://$(mesos-dns-lookup repo.marathon.mesos)/store/logs                                                                            \
-                                      --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $CHECK_NAME || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on build error"
-      fi
+      $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX                            \
+                                    ${SILENT:+--dry-run}                               \
+                                    ${DONT_USE_COMMENTS:+--no-comments}                \
+                                    --logs-dest s3://alice-build-logs.s3.cern.ch       \
+                                    --log-url https://ali-ci.cern.ch/alice-build-logs/ \
+                                    --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $CHECK_NAME || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on build error"
     else
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
-      badge passing
       if [[ $(( $pr_number + 0 )) == $pr_number ]]; then
         # This is a PR. Use the error function (with --success) to still provide logs
-        if [ ! "X${AWS_ACCESS_KEY_ID}" = X ]; then
-          $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX                            \
-                                        ${SILENT:+--dry-run}                               \
-                                        --success                                          \
-                                        --logs-dest s3://alice-build-logs.s3.cern.ch       \
-                                        --log-url https://ali-ci.cern.ch/alice-build-logs/ \
-                                        --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $CHECK_NAME || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on build success"
-        else
-          $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX                                                                                                                             \
-                                        ${SILENT:+--dry-run}                                                                                                                                \
-                                        --success                                                                                                                                           \
-                                        --logs-dest rsync://$(mesos-dns-lookup repo.marathon.mesos)/store/logs                                                                              \
-                                        --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $CHECK_NAME || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on build success"
-        fi
+        $TIMEOUT_CMD report-pr-errors --default $BUILD_SUFFIX                            \
+                                      ${SILENT:+--dry-run}                               \
+                                      --success                                          \
+                                      --logs-dest s3://alice-build-logs.s3.cern.ch       \
+                                      --log-url https://ali-ci.cern.ch/alice-build-logs/ \
+                                      --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $CHECK_NAME || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on build success"
       else
         # This is a branch
-        emptylog
         $TIMEOUT_CMD set-github-status ${SILENT:+-n} -c ${STATUS_REF} -s $CHECK_NAME/success || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on build success"
       fi
     fi
