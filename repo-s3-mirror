@@ -4,11 +4,20 @@
 BUCKET=${BUCKET:-alibuild-repo}
 ENDPOINT=${ENDPOINT:-s3.cern.ch}
 
+if [ ! -e $HOME/.s3cmd ]; then
+  cat << EOF > $HOME/.s3cmd
+host_base = $ENDPOINT
+host_bucket = $BUCKETs.$ENDPOINT
+use_https = True
+EOF
+
+fi
+
 # Helper which resolves a symbolink link and stores the file it point to in the
 # associated S3 object
 copy_link() {
   DST=$1
-  readlink $DST | s3cmd put -s -v --host $ENDPOINT --host-bucket $BUCKET.ENDPOINT - s3://$BUCKET/$DST
+  readlink $DST | s3cmd put -s -v --host $ENDPOINT --host-bucket $BUCKET.$ENDPOINT - s3://$BUCKET/$DST
 }
 
 # Helper which copies all the contexts of the specified REPO on S3.
