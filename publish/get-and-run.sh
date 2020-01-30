@@ -128,7 +128,7 @@ function notify_on_error() {
   mailx -s "[AliBuild${REPO}] An error occurred"                \
         -r 'ALICE Builder <alibot@cern.ch>'                     \
         -a "$TD/log.txt"                                        \
-        dario.berzano@cern.ch                                   \
+        alibuild@cern.ch                                        \
   && echo "$NOW $CONSECUTIVE_ERRORS" > $NOTIFICATION_STATE_FILE \
   || echo "0    $CONSECUTIVE_ERRORS" > $NOTIFICATION_STATE_FILE
 }
