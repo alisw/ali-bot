@@ -314,6 +314,7 @@ while true; do
              --reference-sources $MIRROR                                         \
              ${REMOTE_STORE:+--remote-store $REMOTE_STORE}                       \
              ${DEBUG:+--debug}                                                   \
+             ${ALIBUILD_O2_FORCE_GPU:+--always-prefer-system}                    \
              build $PACKAGE || BUILD_ERROR=$?
 
     if [[ $BUILD_ERROR != '' ]]; then
