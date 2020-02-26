@@ -159,7 +159,7 @@ def _do_process_pull(pull, cgh, args):
                 item.update({"reviewed": True})
 
     # If the pull request is a draft, we mark it as not to be tested in any case.
-    if pull.get("draft"):
+    if pull.get("draft") or pull.get("title", "").startswith("[WIP]"):
         item.update({"reviewed": False})
 
     return item
