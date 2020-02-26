@@ -78,8 +78,8 @@ def github_token():
 def generateCacheId(entries):
     h = sha1()
     for k, v in entries:
-        h.update(k)
-        h.update(str(v))
+        h.update(k.encode("ascii"))
+        h.update(v.encode("ascii"))
     return h.hexdigest()
 
 
@@ -125,7 +125,7 @@ class PickledCache(object):
     def load(self):
         message = ""
         try:
-            with open(self.filename, "r+") as f:
+            with open(self.filename, "rb+") as f:
                 self.cache = pickle.load(f)
                 return
         except IOError:
@@ -143,8 +143,8 @@ class PickledCache(object):
     def dump(self, limit=1000):
         message = ""
         try:
-            with open(self.filename, "w") as f:
-                pickle.dump(OrderedDict(self.cache.items()[-limit:]), f, 2)
+            with open(self.filename, "wb") as f:
+                pickle.dump(OrderedDict(list(self.cache.items())[-limit:]), f, 2)
         except IOError:
             message = "Unable to write cache file %s" % self.filename
         except EOFError:
@@ -243,7 +243,7 @@ class GithubCachedClient(object):
     def get(self, url, stable_api=True, **kwds):
         # If we have a cache getter we use it to obtain an
         # entry in the cachedcache_item etags
-        cacheKey = generateCacheId([("url", url)] + kwds.items())
+        cacheKey = generateCacheId([("url", url)] + list(kwds.items()))
         cacheValue = self.cache[cacheKey]
         headers = self.getHeaders(stable_api,
                                   cacheValue.get("ETag"),

@@ -6,7 +6,10 @@ import random
 import sys
 import time
 
-from commands import getstatusoutput
+try:
+  from commands import getstatusoutput
+except:
+  from subprocess import getstatusoutput
 from argparse import ArgumentParser
 from alibot_helpers.github_utilities import GithubCachedClient
 from alibot_helpers.github_utilities import PickledCache, github_token
