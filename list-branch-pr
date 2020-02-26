@@ -55,12 +55,11 @@ def should_process(sha_first_char, args):
     index = int(sha_first_char, 16) % args.workersPoolSize
     return index == args.workerIndex
 
-
 def get_pulls(args):
     return cgh.get("/repos/{repo_name}/pulls?base={base}",
                    repo_name=args.repo_name,
-                   base=args.branch_ref)
-
+                   base=args.branch_ref,
+                   stable_api=args.reportDrafts and True or False)
 
 def get_main_branch(args):
     return cgh.get("/repos/{repo_name}/branches/{branch_ref}",
@@ -136,7 +135,15 @@ def _do_process_pull(pull, cgh, args):
         all_statuses = get_all_statuses(args.repo_name, pull["head"]["sha"])
         item.update(getStatusInfo(all_statuses, args))
 
+    validAssociations = ["OWNER", "MEMBER"]
+    if args.trustCollaborators:
+        validAssociations += ["COLLABORATOR"]
+
     if not item.get("reviewed"):
+        # If the user is a member or an owner, we trust the PR to
+        # be tested.
+        if pull.get("author_association") in validAssociations:
+            item.update({"reviewed": True})
         # If we specified a list of trusted users, a trusted team or
         # if we trust collaborators, we need to check if this is the
         # case for the given PR. Notice that given that these will
@@ -151,12 +158,9 @@ def _do_process_pull(pull, cgh, args):
                        login=pull["user"]["login"]):
                 item.update({"reviewed": True})
 
-        if args.trustCollaborators:
-            cgh.get("/repos/{repo_name}/collaborators/{login}/permission",
-                    repo_name=args.repo_name,
-                    login=pull["user"]["login"],
-                    stable_api=False)
-            item.update({"reviewed": True})
+    # If the pull request is a draft, we mark it as not to be tested in any case.
+    if pull.get("draft"):
+        item.update({"reviewed": False})
 
     return item
 
@@ -256,6 +260,11 @@ def parseArgs():
                         dest="trustCollaborators",
                         action="store_true",
                         help="Trust all collaborators")
+
+    parser.add_argument("--report-drafts",
+                        dest="reportDrafts",
+                        action="store_true",
+                        help="Report draft PRs")
 
     parser.add_argument("--worker-index",
                         dest="workerIndex",
