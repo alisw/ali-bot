@@ -137,7 +137,7 @@ def _do_process_pull(pull, cgh, args):
 
     validAssociations = ["OWNER", "MEMBER"]
     if args.trustCollaborators:
-        validAssociations += ["COLLABORATOR"]
+        validAssociations += ["CONTRIBUTOR"]
 
     if not item.get("reviewed"):
         # If the user is a member or an owner, we trust the PR to
