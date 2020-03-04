@@ -325,7 +325,6 @@ while true; do
                                     ${DONT_USE_COMMENTS:+--no-comments}                \
                                     --logs-dest s3://alice-build-logs.s3.cern.ch       \
                                     --log-url https://ali-ci.cern.ch/alice-build-logs/ \
-                                    -m "Build error on `date`"                         \
                                     --pr "${PR_REPO:-alisw/alidist}#${pr_id}" -s $CHECK_NAME || $TIMEOUT_CMD report-analytics exception --desc "report-pr-errors fail on build error"
     else
       # We do not want to kill the system is github is not working

@@ -3,7 +3,10 @@ from __future__ import print_function
 
 from argparse import ArgumentParser, Namespace
 import atexit
-from commands import getstatusoutput
+try:
+  from commands import getstatusoutput
+except ImportError:
+  from subprocess import getstatusoutput
 from glob import glob
 from os.path import dirname, join
 import re
@@ -247,7 +250,7 @@ def handle_pr_id(cgh, pr, logs, args):
                      ref=pr.commit)
     sha = commit["sha"]
 
-    message = "Error while checking %s for %s:\n" % (args.status, sha)
+    message = "Error while checking %s for %s at %s:\n" % (args.status, sha, datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
     if args.message:
         message += args.message
     else:
@@ -255,7 +258,7 @@ def handle_pr_id(cgh, pr, logs, args):
 
     if args.dry_run:
         # commit does not exist...
-        print("Will annotate %s" % commit)
+        print("Will annotate %s" % commit["sha"])
         print(message)
         sys.exit(0)
 
