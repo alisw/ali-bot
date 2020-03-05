@@ -7,8 +7,8 @@ def report_metric(args):
   sock = socket.socket(socket.AF_INET, # Internet
                        socket.SOCK_DGRAM) # UDP
   line = "{a.metric_path} {a.name} {a.value}".format(a=args)
-  print line
-  sock.sendto(line, (args.monalisa_host, args.monalisa_port))
+  print(line)
+  sock.sendto(line.encode("ascii"), (args.monalisa_host, args.monalisa_port))
 
 if __name__ == "__main__":
   parser = ArgumentParser()
