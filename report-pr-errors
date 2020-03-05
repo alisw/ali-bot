@@ -12,6 +12,7 @@ from os.path import dirname, join
 import re
 import os
 import sys
+import datetime
 
 from alibot_helpers.github_utilities import calculateMessageHash, github_token
 from alibot_helpers.github_utilities import setGithubStatus, parseGithubRef
