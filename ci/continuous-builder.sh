@@ -185,6 +185,11 @@ while true; do
     HASHES="0@0"
   fi
 
+  if [ X$ONESHOT = Xtrue ]; then
+    echo "Called with ONESHOT=true. Only one PR tested."
+    HASHES=`echo $HASHES | head -n 1`
+  fi
+
   for pr_id in $HASHES; do
     [ -f config/debug ] && DEBUG=`cat config/debug 2>/dev/null | head -n 1`
     [ -f config/profile ] && PROFILE=`cat config/profile 2>/dev/null | head -n 1`
