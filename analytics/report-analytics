@@ -81,6 +81,9 @@ def report_screenview(screen_name):
 def report_exception(description, wasFatal=False):
     report("exception", exd=description, exf=int(wasFatal))
 
+def report_timing(category, var, value, label):
+    report("timing", utc=category, utv=var, utt=value, utl=label)
+
 
 def getVersion():
     d = os.path.dirname(os.path.dirname(__file__))
@@ -111,13 +114,18 @@ def createEventSubParser(subparsers):
     evt_parser.add_argument("--el", help="Event label")
     evt_parser.add_argument("--ev", help="Event value")
 
-
+def createTimingSubParser(subparsers):
+    evt_parser = subparsers.add_parser("timing",
+                                       help="Send timing analytics")
+    evt_parser.add_argument("--utc", help="Timing category")
+    evt_parser.add_argument("--utv", help="Timing var")
+    evt_parser.add_argument("--utt", help="Timing value")
+    evt_parser.add_argument("--utl", help="Timing label")
 
 def createScreenviewSubParser(subparsers):
     sv_parser = subparsers.add_parser("screenview",
                                       help="Send screenview info analytics")
     sv_parser.add_argument("--cd", help="")
-
 
 def createParser():
     parser = argparse.ArgumentParser()
@@ -132,6 +140,7 @@ def createParser():
     subparsers = parser.add_subparsers(dest="action")
     createExceptionSubParser(subparsers)
     createEventSubParser(subparsers)
+    createTimingSubParser(subparsers)
     createScreenviewSubParser(subparsers)
 
     return parser
@@ -177,3 +186,5 @@ if __name__ == "__main__":
         report_event(args.ec, args.ea, args.el, args.ev)
     elif args.action == "exception":
         report_exception(args.desc, args.fatal)
+    elif args.action == "timing":
+        report_timing(args.utc, args.utv, args.utt, args.utl)

@@ -48,13 +48,6 @@ PR_REPO_CHECKOUT=${PR_REPO_CHECKOUT:-$(basename "$PR_REPO")}
 INFLUX_INSECURE=
 [[ $INFLUXDB_WRITE_URL == insecure_https:* ]] && { INFLUX_INSECURE=-k; INFLUXDB_WRITE_URL=${INFLUXDB_WRITE_URL:9}; }
 
-# Pick right version of du
-TMPDU=$(mktemp -d)
-DU=du
-$DU -sb $TMPDU &> /dev/null || DU=gdu
-$DU -sb $TMPDU &> /dev/null || { echo "No suitable du/gdu found, aborting!"; exit 1; }
-rmdir $TMPDU
-
 # Last time `git gc` was run
 LAST_GIT_GC=0
 
@@ -79,11 +72,6 @@ if [[ ! -e force-hashes ]]; then
 # branch_name@hash
 EOF
 fi
-
-function get_timestamp() {
-  # Get current timestamp, YYYYMMDD-HHMMSS in UTC
-  date -u +%Y%m%d-%H%M%S
-}
 
 function report_state() {
   CURRENT_STATE=$1
@@ -209,34 +197,8 @@ while true; do
     LAST_PR_OK=
 
     # We are looping over several build hashes here. We will have one log per build.
-    SLOG_DIR="separate_logs/$(get_timestamp)-${pr_number}-${pr_hash}"
+    SLOG_DIR="separate_logs/$(date -u +%Y%m%d-%H%M%S)-${pr_number}-${pr_hash}"
     mkdir -p "$SLOG_DIR"
-
-    # Restore fds 1, 2 from 3, 4. If this is the first run, it may fail and this is fine
-    exec 1>&3 3>&- || true
-    exec 2>&4 4>&- || true
-
-    # Back up file descriptors 1, 2 to 3, 4 (will restore them later)
-    exec 3>&1
-    exec 4>&2
-
-    # Redirecting all output to current stdout/stderr, plus separate logfile
-    # Mitigate zombie processes
-    #
-    # This will create a zombie process when executed in something which does fork
-    # + exec + wait on children process.  This is because >(tee "$LOG") will
-    # actually create a new process which is unknown to the parent.
-    #
-    # Under normal conditions this should not be a problem, given the bash
-    # executing the continuous-builder.sh should reap the zombie process. However
-    # continuous-builder.sh itself does the same and the zombie ends up escaping
-    # the bash and gets attached to the python agent, which only reaps the
-    # processes it knows about.
-    #
-    # Bottomline is that this trick is looking for troubles and should never be
-    # used.
-    # exec > >(tee "$SLOG_DIR/log.txt") 2>&1
-    echo "No separate logs for now" > "$SLOG_DIR/log.txt"
 
     report_state pr_processing
     if [[ "$PR_REPO" != "" ]]; then
@@ -248,13 +210,13 @@ while true; do
         [[ $pr_number =~ ^[0-9]*$ ]] && $TIMEOUT_CMD git fetch origin +pull/$pr_number/head
         git reset --hard origin/$PR_BRANCH  # reset to branch target of PRs
         git clean -fxd
-        OLD_SIZE=`$DU --exclude=.git -sb . | awk '{print $1}'`
+        OLD_SIZE=`du -sm . | cut -f1`
         base_hash=$(git rev-parse --verify HEAD)  # reference upstream hash
         git merge --no-edit $pr_hash || CANNOT_MERGE=1
         # clean up in case the merge fails
         git reset --hard HEAD
         git clean -fxd
-        NEW_SIZE=`$DU --exclude=.git -sb . | awk '{print $1}'`
+        NEW_SIZE=`du -sm . | cut -f1`
         PR_REF=$pr_hash
       popd
       if [[ $CANNOT_MERGE == 1 ]]; then
@@ -263,7 +225,7 @@ while true; do
         $TIMEOUT_CMD set-github-status ${SILENT:+-n} -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s $CHECK_NAME/error -m "Cannot merge PR into test area" || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on cannot merge"
         continue
       fi
-      if [[ $(($NEW_SIZE - $OLD_SIZE)) -gt ${MAX_DIFF_SIZE:-4000000} ]]; then
+      if [[ $(($NEW_SIZE - $OLD_SIZE)) -gt ${MAX_DIFF_SIZE:-5} ]]; then
         # We do not want to kill the system is github is not working
         # so we ignore the result code for now
         $TIMEOUT_CMD set-github-status ${SILENT:+-n} -c ${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF} -s $CHECK_NAME/error -m "Diff too big. Rejecting." || $TIMEOUT_CMD report-analytics exception --desc "set-github-status fail on merge too big"
@@ -377,10 +339,6 @@ while true; do
     fi
     report_state pr_processing_done
   done  # end processing a single PR
-
-  # Restore fds 1, 2 in case of premature exit from the loop (may fail: it's fine)
-  exec 1>&3 3>&- || true
-  exec 2>&4 4>&- || true
 
   report_state looping_done
   # Mark the fact we have run at least once.
