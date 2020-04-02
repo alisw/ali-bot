@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 # A simple script which keeps building using the latest aliBuild,
 # alidist and AliRoot / AliPhysics.
 # Notice this will do an incremental build, not a full build, so it
