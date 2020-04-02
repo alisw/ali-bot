@@ -1,0 +1,7 @@
+PyGithub==1.45
+argparse
+requests
+pytz
+klein
+python-ldap
+boto3
