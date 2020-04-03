@@ -10,7 +10,7 @@ PR_REPO_CHECKOUT=Common
 PACKAGE=O2
 
 # How to name the check
-CHECK_NAME=build/O2/Common/macos
+CHECK_NAME=build/Common/O2/o2/macOS
 
 # PRs are made to this branch
 PR_BRANCH=master
@@ -20,3 +20,6 @@ ALIBUILD_DEFAULTS=o2
 
 # Do not use comments in PRs (use Details instead)
 DONT_USE_COMMENTS=1
+
+# How many cores to use for parallel builds
+JOBS=4
