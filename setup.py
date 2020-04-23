@@ -101,7 +101,10 @@ setup(
                # Analytics
                "analytics/report-analytics",
                "analytics/report-metric-monalisa",
+               # Continuous Builders
                "ci/continuous-builder.sh",
+               "ci/build-helpers.sh",
+               "ci/build-loop.sh",
                # GitHub API monitoring
                "monitor-github-api",
                "monitor-github-api-monalisa.sh",
