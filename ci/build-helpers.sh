@@ -20,6 +20,7 @@ function report_state() {
 
   # Push to Google Analytics if configured
   if [ X${ALIBOT_ANALYTICS_ID:+1} = X1 ]; then
-    [ ! X$PRTIME = X ] && $TIMEOUT_CMD report-analytics timing --utc "PR Building" --utv "time" --utt $((PRTIME * 1000)) --utl $CHECK_NAME/$WORKER_INDEX
+    # Report first PR and the rest in a separate category
+    [ ! X$PRTIME = X ] && $TIMEOUT_CMD report-analytics timing --utc "${ONESHOT:+First }PR Building" --utv "time" --utt $((PRTIME * 1000)) --utl $CHECK_NAME/$WORKER_INDEX
   fi
 }
