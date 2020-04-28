@@ -68,12 +68,24 @@ if [ X$ONESHOT = Xtrue ]; then
   HASHES=`echo $HASHES | head -n 1`
 fi
 
+function update_alibot_version() {
+  [ -f config/ali-bot-slug ] || return
+  local ALIBOT_SLUG=`cat config/ali-bot-slug`
+  if pip install --user --upgrade git+https://github.com/$ALIBOT_SLUG; then
+    $TIMEOUT_CMD report-analytics event --ec "ali-bot software - $CI_NAME/$WORKER_INDEX" --ea "deploy" --el "$ALIBOT_SLUG"
+  else
+    $TIMEOUT_CMD report-analytics exception --desc "Failed to deploy ali-bot $ALIBOT_SLUG on $CI_NAME/$WORKER_INDEX"
+  fi
+  rm -f config/ali-bot-slug
+}
+
 for pr_id in $HASHES; do
   report-analytics event --ec "checker" --ea "queue_size" --el "$CI_NAME/${WORKER_INDEX}" --ev `echo $HASHES | wc -l`
   [ -f config/debug ] && DEBUG=`cat config/debug 2>/dev/null | head -n 1`
   [ -f config/profile ] && PROFILE=`cat config/profile 2>/dev/null | head -n 1`
   [ -f config/jobs ] && JOBS=`cat config/jobs 2>/dev/null | head -n 1`
   [ -f config/silent ] && SILENT=`cat config/silent 2>/dev/null | head -n 1`
+  update_alibot_version
   # In case the files are gone, unset some of the variables so that we can
   # revert the state.
   [ ! -f config/silent ] && unset SILENT
