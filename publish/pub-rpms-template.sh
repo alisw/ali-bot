@@ -79,7 +79,7 @@ if [[ $RPM_IS_UPDATABLE ]]; then
     DEP_NAME=${D%%+*}
     DEP_VER=${D#*+}
     DEP_VER=${DEP_VER//-/_}
-    DEPS+=("--depends" "$DEP_NAME = ${DEP_VER}-1.$FLAVOUR")
+    DEPS+=("--depends" "$DEP_NAME >= ${DEP_VER}-1.$FLAVOUR")
   done
 else
   RPM_VERSION=1
