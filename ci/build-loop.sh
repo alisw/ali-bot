@@ -69,6 +69,7 @@ if [ X$ONESHOT = Xtrue ]; then
 fi
 
 for pr_id in $HASHES; do
+  report-analytics event --ec "checker" --ea "queue_size" --el "$CI_NAME/${WORKER_INDEX}" --ev `echo $HASHES | wc -l`
   [ -f config/debug ] && DEBUG=`cat config/debug 2>/dev/null | head -n 1`
   [ -f config/profile ] && PROFILE=`cat config/profile 2>/dev/null | head -n 1`
   [ -f config/jobs ] && JOBS=`cat config/jobs 2>/dev/null | head -n 1`
