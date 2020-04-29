@@ -10,7 +10,7 @@ function report_state() {
   TIME_NOW=$(date -u +%s)
   PRTIME=
   [[ $CURRENT_STATE == pr_processing ]] && TIME_PR_STARTED=$TIME_NOW
-  [[ $CURRENT_STATE == pr_processing_done ]] && PRTIME="$((TIME_NOW-TIME_PR_STARTED))"
+  [[ $CURRENT_STATE == pr_processing_done ]] && PRTIME="$((TIME_NOW - TIME_PR_STARTED))"
 
   # Push to InfluxDB if configured
   if [[ $INFLUXDB_WRITE_URL ]]; then
@@ -21,6 +21,8 @@ function report_state() {
   # Push to Google Analytics if configured
   if [ X${ALIBOT_ANALYTICS_ID:+1} = X1 ]; then
     # Report first PR and the rest in a separate category
-    [ ! X$PRTIME = X ] && $TIMEOUT_CMD report-analytics timing --utc "${ONESHOT:+First }PR Building" --utv "time" --utt $((PRTIME * 1000)) --utl $CHECK_NAME/$WORKER_INDEX
+    if [ ! X$PRTIME = X ]; then
+      $TIMEOUT_CMD report-analytics timing --utc "${ONESHOT:+First }PR Building" --utv "time" --utt $((PRTIME * 1000)) --utl $CHECK_NAME/$WORKER_INDEX
+    fi
   fi
 }
