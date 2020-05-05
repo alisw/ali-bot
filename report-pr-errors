@@ -169,10 +169,16 @@ class Logs(object):
         err, out = getstatusoutput(cmd)
         print(out, file=sys.stderr)
 
-        cmd = "echo 'The following files are present in the log:' >> copy-logs/%s" % tgtFile
-        print(cmd, file=sys.stderr)
-        err, out = getstatusoutput(cmd)
-        print(out, file=sys.stderr)
+        if len(self.logs):
+          cmd = "echo 'The following files are present in the log:' >> copy-logs/%s" % tgtFile
+          print(cmd, file=sys.stderr)
+          err, out = getstatusoutput(cmd)
+          print(out, file=sys.stderr)
+        else:
+          cmd = "echo 'No logs found. Please check actual builders log in aurora.\nSee http://alisw.github.io/infrastructure-pr-testing for more instructions.' >> copy-logs/%s" % tgtFile
+          print(cmd, file=sys.stderr)
+          err, out = getstatusoutput(cmd)
+          print(out, file=sys.stderr)
 
         for log in self.logs:
             cmd = "echo '- %s' >> copy-logs/%s" % (log, tgtFile)
