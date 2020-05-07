@@ -33,7 +33,11 @@ WORKAREA_INDEX=0
 export PYTHONUSERBASE=$(mktemp -d)
 export PATH=$PYTHONUSERBASE/bin:$PATH
 export LD_LIBRARY_PATH=$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH
-pip install --user --ignore-installed --upgrade git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
+case $ARCHITECTURE in
+  slc8*) PIP=pip3 ;;
+  *) PIP=pip ;;
+esac
+$PIP install --user --ignore-installed --upgrade git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
 type aliBuild
 
 rm -rf alidist
