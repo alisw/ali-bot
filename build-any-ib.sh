@@ -34,8 +34,8 @@ export PYTHONUSERBASE=$(mktemp -d)
 export PATH=$PYTHONUSERBASE/bin:$PATH
 export LD_LIBRARY_PATH=$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH
 case $ARCHITECTURE in
-  slc8*) PIP=pip3 ;;
-  *) PIP=pip ;;
+  slc8*) PIP=pip3 ; PYTHON=python3 ;;
+  *) PIP=pip ; PYTHON=python ;;
 esac
 $PIP install --user --ignore-installed --upgrade git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
 type aliBuild
@@ -71,7 +71,7 @@ echo $NODE_NAME > $WORKAREA/$WORKAREA_INDEX/current_slave
 env OVERRIDE_TAGS="$OVERRIDE_TAGS"         \
     OVERRIDE_VERSIONS="$OVERRIDE_VERSIONS" \
     DEFAULTS="$DEFAULTS"                   \
-python <<\EOF
+$PYTHON <<\EOF
 import yaml
 from os import environ
 f = "alidist/defaults-%s.sh" % environ["DEFAULTS"].lower()
