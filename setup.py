@@ -110,6 +110,7 @@ setup(
                "monitor-github-api-monalisa.sh",
                # Check daily tags
                "check-daily-slack",
+               "daily-tags.sh",
                # Wait for open Pull Requests before daily tags
                "ci/check-open-pr",
                # Process PR permissions
