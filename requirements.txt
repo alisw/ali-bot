@@ -6,3 +6,4 @@ klein
 python-ldap
 boto3
 s3cmd
+pyyaml
