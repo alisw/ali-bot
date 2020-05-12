@@ -33,7 +33,7 @@ case $ARCHITECTURE in
   slc8*) PIP=pip3 ; PYTHON=python3 ;;
   *) PIP=pip ; PYTHON=python ;;
 esac
-$PIP install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:-alibuild} ${ALIBUILD_SLUG:+"git+https://github.com/${ALIBUILD_SLUG}"}
+$PIP install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+"git+https://github.com/${ALIBUILD_SLUG}"}
 type aliBuild
 
 rm -rf alidist
