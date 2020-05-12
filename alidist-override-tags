@@ -1,0 +1,17 @@
+#!/usr/bin/env python
+
+import yaml
+from os import environ
+f = "alidist/defaults-%s.sh" % environ["DEFAULTS"].lower()
+d = yaml.safe_load(open(f).read().split("---")[0])
+open(f+".old", "w").write(yaml.dump(d)+"\n---\n")
+d["overrides"] = d.get("overrides", {})
+for t in environ.get("OVERRIDE_TAGS", "").split():
+  p,t = t.split("=", 1)
+  d["overrides"][p] = d["overrides"].get(p, {})
+  d["overrides"][p]["tag"] = t
+for v in environ.get("OVERRIDE_VERSIONS", "").split():
+  p,v = v.split("=", 1)
+  d["overrides"][p] = d["overrides"].get(p, {})
+  d["overrides"][p]["version"] = v
+open(f, "w").write(yaml.dump(d)+"\n---\n")
