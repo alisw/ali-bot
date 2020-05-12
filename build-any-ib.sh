@@ -1,9 +1,5 @@
 #!/bin/bash -ex
 
-# Specify alibuild version: <group>/<repo>[@branch]
-ALIBUILD_REPO=${ALIBUILD_SLUG%%@*}
-[[ $ALIBUILD_SLUG == *@* ]] && ALIBUILD_BRANCH=${ALIBUILD_SLUG#*@} || ALIBUILD_BRANCH=
-
 # Two ways of specifying alidist: <group>/<repo>[@<branch>], <group>/<repo>#<prnum>
 ALIDIST_BRANCH= ALIDIST_REPO=
 case "$ALIDIST_SLUG" in
@@ -22,11 +18,11 @@ date
 
 BUILD_DATE=$(echo 2015$(echo "$(date -u +%s) / (86400 * 3)" | bc))
 
-MIRROR=/build/mirror
+MIRROR=mirror
 
 # Allow for $WORKAREA to be overridden so that we can build special
 # builds (e.g. coverage ones) in a different PATH.
-WORKAREA=${WORKAREA:-/build/workarea/sw/$BUILD_DATE}
+WORKAREA=${WORKAREA:-sw/$BUILD_DATE}
 WORKAREA_INDEX=0
 
 # Get aliBuild with pip in a temporary directory. Gets all dependencies too
@@ -37,7 +33,7 @@ case $ARCHITECTURE in
   slc8*) PIP=pip3 ; PYTHON=python3 ;;
   *) PIP=pip ; PYTHON=python ;;
 esac
-$PIP install --user --ignore-installed --upgrade git+https://github.com/${ALIBUILD_REPO}${ALIBUILD_BRANCH:+@$ALIBUILD_BRANCH}
+$PIP install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:-alibuild} ${ALIBUILD_SLUG:+"git+https://github.com/${ALIBUILD_SLUG}"}
 type aliBuild
 
 rm -rf alidist
@@ -132,24 +128,6 @@ aliBuild --reference-sources $MIRROR                    \
 rm -f $WORKAREA/$WORKAREA_INDEX/current_slave
 [[ "$BUILDERR" != '' ]] && exit $BUILDERR
 
-echo ALIROOT_BUILD_NR=$BUILD_NUMBER >> results.props
-echo PACKAGE_NAME=$PACKAGE_NAME >> results.props
-
 ALIDIST_HASH=$(cd $WORKSPACE/alidist && git rev-parse HEAD)
 ALIBUILD_HASH=$(aliBuild version 2> /dev/null || true)
 rm -rf $PYTHONUSERBASE
-
-case $PACKAGE_NAME in
-  aliroot*|zlib*)
-for x in gun ppbench PbPbbench; do
-cat << EOF > $x-tests.props
-ALIROOT_BUILD_NR=$BUILD_NUMBER
-PACKAGE_NAME=$PACKAGE_NAME
-ALIDIST_HASH=$ALIDIST_HASH
-ALIBUILD_HASH=$ALIBUILD_HASH
-TEST_TO_RUN=$x
-BUILD_DATE=$BUILD_DATE
-EOF
-done
-  ;;
-esac
