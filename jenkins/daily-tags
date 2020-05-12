@@ -16,13 +16,11 @@ node ("slc7_x86-64-light") {
               set -e
               echo $GITHUB_TOKEN > ~/.github-token
               chmod 0600 ~/.github-token
-              ALIBOT_BRANCH="${ALIBOT_REPO##*:}"
-              ALIBOT_REPO="${ALIBOT_REPO%:*}"
               # Use pip to get the Python scripts (with all the correct dependencies)
               export PYTHONUSERBASE="$PWD/localpython"
               export PATH="$PYTHONUSERBASE/bin:$PATH"
               rm -rf "$PYTHONUSERBASE"
-              pip install --user --upgrade --ignore-installed "git+https://github.com/${ALIBOT_REPO}@${ALIBOT_BRANCH}"
+              pip install --user --upgrade --ignore-installed ${ALIBOT_SLUG:-alibot} "${ALIBOT_SLUG:+git+https://github.com/${ALIBOT_SLUG}}"
               type check-open-pr
               if [[ $PACKAGE_NAME == AliPhysics ]]; then
                 WAIT_TESTS="build/AliPhysics/release build/AliPhysics/root6"
