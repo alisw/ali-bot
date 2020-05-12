@@ -98,6 +98,7 @@ setup(
                "set-github-status",
                "report-pr-errors",
                "list-branch-pr",
+               "alidist-override-tags",
                # Analytics
                "analytics/report-analytics",
                "analytics/report-metric-monalisa",
