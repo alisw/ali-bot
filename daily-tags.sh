@@ -86,8 +86,8 @@ popd &> /dev/null  # exit Git repo
 # Select build directory in order to prevent conflicts and allow for cleanups. NODE_NAME is defined
 # by Jenkins
 BUILD_DATE=2015$(( $(date --utc +%s) / (86400 * 3) ))
-MIRROR=/build/mirror
-WORKAREA=/build/workarea/sw/$BUILD_DATE
+MIRROR=mirror
+WORKAREA=sw/$BUILD_DATE
 WORKAREA_INDEX=0
 CURRENT_SLAVE=unknown
 while [[ "$CURRENT_SLAVE" != '' ]]; do
