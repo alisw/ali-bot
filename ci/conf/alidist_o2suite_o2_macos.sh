@@ -10,7 +10,7 @@ PR_REPO_CHECKOUT=alidist
 PACKAGE=O2Suite
 
 # How to name the check
-CHECK_NAME=build/O2Suite/alidist_macOS
+CHECK_NAME=build/alidist/O2Suite/o2/macOS
 
 # PRs are made to this branch
 PR_BRANCH=master
@@ -30,5 +30,5 @@ DONT_USE_COMMENTS=1
 # Extra repositories to download
 EXTRA_REPOS=( "repo=AliceO2Group/AliceO2 branch=dev checkout=O2" )
 
-# How many workers we have
-WORKERS_POOL_SIZE=2
+# How many cores to use for parallel builds
+JOBS=8
