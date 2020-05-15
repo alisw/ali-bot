@@ -164,7 +164,7 @@ class Logs(object):
         if err:
             print(out, file=sys.stderr)
 
-        cmd = "echo 'Builing on: '`hostname` at `date +%Y-%m-%d-%H:%M:%S` >> copy-logs/%s" % tgtFile
+        cmd = "echo 'Builing on: '`hostname` at `date +%%Y-%%m-%%d-%%H:%%M:%%S` >> copy-logs/%s" % tgtFile
         print(cmd, file=sys.stderr)
         err, out = getstatusoutput(cmd)
         print(out, file=sys.stderr)
