@@ -32,7 +32,7 @@ for d in $(find . -maxdepth 2 -name .git -exec dirname {} \; | grep -v ali-bot);
     LOCAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
     if [[ $LOCAL_BRANCH != HEAD ]]; then
       # Cleanup first (if more than 4h passed after last gc)
-      find .git -path '.git/refs/remotes/origin/pr/*' | sed -e 's|^.git/||g' | xargs -n 1 git update-ref -d
+      [ -d .git/refs/remotes/origin/pr ] && { find .git -path '.git/refs/remotes/origin/pr/*' | sed -e 's|^.git/||g' | xargs -n 1 git update-ref -d }
       if [[ $(( $(date -u +%s) - $LAST_GIT_GC )) -gt 14400 ]]; then
         git reflog expire --expire=now --all || true
         git gc --prune=now || true
