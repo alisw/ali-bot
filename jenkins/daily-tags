@@ -20,7 +20,7 @@ node ("slc7_x86-64-light") {
               export PYTHONUSERBASE="$PWD/localpython"
               export PATH="$PYTHONUSERBASE/bin:$PATH"
               rm -rf "$PYTHONUSERBASE"
-              pip install --user --upgrade --ignore-installed "${ALIBOT_SLUG:+git+https://github.com/${ALIBOT_SLUG}}"
+              pip3 install --user --upgrade --ignore-installed "${ALIBOT_SLUG:+git+https://github.com/${ALIBOT_SLUG}}"
               type check-open-pr
               if [[ $PACKAGE_NAME == AliPhysics ]]; then
                 WAIT_TESTS="build/AliPhysics/release build/AliPhysics/root6"
