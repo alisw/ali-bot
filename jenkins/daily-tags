@@ -104,6 +104,7 @@ node ("slc7_x86-64-light") {
               export PYTHONUSERBASE=${PWD}/python-bin
               export PATH=${PYTHONUSERBASE}/bin:$PATH
               export LD_LIBRARY_PATH=${PYTHONUSERBASE}/lib:${LD_LIBRARY_PATH}
+              echo $NODE_NAME
               case $NODE_NAME in
                 slc6*) yum install -y --disablerepo=eos python34-devel python34-pip ;;
                 *) yum install -y python3-devel python3-pip ;;
