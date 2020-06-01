@@ -97,13 +97,14 @@ node ("slc7_x86-64-light") {
                    "AUTOTAG_PATTERN=${AUTOTAG_PATTERN}",
                    "AUTOTAG_OVERRIDE_VERSION=${AUTOTAG_OVERRIDE_VERSION}",
                    "MESOS_QUEUE_SIZE=${MESOS_QUEUE_SIZE}",
-                   "REMOVE_RC_BRANCH_FIRST=${REMOVE_RC_BRANCH_FIRST}"]) {
+                   "REMOVE_RC_BRANCH_FIRST=${REMOVE_RC_BRANCH_FIRST}",
+                   "NODE_NAME=${env.NODE_NAME}"]) {
             sh '''
               set -ex
               export PYTHONUSERBASE=${PWD}/python-bin
               export PATH=${PYTHONUSERBASE}/bin:$PATH
               export LD_LIBRARY_PATH=${PYTHONUSERBASE}/lib:${LD_LIBRARY_PATH}
-              case ${env.NODE_NAME} in
+              case $NODE_NAME in
                 slc6*) yum install -y --disablerepo=eos python34-devel python34-pip ;;
                 *) yum install -y python3-devel python3-pip ;;
               esac
