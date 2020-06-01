@@ -20,10 +20,7 @@ node ("slc7_x86-64-light") {
               export PYTHONUSERBASE="$PWD/localpython"
               export PATH="$PYTHONUSERBASE/bin:$PATH"
               rm -rf "$PYTHONUSERBASE"
-              case ${env.NODE_NAME} in
-                slc6*) yum install -y --disablerepo=eos python34-devel python34-pip ;;
-                *) yum install -y python3-devel python3-pip ;;
-              esac
+              yum install -y python3-devel python3-pip
               pip3 install --user --upgrade --ignore-installed "${ALIBOT_SLUG:+git+https://github.com/${ALIBOT_SLUG}}"
               type check-open-pr
               if [[ $PACKAGE_NAME == AliPhysics ]]; then
@@ -106,8 +103,10 @@ node ("slc7_x86-64-light") {
               export PYTHONUSERBASE=${PWD}/python-bin
               export PATH=${PYTHONUSERBASE}/bin:$PATH
               export LD_LIBRARY_PATH=${PYTHONUSERBASE}/lib:${LD_LIBRARY_PATH}
-              yum-config-manager --disable xrootd-stable
-              yum install -y python3-pip python3-devel
+              case ${env.NODE_NAME} in
+                slc6*) yum install -y --disablerepo=eos python34-devel python34-pip ;;
+                *) yum install -y python3-devel python3-pip ;;
+              esac
               pip3 install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG
               daily-tags.sh
             '''
