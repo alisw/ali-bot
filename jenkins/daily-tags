@@ -103,6 +103,7 @@ node ("slc7_x86-64-light") {
               export PYTHONUSERBASE=${PWD}/python-bin
               export PATH=${PYTHONUSERBASE}/bin:$PATH
               export LD_LIBRARY_PATH=${PYTHONUSERBASE}/lib:${LD_LIBRARY_PATH}
+              yum-config-manager --disable xrootd-stable
               yum install -y python3-pip python3-devel
               pip3 install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG
               daily-tags.sh
