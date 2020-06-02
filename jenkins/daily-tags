@@ -106,7 +106,11 @@ node ("slc7_x86-64-light") {
               export LD_LIBRARY_PATH=${PYTHONUSERBASE}/lib:${LD_LIBRARY_PATH}
               echo $NODE_NAME
               case $NODE_NAME in
-                *slc6_x86-64*) yum install -y --disablerepo=eos python34-devel python34-pip ;;
+                *slc6_x86-64*)
+                  yum -y install --disablerepo=eos centos-release-scl-rh centos-release-scl
+                  yum --enablerepo=centos-sclo-rh --disablerepo=eos -y install rh-python35
+                  source /opt/rh/rh-python35/enable
+                ;;
                 *) yum install -y python3-devel python3-pip ;;
               esac
               pip3 install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG
