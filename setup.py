@@ -74,7 +74,8 @@ setup(
     # your project is installed. For an analysis of "install_requires" vs pip's
     # requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
-    install_requires=['PyGithub==1.45', 'argparse', 'requests', 'pytz', 'klein', 'python-ldap', 'boto3', 's3cmd'],
+    install_requires=['PyGithub==1.45', 'argparse', 'requests', 'pytz', 'Twisted==18.9.0', 
+                      'klein', 'python-ldap', 'boto3', 's3cmd'],
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). You can install these using the following syntax,
