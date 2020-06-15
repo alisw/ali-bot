@@ -20,7 +20,7 @@ node ("slc7_x86-64-light") {
               export PYTHONUSERBASE="$PWD/localpython"
               export PATH="$PYTHONUSERBASE/bin:$PATH"
               rm -rf "$PYTHONUSERBASE"
-              yum install -y python3-devel python3-pip
+              yum install -y python3-pip python3-devel python3-setuptools
               pip3 install --user --upgrade --ignore-installed "${ALIBOT_SLUG:+git+https://github.com/${ALIBOT_SLUG}}"
               type check-open-pr
               if [[ $PACKAGE_NAME == AliPhysics ]]; then
@@ -111,7 +111,7 @@ node ("slc7_x86-64-light") {
                   yum --enablerepo=centos-sclo-rh --disablerepo=eos -y install rh-python35
                   source /opt/rh/rh-python35/enable
                 ;;
-                *) yum install -y python3-devel python3-pip ;;
+                *) yum install -y python3-devel python3-pip python3-setuptools ;;
               esac
               pip3 install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG
               daily-tags.sh
