@@ -75,7 +75,8 @@ setup(
     # requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=['PyGithub==1.45', 'argparse', 'requests', 'pytz', 'Twisted==18.9.0', 
-                      'klein', 'python-ldap', 'boto3', 's3cmd'],
+                      'pytz', 'klein', 'python-ldap', 'boto3', 's3cmd'
+                      'pyyaml'],
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). You can install these using the following syntax,
