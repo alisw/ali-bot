@@ -10,7 +10,8 @@ PR_REPO_CHECKOUT=AliRoot
 PACKAGE=AliRoot-guntest
 
 # How to name the check
-CHECK_NAME=build/AliRoot/AliRoot-guntest/next-root6/macOS
+CHECK_NAME=build/AliRoot/macos
+#CHECK_NAME=build/AliRoot/AliRoot-guntest/next-root6/macOS
 
 # PRs are made to this branch
 PR_BRANCH=master
