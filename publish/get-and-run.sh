@@ -87,6 +87,9 @@ pushd $DEST/publish
                2>&1 | tee -a $LOG.error
   [[ ${PIPESTATUS[0]} == 0 ]] || ERR="$ERR packages"
 
+  # Symlink O2/latest to the latest build
+  ln `find /cvmfs/alice.cern.ch/el7-x86_64/Modules/modulefiles/O2 -type f -printf "%f\n" | tail -n 1` /cvmfs/alice.cern.ch/el7-x86_64/Modules/modulefiles/O2/latest
+
   # Data publisher (e.g. OADB)
   if [[ $PUB_DATA == 1 ]]; then
     ./publish-data.sh 2>&1 | tee -a $LOG.error
