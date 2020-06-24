@@ -158,44 +158,8 @@ class JGet(object):
         return j
     return {}
 
-class RiemannPkgNotify(object):
-
-  def __init__(self, host, port):
-    self._currentHost = getfqdn()
-    self._host = host
-    self._port = int(port)
-    self._ttl = 86400 * 2  # 2 days
-    try:
-      import bernhard
-      self.client = bernhard.Client(host=host, port=port)
-      self.client.send({ "host": self._currentHost,
-                         "state": "ok",
-                         "service": "aliPublish started",
-                         "ttl": self._ttl,
-                         "metric": 1 })
-      debug("Sending notifications to Riemann on %s:%d" % (self._host, self._port))
-    except Exception as e:
-      error("Cannot initialize Riemann connection to %s:%d: %s" % (self._host, self._port, e))
-      self._host = None
-
-  def notify(self, state, arch, pkgname, pkgver):
-    if not self._host:
-      return
-    if state not in [ "ok", "warning", "critical" ]:
-      raise Exception("RiemannPkgNotify only supports ok, warning, critical states")
-    try:
-      self.client.send({ "host": self._currentHost,
-                         "state": state,
-                         "service": "aliPublish publish %s %s %s" % (arch, pkgname, pkgver),
-                         "ttl": self._ttl,
-                         "metric": state == "critical" and 1 or 0 })
-    except Exception as e:
-      error("Cannot send Riemann notification: %s" % e)
-
-
 class PublishException(Exception):
   pass
-
 
 class PlainFilesystem(object):
 
@@ -560,7 +524,7 @@ def getTimestamp(s):
   return getTotalSeconds(dt - datetime(1970, 1, 1))  # yes, it's a mess
 
 def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, autoIncludeDeps,
-         notifEmail, riemann, dryRun, jget):
+         notifEmail, dryRun, jget):
 
   newPackages = {}
 
@@ -705,7 +669,6 @@ def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, 
       if not pub.transaction():
         sys.exit(2)  # fatal
       else:
-        if riemann: riemann.notify("warning", arch, pack["name"], pack["ver"])
         rv = pub.install(pkgUrl, architectures[arch], pack["name"], pack["ver"],
                          deps["dist-direct-runtime"], deps["dist-runtime"])
         newPackages[arch].append({ "name": pack["name"],
@@ -716,11 +679,9 @@ def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, 
       if rv == 0:
         info(format("%(arch)s / %(pack)s / %(ver)s: installed successfully",
                      arch=arch, pack=pack["name"], ver=pack["ver"]))
-        if riemann: riemann.notify("ok", arch, pack["name"], pack["ver"])
       else:
         error(format("%(arch)s / %(pack)s / %(ver)s: publish script failed with %(rv)d",
                      arch=arch, pack=pack["name"], ver=pack["ver"], rv=rv))
-        if riemann: riemann.notify("critical", arch, pack["name"], pack["ver"])
 
   # Publish eventually
   if pub.publish():
@@ -899,17 +860,12 @@ def main():
 
   conf["mesos_dns"] = [ ":".join(map(str, hostport(x, 8123))) for x in conf.get("mesos_dns", []) ]
   shuffle(conf["mesos_dns"])
-  conf["riemann_host"],conf["riemann_port"] = hostport(conf.get("riemann_host", ""), 5555)
 
   # Connection handler
   connParams = dict((k, conf[k]) for k in [ "http_ssl_verify", "conn_timeout_s",
                                             "conn_retries", "conn_dethrottle_s" ])
   connParams["cache_dir"] = args.cacheDepsDir
   jget = JGet(**connParams)
-
-  # Resolve Riemann name via Mesos
-  if conf["riemann_host"].endswith(".mesos") and conf["mesos_dns"] and args.action != "test-rules":
-    conf["riemann_host"] = choice(mesos_resolve(conf["riemann_host"], conf["mesos_dns"], jget))
 
   conf["package_dir"] = conf.get("package_dir", conf.get("cvmfs_package_dir", None))
   conf["modulefile"] = conf.get("modulefile", conf.get("cvmfs_modulefile", None))
@@ -1046,8 +1002,6 @@ def main():
                          for (arch,maps) in conf["architectures"].iteritems())
     architectures = dict((k,v) for (k,v) in architectures.iteritems() if v)
     debug("Architecture names mappings: %s" % json.dumps(architectures, indent=2))
-    riemann = None if args.dryRun \
-              else RiemannPkgNotify(conf["riemann_host"], conf["riemann_port"])
     r = sync(pub=pub,
              architectures=architectures,
              baseUrl=conf["base_url"],
@@ -1056,7 +1010,6 @@ def main():
              includeFirst=includeFirst,
              autoIncludeDeps=conf["auto_include_deps"],
              notifEmail=conf["notification_email"],
-             riemann=riemann,
              dryRun=args.dryRun,
              jget=jget)
     debug("Made %d unique HTTP requests (%d remote requests including retries, %d read from cache)" % \
