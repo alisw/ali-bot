@@ -7,20 +7,17 @@ from datetime import datetime
 from sys import exit
 from smtplib import SMTP
 
-def timestamp(s):
-  return datetime.strptime(s[0:19], "%Y-%m-%dT%H:%M:%S")
-
 def notify(notif, to, **keys):
   if not to:
-    print("%s:%s: cannot send notification: no email contact" % (keys["repo"], keys["stratum_name"]))
+    print("%s:%s: cannot send notification: no email contact" % (keys["repo"], keys["replica"]))
     return
   subject = notif["subject"] % keys
   body = "Subject: %s\nFrom: %s\nTo: %s\n\n" % (subject, notif["from"], ", ".join(to))
   body += notif["body"] % keys
   if os.environ.get("CVMFSMON_NO_NOTIF", "0") != "0":
-    print("%(repo)s:%(stratum_name)s: would send the following email through " \
+    print("%(repo)s:%(replica)s: would send the following email through " \
           "%(host)s:%(port)d:\n---\n%(body)s\n---" %  { "repo": keys["repo"],
-                                                        "stratum_name": keys["stratum_name"],
+                                                        "replica": keys["replica"],
                                                         "host": notif["smtp"]["host"],
                                                         "port": notif["smtp"]["port"],
                                                         "body": body })
@@ -29,9 +26,9 @@ def notify(notif, to, **keys):
     mailer = SMTP(notif["smtp"]["host"], notif["smtp"]["port"])
     mailer.sendmail(notif["from"], to, body)
   except Exception as e:
-    print("%s:%s: cannot send email: %s:%s" % (keys["repo"], keys["stratum_name"], type(e), e))
+    print("%s:%s: cannot send email: %s:%s" % (keys["repo"], keys["replica"], type(e), e))
     return
-  print("%s:%s: notification sent to %s" % (keys["repo"], keys["stratum_name"], ", ".join(to)))
+  print("%s:%s: notification sent to %s" % (keys["repo"], keys["replica"], ", ".join(to)))
 
 def getint(d, key, default):
   v = d.get(key, default)
@@ -42,51 +39,67 @@ def getint(d, key, default):
 
 def check(monit):
   for repo in monit["repos"]:
-    for stratum_name in monit["repos"][repo]:
-      try:
-        s = get(monit["repos"][repo][stratum_name]["url"]).json()
-        pub_delta = (datetime.utcnow()-timestamp(s["stratum0"]["last_modified"])).total_seconds()
-        revdiff = s["stratum0"]["revision"]-s["stratum1"]["revision"]
-        ok = s["status"] == "ok"
-      except (RequestException,KeyError,ValueError) as e:
-        print("%s:%s: cannot get monitoring info: %s:%s" % (repo, stratum_name, type(e), e))
+    try:
+      api_url = monit["api_url"] + "/" + repo
+      s = get(api_url).json()
+      ok = s["status"] == "ok"
+    except (RequestException,KeyError,ValueError) as e:
+      print("%s: cannot get monitoring info from %s: %s:%s" % (repo, api_url, type(e), e))
+      continue
+
+    last_modified_stratum0 = datetime.utcfromtimestamp(s["recommendedStratum0"]["publishedTimestamp"])
+
+    for replica in monit["replicas"]:
+      # find corresponding stratum1 in API response by equal URLs
+      replica_status = next((x for x in s["recommendedStratum1s"]
+                             if x["url"] == monit["replicas"][replica]["url"]), None)
+      if replica_status == None:
+        print("%s:%s cannot found status for stratum 1" % (repo, replica))
         continue
 
+      last_modified = datetime.utcfromtimestamp(replica_status["publishedTimestamp"])
+      pub_delta = (datetime.utcnow()-last_modified).total_seconds()
+      revdiff = s["recommendedStratum0"]["revision"]-replica_status["revision"]
+
       if revdiff == 0:
-        print("%s:%s: OK" % (repo, stratum_name))
+        print("%s:%s: OK" % (repo, replica))
       elif revdiff <= monit["max_revdelta"] and pub_delta <= monit["max_timedelta"]:
         print("%s:%s: syncing: %d seconds, %d revisions behind (stratum0 updated %d seconds ago)" % \
-          (repo, stratum_name, pub_delta, revdiff, pub_delta))
+          (repo, replica, pub_delta, revdiff, pub_delta))
       else:
         print("%s:%s: error: %d seconds, %d revisions behind (stratum0 updated %d seconds ago)" % \
-          (repo, stratum_name, pub_delta, revdiff, pub_delta))
-        if time.time()-monit["repos"][repo][stratum_name].get("last_notification", 0) > monit["snooze"]:
+          (repo, replica, pub_delta, revdiff, pub_delta))
+        if time.time()-monit["last_notification"][repo][replica] > monit["snooze"]:
           notify(monit["notif"],
-                 to=monit["repos"][repo][stratum_name]["contact"],
-                 stratum_name=stratum_name,
+                 to=monit["replicas"][replica]["contact"],
+                 replica=replica,
                  repo=repo,
-                 api_url=monit["repos"][repo][stratum_name]["url"],
+                 api_url=api_url,
                  delta_rev=revdiff,
                  delta_time=pub_delta,
-                 stratum0_mod=s["stratum0"]["last_modified"],
-                 stratum1_mod=s["stratum1"]["last_modified"],
-                 stratum0_rev=s["stratum0"]["revision"],
-                 stratum1_rev=s["stratum1"]["revision"])
-          monit["repos"][repo][stratum_name]["last_notification"] = time.time()
+                 stratum0_mod=last_modified_stratum0.isoformat(),
+                 stratum1_mod=last_modified.isoformat(),
+                 stratum0_rev=s["recommendedStratum0"]["revision"],
+                 stratum1_rev=replica_status["revision"])
+          monit["last_notification"][repo][replica] = time.time()
 
 if __name__ == "__main__":
   try:
     monit = yaml.safe_load(open("cvmfs-mon.yml"))
-    for repo in monit["repos"]:
-      for stratum_name in monit["repos"][repo]:
-        monit["repos"][repo][stratum_name]["url"]
-        if "contact" in monit["repos"][repo][stratum_name]:
-          monit["repos"][repo][stratum_name]["contact"] = monit["repos"][repo][stratum_name]["contact"].split(",")
-        else:
-          monit["repos"][repo][stratum_name]["contact"] = None
+    for replica in monit["replicas"]:
+      if "contact" in monit["replicas"][replica]:
+        monit["replicas"][replica]["contact"] = monit["replicas"][replica]["contact"].split(",")
+      else:
+        monit["replicas"][replica]["contact"] = None
   except (yaml.YAMLError,IOError,KeyError) as e:
     print("cannot parse configuration: %s:%s" % (type(e), e))
     exit(1)
+
+  monit["last_notification"] = {}
+  for repo in monit["repos"]:
+    monit["last_notification"][repo] = {}
+    for replica in monit["replicas"]:
+      monit["last_notification"][repo][replica] = 0
 
   monit["notif"] = monit.get("notif", {})
   for k in ["from", "subject", "body", "smtp"]:

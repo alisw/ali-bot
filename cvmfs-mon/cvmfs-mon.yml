@@ -1,45 +1,33 @@
 ---
 repos:
-  alice-ocdb.cern.ch:
-    CERN:
-      url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice-ocdb.cern.ch/stratum1_details/65/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
-    RAL:
-      url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice-ocdb.cern.ch/stratum1_details/114/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
-    BNL:
-      url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice-ocdb.cern.ch/stratum1_details/118/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
-    Fermilab:
-      url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice-ocdb.cern.ch/stratum1_details/120/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
-    ASGC:
-      url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice-ocdb.cern.ch/stratum1_details/238/"
-      contact: maarten.litmaath@cern.ch
+  - alice-ocdb.cern.ch
+  - alice.cern.ch
 
-  alice.cern.ch:
-    CERN:
-      url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice.cern.ch/stratum1_details/4/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
-    RAL:
-      url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice.cern.ch/stratum1_details/7/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
-    BNL:
-      url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice.cern.ch/stratum1_details/17/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
-    Fermilab:
-      url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice.cern.ch/stratum1_details/13/"
-      contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
-    ASGC:
-      url: "http://cernvm-monitor.cern.ch/cvmfs-monitor/alice.cern.ch/stratum1_details/225/"
-      contact: maarten.litmaath@cern.ch
+api_url: "https://cernvm-monitor.cern.ch/cvmfs-monitor/api/v0/details"
+
+replicas:
+  CERN:
+    url: "http://cvmfs-stratum-one.cern.ch/cvmfs"
+    contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
+  RAL:
+    url: "http://cvmfs-wlcg.gridpp.rl.ac.uk/cvmfs"
+    contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
+  BNL:
+    url: "http://cvmfs.racf.bnl.gov/cvmfs"
+    contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
+  Fermilab:
+    url: "http://cvmfs.fnal.gov/cvmfs"
+    contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
+  ASGC:
+    url: "http://cvmfs02.grid.sinica.edu.tw/cvmfs"
+    contact: maarten.litmaath@cern.ch
 
 notif:
   smtp: cernmx.cern.ch:25
   from: "ALICE CVMFS bot <noreply@cern.ch>"
-  subject: "Stratum 1 %(stratum_name)s for %(repo)s is outdated"
+  subject: "Stratum 1 %(replica)s for %(repo)s is outdated"
   body: |
-    Stratum 1 %(stratum_name)s for CVMFS repository %(repo)s appears out of date:
+    Stratum 1 %(replica)s for CVMFS repository %(repo)s appears out of date:
     %(delta_rev)d revisions behind, %(delta_time)d seconds behind.
 
      * Stratum 0 last modified: %(stratum0_mod)s
@@ -49,7 +37,7 @@ notif:
 
     Summary:
 
-      http://cernvm-monitor.cern.ch/cvmfs-monitor/%(repo)s/
+      https://cvmfs-monitor-frontend.web.cern.ch/%(repo)s/
 
     Raw JSON data:
 
