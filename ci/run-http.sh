@@ -21,7 +21,7 @@ ALI_BOT_DIR="$(cd "$ALI_BOT_DIR/.."; pwd)"
 # Install with pip
 export PYTHONUSERBASE=$PWD/python_local
 export PATH="$PYTHONUSERBASE/bin:$PATH"
-pip install --ignore-installed --upgrade --user -e "$ALI_BOT_DIR"
+pip3 install --ignore-installed --upgrade --user -e "$ALI_BOT_DIR"
 
 # Setup GitLab credentials (to push new data)
 printf "protocol=https\nhost=gitlab.cern.ch\nusername=alibuild\npassword=$GITLAB_TOKEN\n" |
