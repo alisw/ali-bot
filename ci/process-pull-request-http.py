@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from __future__ import print_function
+
 from logging import debug, info, warning, error
 from argparse import ArgumentParser
 from os.path import expanduser
@@ -22,7 +22,7 @@ class Approvers(object):
     match = re.findall("([0-9]+) of ([^;]+)?", s)
     a = Approvers(users_override=users_override)
     for m in match:
-      a.push(int(m[0]), map(Approvers.ghstrip, str(m[1]).split(",")))
+      a.push(int(m[0]), list(map(Approvers.ghstrip, str(m[1]).split(","))))
     return a
   def approve(self, user):
     if user in self.users_override:
