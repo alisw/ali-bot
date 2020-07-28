@@ -20,9 +20,10 @@ export PKGPATH="%(package)s/%(version)s"
 sh -e "%(pkgdir)s/relocate-me.sh"
 MODULESRC="%(pkgdir)s/etc/modulefiles/%(package)s"
 MODULEDST="%(modulefile)s"
-[[ -e "$MODULESRC" ]]
-mkdir -p "$(dirname "$MODULEDST")"
-cp -v "$MODULESRC" "$MODULEDST"
+if [ -e "$MODULESRC" ]; then
+  mkdir -p "$(dirname "$MODULEDST")"
+  cp -v "$MODULESRC" "$MODULEDST"
+fi
 [[ ! "%(repo)s" ]] || exit 0
 # Only in sync-dir mode: create BASE/1.0
 BASEDST=$(dirname $(dirname $MODULEDST))/BASE/1.0
