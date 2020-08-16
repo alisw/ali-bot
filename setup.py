@@ -124,5 +124,7 @@ setup(
                "ci/prinfo",
                # Resolve Mesos DNS
                "mesos-dns-lookup"
+               # Helpers
+               "clean-repo-ci"
               ]
 )

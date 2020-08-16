@@ -1,0 +1,15 @@
+#!/bin/sh -e
+[ "X$REPO_PATH" = X ] && { echo Make sure REPO_PATH is correctly set; exit 1; }
+
+# Eliminate files for a given subset of packages
+# Keep files in the same month and in any case at least 10 of each.
+# This should guarantee that all the files which are currently involved in the PRs
+# are actually still there. If this is not the case, we consider the PR
+# based on a too old alidist tag.
+for x in ROOT O2 AliRoot Clang Python-modules; do
+  find $REPO_PATH/TARS/slc7_x86-64/store -type f -name "$x*" -printf "%T+\t%p\n" | sort -r | grep -v "^`date +%Y-%m`" | tail -n +10 | awk '{print $1;}' | tee delete.list
+done
+
+if [ "X$DO_IT" = X1 ]; then
+  while IFS= read -r file ; do rm -- "$file" ; done < delete.list
+fi
