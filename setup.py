@@ -123,7 +123,7 @@ setup(
                # Get PR information
                "ci/prinfo",
                # Resolve Mesos DNS
-               "mesos-dns-lookup"
+               "mesos-dns-lookup",
                # Helpers
                "clean-repo-ci"
               ]
