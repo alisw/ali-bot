@@ -24,7 +24,7 @@ fi
 git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO alidist/
 
 # Install the latest release if ALIBUILD_SLUG is not provided
-pip install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:-alibuild}${ALIBUILD_SLUG:+git+https://github.com/$ALIBUILD_SLUG}
+pip install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}
 
 PACKAGE_LOWER=$(echo $PACKAGE_NAME | tr '[[:upper:]]' '[[:lower:]]')
 RECIPE=alidist/$PACKAGE_LOWER.sh
