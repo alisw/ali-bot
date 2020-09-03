@@ -7,7 +7,7 @@
 # are actually still there. If this is not the case, we consider the PR
 # based on a too old alidist tag.
 for x in ROOT O2 AliRoot Clang Python-modules; do
-  find $REPO_PATH/TARS/slc7_x86-64/store -type f -name "$x*" -printf "%T+\t%p\n" | sort -r | grep -v "^`date +%Y-%m`" | tail -n +10 | awk '{print $2;}' | tee delete.list
+  find $REPO_PATH/TARS/slc7_x86-64/store -type f -name "$x*" -printf "%T+\t%p\n" | sort -r | grep -v "^`date +%Y-%m`" | tail -n +10 | awk '{print $2;}' | tee -a delete.list
 done
 
 if [ "X$DO_IT" = X1 ]; then
