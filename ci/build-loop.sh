@@ -170,7 +170,7 @@ for pr_id in $HASHES; do
            ${FETCH_REPOS:+--fetch-repos}                                       \
            ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS}                 \
            -z $BUILD_IDENTIFIER                                                \
-           --reference-sources $MIRROR                                         \
+           ${MIRROR:+--reference-sources $MIRROR}                              \
            ${REMOTE_STORE:+--remote-store $REMOTE_STORE}                       \
            ${DEBUG:+--debug}                                                   \
            build $PACKAGE || BUILD_ERROR=$?

@@ -2,14 +2,12 @@
 
 # Runs the continuous-builder.sh script as a standalone process.
 #
-# Usage: run-continuous-builder.sh <profile> [--test-build] [--test-doctor] [--list]
+# Usage: run-continuous-builder.sh <profile> [--list]
 #
 # <profile> refers to <path_to_this_script>/conf/<profile>.sh, containing a configuration in the
 # form of shell variables (the script will be sourced).
 #
 #   --list         List returned PRs for the given configuration from <profile>
-#   --test-doctor  Run aliDoctor with the configuration from <profile>
-#   --test-build   Run aliBuild once with the configuration from <profile>
 #
 # Normal, non-interactive operations require no option.
 
@@ -61,7 +59,7 @@ export MONALISA_PORT=8885
 export MAX_DIFF_SIZE=20000000
 export DELAY=20
 export DEBUG=true
-export MIRROR=/build/mirror
+export MIRROR=
 
 # Disable aliBuild analytics prompt
 mkdir -p $HOME/.config/alibuild
@@ -141,19 +139,6 @@ case "$2" in
     set -x
     $ALIBOT/list-branch-pr --show-main-branch --check-name $CHECK_NAME ${TRUST_COLLABORATORS:+--trust-collaborators} ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} ${DELAY:+--max-wait $DELAY}
     exit 0
-  ;;
-
-  --test-build)
-    set -x
-    PACKAGE=${3-$PACKAGE}
-    aliBuild init $PACKAGE --defaults $ALIBUILD_DEFAULTS --reference-source $MIRROR
-    exec aliBuild build $PACKAGE --defaults $ALIBUILD_DEFAULTS ${DEBUG:+--debug} --reference-source $MIRROR
-  ;;
-
-  --test-doctor)
-    set -x
-    PACKAGE=${3-$PACKAGE}
-    exec aliDoctor $PACKAGE --defaults $ALIBUILD_DEFAULTS ${DEBUG:+--debug}
   ;;
 
   "")
