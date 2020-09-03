@@ -115,6 +115,7 @@ setup(
                "check-daily-slack",
                "daily-tags.sh",
                "build-any-ib.sh",
+               "build-package",
                # Wait for open Pull Requests before daily tags
                "ci/check-open-pr",
                # Process PR permissions
