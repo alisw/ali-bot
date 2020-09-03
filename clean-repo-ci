@@ -13,7 +13,7 @@ PACKAGES=${PACKAGES:-ROOT O2 AliRoot Clang Python-modules}
 for arch in $ARCHITECTURES; do
   rm -rf delete.list
   for x in $PACKAGES; do
-    find $REPO_PATH/TARS/$arch/store -type f -name "$x*" -printf "%T+\t%p\n" | sort -r | grep -v "^`date +%Y-%m`" | tail -n +10 | awk '{print $1;}' | tee -a delete.list
+    find $REPO_PATH/TARS/$arch/store -type f -name "$x*" -printf "%T+\t%p\n" | sort -r | grep -v "^`date +%Y-%m`" | tail -n +10 | awk '{print $2;}' | tee -a delete.list
   done
   if [ "X$DO_IT" = X1 ]; then
     while IFS= read -r file ; do rm -- "$file" ; done < delete.list
