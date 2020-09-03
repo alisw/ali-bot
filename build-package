@@ -122,6 +122,3 @@ aliBuild --reference-sources $MIRROR                    \
 rm -f $WORKAREA/$WORKAREA_INDEX/current_slave
 [[ "$BUILDERR" != '' ]] && exit $BUILDERR
 
-ALIDIST_HASH=$(cd $WORKSPACE/alidist && git rev-parse HEAD)
-ALIBUILD_HASH=$(aliBuild version 2> /dev/null || true)
-rm -rf $PYTHONUSERBASE
