@@ -2,7 +2,7 @@
 
 import yaml
 from os import environ
-f = "alidist/defaults-%s.sh" % environ["DEFAULTS"].lower()
+f = "%s/defaults-%s.sh" % (environ.get("ALIDIST", "alidist"),environ["DEFAULTS"].lower())
 d = yaml.safe_load(open(f).read().split("---")[0])
 open(f+".old", "w").write(yaml.dump(d)+"\n---\n")
 d["overrides"] = d.get("overrides", {})
