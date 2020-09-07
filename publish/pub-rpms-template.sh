@@ -116,10 +116,12 @@ pushd unpack_rpm
     IFS="$OLD_IFS"
   fi
   # Remove useless files conflicting between packages
-  rm -rfv $RPM_ROOT/.build-hash            \
-          $RPM_ROOT/.rpm-extra-deps        \
-          $RPM_ROOT/etc/profile.d/init.sh* \
-          $RPM_ROOT/.original-unrelocated
+  if [ ! "X$RPM_IS_UPDATABLE" = X ]; then
+    rm -rfv $RPM_ROOT/.build-hash            \
+            $RPM_ROOT/.rpm-extra-deps        \
+            $RPM_ROOT/etc/profile.d/init.sh* \
+            $RPM_ROOT/.original-unrelocated
+  fi
 popd
 
 AFTER_INSTALL=$TMPDIR/after_install.sh
