@@ -132,7 +132,7 @@ aliBuild --reference-sources $MIRROR                   \
          --debug                                       \
          --work-dir $WORKAREA/$WORKAREA_INDEX          \
          ${ARCHITECTURE:+--architecture $ARCHITECTURE} \
-         --jobs 16                                     \
+         --jobs 10                                     \
          --fetch-repos                                 \
          --remote-store $REMOTE_STORE                  \
          ${DEFAULTS:+--defaults $DEFAULTS}             \
