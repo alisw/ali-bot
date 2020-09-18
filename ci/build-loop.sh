@@ -161,6 +161,10 @@ for pr_id in $HASHES; do
   BUILD_IDENTIFIER=${NO_ASSUME_CONSISTENT_EXTERNALS:+$(echo ${pr_number} | tr - _)}
   [[ $BUILD_IDENTIFIER ]] || BUILD_IDENTIFIER=${CHECK_NAME//\//_}
 
+  # If remote store is set, make sure we can resolve it.
+  # if not it means we should probably restart the builder.
+  if [ ! X$REMOTE_STORE = X ]; then host `echo $REMOTE_STORE | awk -F/ '{print $3}'`; fi
+
   FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
   ALIBUILD_HEAD_HASH=$pr_hash ALIBUILD_BASE_HASH=$base_hash                    \
   GITLAB_USER= GITLAB_PASS= GITHUB_TOKEN= INFLUXDB_WRITE_URL= CODECOV_TOKEN=   \
