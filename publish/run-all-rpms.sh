@@ -23,4 +23,5 @@ for CONF in aliPublish*-rpms.conf; do
           lxplus.cern.ch:/eos/user/a/alibot/www/ >&2
   printf "\n\n\n\n" >&2
   timeout 300 rclone copyto --config /secrets/alibuild_rclone_config --transfers=20 --progress local:/repo/RPMS/el7.x86_64/ rpms3:alibuild-repo/RPMS/el7.x86_64/ || true
+  timeout 300 rclone copyto --config /secrets/alibuild_rclone_config --transfers=20 --progress local:/repo/UpdRPMS/el7.x86_64/ rpms3:alibuild-repo/UpdRPMS/el7.x86_64/ || true
 done
