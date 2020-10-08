@@ -34,7 +34,7 @@ def get_dependencies(rpm_fname: str, rpm_dir: Path) -> Iterator[str]:
         cmd = run(('rpm', '-qRp', rpm_fname),
                   stdin=DEVNULL, stderr=DEVNULL, stdout=PIPE, check=True)
     except CalledProcessError:
-        print('ERROR: in call to rpm: RPM likely not found or invalid:',
+        print('WARN: in call to rpm: RPM likely not found or invalid:',
               rpm_fname, file=sys.stderr)
         return
 
@@ -66,10 +66,11 @@ def get_dependencies(rpm_fname: str, rpm_dir: Path) -> Iterator[str]:
             yield str(rpm_dir / f'{package}-{extra[1]}.x86_64.rpm')
         elif not extra or extra[0] == '>=':
             # No dependency expression or want latest; find all versions and
-            # keep the newest. All valid versions I've found so far are 1, 2,
-            # 0.4.0, 0.5.13, 19.05.2; [0-9]* catches them all.
+            # keep the newest. All valid versions I've found so far start with
+            # a number. [0-9]* catches them all.
             all_versions = sorted(rpm_dir.glob(f'{package}-[0-9]*.x86_64.rpm'))
-            assert all_versions, "a version exists but wasn't found!"
+            if not all_versions:
+                raise ValueError(f'expected RPM for {package} but none found!')
             yield str(all_versions[-1])
         else:
             raise ValueError(
