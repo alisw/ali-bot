@@ -3,85 +3,122 @@
 '''Determines which RPMs in a directory are unneeded.'''
 
 import argparse
+import re
 import os
 import shlex
 import sys
 from functools import lru_cache
 from pathlib import Path
 from subprocess import run, DEVNULL, PIPE, CalledProcessError
-from typing import List
+from typing import Dict, Set, FrozenSet, Iterator, Tuple
+
+
+# The following packages are ignored as we don't have the RPMs anyway and
+# looking up their names here is quicker than searching for the RPM each time
+# something depends on them. Note that adding a package here will SCHEDULE ITS
+# RPM FOR DELETION if we do have it, even if important packages depend on it!
+IGNORED_PACKAGES = (
+    'environment-modules',
+    'glfw',
+    'glibc-headers',
+    'libhugetlbfs-utils',
+    'pda-kadapter-dkms',
+)
 
 
 # Cache results so querying frequently-depended-upon RPMs is fast.
 @lru_cache(maxsize=None)
-def get_dependencies(rpm_fname: str, rpm_dir: Path) -> List[str]:
-    '''Recursively create dependency tree for an RPM file.
-
-    For convenience, includes its own name in the list of its dependencies.
-    '''
+def get_dependencies(rpm_fname: str, rpm_dir: Path) -> Iterator[str]:
+    '''Find direct dependencies of the given RPM.'''
     try:
-        cmd = run(('rpm', '-qR', '--recommends', '--suggests', rpm_fname),
+        cmd = run(('rpm', '-qRp', rpm_fname),
                   stdin=DEVNULL, stderr=DEVNULL, stdout=PIPE, check=True)
     except CalledProcessError:
-        print('ERROR: RPM not found or invalid:', rpm_fname, file=sys.stderr)
-        return [rpm_fname]
+        print('ERROR: in call to rpm: RPM likely not found or invalid:',
+              rpm_fname, file=sys.stderr)
+        return
 
-    dependencies = [rpm_fname]
     for depspec in cmd.stdout.strip().split(b'\n'):
         package, *extra = depspec.decode('utf-8').split()
-        if package.startswith('/') or package.startswith('rpmlib('):
-            # These seem to be special dependencies: specific files (like
-            # /bin/sh) and RPM features. Ignore them.
-            continue
-        if not any(rpm_dir.glob(f'{package}-*.x86_64.rpm')):
+        if package.startswith('/') or \
+           package.startswith('rpmlib(') or \
+           package in IGNORED_PACKAGES or \
+           not any(rpm_dir.glob(f'{package}-*.x86_64.rpm')):
             # We don't have the RPM for this package, so there's nothing to
-            # delete anyway. Ignore it.
-            print(f'INFO: ignoring {package}, RPM not found', file=sys.stderr)
+            # delete anyway. These seem to be special dependencies: specific
+            # files (like /bin/sh), RPM features or system packages. Ignore.
+            print(f'INFO: ignored package {package}, seems to be special',
+                  file=sys.stderr)
             continue
 
-        if package == 'alisw-aliswmod' and not extra:
+        # Almost all packages just have version "1-1.el7", with the actual
+        # version in the package name. The only exception is some packages in
+        # AliBI/ and alisw-aliswmod, which has versions 1-1.el7 and 2-1.el7.
+        # For alisw-aliswmod, packages seem to either depend on >= 2-1.el7 or
+        # have no version expression.
+        if package == 'alisw-aliswmod' and (not extra or extra == ['>=', '2']):
             # Some packages depend on alisw-aliswmod but do not give a version
             # expression, which presumably means any version. In that case,
             # just keep v2, the latest.
-            version = '2-1.el7'
-        elif extra:
-            operator, version = extra
-
-            # Almost all packages just have version "1-1.el7", with the actual
-            # version in the package name. The only exception is some packages
-            # in AliBI/ and alisw-aliswmod, which has versions 1-1.el7 and
-            # 2-1.el7. For alisw-aliswmod, packages seem to either depend on >=
-            # 2-1.el7 or have no version expression (see above).
-            if package == 'alisw-aliswmod' and operator == '>=' and version == '2':
-                # Convert to an actual version string found in RPM file names.
-                version = '2-1.el7'
-            elif operator == '=' and version == '1-1.el7':
-                # Nothing to do, but don't raise a ValueError.
-                pass
-            else:
-                raise ValueError('unexpected dependency expression',
-                                 rpm_fname, package, extra)
+            yield str(rpm_dir / f'{package}-2-1.el7.x86_64.rpm')
+        elif extra and extra[0] in ('=', '<='):
+            # Use given version -- we want this or less, so use this.
+            yield str(rpm_dir / f'{package}-{extra[1]}.x86_64.rpm')
+        elif not extra or extra[0] == '>=':
+            # No dependency expression or want latest; find all versions and
+            # keep the newest. All valid versions I've found so far are 1, 2,
+            # 0.4.0, 0.5.13, 19.05.2; [0-9]* catches them all.
+            all_versions = sorted(rpm_dir.glob(f'{package}-[0-9]*.x86_64.rpm'))
+            assert all_versions, "a version exists but wasn't found!"
+            yield str(all_versions[-1])
         else:
-            raise ValueError('expected dependency expression for pkg', package)
+            raise ValueError(
+                f'unexpected dependency expression {extra} for {package} '
+                f'in {depspec.decode("utf-8")} of {rpm_fname}')
 
-        # The dependency itself is included in the list returned by the
-        # following call.
-        dependencies.extend(get_dependencies(
-            str(rpm_dir / f'{package}-{version}.x86_64.rpm'), rpm_dir))
 
-    return dependencies
+def build_dependency_tree(rpm_dir: Path) -> Dict[str, FrozenSet[str]]:
+    '''Map each RPM name to its recursive dependencies.'''
+    def resolve_deps_recursively(rpm: str, seen: Tuple[str, ...] = ()) \
+            -> Iterator[str]:
+        '''Search recursively for all dependencies of rpm.'''
+        yield rpm
+        # We keep track of already-seen dependencies up the subtree for this
+        # package so we don't get into circular dependency loops.
+        seen += (rpm,)
+        for dep in get_dependencies(rpm, rpm_dir):
+            if dep not in seen:
+                yield from resolve_deps_recursively(dep, seen)
+
+    return {rpm_file: frozenset(resolve_deps_recursively(rpm_file))
+            for rpm_file in map(str, rpm_dir.glob('*.rpm'))}
 
 
 def main(args: argparse.Namespace) -> None:
     '''Application entry point.'''
-    # Keep any RPM with "O2" in the name. "o2" (lowercase) is not used in
-    # package names except in those that also contain "O2" (uppercase).
-    keep_toplevel_rpms = map(str, args.rpm_dir.glob('*O2*.rpm'))
+    tree = build_dependency_tree(args.rpm_dir)
+
+    # Work out which toplevel packages must be kept.
+    if args.keep_glob is not None:
+        keep_toplevel = {str(p) for p in args.rpm_dir.glob(args.keep_glob)}
+    elif args.keep_regex is not None:
+        keep_toplevel = {str(p) for p in args.rpm_dir.iterdir()
+                         if re.match(args.keep_regex, str(p))}
+    elif args.keep_files is not None:
+        keep_toplevel = set(args.keep_files)
+    else:
+        raise ValueError('one of -r, -g, -f must be specified')
 
     # Combine all toplevel packages' dependency trees.
-    needed_rpms = set()
-    for toplevel in keep_toplevel_rpms:
-        needed_rpms |= set(get_dependencies(toplevel, args.rpm_dir))
+    needed_rpms: Set[str] = set()
+    for toplevel in keep_toplevel:
+        needed_rpms |= tree[toplevel]
+
+    # Work out which packages depend on the ones we want to keep; we want to
+    # keep those too!
+    for package, dependencies in tree.items():
+        if not keep_toplevel.isdisjoint(dependencies):
+            needed_rpms.add(package)
 
     # Work out which RPMs are not depended upon by things we want to keep.
     all_rpms = set(map(str, args.rpm_dir.glob('*.rpm')))
@@ -100,8 +137,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--do-delete', action='store_true', help='actually delete orphan RPMs')
     parser.add_argument(
-        'rpm_dir', nargs='?', metavar='DIR', type=Path, default=Path('.'),
+        '-d', '--rpm-dir', metavar='DIR', type=Path, default=Path('.'),
         help='directory containing RPMs to be checked; default %(default)s')
+    keep_group = parser.add_mutually_exclusive_group(required=True)
+    keep_group.add_argument(
+        '-r', '--keep-regex', metavar='REGEX',
+        help='keep RPMs that match REGEX and their dependencies')
+    keep_group.add_argument(
+        '-g', '--keep-glob', metavar='GLOB',
+        help='keep RPMs that match GLOB and their dependencies')
+    keep_group.add_argument(
+        '-f', '--keep-files', metavar='FILE', nargs='+',
+        help='keep the individually specified RPMs and their dependencies')
     return parser.parse_args()
 
 
