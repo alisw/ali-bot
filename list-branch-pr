@@ -48,11 +48,11 @@ def process(cgh, args):
     return items
 
 
-def should_process(sha_first_char, args):
-    """Decide whether this worker should handle the PR who's
-    sha starts with sha_first_char.
+def should_process(sha, args):
+    """Decide whether this worker should handle the PR whose HEAD commit has
+    the given SHA hash.
     """
-    index = int(sha_first_char, 16) % args.workersPoolSize
+    index = int(sha, 16) % args.workersPoolSize
     return index == args.workerIndex
 
 def get_pulls(args):
@@ -105,7 +105,7 @@ def process_pulls(pulls, cgh, args):
 
 def process_pull(pull, cgh, args):
     item = None
-    if should_process(pull["head"]["sha"][0], args):
+    if should_process(pull["head"]["sha"], args):
         pn = pull["number"]
         print("Processing: %s" % pn, file=sys.stderr)
         try:
@@ -177,7 +177,7 @@ def _do_process_pull(pull, cgh, args):
 
 def process_main_branch(branch, cgh, args):
     item = None
-    if should_process(branch["commit"]["sha"][0], args):
+    if should_process(branch["commit"]["sha"], args):
         try:
             item = _do_process_main_branch(branch, cgh, args)
         except RuntimeError as e:
