@@ -8,6 +8,47 @@
 
 get_config
 
+# A few common environment variables when reporting status to analytics.
+# In analytics we use screenviews to indicate different states of the
+# processing and events to indicate all the things we would consider as
+# fatal in a non deamon process but that here simply make us go to the
+# next step.
+echo "ALIBUILD_O2_FORCE_GPU: $ALIBUILD_O2_FORCE_GPU"
+echo "AMDAPPSDKROOT: $AMDAPPSDKROOT"
+echo "CMAKE_PREFIX_PATH: $CMAKE_PREFIX_PATH"
+ALIBOT_ANALYTICS_USER_UUID=$(hostname -s)-$WORKER_INDEX${CI_NAME:+-$CI_NAME}
+ALIBOT_ANALYTICS_ARCHITECTURE=${CONTAINER_IMAGE%-builder:latest}_$(uname -m)
+export ALIBOT_ANALYTICS_ARCHITECTURE=${ALIBOT_ANALYTICS_ARCHITECTURE##*/}
+export ALIBOT_ANALYTICS_APP_NAME=continuous-builder.sh
+export ALIBOT_ANALYTICS_ID ALIBOT_ANALYTICS_USER_UUID
+
+# These variables are used by the report_state function in continuous-builder.sh
+TIME_STARTED=$(date -u +%s)
+CI_HASH=$(cd "$(dirname "$0")" && git rev-parse HEAD)
+
+: "${MIRROR:=/build/mirror}" "${PACKAGE:=AliPhysics}" "${PR_REPO_CHECKOUT:=$(basename "$PR_REPO")}"
+LAST_PR=
+
+# This is the check name. If CHECK_NAME is in the environment, use it. Otherwise
+# default to, e.g., build/AliRoot/release (build/<Package>/<Defaults>)
+: "${CHECK_NAME:=build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}}"
+
+# Worker index, zero-based. Set to 0 if unset (i.e. when not running on Aurora)
+: "${WORKER_INDEX:=0}"
+
+ALIDIST_REF=$(cd alidist && git rev-parse --verify HEAD)
+short_timeout set-github-status -c "alisw/alidist@$ALIDIST_REF" -s "$CHECK_NAME/pending"
+
+# Generate example of force-hashes file. This is used to override what to check for testing
+if ! [ -e force-hashes ]; then
+  cat > force-hashes <<EOF
+# Example (this is a comment):
+# pr_number@hash
+# You can also use:
+# branch_name@hash
+EOF
+fi
+
 report_state looping
 
 # Run preliminary cleanup command
@@ -116,11 +157,6 @@ for PR_ID in $HASHES; do
   # reporting them twice under erroneous circumstances
   find sw/BUILD/ -maxdepth 4 -name coverage.info -delete
 
-  # GitLab credentials for private ALICE repositories
-  printf "protocol=https\nhost=gitlab.cern.ch\nusername=$GITLAB_USER\npassword=$GITLAB_PASS\n" | \
-  git credential-store --file ~/.git-creds store
-  git config --global credential.helper "store --file ~/.git-creds"
-
   # Ensure build names do not clash across different PR jobs (O2-373)
   BUILD_IDENTIFIER=${NO_ASSUME_CONSISTENT_EXTERNALS:+$(echo ${pr_number} | tr - _)}
   [[ $BUILD_IDENTIFIER ]] || BUILD_IDENTIFIER=${CHECK_NAME//\//_}
@@ -165,7 +201,7 @@ for PR_ID in $HASHES; do
 
   # Look for any code coverage file for the given commit and push
   # it to codecov.io
-  COVERAGE_SOURCES=$PWD/${PR_REPO_CHECKOUT:-$(basename $PR_REPO)}
+  COVERAGE_SOURCES=$PWD/$PR_REPO_CHECKOUT
   COVERAGE_INFO_DIR=$(find sw/BUILD/ -maxdepth 4 -name coverage.info | head -1 | xargs dirname || true)
   if [ -n "$COVERAGE_INFO_DIR" ] && pushd "$COVERAGE_INFO_DIR"; then
     COVERAGE_COMMIT_HASH=$pr_hash
