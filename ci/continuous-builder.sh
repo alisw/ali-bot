@@ -25,13 +25,6 @@ export MESOS_DNS
 TIME_STARTED=$(date -u +%s)
 CI_HASH=$(cd "$(dirname "$0")" && git rev-parse HEAD)
 
-# Timeout between calls of list-branch-pr
-LIST_BRANCH_PR_TIMEOUT=
-if [[ $ONESHOT == true ]]; then
-  LIST_BRANCH_PR_TIMEOUT=1
-  DELAY=1
-fi
-
 # timeout vs. gtimeout (macOS with Homebrew)
 TIMEOUT_EXEC=timeout
 type timeout > /dev/null 2>&1 || TIMEOUT_EXEC=gtimeout

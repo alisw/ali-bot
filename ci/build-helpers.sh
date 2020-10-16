@@ -22,7 +22,7 @@ function report_state() {
   if [ X${ALIBOT_ANALYTICS_ID:+1} = X1 ]; then
     # Report first PR and the rest in a separate category
     if [ ! X$PRTIME = X ]; then
-      $TIMEOUT_CMD report-analytics timing --utc "${ONESHOT:+First }PR Building" --utv "time" --utt $((PRTIME * 1000)) --utl $CHECK_NAME/$WORKER_INDEX
+      $TIMEOUT_CMD report-analytics timing --utc 'PR Building' --utv time --utt $((PRTIME * 1000)) --utl "$CHECK_NAME/$WORKER_INDEX"
     fi
   fi
 }

@@ -55,7 +55,7 @@ find separate_logs/ -type d -empty -delete || true
 if [[ "$PR_REPO" != "" ]]; then
   HASHES=$(cat force-hashes | grep -vE '^#' 2> /dev/null || true)
   if [[ ! $HASHES ]]; then
-    HASHES=`$TIMEOUT_CMD list-branch-pr ${LIST_BRANCH_PR_TIMEOUT:+--timeout $LIST_BRANCH_PR_TIMEOUT} --show-main-branch --check-name $CHECK_NAME ${TRUST_COLLABORATORS:+--trust-collaborators} ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} ${DELAY:+--max-wait $DELAY} || $TIMEOUT_CMD report-analytics exception --desc "list-branch-pr failed"`
+    HASHES=`$TIMEOUT_CMD list-branch-pr --show-main-branch --check-name $CHECK_NAME ${TRUST_COLLABORATORS:+--trust-collaborators} ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} $PR_REPO@$PR_BRANCH ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} ${WORKER_INDEX:+--worker-index $WORKER_INDEX} ${DELAY:+--max-wait $DELAY} || $TIMEOUT_CMD report-analytics exception --desc "list-branch-pr failed"`
   else
     echo "Note: using hashes from $PWD/force-hashes, here is the list:"
     cat $PWD/force-hashes
@@ -63,11 +63,6 @@ if [[ "$PR_REPO" != "" ]]; then
   fi
 else
   HASHES="0@0"
-fi
-
-if [ X$ONESHOT = Xtrue ]; then
-  echo "Called with ONESHOT=true. Only one PR tested."
-  HASHES=`echo $HASHES | head -n 1`
 fi
 
 for pr_id in $HASHES; do
@@ -236,10 +231,3 @@ for pr_id in $HASHES; do
 done  # end processing a single PR
 
 report_state looping_done
-# Mark the fact we have run at least once.
-mkdir -p state
-touch state/ready
-if [[ $ONESHOT = true ]]; then
-  echo "Called with ONESHOT=true. Exiting."
-  exit 0
-fi
