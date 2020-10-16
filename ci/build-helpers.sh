@@ -1,28 +1,93 @@
 #!/bin/bash -x
-function report_state() {
-  CURRENT_STATE=$1
+# This file contains functions used by continuous-builder.sh and build-loop.sh.
+# It is sourced on every iteration, so functions defined here can be overridden
+# while the builder is running.
+
+function report_state () {
+  local current_state=$1
   # Push some metric about being up and running to Monalisa
-  $TIMEOUT_CMD report-metric-monalisa --metric-path github-pr-checker.${CI_NAME:+$CI_NAME}_Nodes/$ALIBOT_ANALYTICS_USER_UUID \
-                                      --metric-name state                                                                    \
-                                      --metric-value $CURRENT_STATE
-  $TIMEOUT_CMD report-analytics screenview --cd $CURRENT_STATE
+  short_timeout report-metric-monalisa --metric-path "github-pr-checker.${CI_NAME}_Nodes/$ALIBOT_ANALYTICS_USER_UUID" --metric-name state --metric-value "$current_state"
+  short_timeout report-analytics screenview --cd "$current_state"
+
   # Calculate PR statistics
-  TIME_NOW=$(date -u +%s)
-  PRTIME=
-  [[ $CURRENT_STATE == pr_processing ]] && TIME_PR_STARTED=$TIME_NOW
-  [[ $CURRENT_STATE == pr_processing_done ]] && PRTIME="$((TIME_NOW - TIME_PR_STARTED))"
+  local time_now prtime=
+  time_now=$(date -u +%s)
+  case "$current_state" in
+    pr_processing) TIME_PR_STARTED=$time_now;;
+    pr_processing_done) prtime=$((time_now - TIME_PR_STARTED));;
+  esac
 
   # Push to InfluxDB if configured
-  if [[ $INFLUXDB_WRITE_URL ]]; then
-    DATA="prcheck,checkname=$CHECK_NAME/$WORKER_INDEX host=\"$(hostname -s)\",state=\"$CURRENT_STATE\",cihash=\"$CI_HASH\",uptime=$((TIME_NOW-TIME_STARTED))${PRTIME:+,prtime=${PRTIME}}${LAST_PR:+,prid=\"$LAST_PR\"}${LAST_PR_OK:+,prok=$LAST_PR_OK} $((TIME_NOW*1000000000))"
-    curl $INFLUX_INSECURE --max-time 20 -XPOST "$INFLUXDB_WRITE_URL" --data-binary "$DATA" || true
+  if [ -n "$INFLUXDB_WRITE_URL" ]; then
+    printf 'prcheck,checkname=%s host="%s",state="%s",cihash="%s",uptime=%s%s %s' \
+           "$CHECK_NAME/$WORKER_INDEX" "$(hostname -s)" "$current_state" "$CI_HASH" $((time_now - TIME_STARTED)) \
+           "${prtime:+,prtime=$prtime}${LAST_PR:+,prid=\"$LAST_PR\"}${LAST_PR_OK:+,prok=$LAST_PR_OK}" $((time_now * 1000000000)) |
+      case "$INFLUXDB_WRITE_URL" in
+        # If INFLUXDB_WRITE_URL starts with insecure_https://, then strip
+        # "insecure_" and send the --insecure/-k option to curl.
+        insecure_*)
+          curl --max-time 20 -XPOST "${INFLUXDB_WRITE_URL#insecure_}" -k --data-binary @- || true;;
+        *)
+          curl --max-time 20 -XPOST "$INFLUXDB_WRITE_URL" --data-binary @- || true;;
+      esac
   fi
 
   # Push to Google Analytics if configured
-  if [ X${ALIBOT_ANALYTICS_ID:+1} = X1 ]; then
+  if [ -n "$ALIBOT_ANALYTICS_ID" ] && [ -n "$prtime" ]; then
     # Report first PR and the rest in a separate category
-    if [ ! X$PRTIME = X ]; then
-      $TIMEOUT_CMD report-analytics timing --utc 'PR Building' --utv time --utt $((PRTIME * 1000)) --utl "$CHECK_NAME/$WORKER_INDEX"
-    fi
+    short_timeout report-analytics timing --utc 'PR Building' --utv time --utt $((prtime * 1000)) --utl "$CHECK_NAME/$WORKER_INDEX"
   fi
+}
+
+function clean_env () {
+  # This function calls its arguments with access tokens removed from the environment.
+  GITLAB_USER='' GITLAB_PASS='' GITHUB_TOKEN='' INFLUXDB_WRITE_URL='' CODECOV_TOKEN='' AWS_ACCESS_KEY_ID='' AWS_SECRET_ACCESS_KEY='' "$@"
+}
+
+# Allow overriding a number of variables by fly, so that we can change the
+# behavior of the job without restarting it.
+# This comes handy when scaling up / down a job, so that we do not quit the
+# currently running workers simply to adapt to the new ensemble.
+function get_config_value () {
+  # Prints the value in config/$1, or prints $2 in case of failure.
+  head -1 "config/$1" 2>/dev/null || echo "$2"
+}
+
+function get_config () {
+  # Read configuration files and set the appropriate env variables. This allows
+  # overriding some critical variables on-the-fly by writing files in config/.
+  WORKERS_POOL_SIZE=$(get_config_value workers-pool-size "$WORKERS_POOL_SIZE")
+  WORKER_INDEX=$(get_config_value worker-index "$WORKER_INDEX")
+  JOBS=$(get_config_value jobs "$JOBS")
+  # If the files have been deleted in the meantime, this will set the variables
+  # to the empty string.
+  SILENT=$(get_config_value silent)
+  DEBUG=$(get_config_value debug)
+}
+
+function reset_git_repository () {
+  # Reset the specified git repository to its original, remote state.
+  pushd "$1" || return 10
+  local local_branch
+  local_branch=$(git rev-parse --abbrev-ref HEAD)
+  if [ "$local_branch" != HEAD ]; then
+    # Cleanup first
+    if [ -d .git/refs/remotes/origin/pr ]; then
+      find .git/refs/remotes/origin/pr | sed 's|^\.git/||' | xargs -n 1 git update-ref -d
+    fi
+    # Try to reset to corresponding remote branch (assume it's origin/<branch>)
+    short_timeout git fetch origin "+$local_branch:refs/remotes/origin/$local_branch"
+    git reset --hard "origin/$local_branch"
+    git clean -fxd
+  fi
+  popd || return 10
+}
+
+function report_pr_errors () {
+  # This is a wrapper for report-pr-errors with some default switches.
+  short_timeout report-pr-errors ${SILENT:+--dry-run} --default "$BUILD_SUFFIX" \
+                --pr "${PR_REPO:-alisw/alidist}#$PR_ID" -s "$CHECK_NAME"        \
+                --logs-dest s3://alice-build-logs.s3.cern.ch                    \
+                --log-url https://ali-ci.cern.ch/alice-build-logs/              \
+                "$@"
 }

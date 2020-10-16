@@ -1,8 +1,7 @@
 #!/bin/bash -x
-# A simple script which keeps building using the latest aliBuild,
-# alidist and AliRoot / AliPhysics.
-# Notice this will do an incremental build, not a full build, so it
-# really to catch errors earlier.
+# A simple script which keeps building using the latest aliBuild, alidist and
+# AliRoot / AliPhysics. Notice this will do an incremental build, not a full
+# build, so it really to catch errors earlier.
 
 # A few common environment variables when reporting status to analytics.
 # In analytics we use screenviews to indicate different states of the
@@ -27,12 +26,14 @@ CI_HASH=$(cd "$(dirname "$0")" && git rev-parse HEAD)
 
 # timeout vs. gtimeout (macOS with Homebrew)
 TIMEOUT_EXEC=timeout
-type timeout > /dev/null 2>&1 || TIMEOUT_EXEC=gtimeout
+type $TIMEOUT_EXEC > /dev/null 2>&1 || TIMEOUT_EXEC=gtimeout
+function short_timeout () { $TIMEOUT_EXEC -s9 "$(get_config_value timeout "$TIMEOUT")" "$@"; }
+function long_timeout () { $TIMEOUT_EXEC -s9 "$(get_config_value long-timeout "$LONG_TIMEOUT")" "$@"; }
+
+. build-helpers.sh
 
 MIRROR=${MIRROR:-/build/mirror}
 PACKAGE=${PACKAGE:-AliPhysics}
-TIMEOUT_CMD="$TIMEOUT_EXEC -s9 ${TIMEOUT:-600}"
-LONG_TIMEOUT_CMD="$TIMEOUT_EXEC -s9 ${LONG_TIMEOUT:-36000}"
 LAST_PR=
 PR_REPO_CHECKOUT=${PR_REPO_CHECKOUT:-$(basename "$PR_REPO")}
 
@@ -54,8 +55,6 @@ WORKER_INDEX=${WORKER_INDEX:-0}
 pushd alidist
   ALIDIST_REF=`git rev-parse --verify HEAD`
 popd
-$TIMEOUT_CMD set-github-status -c alisw/alidist@$ALIDIST_REF -s $CHECK_NAME/pending
-
 # Generate example of force-hashes file. This is used to override what to check for testing
 if [[ ! -e force-hashes ]]; then
   cat > force-hashes <<EOF
@@ -66,7 +65,6 @@ if [[ ! -e force-hashes ]]; then
 EOF
 fi
 
-source `which build-helpers.sh || echo ci/build-helpers.sh`
 
 # Explicitly set UTF-8 support (Python needs it!)
 export LANG="en_US.UTF-8"
