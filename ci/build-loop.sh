@@ -80,13 +80,10 @@ else
         short_timeout report-analytics exception --desc 'list-branch-pr failed'
   else
     echo "Note: using hashes from $PWD/force-hashes, here is the list:"
-    cat $PWD/force-hashes
-    echo
+    cat force-hashes
   fi
 fi
 
-  DOCTOR_ERROR=""
-  BUILD_ERROR=""
 for PR_ID in $HASHES; do
   . build-helpers.sh
   get_config
@@ -97,36 +94,33 @@ for PR_ID in $HASHES; do
   LAST_PR_OK=
 
   # We are looping over several build hashes here. We will have one log per build.
-  SLOG_DIR="separate_logs/$(date -u +%Y%m%d-%H%M%S)-${pr_number}-${pr_hash}"
+  SLOG_DIR="separate_logs/$(date -u +%Y%m%d-%H%M%S)-$pr_number-$pr_hash"
   mkdir -p "$SLOG_DIR"
 
   report_state pr_processing
-  if [[ "$PR_REPO" != "" ]]; then
-    pushd $PR_REPO_CHECKOUT
-      CANNOT_MERGE=0
-      git config --add remote.origin.fetch "+refs/pull/*/head:refs/remotes/origin/pr/*"
-      # Only fetch destination branch for PRs (for merging), and the PR we are checking now
-      short_timeout git fetch origin "+$PR_BRANCH:refs/remotes/origin/$PR_BRANCH"
-      [[ $pr_number =~ ^[0-9]*$ ]] && $TIMEOUT_CMD git fetch origin +pull/$pr_number/head
-      git reset --hard origin/$PR_BRANCH  # reset to branch target of PRs
-      git clean -fxd
-      OLD_SIZE=`du -sm . | cut -f1`
-      base_hash=$(git rev-parse --verify HEAD)  # reference upstream hash
-      git merge --no-edit $pr_hash || CANNOT_MERGE=1
+  if pushd "$PR_REPO_CHECKOUT"; then
+    git config --add remote.origin.fetch '+refs/pull/*/head:refs/remotes/origin/pr/*'
+    # Only fetch destination branch for PRs (for merging), and the PR we are checking now
+    short_timeout git fetch origin "+$PR_BRANCH:refs/remotes/origin/$PR_BRANCH"
+    [[ "$pr_number" =~ ^[0-9]*$ ]] && short_timeout git fetch origin "+pull/$pr_number/head"
+    git reset --hard "origin/$PR_BRANCH"  # reset to branch target of PRs
+    git clean -fxd
+    old_size=$(du -sm . | cut -f1)
+    base_hash=$(git rev-parse --verify HEAD)  # reference upstream hash
+    PR_REF=$pr_hash
+
+    if ! git merge --no-edit "$pr_hash"; then
       # clean up in case the merge fails
       git reset --hard HEAD
       git clean -fxd
-      NEW_SIZE=`du -sm . | cut -f1`
-      PR_REF=$pr_hash
-    popd
-    if [[ $CANNOT_MERGE == 1 ]]; then
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
       short_timeout set-github-status ${SILENT:+-n} -c "${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF}" -s "$CHECK_NAME/error" -m 'Cannot merge PR into test area' ||
         short_timeout report-analytics exception --desc 'set-github-status fail on cannot merge'
       continue
     fi
-    if [[ $(($NEW_SIZE - $OLD_SIZE)) -gt ${MAX_DIFF_SIZE:-5} ]]; then
+
+    if [ $(($(du -sm . | cut -f1) - old_size)) -gt "${MAX_DIFF_SIZE:-5}" ]; then
       # We do not want to kill the system is github is not working
       # so we ignore the result code for now
       short_timeout set-github-status ${SILENT:+-n} -c "${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF}" -s "$CHECK_NAME/error" -m 'Diff too big. Rejecting.' ||
@@ -135,6 +129,8 @@ for PR_ID in $HASHES; do
         short_timeout report-analytics exception --desc 'report-pr-errors fail on merge diff too big'
       continue
     fi
+
+    popd
   fi
 
   STATUS_REF=${PR_REPO:-alisw/alidist}@${PR_REF:-$ALIDIST_REF}
@@ -152,18 +148,20 @@ for PR_ID in $HASHES; do
   # from a previous one. In any case they will be recreated if needed when
   # we build.
   mkdir -p sw/BUILD
-  find sw/BUILD/ -maxdepth 1 -name "*latest*" -delete
+  find sw/BUILD/ -maxdepth 1 -name '*latest*' -delete
   # Delete coverage files from one run to the next to avoid
   # reporting them twice under erroneous circumstances
   find sw/BUILD/ -maxdepth 4 -name coverage.info -delete
 
   # Ensure build names do not clash across different PR jobs (O2-373)
-  BUILD_IDENTIFIER=${NO_ASSUME_CONSISTENT_EXTERNALS:+$(echo ${pr_number} | tr - _)}
-  [[ $BUILD_IDENTIFIER ]] || BUILD_IDENTIFIER=${CHECK_NAME//\//_}
+  BUILD_IDENTIFIER=${NO_ASSUME_CONSISTENT_EXTERNALS:+${pr_number//-/_}}
+  : "${BUILD_IDENTIFIER:=${CHECK_NAME//\//_}}"
 
   # If remote store is set, make sure we can resolve it.
   # if not it means we should probably restart the builder.
-  if [ ! X$REMOTE_STORE = X ]; then ping -c1 `echo $REMOTE_STORE | awk -F/ '{print $3}'`; fi
+  if [ -n "$REMOTE_STORE" ]; then
+    ping -c1 "$(echo "$REMOTE_STORE" | cut -d/ -f3)"
+  fi
 
   FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
 
@@ -179,7 +177,7 @@ for PR_ID in $HASHES; do
   then
     # We do not want to kill the system is github is not working
     # so we ignore the result code for now
-    if [[ $(( $pr_number + 0 )) == $pr_number ]]; then
+    if [ $((pr_number + 0)) = "$pr_number" ]; then
       # This is a PR. Use the error function (with --success) to still provide logs
       report_pr_errors --success
     else

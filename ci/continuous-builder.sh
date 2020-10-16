@@ -66,8 +66,7 @@ while true; do
 
         # Make a directory for this repo's dependencies so they don't conflict
         # with other repos'
-        repo=${env_file#repo-config/$cur_container/}
-        repo=${repo%.env}
+        repo=$(basename "${env_file%.env}")
         mkdir -p "$repo"
         cd "$repo" || exit 10
 
