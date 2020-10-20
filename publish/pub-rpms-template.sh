@@ -18,7 +18,7 @@ which fpm
 cd $TMPDIR
 
 # Create aliswmod RPM
-ALISWMOD_VERSION=2
+ALISWMOD_VERSION=3
 ALISWMOD_RPM="alisw-aliswmod-$ALISWMOD_VERSION-1.%(arch)s.rpm"
 if [[ ! -e "%(repodir)s/$ALISWMOD_RPM" ]]; then
   mkdir -p aliswmod/bin
