@@ -49,8 +49,17 @@ function clean_env () {
 # This comes handy when scaling up / down a job, so that we do not quit the
 # currently running workers simply to adapt to the new ensemble.
 function get_config_value () {
-  # Prints the value in config/$1, or prints $2 in case of failure.
-  head -1 "config/$1" 2>/dev/null || echo "$2"
+  # Looks for a config/ directory here or in any parent dir and prints the
+  # contents of the file called $1 in the closest config/ found. If no config/
+  # is found, prints $2.
+  (
+    while [ "$(pwd)" != / ]; do
+      head -1 "config/$1" 2>/dev/null &&
+        exit
+      cd ..
+    done
+    echo "$2"
+  )
 }
 
 function get_config () {
