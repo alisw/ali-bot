@@ -245,6 +245,12 @@ def parseArgs():
                         default="",
                         help="Execute a script on the resulting PR")
 
+    parser.add_argument("--fallback-to-tested",
+                        dest="fallback_to_tested",
+                        action="store_true",
+                        help=("If no untested PRs are found, return "
+                              "already-tested ones"))
+
     parser.add_argument("--poll-time", "--timeout",
                         dest="poll_time",
                         default=30,
@@ -336,7 +342,7 @@ if __name__ == "__main__":
             if grouped["not_tested"]:
                 sendToStdOut(grouped["not_tested"])
                 break
-            else:
+            elif args.fallback_to_tested:
                 m = "No untested PRs, sleeping for {0}s".format(args.poll_time)
                 print(m, file=sys.stderr)
 
@@ -348,3 +354,5 @@ if __name__ == "__main__":
                     elif grouped["reviewed"]:
                         sendToStdOut([random.choice(grouped["reviewed"])])
                     break
+            else:
+                break
