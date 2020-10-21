@@ -47,22 +47,22 @@ while true; do
     cur_container=${cur_container%-builder:*}
     # If there is no repo we can build in this container, wait; maybe something
     # will turn up.
-    if ! [ -d "ali-bot/ci/repo-config/$cur_container" ]; then
+    if ! [ -d "ali-bot/ci/repo-config/$MESOS_ROLE/$cur_container" ]; then
       sleep 600
       continue
     fi
 
     # Loop through repositories we can build (i.e. that need the docker
     # container we are in).
-    for env_file in "ali-bot/ci/repo-config/$cur_container"/*.env; do
+    for env_file in "ali-bot/ci/repo-config/$MESOS_ROLE/$cur_container"/*.env; do
       # Run iterations in a subshell so environment variables are not kept
       # across potentially different repos. This is an issue as env files are
       # allowed to define arbitrary variables that other files (or the defaults
       # file) might not override.
       (
         # Set up environment
-        . "ali-bot/ci/repo-config/defaults.env" || exit
-        . "$env_file"                           || exit   # in case there are no env files
+        . ali-bot/ci/repo-config/defaults.env || true
+        . "$env_file"                         || exit   # in case there are no env files
 
         # Make a directory for this repo's dependencies so they don't conflict
         # with other repos'
@@ -72,7 +72,12 @@ while true; do
 
         # Get dependency development packages
         echo "$DEVEL_PKGS" | while read -r gh_url branch checkout_name; do
-          git clone "https://github.com/$gh_url" ${branch:+--branch "$branch"} ${checkout_name:+"$checkout_name"}
+          : "${checkout_name:=$(basename "$gh_url")}"
+          if [ -d "$checkout_name" ]; then
+            reset_git_repository "$checkout_name"
+          else
+            git clone "https://github.com/$gh_url" ${branch:+--branch "$branch"} "$checkout_name"
+          fi
         done
 
         # Run the build
