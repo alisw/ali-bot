@@ -160,12 +160,7 @@ def _do_process_pull(pull, cgh, args):
         reviews = cgh.get("/repos/{repo_name}/pulls/{pull_number}/reviews",
            repo_name=args.repo_name,
            pull_number=str(pull["number"]))
-        userReviews = {}
-        for review in reviews:
-          userReviews[review["user"]["login"]] = review["state"]
-        approvedReviewers = [user for (user, review) in userReviews.items() if review == "APPROVED"]
-        if approvedReviewers:
-          print(approvedReviewers)
+        if any(review["state"] == "APPROVED" for review in reviews):
           item.update({"reviewed": True})
 
     # If the pull request is a draft, we mark it as not to be tested in any case.
