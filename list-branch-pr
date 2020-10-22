@@ -282,8 +282,6 @@ def parseArgs():
                         help="Total number of workers")
 
     args = parser.parse_args()
-    if args.maxWait < 0:
-        parser.error("max-wait should be positive")
 
     args.repo_name = args.branch.split("@")[0]
     args.org = args.repo_name.split("/")[0]
@@ -306,15 +304,6 @@ def send(script, pulls):
 
 if __name__ == "__main__":
     args = parseArgs()
-
-    # Here's the plan:
-    # 1. Grab the pull requests and group by untested PRs and the other PRs
-    # 2. If there are untested entries, return them immediately
-    # 3. If not, then sleep for SLEEP_TIME
-    # 4. Upon waking check if total time spent is >= args.maxWait
-    #      If True, return one PR from tested+failed list or reviewed list
-    #                                 (note: this can be empty)
-    #      If not True: goto 1.
 
     cache = PickledCache(".cached_github_client_cache")
     with GithubCachedClient(token=github_token(), cache=cache) as cgh:
