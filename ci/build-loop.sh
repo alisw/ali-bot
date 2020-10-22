@@ -80,7 +80,7 @@ else
                            ${TRUSTED_USERS:+--trusted $TRUSTED_USERS} \
                            ${WORKERS_POOL_SIZE:+--workers-pool-size $WORKERS_POOL_SIZE} \
                            ${WORKER_INDEX:+--worker-index $WORKER_INDEX} \
-                           ${DELAY:+--max-wait $DELAY}) ||
+                           ${RECHECK_PRS:+--tested-only}) ||
         short_timeout report-analytics exception --desc 'list-branch-pr failed'
   else
     echo "Note: using hashes from $PWD/force-hashes, here is the list:"

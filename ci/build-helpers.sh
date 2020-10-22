@@ -73,6 +73,7 @@ function get_config () {
   SILENT=$(get_config_value silent)
   DEBUG=$(get_config_value debug)
   REINSTALL_ALIBOT=$(get_config_value reinstall-alibot)
+  RECHECK_PRS=$(get_config_value recheck-prs)
 }
 
 function reset_git_repository () {
