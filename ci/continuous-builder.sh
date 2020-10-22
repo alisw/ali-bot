@@ -1,104 +1,91 @@
 #!/bin/bash -x
-# A simple script which keeps building using the latest aliBuild,
-# alidist and AliRoot / AliPhysics.
-# Notice this will do an incremental build, not a full build, so it
-# really to catch errors earlier.
-
-# A few common environment variables when reporting status to analytics.
-# In analytics we use screenviews to indicate different states of the
-# processing and events to indicate all the things we would consider as
-# fatal in a non deamon process but that here simly make us go to the
-# next step.
-echo ALIBUILD_O2_FORCE_GPU: $ALIBUILD_O2_FORCE_GPU
-echo AMDAPPSDKROOT: $AMDAPPSDKROOT
-echo CMAKE_PREFIX_PATH: $CMAKE_PREFIX_PATH
-export ALIBOT_ANALYTICS_ID=$ALIBOT_ANALYTICS_ID
-export ALIBOT_ANALYTICS_USER_UUID=`hostname -s`-$WORKER_INDEX${CI_NAME:+-$CI_NAME}
-# Hardcode for now
-export ALIBOT_ANALYTICS_ARCHITECTURE=slc7_x86-64
-export ALIBOT_ANALYTICS_APP_NAME="continuous-builder.sh"
-
-# Mesos DNSes
-: ${MESOS_DNS:=alimesos01.cern.ch,alimesos02.cern.ch,alimesos03.cern.ch}
-export MESOS_DNS
-
-TIME_STARTED=$(date -u +%s)
-CI_HASH=$(cd "$(dirname "$0")" && git rev-parse HEAD)
-
-# Timeout between calls of list-branch-pr
-LIST_BRANCH_PR_TIMEOUT=
-if [[ $ONESHOT == true ]]; then
-  LIST_BRANCH_PR_TIMEOUT=1
-  DELAY=1
-fi
+# A simple script which keeps building using the latest aliBuild, alidist and
+# AliRoot / AliPhysics. Notice this will do an incremental build, not a full
+# build, so it really to catch errors earlier.
 
 # timeout vs. gtimeout (macOS with Homebrew)
 TIMEOUT_EXEC=timeout
-type timeout > /dev/null 2>&1 || TIMEOUT_EXEC=gtimeout
+type $TIMEOUT_EXEC > /dev/null 2>&1 || TIMEOUT_EXEC=gtimeout
+function short_timeout () { $TIMEOUT_EXEC -s9 "$(get_config_value timeout "$TIMEOUT")" "$@"; }
+function long_timeout () { $TIMEOUT_EXEC -s9 "$(get_config_value long-timeout "$LONG_TIMEOUT")" "$@"; }
 
-MIRROR=${MIRROR:-/build/mirror}
-PACKAGE=${PACKAGE:-AliPhysics}
-TIMEOUT_CMD="$TIMEOUT_EXEC -s9 ${TIMEOUT:-600}"
-LONG_TIMEOUT_CMD="$TIMEOUT_EXEC -s9 ${LONG_TIMEOUT:-36000}"
-LAST_PR=
-PR_REPO_CHECKOUT=${PR_REPO_CHECKOUT:-$(basename "$PR_REPO")}
+. build-helpers.sh
 
-# If INFLUXDB_WRITE_URL starts with insecure_https://, then strip "insecure" and
-# set the proper option to curl
-INFLUX_INSECURE=
-[[ $INFLUXDB_WRITE_URL == insecure_https:* ]] && { INFLUX_INSECURE=-k; INFLUXDB_WRITE_URL=${INFLUXDB_WRITE_URL:9}; }
+# In one-repo-only mode, environment definition files aren't read, and we assume
+# e.g. aurora has already given us the required environment for the one specific
+# build we should do.
+ONE_REPO_ONLY=
+for arg in "$@"; do
+  if [ "$arg" = --one-repo-only ]; then
+    ONE_REPO_ONLY=true
+  fi
+done
 
-# Last time `git gc` was run
-LAST_GIT_GC=0
+git clone https://github.com/alisw/ali-bot
 
-# This is the check name. If CHECK_NAME is in the environment, use it. Otherwise
-# default to, e.g., build/AliRoot/release (build/<Package>/<Defaults>)
-CHECK_NAME=${CHECK_NAME:=build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}}
-
-# Worker index, zero-based. Set to 0 if unset (i.e. when not running on Aurora)
-WORKER_INDEX=${WORKER_INDEX:-0}
-
-pushd alidist
-  ALIDIST_REF=`git rev-parse --verify HEAD`
-popd
-$TIMEOUT_CMD set-github-status -c alisw/alidist@$ALIDIST_REF -s $CHECK_NAME/pending
-
-# Generate example of force-hashes file. This is used to override what to check for testing
-if [[ ! -e force-hashes ]]; then
-  cat > force-hashes <<EOF
-# Example (this is a comment):
-# pr_number@hash
-# You can also use:
-# branch_name@hash
-EOF
-fi
-
-source `which build-helpers.sh || echo ci/build-helpers.sh`
-
+# Set up common global environment
+# Mesos DNSes
+: "${MESOS_DNS:=alimesos01.cern.ch,alimesos02.cern.ch,alimesos03.cern.ch}"
+export MESOS_DNS
 # Explicitly set UTF-8 support (Python needs it!)
-export LANG="en_US.UTF-8"
-export LANGUAGE="en_US.UTF-8"
-export LC_CTYPE="en_US.UTF-8"
-export LC_NUMERIC="en_US.UTF-8"
-export LC_TIME="en_US.UTF-8"
-export LC_COLLATE="en_US.UTF-8"
-export LC_MONETARY="en_US.UTF-8"
-export LC_MESSAGES="en_US.UTF-8"
-export LC_PAPER="en_US.UTF-8"
-export LC_NAME="en_US.UTF-8"
-export LC_ADDRESS="en_US.UTF-8"
-export LC_TELEPHONE="en_US.UTF-8"
-export LC_MEASUREMENT="en_US.UTF-8"
-export LC_IDENTIFICATION="en_US.UTF-8"
-export LC_ALL="en_US.UTF-8"
+export {LANG{,UAGE},LC_{CTYPE,NUMERIC,TIME,COLLATE,MONETARY,PAPER,MESSAGES,NAME,ADDRESS,TELEPHONE,MEASUREMENT,IDENTIFICATION,ALL}}=en_US.UTF-8
+
+# GitLab credentials for private ALICE repositories
+printf 'protocol=https\nhost=gitlab.cern.ch\nusername=%s\npassword=%s\n' "$GITLAB_USER" "$GITLAB_PASS" |
+  git credential-store --file ~/.git-creds store
+git config --global credential.helper 'store --file ~/.git-creds'
 
 report_state started
 
-mkdir -p config
-
 while true; do
-  source `which build-helpers.sh || echo ci/build-helpers.sh`
-  # We source the actual build loop, so that whenever we repeat it,
-  # we can get a new version.
-  source `which build-loop.sh || echo ci/build-loop.sh`
+  if [ -n "$ONE_REPO_ONLY" ]; then
+    # All the environment variables we need are already set by aurora, so just
+    # run the build.
+    (. build-loop.sh)
+  else
+    cur_container=${CONTAINER_IMAGE#*/}
+    cur_container=${cur_container%-builder:*}
+    # If there is no repo we can build in this container, wait; maybe something
+    # will turn up.
+    if ! [ -d "ali-bot/ci/repo-config/$MESOS_ROLE/$cur_container" ]; then
+      sleep 600
+      continue
+    fi
+
+    # Loop through repositories we can build (i.e. that need the docker
+    # container we are in).
+    for env_file in "ali-bot/ci/repo-config/$MESOS_ROLE/$cur_container"/*.env; do
+      # Run iterations in a subshell so environment variables are not kept
+      # across potentially different repos. This is an issue as env files are
+      # allowed to define arbitrary variables that other files (or the defaults
+      # file) might not override.
+      (
+        # Set up environment
+        . ali-bot/ci/repo-config/defaults.env || true
+        . "$env_file"                         || exit   # in case there are no env files
+
+        # Make a directory for this repo's dependencies so they don't conflict
+        # with other repos'
+        repo=$(basename "${env_file%.env}")
+        mkdir -p "$repo"
+        cd "$repo" || exit 10
+
+        # Get dependency development packages
+        echo "$DEVEL_PKGS" | while read -r gh_url branch checkout_name; do
+          : "${checkout_name:=$(basename "$gh_url")}"
+          if [ -d "$checkout_name" ]; then
+            reset_git_repository "$checkout_name"
+          else
+            git clone "https://github.com/$gh_url" ${branch:+--branch "$branch"} "$checkout_name"
+          fi
+        done
+
+        # Run the build
+        . build-loop.sh
+      )
+    done
+  fi
+
+  # Get updates to ali-bot
+  reset_git_repository ali-bot
 done

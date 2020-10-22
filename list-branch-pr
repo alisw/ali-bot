@@ -246,18 +246,10 @@ def parseArgs():
                         help=("If no untested PRs are found, return "
                               "already-tested ones"))
 
-    parser.add_argument("--poll-time", "--timeout",
-                        dest="poll_time",
-                        default=30,
-                        type=int,
-                        help="Timeout between one run and the other")
-
-    parser.add_argument("--max-wait",
-                        default=1200,
-                        dest="maxWait",
-                        type=int,
-                        help=("Max seconds to wait before returning "
-                              "whatever PRs we have (default: 1200)"))
+    parser.add_argument("--tested-only", "--no-untested",
+                        dest="tested_only",
+                        action="store_true",
+                        help="Test only PRs that have been tested previously")
 
     parser.add_argument("--trusted",
                         default="review",
@@ -334,20 +326,15 @@ if __name__ == "__main__":
             pulls = process(cgh, args)
             grouped = group_pulls(pulls)
 
-            if grouped["not_tested"]:
+            if grouped["not_tested"] and not args.tested_only:
                 sendToStdOut(grouped["not_tested"])
                 break
-            elif args.fallback_to_tested:
-                m = "No untested PRs, sleeping for {0}s".format(args.poll_time)
-                print(m, file=sys.stderr)
-
-                err, out = getstatusoutput("sleep {0}".format(args.poll_time))
-                if err or timeSince(start) >= args.maxWait:
-                    # return whatever we have (may be empty)
-                    if grouped["not_successful"] or grouped["tested"]:
-                        sendToStdOut([random.choice(grouped["not_successful"] + grouped["tested"])])
-                    elif grouped["reviewed"]:
-                        sendToStdOut([random.choice(grouped["reviewed"])])
-                    break
+            elif args.tested_only or args.fallback_to_tested:
+                # return whatever we have (may be empty)
+                if grouped["not_successful"] or grouped["tested"]:
+                    sendToStdOut([random.choice(grouped["not_successful"] + grouped["tested"])])
+                elif grouped["reviewed"]:
+                    sendToStdOut([random.choice(grouped["reviewed"])])
+                break
             else:
                 break
