@@ -2,6 +2,7 @@
 from __future__ import print_function
 
 import functools
+import os.path
 import random
 import sys
 import time
@@ -306,7 +307,7 @@ def send(script, pulls):
 if __name__ == "__main__":
     args = parseArgs()
 
-    cache = PickledCache("../.cached_github_client_cache")
+    cache = PickledCache(os.path.expanduser("~/.cached_github_client_cache"))
     with GithubCachedClient(token=github_token(), cache=cache) as cgh:
         start = now()
         # runOnce = not args.script
