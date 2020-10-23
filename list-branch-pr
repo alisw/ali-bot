@@ -110,6 +110,7 @@ def process_pull(pull, cgh, args):
         print("Processing: %s" % pn, file=sys.stderr)
         try:
             item = _do_process_pull(pull, cgh, args)
+            print(item, file=sys.stderr)
             print("Processing: %s. Done." % pn, file=sys.stderr)
         except RuntimeError as e:
             print(e, file=sys.stderr)
@@ -305,25 +306,23 @@ def send(script, pulls):
 if __name__ == "__main__":
     args = parseArgs()
 
-    cache = PickledCache(".cached_github_client_cache")
+    cache = PickledCache("../.cached_github_client_cache")
     with GithubCachedClient(token=github_token(), cache=cache) as cgh:
         start = now()
         # runOnce = not args.script
         sendToStdOut = functools.partial(send, args.script)
 
-        while True:
-            pulls = process(cgh, args)
-            grouped = group_pulls(pulls)
+        pulls = process(cgh, args)
+        grouped = group_pulls(pulls)
 
-            if grouped["not_tested"] and not args.tested_only:
-                sendToStdOut(grouped["not_tested"])
-                break
-            elif args.tested_only or args.fallback_to_tested:
-                # return whatever we have (may be empty)
-                if grouped["not_successful"] or grouped["tested"]:
-                    sendToStdOut([random.choice(grouped["not_successful"] + grouped["tested"])])
-                elif grouped["reviewed"]:
-                    sendToStdOut([random.choice(grouped["reviewed"])])
-                break
-            else:
-                break
+        print(pulls, file=sys.stderr)
+        print(grouped, file=sys.stderr)
+
+        if grouped["not_tested"] and not args.tested_only:
+          sendToStdOut(grouped["not_tested"])
+        elif args.tested_only or args.fallback_to_tested:
+          # return whatever we have (may be empty)
+          if grouped["not_successful"] or grouped["tested"]:
+            sendToStdOut([random.choice(grouped["not_successful"] + grouped["tested"])])
+          elif grouped["reviewed"]:
+            sendToStdOut([random.choice(grouped["reviewed"])])

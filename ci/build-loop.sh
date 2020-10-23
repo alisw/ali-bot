@@ -8,10 +8,6 @@
 
 get_config
 
-if [ -n "$REINSTALL_ALIBOT" ]; then
-  pip2 install --upgrade --ignore-installed git+https://github.com/alisw/ali-bot@master
-fi
-
 # A few common environment variables when reporting status to analytics.
 # In analytics we use screenviews to indicate different states of the
 # processing and events to indicate all the things we would consider as
@@ -86,6 +82,10 @@ else
     echo "Note: using hashes from $PWD/force-hashes, here is the list:"
     cat force-hashes
   fi
+fi
+
+if [ -z "$HASHES" ]; then
+  echo "$CHECK_NAME" >> ../nothing-to-do
 fi
 
 for PR_ID in $HASHES; do
