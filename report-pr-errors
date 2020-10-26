@@ -4,9 +4,9 @@ from __future__ import print_function
 from argparse import ArgumentParser, Namespace
 import atexit
 try:
-  from commands import getstatusoutput
+    from commands import getstatusoutput
 except ImportError:
-  from subprocess import getstatusoutput
+    from subprocess import getstatusoutput
 from glob import glob
 from os.path import dirname, join, expanduser
 import re
@@ -103,6 +103,13 @@ def parse_args():
     return args
 
 
+def run_cmd(command, output_only_if_error=False):
+    print(command, file=sys.stderr)
+    err, out = getstatusoutput(command)
+    if not output_only_if_error or err:
+        print(out, file=sys.stderr)
+
+
 class Logs(object):
     def __init__(self, args, is_branch):
         self.work_dir = args.workDir
@@ -153,7 +160,7 @@ class Logs(object):
         """
         error_log = ""
         for log in self.logs:
-            cmd = "cat %s | grep -e ': error:' -A 3 -B 3 " % log
+            cmd = "grep -he ': error:' -A 3 -B 3 -- %s " % log
             cmd += "|| tail -n %s %s" % (self.limit, log)
             err, out = getstatusoutput(cmd)
             if err:
@@ -169,46 +176,23 @@ class Logs(object):
         self.error_log = error_log
 
     def cat(self, tgtFile, no_delete=False):
-        cmd = "%s && mkdir -p `dirname copy-logs/%s`" % ("true" if no_delete else "rm -rf copy-logs", tgtFile)
-        err, out = getstatusoutput(cmd)
-        if err:
-            print(out, file=sys.stderr)
+        run_cmd("%s && mkdir -p `dirname copy-logs/%s`" % ("true" if no_delete else "rm -rf copy-logs", tgtFile),
+                output_only_if_error=True)
 
-        cmd = "echo 'Builing on: '`hostname` at `date +%%Y-%%m-%%d-%%H:%%M:%%S` >> copy-logs/%s" % tgtFile
-        print(cmd, file=sys.stderr)
-        err, out = getstatusoutput(cmd)
-        print(out, file=sys.stderr)
+        run_cmd('echo "Builing on: $(hostname) at $(date +%Y-%m-%d-%H:%M:%S)" >> copy-logs/' + tgtFile)
 
         if len(self.logs):
-          cmd = "echo 'The following files are present in the log:' >> copy-logs/%s" % tgtFile
-          print(cmd, file=sys.stderr)
-          err, out = getstatusoutput(cmd)
-          print(out, file=sys.stderr)
+            run_cmd("echo 'The following files are present in the log:' >> copy-logs/%s" % tgtFile)
         else:
-          cmd = "echo 'No logs found. Please check actual builders log in aurora.\nSee http://alisw.github.io/infrastructure-pr-testing for more instructions.' >> copy-logs/%s" % tgtFile
-          print(cmd, file=sys.stderr)
-          err, out = getstatusoutput(cmd)
-          print(out, file=sys.stderr)
+            run_cmd("echo 'No logs found. Please check actual builders log in aurora.\n"
+                    "See http://alisw.github.io/infrastructure-pr-testing for more instructions.' >> copy-logs/%s" % tgtFile)
 
         for log in self.logs:
-            cmd = "echo '- %s' >> copy-logs/%s" % (log, tgtFile)
-            print(cmd, file=sys.stderr)
-            err, out = getstatusoutput(cmd)
-            print(out, file=sys.stderr)
+            run_cmd("echo '- %s' >> copy-logs/%s" % (log, tgtFile))
 
         for log in self.logs:
-            cmd = "echo '## Begin %s' >> copy-logs/%s" % (log, tgtFile)
-            print(cmd, file=sys.stderr)
-            err, out = getstatusoutput(cmd)
-            print(out, file=sys.stderr)
-            cmd = "cat %s >> copy-logs/%s" % (log, tgtFile)
-            print(cmd, file=sys.stderr)
-            err, out = getstatusoutput(cmd)
-            print(out, file=sys.stderr)
-            cmd = "echo '## End %s' >> copy-logs/%s" % (log, tgtFile)
-            print(cmd, file=sys.stderr)
-            err, out = getstatusoutput(cmd)
-            print(out, file=sys.stderr)
+            run_cmd(("{ echo '## Begin %(log)s'; cat %(log)s; echo '## End %(log)s'; }"
+                     " >> copy-logs/%(tgtFile)s") % {'log': log, 'tgtFile': tgtFile})
 
     def rsync(self, dest):
         err, out = getstatusoutput("cd copy-logs && rsync -av ./ %s" % dest)
