@@ -119,14 +119,17 @@ class Logs(object):
         self.full_log = self.constructFullLogName(args.pr)
         self.is_branch = is_branch
         self.full_log_latest = self.constructFullLogName(args.pr, latest=True)
+        self.pretty_log = self.constructFullLogName(args.pr, pretty=True)
         self.dest = args.logsDest
-        self.url = join(args.logsUrl, self.full_log)
+        self.url = join(args.logsUrl, self.constructFullLogName(args.pr, pretty=True))
 
     def parse(self):
         self.find()
         self.grep()
+        self.generate_pretty_log()
         self.cat(self.full_log)
-        if self.is_branch: self.cat(self.full_log_latest, no_delete=True)
+        if self.is_branch:
+            self.cat(self.full_log_latest, no_delete=True)
         if self.dest.startswith("rsync:"):
             self.rsync(self.dest)
         elif self.dest.startswith("s3"):
@@ -134,10 +137,11 @@ class Logs(object):
         else:
             print("Unknown destination url %s" % self.dest)
 
-    def constructFullLogName(self, pr, latest=False):
+    def constructFullLogName(self, pr, latest=False, pretty=False):
         # file to which we cat all the individual logs
         pr = parse_pr(pr)
-        return join(pr.repo_name, pr.id, "latest" if latest else pr.commit, self.norm_status, "fullLog.txt")
+        return join(pr.repo_name, pr.id, "latest" if latest else pr.commit, self.norm_status,
+                    "pretty.html" if pretty else "fullLog.txt")
 
     def find(self):
         # Python's glob * matches at least one char
@@ -174,6 +178,22 @@ class Logs(object):
         error_log = "\n".join(error_log.split("\n")[0:self.limit])
         error_log.strip(" \n\t")
         self.error_log = error_log
+
+    def generate_pretty_log(self):
+        '''Extract error messages from logs.
+
+        The errors are presented on a user-friendly HTML page, to be uploaded
+        alongside the full message log.
+        '''
+        escaped_error_log = self.error_log.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        with open(join('copy-logs', self.pretty_log), 'w') as f:
+            print('''\
+            <!DOCTYPE html>
+            <body>
+            <p>The following error messages were extracted from the <a href="%s">full build log</a>:</p>
+            <p><pre><code>%s</code></pre></p>
+            </body>
+            ''' % (self.full_log, escaped_error_log), file=f)
 
     def cat(self, tgtFile, no_delete=False):
         run_cmd("%s && mkdir -p `dirname copy-logs/%s`" % ("true" if no_delete else "rm -rf copy-logs", tgtFile),
@@ -217,8 +237,9 @@ class Logs(object):
         for src in matches:
             try:
                 dst = re.compile('^copy-logs/').sub('', src)
-                transfer.upload_file(src, bucket_name, dst, extra_args={'ContentType': 'text/plain',
-                                                                        'ContentDisposition': 'inline'})
+                transfer.upload_file(src, bucket_name, dst, extra_args={
+                    'ContentType': 'text/html' if src.endswith('.html') else 'text/plain',
+                    'ContentDisposition': 'inline'})
             except Exception as e:
                 print("Failed to upload %s to %s in bucket %s.%s" % (src, dst, bucket_name, server))
 
