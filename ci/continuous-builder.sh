@@ -85,8 +85,8 @@ else
         fi
       done
 
-      pip2 install --upgrade --ignore-installed "git+https://github.com/$INSTALL_ALIBOT"
-      pip2 install --upgrade --ignore-installed "git+https://github.com/$INSTALL_ALIBUILD"
+      pip2 install --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$INSTALL_ALIBOT"
+      pip2 install --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$INSTALL_ALIBUILD"
 
       # Run the build
       . build-loop.sh
