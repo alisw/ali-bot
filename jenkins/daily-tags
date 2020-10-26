@@ -101,6 +101,7 @@ node ("slc7_x86-64-light") {
                    "NODE_NAME=${env.NODE_NAME}"]) {
             sh '''
               set -ex
+              [ -d /etc/profile.d/enable-alice.sh ] && source /etc/profile.d/enable-alice.sh
               export PYTHONUSERBASE=${PWD}/python-bin
               export PATH=${PYTHONUSERBASE}/bin:$PATH
               export LD_LIBRARY_PATH=${PYTHONUSERBASE}/lib:${LD_LIBRARY_PATH}
@@ -114,6 +115,7 @@ node ("slc7_x86-64-light") {
                 *) yum install -y python3-devel python3-pip python3-setuptools ;;
               esac
               pip3 install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG
+              [ -d /etc/profile.d/enable-alice.sh ] && source /etc/profile.d/enable-alice.sh
               daily-tags.sh
             '''
           }
