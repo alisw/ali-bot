@@ -13,6 +13,7 @@ import re
 import os
 import sys
 import datetime
+import platform
 
 from alibot_helpers.github_utilities import calculateMessageHash, github_token
 from alibot_helpers.github_utilities import setGithubStatus, parseGithubRef
@@ -47,11 +48,17 @@ def parse_args():
                         default=False,
                         help="Use Details button, do not post a comment")
 
-    parser.add_argument("--success",
-                        action="store_true",
-                        dest="success",
-                        default=False,
-                        help="Signal a green status, not error")
+    status_gp = parser.add_mutually_exclusive_group()
+
+    status_gp.add_argument("--success",
+                           action="store_true",
+                           dest="success",
+                           default=False,
+                           help="Signal a green status, not error")
+
+    status_gp.add_argument("--pending",
+                           action="store_true",
+                           help="Signal only that the build has started")
 
     parser.add_argument("--status", "-s",
                         required=True,
@@ -239,17 +246,17 @@ def handle_branch(cgh, pr, logs, args):
 
     sha = branch["commit"]["sha"]
 
-    message = "Error while checking %s for %s:\n" % (args.status, sha)
-    if args.message:
-        message += to_unicode(args.message)
+    if args.pending:
+        ns = Namespace(commit=args.pr,
+                       status=args.status + "/pending",
+                       message=' '.join(("Building on", platform.node() or "unknown machine",
+                                         "since", datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))),
+                       url="")
     else:
-        message += "```\n%s\n```\nFull log [here](%s).\n" % (to_unicode(logs.error_log), to_unicode(logs.url))
-    messageSha = calculateMessageHash(message)
-
-    ns = Namespace(commit=args.pr,
-                   status=args.status + "/error",
-                   message="",
-                   url="")
+        ns = Namespace(commit=args.pr,
+                      status=args.status + "/error",
+                      message="",
+                      url="")
     setGithubStatus(cgh, ns)
     sys.exit(0)
 
@@ -260,11 +267,12 @@ def handle_pr_id(cgh, pr, logs, args):
                      ref=pr.commit)
     sha = commit["sha"]
 
-    message = "Error while checking %s for %s at %s:\n" % (args.status, sha, datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
-    if args.message:
-        message += args.message
-    else:
-        message += "```\n%s\n```\nFull log [here](%s).\n" % (to_unicode(logs.error_log), to_unicode(logs.url))
+    if not args.pending:
+        message = "Error while checking %s for %s at %s:\n" % (args.status, sha, datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
+        if args.message:
+            message += args.message
+        else:
+            message += "```\n%s\n```\nFull log [here](%s).\n" % (to_unicode(logs.error_log), to_unicode(logs.url))
 
     if args.dry_run:
         # commit does not exist...
@@ -273,12 +281,19 @@ def handle_pr_id(cgh, pr, logs, args):
         sys.exit(0)
 
     # Set status
-    ghStatus = "/success" if args.success else "/error"
-    ns = Namespace(commit=args.pr, status=args.status + ghStatus, message="", url=logs.url)
+    if not args.pending:
+        ghStatus = "/success" if args.success else "/error"
+        ns = Namespace(commit=args.pr, status=args.status + ghStatus, message="", url=logs.url)
+    else:
+        ns = Namespace(commit=args.pr,
+                       status=args.status + "/pending",
+                       message=' '.join(("Building on", platform.node() or "unknown machine",
+                                         "since", datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))),
+                       url="")
     setGithubStatus(cgh, ns)
 
     # Comment if appropriate
-    if args.noComments or args.success:
+    if args.noComments or args.success or args.pending:
         return
 
     prIssueComments = cgh.get("/repos/{repo_name}/issues/{pr_id}/comments",
@@ -321,7 +336,7 @@ def main():
     args = parse_args()
     pr = parse_pr(args.pr)
     logs = Logs(args, is_branch=not pr.id.isdigit())
-    if not args.message:
+    if not args.message and not args.pending:
         logs.parse()
 
     cache = PickledCache(args.github_cache_file)
