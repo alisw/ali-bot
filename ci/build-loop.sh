@@ -97,6 +97,8 @@ for PR_ID in $HASHES; do
   LAST_PR=$pr_number
   LAST_PR_OK=
 
+  report_pr_errors --pending
+
   # We are looping over several build hashes here. We will have one log per build.
   SLOG_DIR="separate_logs/$(date -u +%Y%m%d-%H%M%S)-$pr_number-$pr_hash"
   mkdir -p "$SLOG_DIR"
