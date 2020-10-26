@@ -68,8 +68,8 @@ function get_config () {
   WORKERS_POOL_SIZE=$(get_config_value workers-pool-size "$WORKERS_POOL_SIZE")
   WORKER_INDEX=$(get_config_value worker-index "$WORKER_INDEX")
   JOBS=$(get_config_value jobs "$JOBS")
-  TIMEOUT=$(get_config_value timeout "$TIMEOUT")
-  LONG_TIMEOUT=$(get_config_value long-timeout "$LONG_TIMEOUT")
+  TIMEOUT=$(get_config_value timeout "${TIMEOUT:-600}")
+  LONG_TIMEOUT=$(get_config_value long-timeout "${LONG_TIMEOUT:-36000}")
   RECHECK_PRS=$(get_config_value recheck-prs "$RECHECK_PRS")
   # If the files have been deleted in the meantime, this will set the variables
   # to the empty string.
