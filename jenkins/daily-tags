@@ -115,7 +115,7 @@ node ("slc7_x86-64-light") {
                 *) yum install -y python3-devel python3-pip python3-setuptools ;;
               esac
               pip3 install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG
-              [ -f /etc/profile.d/enable-alice.sh ] && source /etc/profile.d/enable-alice.sh
+              [ -f /opt/rh/rh-git218/enable ] && source /opt/rh/rh-git218/enable
               daily-tags.sh
             '''
           }
