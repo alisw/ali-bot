@@ -2,7 +2,6 @@
 from __future__ import print_function
 
 import functools
-import os.path
 import random
 import sys
 import time
@@ -283,6 +282,10 @@ def parseArgs():
                         default=1,
                         help="Total number of workers")
 
+    parser.add_argument("--github-cache-file",
+                        default=os.path.expanduser("~/.cached_github_client_cache"),
+                        help="Where to cache GitHub API responses (default %(default)s)")
+
     args = parser.parse_args()
 
     args.repo_name = args.branch.split("@")[0]
@@ -307,7 +310,7 @@ def send(script, pulls):
 if __name__ == "__main__":
     args = parseArgs()
 
-    cache = PickledCache(os.path.expanduser("~/.cached_github_client_cache"))
+    cache = PickledCache(args.github_cache_file)
     with GithubCachedClient(token=github_token(), cache=cache) as cgh:
         start = now()
         # runOnce = not args.script
