@@ -97,7 +97,11 @@ for PR_ID in $HASHES; do
   LAST_PR=$pr_number
   LAST_PR_OK=
 
-  report_pr_errors --pending
+  if [ -z "$RECHECK_PRS" ]; then
+    # Set a status on GitHub showing the build start time, but only if this is
+    # the first build! Rebuilds should only set the final success/failure.
+    report_pr_errors --pending
+  fi
 
   # We are looping over several build hashes here. We will have one log per build.
   SLOG_DIR="separate_logs/$(date -u +%Y%m%d-%H%M%S)-$pr_number-$pr_hash"
