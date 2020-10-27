@@ -250,7 +250,7 @@ def handle_branch(cgh, pr, logs, args):
         ns = Namespace(commit=args.pr,
                        status=args.status + "/pending",
                        message=' '.join(("Building on", platform.node() or "unknown machine",
-                                         "since", datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))),
+                                         "since", datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"))),
                        url="")
     else:
         ns = Namespace(commit=args.pr,
@@ -288,7 +288,7 @@ def handle_pr_id(cgh, pr, logs, args):
         ns = Namespace(commit=args.pr,
                        status=args.status + "/pending",
                        message=' '.join(("Building on", platform.node() or "unknown machine",
-                                         "since", datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))),
+                                         "since", datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"))),
                        url="")
     setGithubStatus(cgh, ns)
 
