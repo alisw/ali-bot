@@ -67,7 +67,8 @@ else
       . ali-bot/ci/repo-config/DEFAULTS.env                              || true
       . "ali-bot/ci/repo-config/$MESOS_ROLE/DEFAULTS.env"                || true
       . "ali-bot/ci/repo-config/$MESOS_ROLE/$cur_container/DEFAULTS.env" || true
-      . "$env_file"
+      # Exit in case this file has been removed in the meantime.
+      . "$env_file"                                                      || exit
 
       # Make a directory for this repo's dependencies so they don't conflict
       # with other repos'
@@ -85,8 +86,10 @@ else
         fi
       done
 
-      pip2 install --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$INSTALL_ALIBOT"
-      pip2 install --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$INSTALL_ALIBUILD"
+      # Sometimes pip gets stuck when cloning the ali-bot or alibuild repos. In
+      # that case: time out, skip and try again later.
+      short_timeout pip2 install --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$INSTALL_ALIBOT" || exit
+      short_timeout pip2 install --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$INSTALL_ALIBUILD" || exit
 
       # Run the build
       . build-loop.sh
