@@ -121,13 +121,15 @@ class Logs(object):
         self.full_log_latest = self.constructFullLogName(args.pr, latest=True)
         self.pretty_log = self.constructFullLogName(args.pr, pretty=True)
         self.dest = args.logsDest
-        self.url = join(args.logsUrl, self.constructFullLogName(args.pr, pretty=True))
+        self.url = join(args.logsUrl, self.pretty_log)
+        self.log_url = join(args.logsUrl, self.full_log)
+        self.build_successful = args.success
 
     def parse(self):
         self.find()
         self.grep()
-        self.generate_pretty_log()
         self.cat(self.full_log)
+        self.generate_pretty_log()
         if self.is_branch:
             self.cat(self.full_log_latest, no_delete=True)
         if self.dest.startswith("rsync:"):
@@ -161,23 +163,43 @@ class Logs(object):
     def grep(self):
         """Grep for errors in the build logs, or, if none are found,
         return the last N lines where N is the limit argument.
+
+        Also extract messages from failed unit tests and o2checkcode.
         """
-        error_log = ""
+        error_log_lines = []
         for log in self.logs:
-            cmd = "grep -he ': error:' -A 3 -B 3 -- %s " % log
-            cmd += "|| tail -n %s %s" % (self.limit, log)
-            err, out = getstatusoutput(cmd)
+            err, out = getstatusoutput("grep -he ': error:' -A 3 -B 3 -- %s "
+                                       "|| tail -n %s %s" % (log, self.limit, log))
             if err:
-                print("Error while parsing logs", file=sys.stderr)
-                print(out, file=sys.stderr)
+                print("Error while parsing logs", out, sep="\n", file=sys.stderr)
                 continue
+            error_log_lines.append(log)
+            error_log_lines.extend(out.split("\n"))
+        self.error_log = "\n".join(error_log_lines[:self.limit]).strip(" \n\t")
 
-            error_log += log + "\n"
-            error_log += out
+        o2checkcode_blocks = []
+        for log in self.logs:
+            err, out = getstatusoutput("sed -n '/^========== List of errors found ==========$/,$p' %s" % log)
+            if err:
+                print("Error while looking for o2checkcode output", out, sep="\n", file=sys.stderr)
+                continue
+            if out and not out.isspace():
+                o2checkcode_blocks.append(log + "\n" + out)
+        if o2checkcode_blocks:
+            self.o2checkcode_messages = "\n\n\n".join(o2checkcode_blocks).strip(" \n\t")
+        else:
+            self.o2checkcode_messages = "(No errors found)"
 
-        error_log = "\n".join(error_log.split("\n")[0:self.limit])
-        error_log.strip(" \n\t")
-        self.error_log = error_log
+        unittest_lines = []
+        for log in self.logs:
+            err, out = getstatusoutput("grep -he 'Test *#[0-9]*: .*\\*\\*\\*Failed' -e '% tests passed' -- " + log)
+            if err:
+                continue
+            unittest_lines.append(log + "\n" + out)
+        if unittest_lines:
+            self.failed_unit_tests = "\n\n\n".join(unittest_lines).strip(" \n\t")
+        else:
+            self.failed_unit_tests = "(No reports found)"
 
     def generate_pretty_log(self):
         '''Extract error messages from logs.
@@ -185,15 +207,50 @@ class Logs(object):
         The errors are presented on a user-friendly HTML page, to be uploaded
         alongside the full message log.
         '''
-        escaped_error_log = self.error_log.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        def htmlescape(string):
+            return string.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
         with open(join('copy-logs', self.pretty_log), 'w') as f:
             print('''\
             <!DOCTYPE html>
-            <body>
-            <p>The following error messages were extracted from the <a href="%s">full build log</a>:</p>
-            <p><pre><code>%s</code></pre></p>
+            <head>
+              <title>Build results</title>
+              <style>
+               body { border-width: 0.5rem; border-style: solid; margin: 0; padding: 1rem; min-height: 100vh; box-sizing: border-box; }
+               pre { overflow-x: auto; }
+               .succeeded { border-color: #1b5e20; }
+               .succeeded h1 { color: #1b5e20; }
+               .failed { border-color: #b71c1c; }
+               .failed h1 { color: #b71c1c; }
+              </style>
+            </head>
+            <body class="%(status)s">
+              <h1>The build %(status)s</h1>
+              <p>The code that finds and extracts error messages may have missed some.</p>
+              <p>Check the <a href="%(log_url)s">full build log</a> if you suspect the build failed for reasons not listed below.</p>
+              <h3>Table of contents</h3>
+              <p><ol>
+                <li><a href="#o2checkcode"><code>o2checkcode</code> results</a></li>
+                <li><a href="#tests">Unit test results</a></li>
+                <li><a href="#errors">Error messages</a></li>
+              </ol></p>
+              <h2 id="o2checkcode"><code>o2checkcode</code> results</h2>
+              <p><pre><code>%(o2checkcode)s</code></pre></p>
+              <h2 id="tests">Unit test results</h2>
+              <p><pre><code>%(unittests)s</code></pre></p>
+              <h2 id="errors">Error messages</h2>
+              <p>Note that the following list may include false positives! Check the sections above first.</p>
+              <p>If no errors were found by this tool, the last %(limit)d lines of the log follow.</p>
+              <p><pre><code>%(errors)s</code></pre></p>
             </body>
-            ''' % (self.full_log, escaped_error_log), file=f)
+            ''' % {
+                'status': 'succeeded' if self.build_successful else 'failed',
+                'log_url': self.log_url,
+                'o2checkcode': htmlescape(self.o2checkcode_messages),
+                'unittests': htmlescape(self.failed_unit_tests),
+                'errors': htmlescape(self.error_log),
+                'limit': self.limit,
+            }, file=f)
 
     def cat(self, tgtFile, no_delete=False):
         run_cmd("%s && mkdir -p `dirname copy-logs/%s`" % ("true" if no_delete else "rm -rf copy-logs", tgtFile),
