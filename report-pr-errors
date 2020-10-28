@@ -303,15 +303,10 @@ class Logs(object):
 
 def get_pending_namespace(args):
     '''Return a Namespace to set status to pending with an appropriate message.'''
-    mesos_id = os.environ.get("MESOS_EXECUTOR_ID", "")
-    match = re.match("^thermos-([a-z]*)-([a-z]*)-([a-z0-9_-]*)-([0-9]*)(?:-[0-9a-f]*){5}$", mesos_id)
-    host = '/'.join(('build',) + match.groups()) if match else \
-        platform.node() or "unknown machine"
-    return Namespace(
-        commit=args.pr,
-        status=args.status + "/pending",
-        message=datetime.datetime.utcnow().strftime("Building since %Y-%m-%d %H:%M UTC on ") + host,
-        url="")
+    return Namespace(commit=args.pr,
+                     status=args.status + "/pending",
+                     message=args.message,
+                     url="")
 
 
 def handle_branch(cgh, pr, logs, args):

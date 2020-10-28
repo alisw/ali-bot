@@ -88,6 +88,10 @@ if [ -z "$HASHES" ]; then
   echo "$CHECK_NAME" >> ../nothing-to-do
 fi
 
+host_id=$(echo "$MESOS_EXECUTOR_ID" |
+            sed -ne 's#^thermos-\([a-z]*\)-\([a-z]*\)-\([a-z0-9_-]*\)-\([0-9]*\)\(-[0-9a-f]*\)\{5\}$#build/\1/\2/\3/\4#p')
+: "${host_id:=$(hostname --fqdn)}"
+
 for PR_ID in $HASHES; do
   . build-helpers.sh
   get_config
@@ -98,9 +102,20 @@ for PR_ID in $HASHES; do
   LAST_PR_OK=
 
   if [ -z "$RECHECK_PRS" ]; then
+    # If there are multiple HASHES to build for this repository, update all of
+    # them with their queue number before we start building.
+    echo "$HASHES" | sed -e "0,/$PR_ID/d" | cat -n | (
+      # Run this in a subshell as report_pr_errors uses $PR_ID but we don't want
+      # to overwrite the outer for loop's PR_ID, as it is needed for the
+      # subsequent build.
+      while read -r n PR_ID; do
+        report_pr_errors --pending -m "Build queued ($n ahead) on $host_id"
+      done
+    )
+
     # Set a status on GitHub showing the build start time, but only if this is
     # the first build! Rebuilds should only set the final success/failure.
-    report_pr_errors --pending
+    report_pr_errors --pending -m "Building since $(date +'%Y-%m-%d %H:%M %Z') on $host_id"
   fi
 
   # We are looping over several build hashes here. We will have one log per build.
