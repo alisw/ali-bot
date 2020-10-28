@@ -177,29 +177,24 @@ class Logs(object):
             error_log_lines.extend(out.split("\n"))
         self.error_log = "\n".join(error_log_lines[:self.limit]).strip(" \n\t")
 
-        o2checkcode_blocks = []
-        for log in self.logs:
-            err, out = getstatusoutput("sed -n '/^========== List of errors found ==========$/,$p' %s" % log)
-            if err:
-                print("Error while looking for o2checkcode output", out, sep="\n", file=sys.stderr)
-                continue
-            if out and not out.isspace():
-                o2checkcode_blocks.append(log + "\n" + out)
-        if o2checkcode_blocks:
-            self.o2checkcode_messages = "\n\n\n".join(o2checkcode_blocks).strip(" \n\t")
-        else:
-            self.o2checkcode_messages = "(No errors found)"
+        def chunk_command_output_by_log(command):
+            blocks = []
+            for log in self.logs:
+                err, out = getstatusoutput(command % log)
+                if err:
+                    print("Error while parsing logs", out, sep="\n", file=sys.stderr)
+                    continue
+                blocks.append(log + "\n" + out)
+            if blocks:
+                return "\n\n\n".join(blocks).strip(" \n\t")
+            return "(No messages found)"
 
-        unittest_lines = []
-        for log in self.logs:
-            err, out = getstatusoutput("grep -he 'Test *#[0-9]*: .*\\*\\*\\*Failed' -e '% tests passed' -- " + log)
-            if err:
-                continue
-            unittest_lines.append(log + "\n" + out)
-        if unittest_lines:
-            self.failed_unit_tests = "\n\n\n".join(unittest_lines).strip(" \n\t")
-        else:
-            self.failed_unit_tests = "(No reports found)"
+        self.errors_only_log = chunk_command_output_by_log(
+            "grep -he ': error:' -e ': warning:' -A 3 -B 3 -- %s")
+        self.o2checkcode_messages = chunk_command_output_by_log(
+            "sed -n '/=== List of errors found ===/,$p' %s")
+        self.failed_unit_tests = chunk_command_output_by_log(
+            r"grep -he 'Test *#[0-9]*: .*\*\*\*Failed' -e '%% tests passed' -- %s")
 
     def generate_pretty_log(self):
         '''Extract error messages from logs.
@@ -240,7 +235,6 @@ class Logs(object):
               <p><pre><code>%(unittests)s</code></pre></p>
               <h2 id="errors">Error messages</h2>
               <p>Note that the following list may include false positives! Check the sections above first.</p>
-              <p>If no errors were found by this tool, the last %(limit)d lines of the log follow.</p>
               <p><pre><code>%(errors)s</code></pre></p>
             </body>
             ''' % {
@@ -248,8 +242,7 @@ class Logs(object):
                 'log_url': self.log_url,
                 'o2checkcode': htmlescape(self.o2checkcode_messages),
                 'unittests': htmlescape(self.failed_unit_tests),
-                'errors': htmlescape(self.error_log),
-                'limit': self.limit,
+                'errors': htmlescape(self.errors_only_log),
             }, file=f)
 
     def cat(self, tgtFile, no_delete=False):
