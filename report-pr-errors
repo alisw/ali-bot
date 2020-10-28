@@ -238,25 +238,26 @@ class Logs(object):
             except Exception as e:
                 print("Failed to upload %s to %s in bucket %s.%s" % (src, dst, bucket_name, server))
 
+
+def get_pending_namespace(args):
+    '''Return a Namespace to set status to pending with an appropriate message.'''
+    mesos_id = os.environ.get("MESOS_EXECUTOR_ID", "")
+    match = re.match("^thermos-([a-z]*)-([a-z]*)-([a-z0-9_-]*)-([0-9]*)(?:-[0-9a-f]*){5}$", mesos_id)
+    host = '/'.join(('build',) + match.groups()) if match else \
+        platform.node() or "unknown machine"
+    return Namespace(
+        commit=args.pr,
+        status=args.status + "/pending",
+        message=datetime.datetime.utcnow().strftime("Building since %Y-%m-%d %H:%M UTC on ") + host,
+        url="")
+
+
 def handle_branch(cgh, pr, logs, args):
-    # pr_id in this case is in fact a branch name
-    branch = cgh.get("/repos/{repo_name}/branches/{branch}",
-                     repo_name=pr.repo_name,
-                     branch=pr.id)
-
-    sha = branch["commit"]["sha"]
-
-    if args.pending:
-        ns = Namespace(commit=args.pr,
-                       status=args.status + "/pending",
-                       message=' '.join(("Building on", platform.node() or "unknown machine",
-                                         "since", datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"))),
-                       url="")
-    else:
-        ns = Namespace(commit=args.pr,
-                      status=args.status + "/error",
-                      message="",
-                      url="")
+    ns = get_pending_namespace(args) if args.pending else \
+        Namespace(commit=args.pr,
+                  status=args.status + "/error",
+                  message="",
+                  url="")
     setGithubStatus(cgh, ns)
     sys.exit(0)
 
@@ -281,15 +282,11 @@ def handle_pr_id(cgh, pr, logs, args):
         sys.exit(0)
 
     # Set status
-    if not args.pending:
-        ghStatus = "/success" if args.success else "/error"
-        ns = Namespace(commit=args.pr, status=args.status + ghStatus, message="", url=logs.url)
-    else:
-        ns = Namespace(commit=args.pr,
-                       status=args.status + "/pending",
-                       message=' '.join(("Building on", platform.node() or "unknown machine",
-                                         "since", datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"))),
-                       url="")
+    ns = get_pending_namespace(args) if args.pending else \
+        Namespace(commit=args.pr,
+                  status=args.status + ("/success" if args.success else "/error"),
+                  message="",
+                  url=logs.url)
     setGithubStatus(cgh, ns)
 
     # Comment if appropriate
