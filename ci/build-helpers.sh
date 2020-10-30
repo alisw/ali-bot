@@ -98,7 +98,7 @@ function reset_git_repository () {
 function report_pr_errors () {
   # This is a wrapper for report-pr-errors with some default switches.
   short_timeout report-pr-errors ${SILENT:+--dry-run} --default "$BUILD_SUFFIX" \
-                --pr "${PR_REPO:-alisw/alidist}#$PR_ID" -s "$CHECK_NAME"        \
+                --pr "${PR_REPO:-alisw/alidist}#$PR_NUMBER@$PR_HASH" -s "$CHECK_NAME" \
                 --logs-dest s3://alice-build-logs.s3.cern.ch                    \
                 --log-url https://ali-ci.cern.ch/alice-build-logs/              \
                 "$@"
