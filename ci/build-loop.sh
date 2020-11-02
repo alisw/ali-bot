@@ -18,13 +18,13 @@ echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead bt
   # Run this in a subshell as report_pr_errors uses $PR_NUMBER/$PR_HASH but we
   # don't want to overwrite the outer for loop's variables, as they are needed
   # for the subsequent build.
-  if [ "$btype" = not_tested ]; then
+  if [ "$btype" = untested ]; then
     # Only report progress for a PR if it's never been built before.
     report_pr_errors --pending -m "Build queued ($ahead ahead) on $host_id"
   fi
 done
 
-if [ "$BUILD_TYPE" = not_tested ]; then
+if [ "$BUILD_TYPE" = untested ]; then
   # Set a status on GitHub showing the build start time, but only if this is
   # the first build! Rebuilds should only set the final success/failure.
   report_pr_errors --pending -m "Building since $(date +'%Y-%m-%d %H:%M %Z') on $host_id"

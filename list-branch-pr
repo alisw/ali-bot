@@ -240,15 +240,13 @@ class RepoConfig:
 
     def grouped_pull_requests(self, show_main_branch):
         """Retrieve and group PRs for this build config."""
-        reviewed = [
-            pull for pull in self.process_pulls(show_main_branch)
-            if pull["reviewed"]]
+        reviewed = [pull for pull in self.process_pulls(show_main_branch)
+                    if pull["reviewed"]]
+        tested = [pull for pull in reviewed if pull["tested"]]
         return {
-            "not_tested": [p for p in reviewed if not p["tested"]],
-            "not_successful": [p for p in reviewed
-                               if p["tested"] and not p["success"]],
-            "tested": [p for p in reviewed if p["tested"]],
-            "reviewed": reviewed,
+            "untested": [p for p in reviewed if not p["tested"]],
+            "failed": [p for p in tested if not p["success"]],
+            "succeeded": [p for p in tested if p["success"]],
         }
 
     def __repr__(self):
@@ -279,16 +277,22 @@ def main(args):
                 for key, prs in groups.items():
                     grouped[key] += prs
 
-    for group in ("not_tested", "not_successful", "tested", "reviewed"):
-        prs = grouped[group]
-        if prs:
-            # Pick at most 3 random PRs from the first non-empty group in the
-            # fallback hierarchy. This limit is so we don't start to build 20
-            # PRs that don't strictly need it just before a new PR arrives.
-            for pull in random.sample(prs, min(3, len(prs))):
-                print(group, pull["number"], pull["sha"],
-                      pull["repo"].build_config, sep="\t")
-            break
+    def print_pr(group, pull):
+        print(group, pull["number"], pull["sha"], pull["repo"].build_config,
+              sep="\t")
+
+    if grouped["untested"]:
+        # If there are untested PRs waiting, build all of them first.
+        for pull in grouped["untested"]:
+            print_pr("untested", pull)
+    else:
+        for group in ("failed", "succeeded"):
+            # Pick one random PR from the first non-empty group in the fallback
+            # hierarchy. This limit is so we don't start to build 20 PRs that
+            # don't strictly need it just before a new PR arrives.
+            if grouped[group]:
+                print_pr(group, random.choice(grouped[group]))
+                break
 
 
 def parse_args():
