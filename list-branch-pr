@@ -277,22 +277,25 @@ def main(args):
                 for key, prs in groups.items():
                     grouped[key] += prs
 
-    def print_pr(group, pull):
-        print(group, pull["number"], pull["sha"], pull["repo"].build_config,
-              sep="\t")
+    def print_prs(group, number=None):
+        """Print N randomly chosen PRs from group on stdout."""
+        prs = grouped[group]
+        if number is not None and number <= len(prs):
+            prs = random.sample(prs, number)
+        for pull in prs:
+            print(group, pull["number"], pull["sha"],
+                  pull["repo"].build_config, sep="\t")
 
     if grouped["untested"]:
         # If there are untested PRs waiting, build all of them first.
-        for pull in grouped["untested"]:
-            print_pr("untested", pull)
-    else:
-        for group in ("failed", "succeeded"):
-            # Pick one random PR from the first non-empty group in the fallback
-            # hierarchy. This limit is so we don't start to build 20 PRs that
-            # don't strictly need it just before a new PR arrives.
-            if grouped[group]:
-                print_pr(group, random.choice(grouped[group]))
-                break
+        print_prs("untested")
+    elif grouped["failed"] and random.random() < 0.7:
+        # Rebuild a failed PR, but sometimes fall through and rebuild a
+        # successful one instead. This is so a single red PR can't stop all
+        # green PRs from being rebuilt occasionally.
+        print_prs("failed", 1)
+    elif grouped["succeeded"]:
+        print_prs("succeeded", 1)
 
 
 def parse_args():
