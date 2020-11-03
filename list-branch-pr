@@ -60,7 +60,7 @@ class RepoConfig:
         self.repo_name = ""
         self.branch_ref = "master"
         self.trusted_users = []
-        self.trusted_teams = []
+        self.trusted_team = None
         self.trust_contributors = False
         self.worker_pool_size = args.worker_pool_size
         self.worker_index = args.worker_index
@@ -97,22 +97,6 @@ class RepoConfig:
                           sep=": ", end="", file=sys.stderr)
                     continue
 
-                # Settings that only this script use don't need to be shell
-                # variables, so to avoid polluting the build environment, we
-                # use special comments of the form "#% VARIABLE VALUE ...".
-                if tokens and tokens[0] == "#%":
-                    var, values = tokens[1], tokens[2:]
-                    if var == "TRUST_COLLABORATORS":
-                        self.trust_contributors = values == ["true"]
-                    elif var == "TRUSTED_USERS":
-                        self.trusted_users = values
-                    elif var == "TRUSTED_TEAMS" and values:
-                        teams = self.cgh.get("/orgs/{org}/teams", org=self.org)
-                        self.trusted_teams = [
-                            team["id"] for name in values for team in teams
-                            if team["name"] == name]
-                    continue
-
                 # Some variables are used elsewhere in the CI builder, so they
                 # are defined as shell variables. Handle these here (including
                 # multiple assignments on one line). Note that non-assignments
@@ -128,6 +112,17 @@ class RepoConfig:
                         self.branch_ref = value
                     elif var == "CHECK_NAME":
                         self.check_name = value
+                    elif var == "TRUST_COLLABORATORS":
+                        # Shell-style boolean: True if non-empty.
+                        self.trust_contributors = bool(value)
+                    elif var == "TRUSTED_USERS":
+                        self.trusted_users = value.split(",")
+                    elif var == "TRUSTED_TEAM" and value:
+                        teams = self.cgh.get("/orgs/{org}/teams", org=self.org)
+                        for team in teams:
+                            if team["name"] == value:
+                                self.trusted_team = team["id"]
+                                break
 
     @property
     def org(self):
@@ -165,10 +160,9 @@ class RepoConfig:
             pull["user"]["login"] in self.trusted_users or
 
             # If we trust a team and the user is a member, trust this PR.
-            self.trusted_teams and any(
-                self.cgh.get(url="/teams/{team_id}/memberships/{login}",
-                             team_id=team, login=pull["user"]["login"])
-                for team in self.trusted_teams) or
+            self.trusted_team and self.cgh.get(
+                url="/teams/{team_id}/memberships/{login}",
+                team_id=self.trusted_team, login=pull["user"]["login"]) or
 
             # If this PR has any approving reviews, trust it.
             any(review["state"] == "APPROVED"
