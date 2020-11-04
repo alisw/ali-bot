@@ -60,12 +60,8 @@ if [ -n "$HASHES" ]; then
     # "list-branch-pr | while read" pipeline.
 
     # Setup environment
-    # Load more specific defaults later so they override more general ones.
-    . ali-bot/ci/repo-config/DEFAULTS.env                               || true
-    . "ali-bot/ci/repo-config/$MESOS_ROLE/DEFAULTS.env"                 || true
-    . "ali-bot/ci/repo-config/$MESOS_ROLE/$CUR_CONTAINER/DEFAULTS.env"  || true
-    # Exit in case this file has been removed in the meantime.
-    . "ali-bot/ci/repo-config/$MESOS_ROLE/$CUR_CONTAINER/$env_name.env" || exit
+    # Skip this build if the .env file doesn't exist any more.
+    source_env_files "$env_name" || exit
 
     # Make a directory for this repo's dependencies so they don't conflict
     # with other repos'

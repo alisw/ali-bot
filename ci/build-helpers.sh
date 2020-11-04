@@ -98,8 +98,22 @@ function reset_git_repository () {
 function report_pr_errors () {
   # This is a wrapper for report-pr-errors with some default switches.
   short_timeout report-pr-errors ${SILENT:+--dry-run} --default "$BUILD_SUFFIX" \
-                --pr "${PR_REPO:-alisw/alidist}#$PR_NUMBER@$PR_HASH" -s "$CHECK_NAME" \
+                --pr "$PR_REPO#$PR_NUMBER@$PR_HASH" -s "$CHECK_NAME"            \
                 --logs-dest s3://alice-build-logs.s3.cern.ch                    \
                 --log-url https://ali-ci.cern.ch/alice-build-logs/              \
                 "$@"
+}
+
+function source_env_files () {
+  local _envf env_name=$1 base=ali-bot/ci/repo-config
+  # Go through the fallback order of the *.env files and source them, if
+  # present. The exit status of this function will be the result of the last
+  # iteration, i.e. nonzero if $env_name.env doesn't exist or failed.
+  for _envf in "$base/DEFAULTS.env" \
+                 "$base/$MESOS_ROLE/DEFAULTS.env" \
+                 "$base/$MESOS_ROLE/$CUR_CONTAINER/DEFAULTS.env" \
+                 "$base/$MESOS_ROLE/$CUR_CONTAINER/$env_name.env"
+  do
+    [ -e "$_envf" ] && . "$_envf"
+  done
 }
