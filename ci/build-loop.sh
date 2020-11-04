@@ -14,13 +14,15 @@ host_id=$(echo "$MESOS_EXECUTOR_ID" |
 : "${host_id:=$(hostname --fqdn)}"
 
 # Update all PRs in the queue with their number before we start building.
-echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead btype PR_NUMBER PR_HASH _; do
-  # Run this in a subshell as report_pr_errors uses $PR_NUMBER/$PR_HASH but we
-  # don't want to overwrite the outer for loop's variables, as they are needed
-  # for the subsequent build.
+echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead btype num hash envf; do
+  # Only report progress for a PR if it's never been built before.
   if [ "$btype" = untested ]; then
-    # Only report progress for a PR if it's never been built before.
-    report_pr_errors --pending -m "Build queued ($ahead ahead) on $host_id"
+    # Run this in a subshell as report_pr_errors uses $PR_REPO but we don't want
+    # to overwrite the outer for loop's variables, as they are needed for the
+    # subsequent build.
+    pr_repo=$(cd .. && source_env_files "$envf" && echo "$PR_REPO") &&
+      # The --pr here will override the one specified in report_pr_errors.
+      report_pr_errors --pr "$pr_repo#$num@$hash" --pending -m "Build queued ($ahead ahead) on $host_id"
   fi
 done
 
