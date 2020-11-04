@@ -11,17 +11,9 @@ function long_timeout () { $TIMEOUT_EXEC -s9 "$LONG_TIMEOUT" "$@"; }
 
 . build-helpers.sh
 
-# In one-repo-only mode, environment definition files aren't read, and we assume
-# e.g. aurora has already given us the required environment for the one specific
-# build we should do.
-ONE_REPO_ONLY=
-for arg in "$@"; do
-  if [ "$arg" = --one-repo-only ]; then
-    ONE_REPO_ONLY=true
-  fi
-done
-
-git clone https://github.com/alisw/ali-bot
+if ! [ -d ali-bot ]; then
+  git clone https://github.com/alisw/ali-bot
+fi
 
 # Set up common global environment
 # Mesos DNSes
@@ -35,84 +27,65 @@ printf 'protocol=https\nhost=gitlab.cern.ch\nusername=%s\npassword=%s\n' "$GITLA
   git credential-store --file ~/.git-creds store
 git config --global credential.helper 'store --file ~/.git-creds'
 
-# Clear list of idling repositories
-: > nothing-to-do
+# This turns a container image (e.g. alisw/slc8-gpu-builder:latest) into a
+# short, simple name like slc8-gpu that we use for the .env directories.
+CUR_CONTAINER=${CONTAINER_IMAGE#*/}
+export CUR_CONTAINER=${CUR_CONTAINER%-builder:*}
 
-if [ -n "$ONE_REPO_ONLY" ]; then
-  # All the environment variables we need are already set by aurora, so just
-  # run the build.
-  (. build-loop.sh)
-else
-  # This turns a container image (e.g. alisw/slc8-gpu-builder:latest) into a
-  # short, simple name like slc8-gpu that we use for the .env directories.
-  cur_container=${CONTAINER_IMAGE#*/}
-  cur_container=${cur_container%-builder:*}
+# Generate example of force-hashes file. This is used to override what to check for testing
+if ! [ -e force-hashes ]; then
+  cat > force-hashes <<EOF
+# Override what to build using this file.
+# Lines are of the form:
+# BUILD_TYPE (PR_NUMBER|BRANCH_NAME) PR_HASH ENV_NAME
+# Where:
+# - BUILD_TYPE: one of: not_tested, not_successful, tested, reviewed
+# - ENV_NAME: the basename without ".env" of the .env file to source
+EOF
+fi
 
-  # Loop through repositories we can build (i.e. that need the docker
-  # container we are in).
-  for env_file in "ali-bot/ci/repo-config/$MESOS_ROLE/$cur_container"/*.env; do
-    if [[ "$(basename "$env_file")" =~ (DEFAULTS|\*)\.env ]]; then
-      # Skip this iteration if we've got the defaults file or if the glob
-      # didn't match anything.
-      continue
-    fi
+# Get a list of PRs to build -- force-hashes overrides list-branch-pr.
+HASHES=$(grep -Eve '^[[:blank:]]*(#|$)' force-hashes || true)
+if [ -z "$HASHES" ]; then
+  HASHES=$(list-branch-pr)
+fi
 
+if [ -n "$HASHES" ]; then
+  # Loop through PRs we can build if there are any.
+  echo "$HASHES" | cat -n | while read -r BUILD_SEQ BUILD_TYPE PR_NUMBER PR_HASH env_name; do
     # Run iterations in a subshell so environment variables are not kept
     # across potentially different repos. This is an issue as env files are
     # allowed to define arbitrary variables that other files (or the defaults
-    # file) might not override.
-    (
-      # Set up environment
-      # Load more specific defaults later so they override more general ones.
-      . ali-bot/ci/repo-config/DEFAULTS.env                              || true
-      . "ali-bot/ci/repo-config/$MESOS_ROLE/DEFAULTS.env"                || true
-      . "ali-bot/ci/repo-config/$MESOS_ROLE/$cur_container/DEFAULTS.env" || true
-      # Exit in case this file has been removed in the meantime.
-      . "$env_file"                                                      || exit
+    # file) might not override. Note that we are in a subshell here due to the
+    # "list-branch-pr | while read" pipeline.
 
-      # Make a directory for this repo's dependencies so they don't conflict
-      # with other repos'
-      repo=$(basename "${env_file%.env}")
-      mkdir -p "$repo"
-      cd "$repo" || exit 10
+    # Setup environment
+    # Load more specific defaults later so they override more general ones.
+    . ali-bot/ci/repo-config/DEFAULTS.env                               || true
+    . "ali-bot/ci/repo-config/$MESOS_ROLE/DEFAULTS.env"                 || true
+    . "ali-bot/ci/repo-config/$MESOS_ROLE/$CUR_CONTAINER/DEFAULTS.env"  || true
+    # Exit in case this file has been removed in the meantime.
+    . "ali-bot/ci/repo-config/$MESOS_ROLE/$CUR_CONTAINER/$env_name.env" || exit
 
-      # Get dependency development packages
-      echo "$DEVEL_PKGS" | while read -r gh_url branch checkout_name; do
-        : "${checkout_name:=$(basename "$gh_url")}"
-        if [ -d "$checkout_name" ]; then
-          reset_git_repository "$checkout_name"
-        else
-          git clone "https://github.com/$gh_url" ${branch:+--branch "$branch"} "$checkout_name"
-        fi
-      done
+    # Make a directory for this repo's dependencies so they don't conflict
+    # with other repos'
+    mkdir -p "$env_name"
+    cd "$env_name" || exit 10
 
-      # Sometimes pip gets stuck when cloning the ali-bot or alibuild repos. In
-      # that case: time out, skip and try again later.
-      short_timeout pip2 install --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$INSTALL_ALIBOT" || exit
-      short_timeout pip2 install --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$INSTALL_ALIBUILD" || exit
+    # Sometimes pip gets stuck when cloning the ali-bot or alibuild repos. In
+    # that case: time out, skip and try again later.
+    short_timeout pip2 install --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$INSTALL_ALIBOT"   || exit
+    short_timeout pip2 install --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$INSTALL_ALIBUILD" || exit
 
-      # Run the build
-      . build-loop.sh
-    )
+    # Run the build
+    . build-loop.sh
   done
+else
+  # If we're idling, wait a while to conserve GitHub API requests.
+  sleep "$(get_config_value timeout "${TIMEOUT:-600}")"
 fi
-
-get_config
 
 # Get updates to ali-bot
 reset_git_repository ali-bot
-
-if [ -z "$ONE_REPO_ONLY" ] && [ -r nothing-to-do ]; then
-  num_repos=0
-  for envf in "ali-bot/ci/repo-config/$MESOS_ROLE/$cur_container"/*.env; do
-    case "$envf" in
-      */DEFAULTS.env) ;;
-      *) num_repos=$((num_repos + 1));;
-    esac
-  done
-  if [ "$(wc -l < nothing-to-do)" -eq "$num_repos" ]; then
-    sleep 1200
-  fi
-fi
 
 exec continuous-builder.sh
