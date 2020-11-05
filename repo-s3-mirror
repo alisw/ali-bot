@@ -1,26 +1,28 @@
-#!/usr/bin/env python
-# Script to create a mirror of alibuild repository on 
-# and S3 bucket
-BUCKET=${BUCKET:-alibuild-repo}
-ENDPOINT=${ENDPOINT:-s3.cern.ch}
+#!/bin/sh -x
+# Script to create a mirror of alibuild repository in an S3 bucket.
 
-# Helper which resolves a symbolink link and stores the file it point to in the
-# associated S3 object
-copy_link() {
-  DST=$1
-  readlink $DST | s3cmd put -s -v --host $ENDPOINT --host-bucket $BUCKET.ENDPOINT - s3://$BUCKET/$DST
+. /secrets/aws_bot_secrets
+export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+
+bucket=${BUCKET:-alibuild-repo}
+prefix=/build/reports/repo
+repo=TARS/slc7_x86-64
+
+rclone_sync () {
+  # Simple wrapper for rclone, specifying common default options.
+  rclone sync --config /secrets/alibuild_rclone_config --transfers=10 --progress --delete-before "$@"
 }
 
-# Helper which copies all the contexts of the specified REPO on S3.
-# Notice we proceed one hash bucket at the time to provide a more
-# incremental approach.
-mirror_repo() {
-  PREFIX=$1
-  REPO=$2
-  pushd $PREFIX
-    find $REPO/store -type d -max-depth 1 -exec s3cmd sync --host $ENDPOINT --host-bucket $BUCKET.ENDPOINT $REPO/store/{}/ s3://$BUCKET/$REPO/store/{}/ \;
-    find . -type l -exec copy_link {} \;
-  popd
-}
+# Create a separate filesystem tree, with symlinks only. However, as S3 doesn't
+# support real symlinks, make them regular files containing the path they point
+# to instead.
+symlink_tree=/tmp/repo-symlinks
+find $prefix/$repo -type l | while read -r sym; do
+  lpath=$symlink_tree/${sym#$prefix/$repo/}
+  mkdir -p "$(dirname "$lpath")"
+  readlink "$sym" > "$lpath"
+done
+rclone_sync "local:$symlink_tree/" "rpms3:$bucket/$repo/"
 
-mirror_repo /build/reports/repo TARS/slc7_x86-64/store
+# Sync tarballs from the repo to S3.
+rclone_sync "local:$prefix/$repo/store/" "rpms3:$bucket/$repo/store/"
