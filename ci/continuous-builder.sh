@@ -82,6 +82,6 @@ else
 fi
 
 # Get updates to ali-bot
-reset_git_repository ali-bot
+TIMEOUT=$(get_config_value timeout "${TIMEOUT:-600}") reset_git_repository ali-bot
 
 exec continuous-builder.sh
