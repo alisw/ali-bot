@@ -184,7 +184,8 @@ class Logs(object):
                 if err:
                     print("Error while parsing logs", out, sep="\n", file=sys.stderr)
                     continue
-                blocks.append(log + "\n" + out)
+                if out:
+                    blocks.append(log + "\n" + out)
             if blocks:
                 return "\n\n\n".join(blocks).strip(" \n\t")
             return "(No messages found)"
