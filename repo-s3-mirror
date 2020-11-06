@@ -1,12 +1,34 @@
 #!/bin/sh -x
 # Script to create a mirror of alibuild repository in an S3 bucket.
 
+help () {
+  cat <<EOF
+usage: repo-s3-mirror [-h] [-b BUCKET] [-p PREFIX] [-r REPO]
+
+  -b BUCKET, --bucket BUCKET   the S3 bucket to upload packages to
+  -p PREFIX, --prefix PREFIX   the local path where the repository is stored
+  -r REPO, --repo REPO         the part of the repository to sync
+  -h, --help                   display this help message and exit
+EOF
+  exit "$1"
+}
+
 . /secrets/aws_bot_secrets
 export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 
 bucket=${BUCKET:-alibuild-repo}
-prefix=/build/reports/repo
-repo=TARS/slc7_x86-64
+prefix=${PREFIX:-/build/reports/repo}
+repo=${REPO:-TARS/slc7_x86-64}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -b|--bucket) bucket=$2; shift 2;;
+    -p|--prefix) prefix=$2; shift 2;;
+    -r|--repo) repo=$2; shift 2;;
+    -h|--help) help 0;;
+    *) echo "$(basename "$0"): unknown option: $1" >&2; help 1 >&2;;
+  esac
+done
 
 rclone_sync () {
   # Simple wrapper for rclone, specifying common default options.
