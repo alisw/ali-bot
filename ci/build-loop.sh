@@ -64,9 +64,6 @@ CI_HASH=$(cd "$(dirname "$0")" && git rev-parse HEAD)
 # Worker index, zero-based. Set to 0 if unset (i.e. when not running on Aurora)
 : "${WORKER_INDEX:=0}"
 
-ALIDIST_REF=$(cd alidist && git rev-parse --verify HEAD)
-short_timeout set-github-status -c "alisw/alidist@$ALIDIST_REF" -s "$CHECK_NAME/pending"
-
 # Get dependency development packages
 echo "$DEVEL_PKGS" | while read -r gh_url branch checkout_name; do
   : "${checkout_name:=$(basename "$gh_url")}"
@@ -108,7 +105,7 @@ if pushd "$PR_REPO_CHECKOUT"; then
     git clean -fxd
     # We do not want to kill the system is github is not working
     # so we ignore the result code for now
-    short_timeout set-github-status ${SILENT:+-n} -c "${PR_REPO:-alisw/alidist}@${PR_HASH:-$ALIDIST_REF}" -s "$CHECK_NAME/error" -m 'Cannot merge PR into test area' ||
+    short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/error" -m 'Cannot merge PR into test area' ||
       short_timeout report-analytics exception --desc 'set-github-status fail on cannot merge'
     exit 1
   fi
@@ -116,7 +113,7 @@ if pushd "$PR_REPO_CHECKOUT"; then
   if [ $(($(du -sm . | cut -f1) - old_size)) -gt "${MAX_DIFF_SIZE:-5}" ]; then
     # We do not want to kill the system is github is not working
     # so we ignore the result code for now
-    short_timeout set-github-status ${SILENT:+-n} -c "${PR_REPO:-alisw/alidist}@${PR_HASH:-$ALIDIST_REF}" -s "$CHECK_NAME/error" -m 'Diff too big. Rejecting.' ||
+    short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/error" -m 'Diff too big. Rejecting.' ||
       short_timeout report-analytics exception --desc 'set-github-status fail on merge too big'
     report_pr_errors -m 'Your pull request exceeded the allowed size. If you need to commit large files, [have a look here](http://alisw.github.io/git-advanced/#how-to-use-large-data-files-for-analysis).' ||
       short_timeout report-analytics exception --desc 'report-pr-errors fail on merge diff too big'
@@ -126,11 +123,10 @@ if pushd "$PR_REPO_CHECKOUT"; then
   popd
 fi
 
-STATUS_REF=${PR_REPO:-alisw/alidist}@${PR_HASH:-$ALIDIST_REF}
 if ! clean_env short_timeout aliDoctor ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} "$PACKAGE"; then
   # We do not want to kill the system is github is not working
   # so we ignore the result code for now
-  short_timeout set-github-status ${SILENT:+-n} -c "$STATUS_REF" -s "$CHECK_NAME/error" -m 'aliDoctor error' ||
+  short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/error" -m 'aliDoctor error' ||
     short_timeout report-analytics exception --desc 'set-github-status fail on aliDoctor error'
   # If doctor fails, we can move on to the next PR, since we know it will not work.
   # We do not report aliDoctor being ok, because that's really a granted.
@@ -175,7 +171,7 @@ then
     report_pr_errors --success
   else
     # This is a branch
-    short_timeout set-github-status ${SILENT:+-n} -c "$STATUS_REF" -s "$CHECK_NAME/success"
+    short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/success"
   fi ||
     short_timeout report-analytics exception --desc 'report-pr-errors fail on build success'
   LAST_PR_OK=1
