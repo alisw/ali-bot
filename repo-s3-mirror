@@ -1,9 +1,10 @@
-#!/bin/sh -x
-# Script to create a mirror of alibuild repository in an S3 bucket.
+#!/bin/sh
 
 help () {
   cat <<EOF
 usage: repo-s3-mirror [-h] [-b BUCKET] [-p PREFIX] [-r REPO]
+
+Script to create a mirror of alibuild repository in an S3 bucket.
 
   -b BUCKET, --bucket BUCKET   the S3 bucket to upload packages to
   -p PREFIX, --prefix PREFIX   the local path where the repository is stored
@@ -30,21 +31,33 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-rclone_sync () {
+rclone_defaults () {
   # Simple wrapper for rclone, specifying common default options.
-  rclone sync --config /secrets/alibuild_rclone_config --transfers=10 --progress --delete-before "$@"
+  rclone --config /secrets/alibuild_rclone_config --transfers=10 --progress --delete-before "$@"
 }
 
 # Create a separate filesystem tree, with symlinks only. However, as S3 doesn't
 # support real symlinks, make them regular files containing the path they point
 # to instead.
 symlink_tree=/tmp/repo-symlinks
-find $prefix/$repo -type l | while read -r sym; do
-  lpath=$symlink_tree/${sym#$prefix/$repo/}
-  mkdir -p "$(dirname "$lpath")"
-  readlink "$sym" > "$lpath"
-done
-rclone_sync "local:$symlink_tree/" "rpms3:$bucket/$repo/"
+printf 'Replicating symlinks to %s' "$symlink_tree" >&2
+{
+  # We only copy symlinks in directories that have changed since the last run to
+  # save on disk accesses.
+  find "$prefix/$repo" -path "$prefix/$repo/store" -prune -o \
+       -type d -newer "$symlink_tree" -prune -print0 ||
+    # If this is the first run on this machine, recreate the entire hierarchy.
+    # (In that case, $symlink_tree won't exist yet, so find will error.)
+    printf '%s\0' "$prefix/$repo"
+} |
+  xargs -0rI {} find {} -path "$prefix/$repo/store" -prune -o -type l -printf '%P\t%l\n' |
+  while IFS='	' read -r symlink target; do
+    mkdir -p "$(dirname "$symlink_tree/$symlink")"
+    printf %s "$target" > "$symlink_tree/$symlink"
+    printf . >&2
+  done
+printf ' done.\n' >&2
+rclone_defaults move --delete-empty-src-dirs "local:$symlink_tree/" "rpms3:$bucket/$repo/"
 
 # Sync tarballs from the repo to S3.
-rclone_sync "local:$prefix/$repo/store/" "rpms3:$bucket/$repo/store/"
+rclone_defaults sync "local:$prefix/$repo/store/" "rpms3:$bucket/$repo/store/"
