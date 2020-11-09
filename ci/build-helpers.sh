@@ -44,6 +44,23 @@ function clean_env () {
   GITLAB_USER='' GITLAB_PASS='' GITHUB_TOKEN='' INFLUXDB_WRITE_URL='' CODECOV_TOKEN='' AWS_ACCESS_KEY_ID='' AWS_SECRET_ACCESS_KEY='' "$@"
 }
 
+function pipinst () {
+  # Use pip2 --user if required.
+  local pip_user=
+  if [ -z "$VIRTUAL_ENV" ] && [ "$(whoami)" != root ]; then
+    # Use repo-specific PYTHONUSERBASEs if we're installing for this user.
+    pip_user=--user
+    export PYTHONUSERBASE=$PWD/python_local
+    export PATH=$PYTHONUSERBASE/bin${PATH+:$PATH}
+    export LD_LIBRARY_PATH=$PYTHONUSERBASE/lib${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}
+    mkdir -p "$PYTHONUSERBASE"
+  fi
+
+  # Sometimes pip gets stuck when cloning the ali-bot or alibuild repos. In
+  # that case: time out, skip and try again later.
+  short_timeout pip2 install $pip_user --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$1"
+}
+
 # Allow overriding a number of variables by fly, so that we can change the
 # behavior of the job without restarting it.
 # This comes handy when scaling up / down a job, so that we do not quit the

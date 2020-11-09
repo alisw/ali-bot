@@ -99,22 +99,10 @@ if [ -n "$HASHES" ]; then
     mkdir -p "$env_name"
     cd "$env_name" || exit 10
 
-    # Use pip2 --user if required.
-    if [ -n "$VIRTUAL_ENV" ] || [ "$(whoami)" = root ]; then
-      pip_user=
-    else
-      # Use repo-specific PYTHONUSERBASEs if we're installing for this user.
-      pip_user=--user
-      export PYTHONUSERBASE=$PWD/python_local
-      export PATH=$PYTHONUSERBASE/bin${PATH+:$PATH}
-      export LD_LIBRARY_PATH=$PYTHONUSERBASE/lib${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}
-      mkdir -p "$PYTHONUSERBASE"
-    fi
-
-    # Sometimes pip gets stuck when cloning the ali-bot or alibuild repos. In
-    # that case: time out, skip and try again later.
-    short_timeout pip2 install $pip_user --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$INSTALL_ALIBOT"   || exit
-    short_timeout pip2 install $pip_user --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$INSTALL_ALIBUILD" || exit
+    # Allow overriding the ali-bot/alibuild version to install -- this is useful
+    # for testing changes to those with a few workers before deploying widely.
+    pipinst "$(get_config_value install-alibot   "$INSTALL_ALIBOT")"   || exit 1
+    pipinst "$(get_config_value install-alibuild "$INSTALL_ALIBUILD")" || exit 1
 
     # Run the build
     . build-loop.sh
