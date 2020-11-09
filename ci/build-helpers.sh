@@ -49,17 +49,14 @@ function clean_env () {
 # This comes handy when scaling up / down a job, so that we do not quit the
 # currently running workers simply to adapt to the new ensemble.
 function get_config_value () {
-  # Looks for a config/ directory here or in any parent dir and prints the
+  # Looks for a config/ directory here or in the parent dir and prints the
   # contents of the file called $1 in the closest config/ found. If no config/
   # is found, prints $2.
-  (
-    while [ "$(pwd)" != / ]; do
-      head -1 "config/$1" 2>/dev/null &&
-        exit
-      cd ..
-    done
+  # This function is called in the start directory or in a repo-specific
+  # subdirectory, so we only need to look one level up at most.
+  head -1 "config/$1" 2>/dev/null ||
+    head -1 "../config/$1" 2>/dev/null ||
     echo "$2"
-  )
 }
 
 function get_config () {
@@ -67,7 +64,6 @@ function get_config () {
   # overriding some critical variables on-the-fly by writing files in config/.
   WORKERS_POOL_SIZE=$(get_config_value workers-pool-size "$WORKERS_POOL_SIZE")
   WORKER_INDEX=$(get_config_value worker-index "$WORKER_INDEX")
-  JOBS=$(get_config_value jobs "$JOBS")
   TIMEOUT=$(get_config_value timeout "${TIMEOUT:-600}")
   LONG_TIMEOUT=$(get_config_value long-timeout "${LONG_TIMEOUT:-36000}")
   # If the files have been deleted in the meantime, this will set the variables
