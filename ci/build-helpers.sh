@@ -41,7 +41,7 @@ function report_state () {
 
 function clean_env () {
   # This function calls its arguments with access tokens removed from the environment.
-  GITLAB_USER='' GITLAB_PASS='' GITHUB_TOKEN='' INFLUXDB_WRITE_URL='' CODECOV_TOKEN='' AWS_ACCESS_KEY_ID='' AWS_SECRET_ACCESS_KEY='' "$@"
+  GITLAB_USER='' GITLAB_PASS='' GITHUB_TOKEN='' INFLUXDB_WRITE_URL='' CODECOV_TOKEN='' "$@"
 }
 
 # Allow overriding a number of variables by fly, so that we can change the
