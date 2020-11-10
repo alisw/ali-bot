@@ -15,12 +15,9 @@ if [ "$1" != --skip-setup ]; then
     fi
   done
 
-  case "$(uname)" in
-    # The MacOS builders aren't in the right directory at first, apparently.
-    Darwin) ci_work_dir=/build/ci_checks/alice_ci_$WORKER_INDEX
-            mkdir -p "$ci_work_dir"
-            cd "$ci_work_dir" || exit 1;;
-  esac
+  if [ -r ~/.continuous-builder.sh ]; then
+    . ~/.continuous-builder.sh
+  fi
 
   # timeout vs. gtimeout (macOS with Homebrew)
   TIMEOUT_EXEC=timeout
