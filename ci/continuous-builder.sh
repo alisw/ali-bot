@@ -15,8 +15,8 @@ if [ "$1" != --skip-setup ]; then
     fi
   done
 
-  if [ -r ~/.continuous-builder.sh ]; then
-    . ~/.continuous-builder.sh
+  if [ -r ~/.continuous-builder ]; then
+    . ~/.continuous-builder
   fi
 
   # timeout vs. gtimeout (macOS with Homebrew)
