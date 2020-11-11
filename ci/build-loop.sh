@@ -141,26 +141,24 @@ find sw/BUILD/ -maxdepth 1 -name '*latest*' -delete
 find sw/BUILD/ -maxdepth 4 -name coverage.info -delete
 
 # Ensure build names do not clash across different PR jobs (O2-373)
-BUILD_IDENTIFIER=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
-: "${BUILD_IDENTIFIER:=${CHECK_NAME//\//_}}"
+build_identifier=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
+: "${build_identifier:=${CHECK_NAME//\//_}}"
 
 # Only publish packages to remote store when we build the master branch. For
 # PRs, PR_NUMBER will be numeric; in that case, disable writing to the store. We
 # can't compare against 'master' here as 'dev' is the "master branch" for O2.
-if [ $((PR_NUMBER + 0)) = "$PR_NUMBER" ]; then
+if is_numeric "$PR_NUMBER"; then
   REMOTE_STORE=$BRANCH_REMOTE_STORE
 fi
 
 if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash             \
                      clean_env long_timeout aliBuild                     \
-                     -j "${JOBS:-$(nproc)}" -z "$BUILD_IDENTIFIER"       \
+                     -j "${JOBS:-$(nproc)}" -z "$build_identifier"       \
                      ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} \
                      ${MIRROR:+--reference-sources $MIRROR}              \
                      ${REMOTE_STORE:+--remote-store $REMOTE_STORE}       \
                      --fetch-repos ${DEBUG:+--debug} build "$PACKAGE"
 then
-  # We do not want to kill the system is github is not working
-  # so we ignore the result code for now
   if is_numeric "$PR_NUMBER"; then
     # This is a PR. Use the error function (with --success) to still provide logs
     report_pr_errors --success
@@ -171,8 +169,6 @@ then
     short_timeout report-analytics exception --desc 'report-pr-errors fail on build success'
   PR_OK=1
 else
-  # We do not want to kill the system if GitHub is not working
-  # so we ignore the result code for now
   report_pr_errors ${DONT_USE_COMMENTS:+--no-comments} ||
     short_timeout report-analytics exception --desc 'report-pr-errors fail on build error'
   PR_OK=0
