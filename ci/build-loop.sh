@@ -84,11 +84,14 @@ mkdir -p "separate_logs/$(date -u +%Y%m%d-%H%M%S)-$PR_NUMBER-$PR_HASH"
 
 report_state pr_processing
 
+# Fetch the PR's changes to the git repository.
 if pushd "$PR_REPO_CHECKOUT"; then
   git config --add remote.origin.fetch '+refs/pull/*/head:refs/remotes/origin/pr/*'
   # Only fetch destination branch for PRs (for merging), and the PR we are checking now
   short_timeout git fetch origin "+$PR_BRANCH:refs/remotes/origin/$PR_BRANCH"
-  [[ "$PR_NUMBER" =~ ^[0-9]*$ ]] && short_timeout git fetch origin "+pull/$PR_NUMBER/head"
+  if is_numeric "$PR_NUMBER"; then
+    short_timeout git fetch origin "+pull/$PR_NUMBER/head"
+  fi
   git reset --hard "origin/$PR_BRANCH"  # reset to branch target of PRs
   git clean -fxd
   old_size=$(du -sm . | cut -f1)
@@ -100,7 +103,7 @@ if pushd "$PR_REPO_CHECKOUT"; then
     git clean -fxd
     # We do not want to kill the system is github is not working
     # so we ignore the result code for now
-    short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/error" -m 'Cannot merge PR into test area' ||
+    short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/error" -m 'Please resolve merge conflicts' ||
       short_timeout report-analytics exception --desc 'set-github-status fail on cannot merge'
     exit 1
   fi
@@ -108,7 +111,7 @@ if pushd "$PR_REPO_CHECKOUT"; then
   if [ $(($(du -sm . | cut -f1) - old_size)) -gt "${MAX_DIFF_SIZE:-5}" ]; then
     # We do not want to kill the system is github is not working
     # so we ignore the result code for now
-    short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/error" -m 'Diff too big. Rejecting.' ||
+    short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/error" -m 'PR too big. Rejecting.' ||
       short_timeout report-analytics exception --desc 'set-github-status fail on merge too big'
     report_pr_errors -m 'Your pull request exceeded the allowed size. If you need to commit large files, [have a look here](http://alisw.github.io/git-advanced/#how-to-use-large-data-files-for-analysis).' ||
       short_timeout report-analytics exception --desc 'report-pr-errors fail on merge diff too big'
