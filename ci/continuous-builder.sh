@@ -117,7 +117,7 @@ TIMEOUT=$(get_config_value timeout "${TIMEOUT:-600}") reset_git_repository ali-b
 
 # Run CI builder under screen if possible and we're not already there. This is
 # for the macOS builders.
-if [ -n "$STY" ] || ! type screen > /dev/null; then
+if [ "$MESOS_ROLE" != macos ] || [ -n "$STY" ] || ! type screen > /dev/null; then
   exec "$0" --skip-setup "$@"
 else
   exec screen -dmS "ci_$WORKER_INDEX" "$0" --skip-setup "$@"
