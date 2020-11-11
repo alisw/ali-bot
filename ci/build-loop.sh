@@ -149,10 +149,11 @@ find sw/BUILD/ -maxdepth 4 -name coverage.info -delete
 BUILD_IDENTIFIER=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
 : "${BUILD_IDENTIFIER:=${CHECK_NAME//\//_}}"
 
-# If remote store is set, make sure we can resolve it.
-# if not it means we should probably restart the builder.
-if [ -n "$REMOTE_STORE" ]; then
-  ping -c1 "$(echo "$REMOTE_STORE" | cut -d/ -f3)"
+# Only publish packages to remote store when we build the master branch. For
+# PRs, PR_NUMBER will be numeric; if it is not, we're on a branch. We can't
+# compare against 'master' here as 'dev' is the "master branch" for O2.
+if [ $((PR_NUMBER + 0)) != "$PR_NUMBER" ]; then
+  REMOTE_STORE=${REMOTE_STORE//::rw}
 fi
 
 FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
