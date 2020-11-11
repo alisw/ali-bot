@@ -213,8 +213,10 @@ class RepoConfig:
                               repo_name=self.repo_name,
                               branch_ref=self.branch_ref)
         head_hash = branch["commit"]["sha"]
-        # ...and only if we are the right worker.
-        if not self.should_process(head_hash):
+        # ...and only if we are the right worker. As the build results of the
+        # master branch are uploaded, we want all commits of a master branch to
+        # be built on the same worker, so the uploads don't conflict.
+        if not self.should_process(self.branch_ref):
             return
         print("processing: master", end="... ", file=sys.stderr)
         sys.stderr.flush()
