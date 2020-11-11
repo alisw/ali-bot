@@ -2,7 +2,6 @@
 from __future__ import print_function
 
 from argparse import ArgumentParser, Namespace
-import atexit
 try:
     from commands import getstatusoutput
 except ImportError:
@@ -13,7 +12,6 @@ import re
 import os
 import sys
 import datetime
-import platform
 
 from alibot_helpers.github_utilities import calculateMessageHash, github_token
 from alibot_helpers.github_utilities import setGithubStatus, parseGithubRef
@@ -24,8 +22,9 @@ from alibot_helpers.utilities import to_unicode
 try:
     from boto3.s3.transfer import S3Transfer
     import boto3
-except:
+except ImportError:
     pass
+
 
 def parse_args():
     parser = ArgumentParser()
@@ -186,9 +185,7 @@ class Logs(object):
                     continue
                 if out:
                     blocks.append(log + "\n" + out)
-            if blocks:
-                return "\n\n\n".join(blocks).strip(" \n\t")
-            return "(No messages found)"
+            return "\n\n\n".join(blocks).strip(" \n\t")
 
         self.errors_only_log = chunk_command_output_by_log(
             "grep -he ': error:' -e ': warning:' -A 3 -B 3 -- %s")
@@ -196,6 +193,8 @@ class Logs(object):
             "sed -n '/=== List of errors found ===/,$p' %s")
         self.failed_unit_tests = chunk_command_output_by_log(
             r"grep -he 'Test *#[0-9]*: .*\*\*\*Failed' -e '%% tests passed' -- %s")
+        self.compiler_killed = chunk_command_output_by_log(
+            "grep -he 'fatal error: Killed signal terminated program' -- %s")
 
     def generate_pretty_log(self):
         '''Extract error messages from logs.
@@ -206,45 +205,24 @@ class Logs(object):
         def htmlescape(string):
             return string.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
+        def display(string):
+            return 'block' if string else 'none'
+
         with open(join('copy-logs', self.pretty_log), 'w') as f:
-            print('''\
-            <!DOCTYPE html>
-            <head>
-              <title>Build results</title>
-              <style>
-               body { border-width: 0.5rem; border-style: solid; margin: 0; padding: 1rem; min-height: 100vh; box-sizing: border-box; }
-               pre { overflow-x: auto; }
-               .succeeded { border-color: #1b5e20; }
-               .succeeded h1 { color: #1b5e20; }
-               .failed { border-color: #b71c1c; }
-               .failed h1 { color: #b71c1c; }
-              </style>
-            </head>
-            <body class="%(status)s">
-              <h1>The build %(status)s</h1>
-              <p>The code that finds and extracts error messages may have missed some.</p>
-              <p>Check the <a href="%(log_url)s">full build log</a> if you suspect the build failed for reasons not listed below.</p>
-              <h3>Table of contents</h3>
-              <p><ol>
-                <li><a href="#o2checkcode"><code>o2checkcode</code> results</a></li>
-                <li><a href="#tests">Unit test results</a></li>
-                <li><a href="#errors">Error messages</a></li>
-              </ol></p>
-              <h2 id="o2checkcode"><code>o2checkcode</code> results</h2>
-              <p><pre><code>%(o2checkcode)s</code></pre></p>
-              <h2 id="tests">Unit test results</h2>
-              <p><pre><code>%(unittests)s</code></pre></p>
-              <h2 id="errors">Error messages</h2>
-              <p>Note that the following list may include false positives! Check the sections above first.</p>
-              <p><pre><code>%(errors)s</code></pre></p>
-            </body>
-            ''' % {
+            f.write(PRETTY_LOG_TEMPLATE % {
                 'status': 'succeeded' if self.build_successful else 'failed',
                 'log_url': self.log_url,
                 'o2checkcode': htmlescape(self.o2checkcode_messages),
+                'o2c_display': display(self.o2checkcode_messages),
                 'unittests': htmlescape(self.failed_unit_tests),
+                'unit_display': display(self.failed_unit_tests),
                 'errors': htmlescape(self.errors_only_log),
-            }, file=f)
+                'err_display': display(self.errors_only_log),
+                'killed_display': display(self.compiler_killed),
+                'noerrors_display': display(not any((
+                    self.o2checkcode_messages, self.failed_unit_tests,
+                    self.errors_only_log, self.compiler_killed))),
+            })
 
     def cat(self, tgtFile, no_delete=False):
         run_cmd("%s && mkdir -p `dirname copy-logs/%s`" % ("true" if no_delete else "rm -rf copy-logs", tgtFile),
@@ -396,6 +374,61 @@ def main():
         func(cgh, pr, logs, args)
 
     cgh.printStats()
+
+
+PRETTY_LOG_TEMPLATE = '''\
+<!DOCTYPE html>
+<head>
+  <title>Build results</title>
+  <style>
+   body { border-width: 0.5rem; border-style: solid; margin: 0; padding: 1rem; min-height: 100vh; box-sizing: border-box; }
+   pre { overflow-x: auto; }
+   .succeeded { border-color: #1b5e20; }
+   .succeeded h1 { color: #1b5e20; }
+   .failed { border-color: #b71c1c; }
+   .failed h1 { color: #b71c1c; }
+   #noerrors, #noerrors-toc { display: %(noerrors_display); }
+   #compiler-killed, #compiler-killed-toc { display: %(killed_display)s; }
+   #o2checkcode, #o2checkcode-toc { display: %(o2c_display)s; }
+   #tests, #tests-toc { display: %(unit_display)s; }
+   #errors, #errors-toc { display: %(err_display)s; }
+  </style>
+</head>
+<body class="%(status)s">
+  <h1>The build %(status)s</h1>
+  <p>The code that finds and extracts error messages may have missed some.</p>
+  <p>Check the <a href="%(log_url)s">full build log</a> if you suspect the build failed for reasons not listed below.</p>
+  <h3>Table of contents</h3>
+  <p><nav><ol>
+    <li id="noerrors-toc"><a href="#noerrors">No errors found</a></li>
+    <li id="compiler-killed-toc"><a href="#compiler-killed">Error: the compiler process was killed</a></li>
+    <li id="o2checkcode-toc"><a href="#o2checkcode"><code>o2checkcode</code> results</a></li>
+    <li id="tests-toc"><a href="#tests">Unit test results</a></li>
+    <li id="errors-toc"><a href="#errors">Error messages</a></li>
+  </ol></nav></p>
+  <section id="noerrors">
+    <h2>No errors found</h2>
+    <p>Check the <a href="%(log_url)s">full build log</a> to see all compilation messages.</p>
+  </section>
+  <section id="compiler-killed">
+    <h2>Error: the compiler process was killed</h2>
+    <p>This can happen in case of memory pressure. A later automatic build may solve this.</p>
+  </section>
+  <section id="o2checkcode">
+    <h2><code>o2checkcode</code> results</h2>
+    <p><pre><code>%(o2checkcode)s</code></pre></p>
+  </section>
+  <section id="tests">
+    <h2>Unit test results</h2>
+    <p><pre><code>%(unittests)s</code></pre></p>
+  </section>
+  <section id="errors">
+    <h2>Error and warning messages</h2>
+    <p>Note that the following list may include false positives! Check the sections above first.</p>
+    <p><pre><code>%(errors)s</code></pre></p>
+  </section>
+</body>
+'''
 
 if __name__ == "__main__":
     main()
