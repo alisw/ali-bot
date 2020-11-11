@@ -150,10 +150,10 @@ BUILD_IDENTIFIER=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
 : "${BUILD_IDENTIFIER:=${CHECK_NAME//\//_}}"
 
 # Only publish packages to remote store when we build the master branch. For
-# PRs, PR_NUMBER will be numeric; if it is not, we're on a branch. We can't
-# compare against 'master' here as 'dev' is the "master branch" for O2.
-if [ $((PR_NUMBER + 0)) != "$PR_NUMBER" ]; then
-  REMOTE_STORE=${REMOTE_STORE//::rw}
+# PRs, PR_NUMBER will be numeric; in that case, disable writing to the store. We
+# can't compare against 'master' here as 'dev' is the "master branch" for O2.
+if [ $((PR_NUMBER + 0)) = "$PR_NUMBER" ]; then
+  REMOTE_STORE=${REMOTE_STORE%::rw}
 fi
 
 FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
