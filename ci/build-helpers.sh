@@ -19,22 +19,22 @@ function report_state () {
 
   # Push to InfluxDB if configured
   if [ -n "$INFLUXDB_WRITE_URL" ]; then
-    printf 'prcheck,checkname=%s host="%s",state="%s",cihash="%s",uptime=%s%s %s' \
-           "$CHECK_NAME/$WORKER_INDEX" "$(hostname -s)" "$current_state" "$CI_HASH" $((time_now - TIME_STARTED)) \
-           "${prtime:+,prtime=$prtime}${LAST_PR:+,prid=\"$LAST_PR\"}${LAST_PR_OK:+,prok=$LAST_PR_OK}" $((time_now * 1000000000)) |
+    printf 'prcheck,checkname=%s host="%s",state="%s",prid="%s"%s %s'                 \
+           "$CHECK_NAME/$WORKER_INDEX" "$(hostname -s)" "$current_state" "$PR_NUMBER" \
+           "${prtime:+,prtime=$prtime}${PR_OK:+,prok=$PR_OK}" $((time_now * 10**9))   |
       case "$INFLUXDB_WRITE_URL" in
         # If INFLUXDB_WRITE_URL starts with insecure_https://, then strip
         # "insecure_" and send the --insecure/-k option to curl.
         insecure_*)
-          curl --max-time 20 -XPOST "${INFLUXDB_WRITE_URL#insecure_}" -k --data-binary @- || true;;
+          curl --max-time 20 -XPOST "${INFLUXDB_WRITE_URL#insecure_}" -k --data-binary @-;;
         *)
-          curl --max-time 20 -XPOST "$INFLUXDB_WRITE_URL" --data-binary @- || true;;
-      esac
+          curl --max-time 20 -XPOST "$INFLUXDB_WRITE_URL" --data-binary @-;;
+      esac ||
+      true
   fi
 
   # Push to Google Analytics if configured
   if [ -n "$ALIBOT_ANALYTICS_ID" ] && [ -n "$prtime" ]; then
-    # Report first PR and the rest in a separate category
     short_timeout report-analytics timing --utc 'PR Building' --utv time --utt $((prtime * 1000)) --utl "$CHECK_NAME/$WORKER_INDEX"
   fi
 }

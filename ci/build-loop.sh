@@ -60,10 +60,6 @@ ALIBOT_ANALYTICS_ARCHITECTURE=${CUR_CONTAINER}_$(uname -m)
 export ALIBOT_ANALYTICS_USER_UUID ALIBOT_ANALYTICS_ARCHITECTURE
 export ALIBOT_ANALYTICS_APP_NAME=continuous-builder.sh
 
-# These variables are used by the report_state function
-TIME_STARTED=$(date -u +%s)
-CI_HASH=$(cd "$(dirname "$0")" && git rev-parse HEAD)
-
 # Get dependency development packages
 if [ -n "$DEVEL_PKGS" ]; then
   echo "$DEVEL_PKGS" | while read -r gh_url branch checkout_name; do
@@ -82,9 +78,6 @@ find separate_logs/ -type d -empty -delete || true
 
 # Run preliminary cleanup command
 aliBuild clean ${DEBUG:+--debug}
-
-LAST_PR=$PR_NUMBER
-LAST_PR_OK=
 
 # We are looping over several build hashes here. We will have one log per build.
 mkdir -p "separate_logs/$(date -u +%Y%m%d-%H%M%S)-$PR_NUMBER-$PR_HASH"
@@ -173,13 +166,13 @@ then
     short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/success"
   fi ||
     short_timeout report-analytics exception --desc 'report-pr-errors fail on build success'
-  LAST_PR_OK=1
+  PR_OK=1
 else
   # We do not want to kill the system if GitHub is not working
   # so we ignore the result code for now
   report_pr_errors ${DONT_USE_COMMENTS:+--no-comments} ||
     short_timeout report-analytics exception --desc 'report-pr-errors fail on build error'
-  LAST_PR_OK=0
+  PR_OK=0
 fi
 
 # Run post-build cleanup command
