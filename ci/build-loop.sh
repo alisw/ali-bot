@@ -165,7 +165,7 @@ if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash             \
 then
   # We do not want to kill the system is github is not working
   # so we ignore the result code for now
-  if [ $((PR_NUMBER + 0)) = "$PR_NUMBER" ]; then
+  if is_numeric "$PR_NUMBER"; then
     # This is a PR. Use the error function (with --success) to still provide logs
     report_pr_errors --success
   else
@@ -187,23 +187,16 @@ aliBuild clean ${DEBUG:+--debug}
 
 # Look for any code coverage file for the given commit and push
 # it to codecov.io
-COVERAGE_SOURCES=$PWD/$PR_REPO_CHECKOUT
-COVERAGE_INFO_DIR=$(find sw/BUILD/ -maxdepth 4 -name coverage.info | head -1 | xargs dirname || true)
-if [ -n "$COVERAGE_INFO_DIR" ] && pushd "$COVERAGE_INFO_DIR"; then
-  COVERAGE_COMMIT_HASH=$PR_HASH
-  if [ "$COVERAGE_COMMIT_HASH" = 0 ]; then
-    COVERAGE_COMMIT_HASH=$base_hash
-  fi
-  # If not a number, it's the branch name
-  if ! [[ $PR_NUMBER =~ ^[0-9]+$ ]]; then
-    unset PR_NUMBER
-  fi
-  short_timeout bash <(curl --max-time 600 -s https://codecov.io/bash) \
-                -R "$COVERAGE_SOURCES"      \
-                -f coverage.info            \
-                -C "$COVERAGE_COMMIT_HASH"  \
-                ${PR_BRANCH:+-B $PR_BRANCH} \
-                ${PR_NUMBER:+-P $PR_NUMBER} || true
+coverage_sources=$PWD/$PR_REPO_CHECKOUT
+coverage_info_dir=$(find sw/BUILD/ -maxdepth 4 -name coverage.info -prune -printf %h)
+if [ -n "$coverage_info_dir" ] && pushd "$coverage_info_dir"; then
+  # If not a number, it's the branch name -- in that case, we don't want to pass
+  # -P to codecov.
+  is_numeric "$PR_NUMBER" || unset PR_NUMBER
+  short_timeout bash <(curl --max-time 600 -s https://codecov.io/bash)  \
+                -R "$coverage_sources" -f coverage.info -C "$PR_HASH"   \
+                ${PR_BRANCH:+-B $PR_BRANCH} ${PR_NUMBER:+-P $PR_NUMBER} ||
+    true
   popd
 fi
 

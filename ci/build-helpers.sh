@@ -119,6 +119,10 @@ function source_env_files () {
   done
 }
 
+function is_numeric () {
+    [ $(($1 + 0)) = "$1" ]
+}
+
 # timeout vs. gtimeout (macOS with Homebrew)
 timeout_exec=timeout
 type $timeout_exec > /dev/null 2>&1 || timeout_exec=gtimeout
