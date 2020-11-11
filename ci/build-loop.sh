@@ -155,17 +155,13 @@ if [ $((PR_NUMBER + 0)) = "$PR_NUMBER" ]; then
   REMOTE_STORE=$BRANCH_REMOTE_STORE
 fi
 
-FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
-
 if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash             \
                      clean_env long_timeout aliBuild                     \
                      -j "${JOBS:-$(nproc)}" -z "$BUILD_IDENTIFIER"       \
-                     ${FETCH_REPOS:+--fetch-repos}                       \
                      ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} \
                      ${MIRROR:+--reference-sources $MIRROR}              \
                      ${REMOTE_STORE:+--remote-store $REMOTE_STORE}       \
-                     ${DEBUG:+--debug}                                   \
-                     build "$PACKAGE"
+                     --fetch-repos ${DEBUG:+--debug} build "$PACKAGE"
 then
   # We do not want to kill the system is github is not working
   # so we ignore the result code for now
