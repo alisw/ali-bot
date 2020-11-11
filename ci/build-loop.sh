@@ -9,6 +9,22 @@
 . build-helpers.sh
 get_config
 
+for var in CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS; do
+  if [ -z "${!var}" ]; then
+    echo "$(basename "$0"): error: required variable $V not defined!" >&2
+    exit 1
+  else
+    export "${var?}"
+  fi
+done
+
+: "${WORKERS_POOL_SIZE:=1}" "${WORKER_INDEX:=0}" "${PR_REPO_CHECKOUT:=$(basename "$PR_REPO")}"
+[ -d /build/mirror ] && : "${MIRROR:=/build/mirror}"
+
+# This is the check name. If CHECK_NAME is in the environment, use it. Otherwise
+# default to, e.g., build/AliRoot/release (build/<Package>/<Defaults>)
+: "${CHECK_NAME:=build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}}"
+
 host_id=$(echo "$MESOS_EXECUTOR_ID" |
             sed -ne 's#^thermos-\([a-z]*\)-\([a-z]*\)-\([a-z0-9_-]*\)-\([0-9]*\)\(-[0-9a-f]*\)\{5\}$#build/\1/\2/\3/\4#p')
 : "${host_id:=$(hostname --fqdn)}"
@@ -32,11 +48,6 @@ if [ "$BUILD_TYPE" = untested ]; then
   report_pr_errors --pending -m "Building since $(date +'%Y-%m-%d %H:%M %Z') on $host_id"
 fi
 
-if [ -z "$PR_REPO" ]; then
-  echo 'No PR_REPO given; skipping' >&2
-  exit 1
-fi
-
 # A few common environment variables when reporting status to analytics.
 # In analytics we use screenviews to indicate different states of the
 # processing and events to indicate all the things we would consider as
@@ -46,33 +57,25 @@ echo "ALIBUILD_O2_FORCE_GPU: $ALIBUILD_O2_FORCE_GPU"
 echo "AMDAPPSDKROOT: $AMDAPPSDKROOT"
 echo "CMAKE_PREFIX_PATH: $CMAKE_PREFIX_PATH"
 ALIBOT_ANALYTICS_USER_UUID=$(hostname -s)-$WORKER_INDEX${CI_NAME:+-$CI_NAME}
-export ALIBOT_ANALYTICS_USER_UUID
-ALIBOT_ANALYTICS_ARCHITECTURE=${CONTAINER_IMAGE%-builder:latest}_$(uname -m)
-export ALIBOT_ANALYTICS_ARCHITECTURE=${ALIBOT_ANALYTICS_ARCHITECTURE##*/}
+ALIBOT_ANALYTICS_ARCHITECTURE=${CUR_CONTAINER}_$(uname -m)
+export ALIBOT_ANALYTICS_USER_UUID ALIBOT_ANALYTICS_ARCHITECTURE
 export ALIBOT_ANALYTICS_APP_NAME=continuous-builder.sh
 
 # These variables are used by the report_state function
 TIME_STARTED=$(date -u +%s)
 CI_HASH=$(cd "$(dirname "$0")" && git rev-parse HEAD)
 
-: "${MIRROR:=/build/mirror}" "${PACKAGE:=AliPhysics}" "${PR_REPO_CHECKOUT:=$(basename "$PR_REPO")}"
-
-# This is the check name. If CHECK_NAME is in the environment, use it. Otherwise
-# default to, e.g., build/AliRoot/release (build/<Package>/<Defaults>)
-: "${CHECK_NAME:=build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}}"
-
-# Worker index, zero-based. Set to 0 if unset (i.e. when not running on Aurora)
-: "${WORKER_INDEX:=0}"
-
 # Get dependency development packages
-echo "$DEVEL_PKGS" | while read -r gh_url branch checkout_name; do
-  : "${checkout_name:=$(basename "$gh_url")}"
-  if [ -d "$checkout_name" ]; then
-    reset_git_repository "$checkout_name"
-  else
-    git clone "https://github.com/$gh_url" ${branch:+--branch "$branch"} "$checkout_name"
-  fi
-done
+if [ -n "$DEVEL_PKGS" ]; then
+  echo "$DEVEL_PKGS" | while read -r gh_url branch checkout_name; do
+    : "${checkout_name:=$(basename "$gh_url")}"
+    if [ -d "$checkout_name" ]; then
+      reset_git_repository "$checkout_name"
+    else
+      git clone "https://github.com/$gh_url" ${branch:+--branch "$branch"} "$checkout_name"
+    fi
+  done
+fi
 
 # Remove logs older than 5 days
 find separate_logs/ -type f -mtime +5 -delete || true
@@ -154,11 +157,11 @@ fi
 
 FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
 
-if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
-                     clean_env long_timeout aliBuild -j "${JOBS:-$(nproc)}" \
+if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash             \
+                     clean_env long_timeout aliBuild                     \
+                     -j "${JOBS:-$JOBS_DEFAULT}" -z "$BUILD_IDENTIFIER"  \
                      ${FETCH_REPOS:+--fetch-repos}                       \
                      ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} \
-                     -z "$BUILD_IDENTIFIER"                              \
                      ${MIRROR:+--reference-sources $MIRROR}              \
                      ${REMOTE_STORE:+--remote-store $REMOTE_STORE}       \
                      ${DEBUG:+--debug}                                   \
