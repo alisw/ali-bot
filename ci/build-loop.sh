@@ -26,7 +26,7 @@ done
 : "${CHECK_NAME:=build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}}"
 
 host_id=$(echo "$MESOS_EXECUTOR_ID" |
-            sed -ne 's#^thermos-\([a-z]*\)-\([a-z]*\)-\([a-z0-9_-]*\)-\([0-9]*\)\(-[0-9a-f]*\)\{5\}$#build/\1/\2/\3/\4#p')
+            sed -ne 's#^\(thermos-\)\?\([a-z]*\)-\([a-z]*\)-\([a-z0-9_-]*\)-\([0-9]*\)\(-[0-9a-f]*\)\{5\}$#build/\2/\3/\4/\5#p')
 : "${host_id:=$(hostname --fqdn)}"
 
 # Update all PRs in the queue with their number before we start building.
