@@ -58,7 +58,7 @@ function pipinst () {
 
   # Sometimes pip gets stuck when cloning the ali-bot or alibuild repos. In
   # that case: time out, skip and try again later.
-  short_timeout pip2 install $pip_user --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$1"
+  short_timeout pip install $pip_user --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$1"
 }
 
 # Allow overriding a number of variables by fly, so that we can change the
