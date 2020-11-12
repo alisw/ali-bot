@@ -26,7 +26,7 @@ done
 : "${CHECK_NAME:=build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}}"
 
 host_id=$(echo "$MESOS_EXECUTOR_ID" |
-            sed -ne 's#^\(thermos-\)\?\([a-z]*\)-\([a-z]*\)-\([a-z0-9_-]*\)-\([0-9]*\)\(-[0-9a-f]*\)\{5\}$#build/\2/\3/\4/\5#p')
+            sed -ne 's#^\(thermos-\)\?\([a-z]*\)-\([a-z]*\)-\([a-z0-9_-]*\)-\([0-9]*\)\(-[0-9a-f]*\)\{5\}$#\2/\4/\5#p')
 : "${host_id:=$(hostname --fqdn)}"
 
 # Update all PRs in the queue with their number before we start building.
@@ -37,7 +37,7 @@ echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead bt
     # to overwrite the outer for loop's variables, as they are needed for the
     # subsequent build.
     source_env_files "$envf"
-    report_pr_errors --pending -m "Build queued ($ahead ahead) on $host_id"
+    report_pr_errors --pending -m "Queued ($ahead ahead) on $host_id"
   fi
 done
 
