@@ -19,13 +19,6 @@ if [ "$1" != --skip-setup ]; then
     . ~/.continuous-builder
   fi
 
-  # timeout vs. gtimeout (macOS with Homebrew)
-  TIMEOUT_EXEC=timeout
-  type $TIMEOUT_EXEC > /dev/null 2>&1 || TIMEOUT_EXEC=gtimeout
-  function short_timeout () { $TIMEOUT_EXEC -s9 "$TIMEOUT" "$@"; }
-  function long_timeout () { $TIMEOUT_EXEC -s9 "$LONG_TIMEOUT" "$@"; }
-  export -f short_timeout long_timeout
-
   if ! [ -d ali-bot ]; then
     # This is for *.env files. These should always be taken from ali-bot@master,
     # irrespective of the *installed* ali-bot version required by each repo.
@@ -118,7 +111,7 @@ TIMEOUT=$(get_config_value timeout "${TIMEOUT:-600}") reset_git_repository ali-b
 # Run CI builder under screen if possible and we're not already there. This is
 # for the macOS builders.
 if [ "$MESOS_ROLE" != macos ] || [ -n "$STY" ] || ! type screen > /dev/null; then
-  exec "$0" --skip-setup "$@"
+  exec "$0" --skip-setup
 else
-  exec screen -dmS "ci_$WORKER_INDEX" "$0" --skip-setup "$@"
+  exec screen -dmS "ci_$WORKER_INDEX" "$0" --skip-setup
 fi
