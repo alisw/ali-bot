@@ -129,3 +129,9 @@ function source_env_files () {
     [ -e "$_envf" ] && . "$_envf"
   done
 }
+
+# timeout vs. gtimeout (macOS with Homebrew)
+timeout_exec=timeout
+type $timeout_exec > /dev/null 2>&1 || timeout_exec=gtimeout
+function short_timeout () { $timeout_exec -s9 "$TIMEOUT" "$@"; }
+function long_timeout () { $timeout_exec -s9 "$LONG_TIMEOUT" "$@"; }
