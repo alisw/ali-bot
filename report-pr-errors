@@ -387,7 +387,7 @@ PRETTY_LOG_TEMPLATE = '''\
    .succeeded h1 { color: #1b5e20; }
    .failed { border-color: #b71c1c; }
    .failed h1 { color: #b71c1c; }
-   #noerrors, #noerrors-toc { display: %(noerrors_display); }
+   #noerrors, #noerrors-toc { display: %(noerrors_display)s; }
    #compiler-killed, #compiler-killed-toc { display: %(killed_display)s; }
    #o2checkcode, #o2checkcode-toc { display: %(o2c_display)s; }
    #tests, #tests-toc { display: %(unit_display)s; }
