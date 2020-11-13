@@ -159,7 +159,7 @@ FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
 
 if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash             \
                      clean_env long_timeout aliBuild                     \
-                     -j "${JOBS:-$JOBS_DEFAULT}" -z "$BUILD_IDENTIFIER"  \
+                     -j "${JOBS:-$(nproc)}" -z "$BUILD_IDENTIFIER"       \
                      ${FETCH_REPOS:+--fetch-repos}                       \
                      ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} \
                      ${MIRROR:+--reference-sources $MIRROR}              \

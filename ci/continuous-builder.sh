@@ -32,16 +32,11 @@ if [ "$1" != --skip-setup ]; then
   touch ~/.config/alibuild/disable-analytics
 
   # Set up common global environment
-  # Get the number of processors on this system, in case JOBS= isn't given.
-  JOBS_DEFAULT=$(nproc 2>/dev/null ||
-                   sysctl -n hw.ncpu 2>/dev/null ||
-                   grep -c bogomips /proc/cpuinfo 2>/dev/null ||
-                   echo 4)
   # Mesos DNSes
   : "${MESOS_DNS:=alimesos01.cern.ch,alimesos02.cern.ch,alimesos03.cern.ch}"
+  export MESOS_DNS
   # Explicitly set UTF-8 support (Python needs it!)
   export {LANG{,UAGE},LC_{CTYPE,NUMERIC,TIME,COLLATE,MONETARY,PAPER,MESSAGES,NAME,ADDRESS,TELEPHONE,MEASUREMENT,IDENTIFICATION,ALL}}=en_US.UTF-8
-  export JOBS_DEFAULT MESOS_DNS
 
   # GitLab credentials for private ALICE repositories
   printf 'protocol=https\nhost=gitlab.cern.ch\nusername=%s\npassword=%s\n' "$GITLAB_USER" "$GITLAB_PASS" |
