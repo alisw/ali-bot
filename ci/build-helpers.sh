@@ -45,20 +45,9 @@ function clean_env () {
 }
 
 function pipinst () {
-  # Use pip2 --user if required.
-  local pip_user=
-  if [ -z "$VIRTUAL_ENV" ] && [ "$(whoami)" != root ]; then
-    # Use repo-specific PYTHONUSERBASEs if we're installing for this user.
-    pip_user=--user
-    export PYTHONUSERBASE=$PWD/python_local
-    export PATH=$PYTHONUSERBASE/bin${PATH+:$PATH}
-    export LD_LIBRARY_PATH=$PYTHONUSERBASE/lib${LD_LIBRARY_PATH+:$LD_LIBRARY_PATH}
-    mkdir -p "$PYTHONUSERBASE"
-  fi
-
   # Sometimes pip gets stuck when cloning the ali-bot or alibuild repos. In
   # that case: time out, skip and try again later.
-  short_timeout pip install $pip_user --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$1"
+  short_timeout pip install --upgrade --upgrade-strategy only-if-needed "git+https://github.com/$1"
 }
 
 # Allow overriding a number of variables by fly, so that we can change the
