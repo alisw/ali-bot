@@ -15,7 +15,7 @@ ensure_vars CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS
 
 # This is the check name. If CHECK_NAME is in the environment, use it. Otherwise
 # default to, e.g., build/AliRoot/release (build/<Package>/<Defaults>)
-: "${CHECK_NAME:=build/$PACKAGE${ALIBUILD_DEFAULTS:+/$ALIBUILD_DEFAULTS}}"
+: "${CHECK_NAME:=build/$PACKAGE/$ALIBUILD_DEFAULTS}"
 
 host_id=$(echo "$MESOS_EXECUTOR_ID" |
             sed -ne 's#^\(thermos-\)\?\([a-z]*\)-\([a-z]*\)-\([a-z0-9_-]*\)-\([0-9]*\)\(-[0-9a-f]*\)\{5\}$#\2/\4/\5#p')
@@ -113,7 +113,7 @@ if pushd "$PR_REPO_CHECKOUT"; then
   popd
 fi
 
-if ! clean_env short_timeout aliDoctor ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} "$PACKAGE"; then
+if ! clean_env short_timeout aliDoctor --defaults "$ALIBUILD_DEFAULTS" "$PACKAGE"; then
   # We do not want to kill the system is github is not working
   # so we ignore the result code for now
   short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/error" -m 'aliDoctor error' ||
@@ -146,7 +146,7 @@ fi
 if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash             \
                      clean_env long_timeout aliBuild                     \
                      -j "${JOBS:-$(nproc)}" -z "$build_identifier"       \
-                     ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} \
+                     --defaults "$ALIBUILD_DEFAULTS"                     \
                      ${MIRROR:+--reference-sources $MIRROR}              \
                      ${REMOTE_STORE:+--remote-store $REMOTE_STORE}       \
                      --fetch-repos ${DEBUG:+--debug} build "$PACKAGE"
