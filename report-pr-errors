@@ -192,7 +192,7 @@ class Logs(object):
             return "\n\n\n".join(blocks).strip(" \n\t")
 
         self.errors_only_log = chunk_command_output_by_log(
-            "grep -he ': error:' -e ': warning:' -A 3 -B 3 -- %s",
+            "grep -he ': internal compiler error:' -e ': error:' -e ': warning:' -A 3 -B 3 -- %s",
             # Errors from this log are reported in o2checkcode_messages
             # already, so don't report them twice. This log also contains false
             # positives, so o2checkcode_messages is better.
