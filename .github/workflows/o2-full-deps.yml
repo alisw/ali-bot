@@ -1,4 +1,4 @@
-# This is a basic workflow to help you get started with Actions
+# Create a repository with all O2 prerequisites and push it to S3.
 
 name: o2-full-deps release
 
@@ -28,4 +28,7 @@ jobs:
           rpmbuild -ba rpms/o2-prereq.spec
           cd  ~/rpmbuild/RPMS/x86_64/
           createrepo .
-          
+          cat << EOF > /tmp/rclone.conf
+          ${{ secrets.S3_RCLONE_CONFIG }}
+          EOF
+          rclone --config /tmp/rclone.conf --transfers=10 --progress --delete-before sync local:./ rpms3:alibuild-repo/RPMS/o2-full-deps_x86-64/
