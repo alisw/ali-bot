@@ -6,8 +6,6 @@
 . build-helpers.sh
 
 if [ "$1" != --skip-setup ]; then
-  export HOME
-
   if [ -r ~/.continuous-builder ]; then
     . ~/.continuous-builder
   fi
