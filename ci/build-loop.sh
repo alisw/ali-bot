@@ -9,15 +9,7 @@
 . build-helpers.sh
 get_config
 
-for var in CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS; do
-  if [ -z "${!var}" ]; then
-    echo "$(basename "$0"): error: required variable $V not defined!" >&2
-    exit 1
-  else
-    export "${var?}"
-  fi
-done
-
+ensure_vars CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS
 : "${WORKERS_POOL_SIZE:=1}" "${WORKER_INDEX:=0}" "${PR_REPO_CHECKOUT:=$(basename "$PR_REPO")}"
 [ -d /build/mirror ] && : "${MIRROR:=/build/mirror}"
 

@@ -120,7 +120,19 @@ function source_env_files () {
 }
 
 function is_numeric () {
-    [ $(($1 + 0)) = "$1" ]
+  [ $(($1 + 0)) = "$1" ]
+}
+
+function ensure_vars () {
+  # Make sure variables are defined, and export them.
+  for var in "$@"; do
+    if [ -z "${!var}" ]; then
+      echo "$(basename "$0"): error: required variable $var not defined!" >&2
+      exit 1
+    else
+      export "${var?}"
+    fi
+  done
 }
 
 # timeout vs. gtimeout (macOS with Homebrew)
