@@ -169,19 +169,21 @@ fi
 # Run post-build cleanup command
 aliBuild clean ${DEBUG:+--debug}
 
-# Look for any code coverage file for the given commit and push
-# it to codecov.io
-coverage_sources=$PWD/$PR_REPO_CHECKOUT
-coverage_info_dir=$(find sw/BUILD/ -maxdepth 4 -name coverage.info -prune -printf %h)
-if [ -n "$coverage_info_dir" ] && pushd "$coverage_info_dir"; then
-  # If not a number, it's the branch name -- in that case, we don't want to pass
-  # -P to codecov.
-  is_numeric "$PR_NUMBER" || unset PR_NUMBER
-  short_timeout bash <(curl --max-time 600 -s https://codecov.io/bash)  \
-                -R "$coverage_sources" -f coverage.info -C "$PR_HASH"   \
-                ${PR_BRANCH:+-B $PR_BRANCH} ${PR_NUMBER:+-P $PR_NUMBER} ||
-    true
-  popd
-fi
+(
+  # Look for any code coverage file for the given commit and push it to
+  # codecov.io. Run in a subshell because we might unset PR_NUMBER, which
+  # report_state (below) needs.
+  coverage_sources=$PWD/$PR_REPO_CHECKOUT
+  coverage_info_dir=$(find sw/BUILD/ -maxdepth 4 -name coverage.info -prune -printf %h)
+  if [ -n "$coverage_info_dir" ] && cd "$coverage_info_dir"; then
+    # If not a number, it's the branch name -- in that case, we don't want to
+    # pass -P to codecov.
+    is_numeric "$PR_NUMBER" || unset PR_NUMBER
+    short_timeout bash <(curl --max-time 600 -s https://codecov.io/bash)  \
+                  -R "$coverage_sources" -f coverage.info -C "$PR_HASH"   \
+                  ${PR_BRANCH:+-B $PR_BRANCH} ${PR_NUMBER:+-P $PR_NUMBER} ||
+      true
+  fi
+)
 
 report_state pr_processing_done
