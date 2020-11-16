@@ -24,6 +24,7 @@ jobs:
       # Runs a set of commands using the runners shell
       - name: Build the RPM and create a yum repo.
         run: |
+          curl https://rclone.org/install.sh | sudo bash
           yum install -y rpm-build scl-utils-build createrepo rclone
           rpmbuild -ba rpms/o2-prereq.spec
           cd  ~/rpmbuild/RPMS/x86_64/
