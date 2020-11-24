@@ -26,11 +26,10 @@ function report_state () {
         # If INFLUXDB_WRITE_URL starts with insecure_https://, then strip
         # "insecure_" and send the --insecure/-k option to curl.
         insecure_*)
-          curl --max-time 20 -XPOST "${INFLUXDB_WRITE_URL#insecure_}" -k --data-binary @-;;
+          curl --max-time 20 -XPOST "${INFLUXDB_WRITE_URL#insecure_}" -k --data-binary @- || true;;
         *)
-          curl --max-time 20 -XPOST "$INFLUXDB_WRITE_URL" --data-binary @-;;
-      esac ||
-      true
+          curl --max-time 20 -XPOST "$INFLUXDB_WRITE_URL" --data-binary @- || true;;
+      esac
   fi
 
   # Push to Google Analytics if configured
