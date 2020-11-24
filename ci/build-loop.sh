@@ -76,6 +76,11 @@ if [ -n "$DEVEL_PKGS" ]; then
   done
 fi
 
+# Set up redirection to shared SOURCES directory to save disk space.
+mkdir -p sw
+[ -d sw/SOURCES ] && rm -rf sw/SOURCES     # ln -f can't replace a directory
+ln -sf ../../sw.shared/SOURCES sw/SOURCES
+
 # Remove logs older than 5 days
 find separate_logs/ -type f -mtime +5 -delete || true
 find separate_logs/ -type d -empty -delete || true
