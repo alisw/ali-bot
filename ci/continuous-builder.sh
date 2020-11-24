@@ -12,7 +12,8 @@ if [ "$1" != --skip-setup ]; then
 
   ensure_vars GITHUB_TOKEN GITLAB_USER GITLAB_PASS AWS_ACCESS_KEY_ID \
               AWS_SECRET_ACCESS_KEY INFLUXDB_WRITE_URL ALIBOT_ANALYTICS_ID \
-              MONALISA_HOST MONALISA_PORT MESOS_ROLE CONTAINER_IMAGE
+              MONALISA_HOST MONALISA_PORT MESOS_ROLE CONTAINER_IMAGE \
+              WORKER_INDEX WORKERS_POOL_SIZE
 
   if ! [ -d ali-bot ]; then
     # This is for *.env files. These should always be taken from ali-bot@master,
