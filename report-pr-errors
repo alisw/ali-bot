@@ -145,19 +145,12 @@ class Logs(object):
                     "pretty.html" if pretty else "fullLog.txt")
 
     def find(self):
-        # Python's glob * matches at least one char
-        search_paths = [join(self.work_dir, "BUILD/*latest*/log"),
-                        join(self.work_dir, "BUILD/*latest/log")]
-        print("Searching all logs matching: %s" % ", ".join(search_paths), file=sys.stderr)
-        globbed = []
-        for sp in search_paths:
-            globbed.extend(glob(sp))
-
-        suffix = ("latest" + "-" + self.develPrefix).strip("-")
-        logs = {x for x in globbed if dirname(x).endswith(suffix)}
-
-        print("Found:\n%s" % "\n".join(logs), file=sys.stderr)
-        self.logs = logs
+        search_path = join(self.work_dir, "BUILD/*latest*/log")
+        print("Searching all logs matching: %s" % search_path, file=sys.stderr)
+        suffix = ("latest-" + self.develPrefix).rstrip("-")
+        self.logs = {x for x in glob(search_path)
+                     if dirname(x).endswith(suffix)}
+        print("Found:\n%s" % "\n".join(self.logs), file=sys.stderr)
 
     def grep(self):
         """Grep for errors in the build logs, or, if none are found,
@@ -238,7 +231,7 @@ class Logs(object):
 
         run_cmd('echo "Builing on: $(hostname) at $(date +%Y-%m-%d-%H:%M:%S)" >> copy-logs/' + tgtFile)
 
-        if len(self.logs):
+        if self.logs:
             run_cmd("echo 'The following files are present in the log:' >> copy-logs/%s" % tgtFile)
         else:
             run_cmd("echo 'No logs found. Please check actual builders log in aurora.\n"
