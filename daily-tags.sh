@@ -14,13 +14,6 @@ rm -rf alidist/
 ALIDIST_BRANCH="${ALIDIST_SLUG##*@}"
 ALIDIST_REPO="${ALIDIST_SLUG%@*}"
 
-# Correctly interpret <latest> in alidist version specification
-if [[ $ALIDIST_BRANCH == *'<latest>'* ]]; then
-  ALIDIST_BRANCH=${ALIDIST_BRANCH/<latest>/[0-9a-zA-Z_-]\+}
-  ALIDIST_BRANCH=$(GIT_DIR=alidist/.git git log --date-order --graph --tags --simplify-by-decoration --pretty=format:'%d' | sed -e 's/tag://g' | grep -m 1 -oE "$ALIDIST_BRANCH")
-  [[ $ALIDIST_BRANCH ]] || { echo "Cannot find latest tag matching expression!"; exit 1; }
-fi
-
 git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO alidist/
 
 # Install the latest release if ALIBUILD_SLUG is not provided
