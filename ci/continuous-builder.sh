@@ -6,20 +6,14 @@
 . build-helpers.sh
 
 if [ "$1" != --skip-setup ]; then
-  export HOME
-
   if [ -r ~/.continuous-builder ]; then
     . ~/.continuous-builder
   fi
 
-  for var in GITHUB_TOKEN GITLAB_USER GITLAB_PASS AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY INFLUXDB_WRITE_URL ALIBOT_ANALYTICS_ID MONALISA_HOST MONALISA_PORT MESOS_ROLE CONTAINER_IMAGE; do
-    if [ -z "${!var}" ]; then
-      echo "$(basename "$0"): error: required variable $var not defined!" >&2
-      exit 1
-    else
-      export "${var?}"
-    fi
-  done
+  ensure_vars GITHUB_TOKEN GITLAB_USER GITLAB_PASS AWS_ACCESS_KEY_ID \
+              AWS_SECRET_ACCESS_KEY INFLUXDB_WRITE_URL ALIBOT_ANALYTICS_ID \
+              MONALISA_HOST MONALISA_PORT MESOS_ROLE CONTAINER_IMAGE \
+              WORKER_INDEX WORKERS_POOL_SIZE
 
   if ! [ -d ali-bot ]; then
     # This is for *.env files. These should always be taken from ali-bot@master,
