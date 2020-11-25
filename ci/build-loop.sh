@@ -64,6 +64,11 @@ if [ -n "$DEVEL_PKGS" ]; then
   done
 fi
 
+# Set up redirection to shared SOURCES directory to save disk space.
+mkdir -p sw
+[ -d sw/SOURCES ] && rm -rf sw/SOURCES     # ln -f can't replace a directory
+ln -sf ../../sw.shared/SOURCES sw/SOURCES
+
 # Remove logs older than 5 days
 find separate_logs/ -type f -mtime +5 -delete || true
 find separate_logs/ -type d -empty -delete || true
@@ -132,10 +137,6 @@ find sw/BUILD/ -maxdepth 1 -name '*latest*' -delete
 # reporting them twice under erroneous circumstances
 find sw/BUILD/ -maxdepth 4 -name coverage.info -delete
 
-# Ensure build names do not clash across different PR jobs (O2-373)
-build_identifier=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
-: "${build_identifier:=${CHECK_NAME//\//_}}"
-
 # Only publish packages to remote store when we build the master branch. For
 # PRs, PR_NUMBER will be numeric; in that case, disable writing to the store. We
 # can't compare against 'master' here as 'dev' is the "master branch" for O2.
@@ -145,8 +146,9 @@ fi
 
 if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash             \
                      clean_env long_timeout aliBuild                     \
-                     -j "${JOBS:-$(nproc)}" -z "$build_identifier"       \
-                     --defaults "$ALIBUILD_DEFAULTS"                     \
+                     -j "${JOBS:-$(nproc)}" -z "${CHECK_NAME//\//_}"     \
+                     ${FETCH_REPOS:+--fetch-repos}                       \
+                     ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} \
                      ${MIRROR:+--reference-sources $MIRROR}              \
                      ${REMOTE_STORE:+--remote-store $REMOTE_STORE}       \
                      --fetch-repos ${DEBUG:+--debug} build "$PACKAGE"

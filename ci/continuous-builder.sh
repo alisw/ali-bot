@@ -57,6 +57,9 @@ if [ "$1" != --skip-setup ]; then
 # - ENV_NAME: the basename without ".env" of the .env file to source
 EOF
   fi
+
+  # Set up shared parts of sw/ directories. This saves significant disk space.
+  mkdir -p sw.shared/SOURCES
 fi
 
 # Get a list of PRs to build -- force-hashes overrides list-branch-pr.
