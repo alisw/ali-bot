@@ -19,9 +19,9 @@ function report_state () {
 
   # Push to InfluxDB if configured
   if [ -n "$INFLUXDB_WRITE_URL" ]; then
-    printf 'prcheck,checkname=%s host="%s",state="%s",cihash="%s",uptime=%s%s %s' \
-           "$CHECK_NAME/$WORKER_INDEX" "$(hostname -s)" "$current_state" "$CI_HASH" $((time_now - TIME_STARTED)) \
-           "${prtime:+,prtime=$prtime}${LAST_PR:+,prid=\"$LAST_PR\"}${LAST_PR_OK:+,prok=$LAST_PR_OK}" $((time_now * 1000000000)) |
+    printf 'prcheck,checkname=%s host="%s",state="%s",prid="%s"%s %s'                 \
+           "$CHECK_NAME/$WORKER_INDEX" "$(hostname -s)" "$current_state" "$PR_NUMBER" \
+           "${prtime:+,prtime=$prtime}${PR_OK:+,prok=$PR_OK}" $((time_now * 10**9))   |
       case "$INFLUXDB_WRITE_URL" in
         # If INFLUXDB_WRITE_URL starts with insecure_https://, then strip
         # "insecure_" and send the --insecure/-k option to curl.
@@ -34,7 +34,6 @@ function report_state () {
 
   # Push to Google Analytics if configured
   if [ -n "$ALIBOT_ANALYTICS_ID" ] && [ -n "$prtime" ]; then
-    # Report first PR and the rest in a separate category
     short_timeout report-analytics timing --utc 'PR Building' --utv time --utt $((prtime * 1000)) --utl "$CHECK_NAME/$WORKER_INDEX"
   fi
 }
@@ -116,6 +115,22 @@ function source_env_files () {
                  "$base/$MESOS_ROLE/$CUR_CONTAINER/$env_name.env"
   do
     [ -e "$_envf" ] && . "$_envf"
+  done
+}
+
+function is_numeric () {
+  [ $(($1 + 0)) = "$1" ]
+}
+
+function ensure_vars () {
+  # Make sure variables are defined, and export them.
+  for var in "$@"; do
+    if [ -z "${!var}" ]; then
+      echo "$(basename "$0"): error: required variable $var not defined!" >&2
+      exit 1
+    else
+      export "${var?}"
+    fi
   done
 }
 
