@@ -18,11 +18,11 @@
 # * Lines are stripped before parsing
 # * The filename field is the last one and may contain spaces
 
-[ ! -d $TARBALLS_PREFIX ] && { echo "Cannot find tarballs repo $TARBALLS_PREFIX"; exit 1; }
-[ ! -d $TEMP_RESULTS ] && { echo "Cannot find temporary dir $TEMP_RESULTS"; exit 1; }
+[ ! -d "$TARBALLS_PREFIX" ] && { echo "Cannot find tarballs repo $TARBALLS_PREFIX"; exit 1; }
+[ ! -d "$TEMP_RESULTS" ] && { echo "Cannot find temporary dir $TEMP_RESULTS"; exit 1; }
 
-for A in `find $TARBALLS_PREFIX -maxdepth 1 -type d -printf "%f\n"`; do
-  mkdir -p $TARBALLS_PREFIX/$A/store $TARBALLS_PREFIX/$A/dist
-  find $TARBALLS_PREFIX/$A/store -type f -printf "store $A %s %Cs ./%P\n" >> $TEMP_RESULTS/repo-report.txt 
-  find $TARBALLS_PREFIX/$A/dist -type l -printf "dist $A ./%P\n" >> $TEMP_RESULTS/repo-report.txt
+for A in `find "$TARBALLS_PREFIX" -maxdepth 1 -type d -printf "%f\n"`; do
+  mkdir -p "$TARBALLS_PREFIX/$A/store" "$TARBALLS_PREFIX/$A/dist"
+  find "$TARBALLS_PREFIX/$A/store" -type f -printf "store $A %s %Cs ./%P\n" >> "$TEMP_RESULTS/repo-report.txt" 
+  find "$TARBALLS_PREFIX/$A/dist" -type l -printf "dist $A ./%P\n" >> "$TEMP_RESULTS/repo-report.txt"
 done
