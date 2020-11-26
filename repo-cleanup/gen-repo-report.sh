@@ -39,6 +39,7 @@ T_REPORT=$TEMP_RESULTS/repo-report.txt
 
 T0=$(date -u +%s)
 for A in ${ARCHS[@]}; do
+  [ ! -d $TARBALLS_PREFIX/$A ] && continue
   pushd $TARBALLS_PREFIX/$A > /dev/null
     [[ -d store ]] || mkdir store
     [[ -d dist ]] || mkdir dist
