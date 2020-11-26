@@ -1,4 +1,5 @@
 #!/bin/sh
+# -*- sh-basic-offset: 2 -*-
 
 help () {
   cat <<EOF
@@ -13,9 +14,6 @@ Script to create a mirror of alibuild repository in an S3 bucket.
 EOF
   exit "$1"
 }
-
-. /secrets/aws_bot_secrets
-export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 
 bucket=${BUCKET:-alibuild-repo}
 prefix=${PREFIX:-/build/reports/repo}
@@ -41,22 +39,42 @@ rclone_defaults () {
 # to instead.
 symlink_tree=/tmp/repo-symlinks
 printf 'Replicating symlinks to %s' "$symlink_tree" >&2
-{
-  # We only copy symlinks in directories that have changed since the last run to
-  # save on disk accesses.
-  find "$prefix/$repo" -path "$prefix/$repo/store" -prune -o \
-       -type d -newer "$symlink_tree" -prune -print0 ||
-    # If this is the first run on this machine, recreate the entire hierarchy.
-    # (In that case, $symlink_tree won't exist yet, so find will error.)
-    printf '%s\0' "$prefix/$repo"
-} |
-  xargs -0rI {} find {} -path "$prefix/$repo/store" -prune -o -type l -printf '%P\t%l\n' |
+if
+  # Check if $symlink_tree exists, to avoid an error message from find.
+  # If it doesn't, this is the first run, and we want to sync everything.
+  ! [ -d "$symlink_tree" ] ||
+    # We only copy symlinks in directories that have changed since the last run
+    # to save on disk accesses. Exclude store/ completely (it is also pruned
+    # below, but doing it here too avoids pointless disk accesses).
+    ! find "$prefix/$repo" -path "$prefix/$repo/store" -prune -o \
+      -type d -newer "$symlink_tree" -prune -print0
+then
+  # If this is the first run on this machine, recreate the entire hierarchy.
+  # (In that case, $symlink_tree won't exist yet.)
+  printf '%s\0' "$prefix/$repo"
+fi |
+
+  # Find and read symlinks under each path found above (excluding store/).
+  # %p is the symlink's path including $prefix/$repo/..., %l is its target,
+  # which for the RPM repo will be a relative path (so we can use it directly).
+  xargs -0rI {} find {} -path "$prefix/$repo/store" -prune -o -type l -printf '%p\t%l\n' |
+
+  # Create a pseudo-symlink in $symlink_tree for each symlink found above.
   while IFS='	' read -r symlink target; do
+    # Remove the starting point from the symlink path. We can't do this using %P
+    # in find as we might get any "starting point" under $prefix/$repo, and we
+    # only want to remove $prefix/$repo.
+    symlink=${symlink#$prefix/$repo}
     mkdir -p "$(dirname "$symlink_tree/$symlink")"
+    # A pseudo-symlink is just a file containing the symlink target.
     printf %s "$target" > "$symlink_tree/$symlink"
+    # Show progress by printing a dot for each symlink processed. Printing names
+    # would be much too much output.
     printf . >&2
   done
+
 printf ' done.\n' >&2
+# Sync the pseudo-symlinks to S3. Package tarballs are synced separately, below.
 rclone_defaults move --delete-empty-src-dirs "local:$symlink_tree/" "rpms3:$bucket/$repo/"
 
 # Sync tarballs from the repo to S3.
