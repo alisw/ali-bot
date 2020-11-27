@@ -100,11 +100,10 @@ case "$MESOS_QUEUE_SIZE" in
   *) JOBS=8;;
 esac
 echo "Now running aliBuild on $JOBS parallel workers"
-aliBuild --reference-sources mirror                                               \
-         --work-dir "$workarea"                                                   \
-         ${ARCHITECTURE:+--architecture "$ARCHITECTURE"}                          \
-         --remote-store "${REMOTE_STORE:-rsync://repo.marathon.mesos/store/::rw}" \
-         --defaults "$DEFAULTS" --fetch-repos --jobs "$JOBS" --debug              \
+aliBuild --reference-sources mirror --work-dir "$workarea"           \
+         ${ARCHITECTURE:+--architecture "$ARCHITECTURE"}             \
+         --remote-store "${REMOTE_STORE:-s3://alibuild-repo::rw}"    \
+         --defaults "$DEFAULTS" --fetch-repos --jobs "$JOBS" --debug \
          build "$PACKAGE_NAME" || {
   builderr=$?
   echo "Exiting with an error ($builderr), not tagging"
