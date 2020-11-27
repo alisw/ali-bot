@@ -76,22 +76,6 @@ git push origin "+$AUTOTAG_HASH:refs/heads/$AUTOTAG_BRANCH"
 
 popd &> /dev/null  # exit Git repo
 
-# Select build directory in order to prevent conflicts and allow for cleanups.
-# NODE_NAME is defined by Jenkins
-WORKAREA=sw/$(($(date --utc +%s) / 86400 / 3))
-WORKAREA_INDEX=0
-CURRENT_SLAVE=unknown
-while [ -n "$CURRENT_SLAVE" ]; do
-  WORKAREA_INDEX=$((WORKAREA_INDEX+1))
-  CURRENT_SLAVE=$(cat "$WORKAREA/$WORKAREA_INDEX/current_slave" 2>/dev/null) || true
-  if [ "$CURRENT_SLAVE" = "$NODE_NAME" ]; then
-    CURRENT_SLAVE=
-  fi
-done
-mkdir -p $WORKAREA/$WORKAREA_INDEX
-echo "$NODE_NAME" > "$WORKAREA/$WORKAREA_INDEX/current_slave"
-echo "Locking current working directory for us: $WORKAREA/$WORKAREA_INDEX"
-
 : "${DEFAULTS:=release}"
 
 # Process overrides by changing in-place the given defaults. This requires some
@@ -117,20 +101,23 @@ EOF
 
 diff -rupN "alidist/defaults-${DEFAULTS,,}.sh.old" "alidist/defaults-${DEFAULTS,,}.sh" | cat
 
+# Select build directory in order to prevent conflicts and allow for cleanups.
+workarea=$(mktemp -dp "$PWD" daily-tags.XXXXXXXXXX)
+
 case "$MESOS_QUEUE_SIZE" in
   huge) JOBS=30;;
   *) JOBS=8;;
 esac
 echo "Now running aliBuild on $JOBS parallel workers"
 aliBuild --reference-sources mirror                                               \
-         --work-dir "$WORKAREA/$WORKAREA_INDEX"                                   \
+         --work-dir "$workarea"                                                   \
          ${ARCHITECTURE:+--architecture "$ARCHITECTURE"}                          \
          --remote-store "${REMOTE_STORE:-rsync://repo.marathon.mesos/store/::rw}" \
          --defaults "$DEFAULTS" --fetch-repos --jobs "$JOBS" --debug              \
          build "$PACKAGE_NAME" ||
   BUILDERR=$?
 
-rm -rf "$WORKAREA/$WORKAREA_INDEX/current_slave"
+rm -rf "$workarea"
 if [ -n "$BUILDERR" ]; then
   echo "Exiting with an error ($BUILDERR), not tagging"
   exit "$BUILDERR"
