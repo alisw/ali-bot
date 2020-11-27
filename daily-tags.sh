@@ -102,7 +102,7 @@ EOF
 diff -rupN alidist/defaults-${DEFAULTS_LOWER}.sh.old alidist/defaults-${DEFAULTS_LOWER}.sh | cat
 
 # Select build directory in order to prevent conflicts and allow for cleanups.
-workarea=$(mktemp -dp "$PWD" daily-tags.XXXXXXXXXX)
+workarea=$(mktemp -d "$PWD/daily-tags.XXXXXXXXXX")
 
 REMOTE_STORE="${REMOTE_STORE:-rsync://repo.marathon.mesos/store/::rw}"
 JOBS=8
