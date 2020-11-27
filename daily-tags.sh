@@ -111,10 +111,15 @@ aliBuild --reference-sources mirror                                             
   exit "$builderr"
 }
 
-# Now we tag, in case we should
-cd "$AUTOTAG_CLONE"
-git push origin "+$autotag_hash:refs/tags/$AUTOTAG_TAG"
-# Delete the branch we created earlier.
-git push origin ":refs/heads/$AUTOTAG_BRANCH" || true  # error is not a big deal here
+(
+  # Now we tag
+  cd "$AUTOTAG_CLONE"
+  git push origin "+$autotag_hash:refs/tags/$AUTOTAG_TAG"
+  # Delete the branch we created earlier.
+  git push origin ":refs/heads/$AUTOTAG_BRANCH" || true  # error is not a big deal here
+)
 
-rm -rf "$workarea"
+# Also tag the appropriate alidist
+(cd alidist && git push origin "HEAD:refs/tags/$PACKAGE-$AUTOTAG_TAG")
+
+rm -rf "$workarea" alidist
