@@ -2,7 +2,9 @@
 # -*- sh-basic-offset: 2 -*-
 
 # Check for required variables
-: "${ALIDIST_SLUG:=alisw/alidist@master}" "${PACKAGE_NAME:?}" "${AUTOTAG_PATTERN:?}" "${NODE_NAME:?}"
+: "${PACKAGE_NAME:?}" "${AUTOTAG_PATTERN:?}" "${NODE_NAME:?}"
+# Assign default values
+: "${ALIDIST_SLUG:=alisw/alidist@master}" "${DEFAULTS:=release}"
 
 # Clean up old stuff
 rm -rf alidist/
@@ -67,25 +69,22 @@ git push origin "+$autotag_hash:refs/heads/$AUTOTAG_BRANCH"
 
 popd &>/dev/null  # exit Git repo
 
-: "${DEFAULTS:=release}"
-
 # Process overrides by changing in-place the given defaults. This requires some
 # YAML processing so we are better off with Python.
-python - "$AUTOTAG_BRANCH" "$PACKAGE_NAME" "$DEFAULTS" << EOF
+python - "$AUTOTAG_BRANCH" "$PACKAGE_NAME" "alidist/defaults-${DEFAULTS,,}.sh" << EOF
 import os, sys, yaml
-_, AUTOTAG_BRANCH, PACKAGE_NAME, DEFAULTS = sys.argv
-f = "alidist/defaults-%s.sh" % DEFAULTS.lower()
+_, branch, p, f = sys.argv
 d = yaml.safe_load(open(f).read().split("---")[0])
 open(f+".old", "w").write(yaml.dump(d)+"\n---\n")
 d["overrides"] = d.get("overrides", {})
-d["overrides"][PACKAGE_NAME] = d["overrides"].get(PACKAGE_NAME, {})
-d["overrides"][PACKAGE_NAME]["tag"] = AUTOTAG_BRANCH
+d["overrides"][p] = d["overrides"].get(p, {})
+d["overrides"][p]["tag"] = branch
 v = os.environ.get("AUTOTAG_OVERRIDE_VERSION")
-if v: d["overrides"][PACKAGE_NAME]["version"] = v
+if v: d["overrides"][p]["version"] = v
 open(f, "w").write(yaml.dump(d)+"\n---\n")
 EOF
 
-diff -rupN "alidist/defaults-${DEFAULTS,,}.sh.old" "alidist/defaults-${DEFAULTS,,}.sh" | cat
+diff -upN "alidist/defaults-${DEFAULTS,,}.sh"{.old,} | cat
 
 # Select build directory in order to prevent conflicts and allow for cleanups.
 workarea=$(mktemp -dp "$PWD" daily-tags.XXXXXXXXXX)
