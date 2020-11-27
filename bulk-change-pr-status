@@ -1,0 +1,109 @@
+#!/usr/bin/env python
+
+'''Mark all failed PRs in a repo as pending.
+
+Actually, any status can be changed to any other status.
+
+Caveat: the check you want to change has to exist on GitHub already!
+
+This script is useful when cleaning up after a stuck CI builder.
+'''
+
+from __future__ import print_function
+from argparse import ArgumentParser, Namespace
+from os.path import expanduser
+from sys import stderr
+
+import alibot_helpers.github_utilities as ghutil
+
+
+def deduplicate_statuses(cgh, repo, pull_hash):
+    '''Create a list of the latest status only for each check.'''
+    all_statuses = [(s['context'], s['created_at'], s['state'])
+                    for s in cgh.get('/repos/{repo}/commits/{ref}/statuses',
+                                     repo=repo, ref=pull_hash)]
+    # For each context (= check), sort statuses, newest last.
+    all_statuses.sort()
+    # Newer statuses 'overwrite' older ones in this dict comprehension.
+    return {check: state for check, _, state in all_statuses}
+
+
+def process_pr(cgh, args, repo, pull):
+    '''Set the statuses on a single pull request.'''
+    pull_hash = pull['head']['sha']
+    for check, state in deduplicate_statuses(cgh, repo, pull_hash).items():
+        if check in args.check_name:
+            if not args.do_it and state == args.from_status:
+                # -y not given, so only say what we would do.
+                action = 'would change'
+            elif state == args.from_status:
+                # This is a status we want to change and we have -y, so do it.
+                ghutil.setGithubStatus(cgh, Namespace(
+                    # Of the form org/repo#pr@sha, but setGithubStatus doesn't
+                    # use pr so we can leave it out.
+                    commit=repo + '@' + pull_hash,
+                    status=check + '/' + args.to_status,
+                    message=args.message,
+                    url=''))
+                action = 'changed'
+            else:
+                # This isn't a status we should change.
+                action = 'no change'
+
+            # Log line to show what PR and check we're processing.
+            pr_line = '{action:>13}: {repo}#{pr} {check}/{status}'.format(
+                action=action, repo=repo, pr=pull['number'], check=check,
+                status=state)
+            if state == args.from_status and state != args.to_status:
+                pr_line += ' -> ' + args.to_status
+            print(pr_line, file=stderr)
+
+
+def main(args):
+    '''Application entry point.'''
+    token = ghutil.github_token()
+    cache = ghutil.PickledCache(args.github_cache_file)
+    with ghutil.GithubCachedClient(token=token, cache=cache) as cgh:
+        for repo in args.repo_name:
+            for pull in cgh.get('/repos/{repo}/pulls', repo=repo):
+                process_pr(cgh, args, repo, pull)
+
+    if not args.do_it:
+        print('', 'note: no statuses were changed',
+              'note: pass -y/--do-it to really change the statuses',
+              sep='\n', end='\n\n', file=stderr)
+
+
+def parse_args():
+    '''Parse and return command-line arguments.'''
+    statuses = ('success', 'error', 'failure', 'pending')
+    parser = ArgumentParser(
+        description=__doc__,
+        epilog=('Note that you have to pass -y/--do-it to actually send '
+                "any requested changes to GitHub! If that option isn't given, "
+                'the script just prints out what it would do.'))
+    parser.add_argument('-y', '--do-it', action='store_true',
+                        help=("actually change the statuses, "
+                              "don't just print what would be done"))
+    parser.add_argument('-C', '--github-cache-file', metavar='GHCACHE',
+                        default=expanduser('~/.github-cached-commits'),
+                        help='GitHub cache location (default %(default)s)')
+    parser.add_argument('-f', '--from', metavar='FROM', choices=statuses,
+                        default='error', dest='from_status',
+                        help=('change checks with this status; '
+                              'one of %(choices)s; default %(default)s'))
+    parser.add_argument('-t', '--to', metavar='TO', choices=statuses,
+                        default='pending', dest='to_status',
+                        help=('change matching statuses to this one; '
+                              'one of %(choices)s; default %(default)s'))
+    parser.add_argument('-m', '--message', default='',
+                        help='optional short text to show with pending status')
+    parser.add_argument('-r', '--repo-name', action='append', required=True,
+                        help='repository slug, may be given multiple times')
+    parser.add_argument('-c', '--check-name', action='append', required=True,
+                        help='check name, may be given multiple times')
+    return parser.parse_args()
+
+
+if __name__ == '__main__':
+    main(parse_args())

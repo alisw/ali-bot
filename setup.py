@@ -127,6 +127,7 @@ setup(
                # Resolve Mesos DNS
                "mesos-dns-lookup",
                # Helpers
-               "clean-repo-ci"
+               "clean-repo-ci",
+               "bulk-change-pr-status",
               ]
 )
