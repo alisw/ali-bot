@@ -90,15 +90,11 @@ diff -rupN "alidist/defaults-${DEFAULTS,,}.sh.old" "alidist/defaults-${DEFAULTS,
 # Select build directory in order to prevent conflicts and allow for cleanups.
 workarea=$(mktemp -dp "$PWD" daily-tags.XXXXXXXXXX)
 
-case "$MESOS_QUEUE_SIZE" in
-  huge) JOBS=30;;
-  *) JOBS=8;;
-esac
 echo "Now running aliBuild on $JOBS parallel workers"
-aliBuild --reference-sources mirror --work-dir "$workarea"           \
-         ${ARCHITECTURE:+--architecture "$ARCHITECTURE"}             \
-         --remote-store "${REMOTE_STORE:-s3://alibuild-repo::rw}"    \
-         --defaults "$DEFAULTS" --fetch-repos --jobs "$JOBS" --debug \
+aliBuild --reference-sources mirror --work-dir "$workarea"        \
+         ${ARCHITECTURE:+--architecture "$ARCHITECTURE"}          \
+         --remote-store "${REMOTE_STORE:-s3://alibuild-repo::rw}" \
+         --defaults "$DEFAULTS" --fetch-repos --jobs 8 --debug    \
          build "$PACKAGE_NAME" || {
   builderr=$?
   echo "Exiting with an error ($builderr), not tagging"
