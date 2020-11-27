@@ -33,11 +33,11 @@ pushd "$AUTOTAG_CLONE" &>/dev/null
 if git show-ref -q --verify "refs/tags/$AUTOTAG_TAG"; then
   autotag_hash=$(git show-ref -s "refs/tags/$AUTOTAG_TAG")
   echo "Tag $AUTOTAG_TAG exists already as $autotag_hash, using it"
-elif [ "$DO_NOT_CREATE_NEW_TAG" = true ]; then
+elif [ -n "$DO_NOT_CREATE_NEW_TAG" ]; then
   # Tag does not exist, but we have requested this job to forcibly use an
   # existing one. Will abort the job.
   echo "Tag $AUTOTAG_TAG was not found, however we have been requested to not create a new one" \
-       "(DO_NOT_CREATE_NEW_TAG is true). Aborting with error"
+       "(DO_NOT_CREATE_NEW_TAG is set). Aborting with error"
   exit 1
 else
   # Tag does not exist. Create release candidate branch, if not existing.
