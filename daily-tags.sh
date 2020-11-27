@@ -8,10 +8,7 @@
 rm -rf alidist/
 
 # Determine branch from slug string: group/repo@ref
-ALIDIST_BRANCH=${ALIDIST_SLUG##*@}
-ALIDIST_REPO=${ALIDIST_SLUG%@*}
-
-git clone -b "$ALIDIST_BRANCH" "https://github.com/$ALIDIST_REPO" alidist
+git clone -b "${ALIDIST_SLUG##*@}" "https://github.com/${ALIDIST_SLUG%@*}" alidist
 
 # Install the latest release if ALIBUILD_SLUG is not provided
 pip install --user --ignore-installed --upgrade "git+https://github.com/$ALIBUILD_SLUG"
@@ -19,16 +16,13 @@ pip install --user --ignore-installed --upgrade "git+https://github.com/$ALIBUIL
 AUTOTAG_REMOTE=$(grep -E '^(source:|write_repo:)' "alidist/${PACKAGE_NAME,,}.sh" |
                    sort -r | head -1 | cut -d' ' -f2-)
 AUTOTAG_MIRROR=$MIRROR/${PACKAGE_NAME,,}
-AUTOTAG_TAG=$(LANG=C TZ=Europe/Zurich date "+$AUTOTAG_PATTERN")
-if [ "$TEST_TAG" = true ]; then
-  AUTOTAG_TAG=TEST-IGNORE-$AUTOTAG_TAG
-fi
+[ -d "$AUTOTAG_MIRROR" ] || AUTOTAG_MIRROR=
+AUTOTAG_TAG=${TEST_TAG:+TEST-IGNORE-}$(LANG=C TZ=Europe/Zurich date "+$AUTOTAG_PATTERN")
 echo "A Git tag will be created, upon success and if not existing, with the name $AUTOTAG_TAG"
 AUTOTAG_BRANCH=rc/$AUTOTAG_TAG
 echo "A Git branch will be created to pinpoint the build operation, with the name $AUTOTAG_BRANCH"
 AUTOTAG_CLONE=$PWD/${PACKAGE_NAME,,}.git
 
-[ -d "$AUTOTAG_MIRROR" ] || AUTOTAG_MIRROR=
 rm -rf "$AUTOTAG_CLONE"
 mkdir "$AUTOTAG_CLONE"
 pushd "$AUTOTAG_CLONE" &> /dev/null
@@ -36,10 +30,9 @@ if ! [ -e ../git-creds ]; then
   git config --global credential.helper "store --file ~/git-creds-autotag"  # backwards compat
 fi
 git clone --bare ${AUTOTAG_MIRROR:+--reference=$AUTOTAG_MIRROR} "$AUTOTAG_REMOTE" .
-AUTOTAG_HASH=$(git ls-remote 2>/dev/null | grep "refs/tags/$AUTOTAG_TAG" | awk 'END{print $1}' )
+AUTOTAG_HASH=$(git ls-remote 2>/dev/null | grep "refs/tags/$AUTOTAG_TAG" | awk 'END{print $1}')
 if [ -n "$AUTOTAG_HASH" ]; then
   echo "Tag $AUTOTAG_TAG exists already as $AUTOTAG_HASH, using it"
-  AUTOTAG_ORIGIN=tag
 elif [ "$DO_NOT_CREATE_NEW_TAG" = true ]; then
   # Tag does not exist, but we have requested this job to forcibly use an
   # existing one. Will abort the job.
@@ -49,8 +42,7 @@ elif [ "$DO_NOT_CREATE_NEW_TAG" = true ]; then
 else
   # Tag does not exist. Create release candidate branch, if not existing.
 
-  AUTOTAG_HASH=$(git ls-remote 2>/dev/null | grep "refs/heads/$AUTOTAG_BRANCH" | awk 'END{print $1}' )
-  AUTOTAG_ORIGIN=rcbranch
+  AUTOTAG_HASH=$(git ls-remote 2>/dev/null | grep "refs/heads/$AUTOTAG_BRANCH" | awk 'END{print $1}')
 
   if [ -n "$AUTOTAG_HASH" ] && [ "$REMOVE_RC_BRANCH_FIRST" = true ]; then
     # Remove branch first if requested. Error is fatal.
@@ -60,13 +52,12 @@ else
 
   if [ -z "$AUTOTAG_HASH" ]; then
     # Let's point it to HEAD
-    AUTOTAG_HASH=$(git ls-remote 2> /dev/null | sed -e 's/\t/ /g' | grep -E ' HEAD$' | awk 'END{print $1}')
+    AUTOTAG_HASH=$(git ls-remote 2>/dev/null | grep -E '\bHEAD$' | awk 'END{print $1}')
     if [ -z "$AUTOTAG_HASH" ]; then
       echo "FATAL: Cannot find any hash pointing to HEAD (repo's default branch)!" >&2
       exit 1
     fi
     echo "Head of $AUTOTAG_REMOTE will be used, it's at $AUTOTAG_HASH"
-    AUTOTAG_ORIGIN=HEAD
   fi
 fi
 
@@ -114,20 +105,16 @@ aliBuild --reference-sources mirror                                             
          ${ARCHITECTURE:+--architecture "$ARCHITECTURE"}                          \
          --remote-store "${REMOTE_STORE:-rsync://repo.marathon.mesos/store/::rw}" \
          --defaults "$DEFAULTS" --fetch-repos --jobs "$JOBS" --debug              \
-         build "$PACKAGE_NAME" ||
-  BUILDERR=$?
-
-rm -rf "$workarea"
-if [ -n "$BUILDERR" ]; then
-  echo "Exiting with an error ($BUILDERR), not tagging"
-  exit "$BUILDERR"
-fi
+         build "$PACKAGE_NAME" || {
+  builderr=$?
+  echo "Exiting with an error ($builderr), not tagging"
+  exit "$builderr"
+}
 
 # Now we tag, in case we should
 cd "$AUTOTAG_CLONE"
-if [ "$AUTOTAG_ORIGIN" = tag ]; then
-  echo "Not tagging: tag $AUTOTAG_TAG exists already as $AUTOTAG_HASH"
-else
-  git push origin "+$AUTOTAG_HASH:refs/tags/$AUTOTAG_TAG"
-fi
+git push origin "+$AUTOTAG_HASH:refs/tags/$AUTOTAG_TAG"
+# Delete the branch we created earlier.
 git push origin ":refs/heads/$AUTOTAG_BRANCH" || true  # error is not a big deal here
+
+rm -rf "$workarea"
