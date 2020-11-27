@@ -71,22 +71,17 @@ popd &>/dev/null  # exit Git repo
 
 # Process overrides by changing in-place the given defaults. This requires some
 # YAML processing so we are better off with Python.
-env "AUTOTAG_BRANCH=$AUTOTAG_BRANCH" \
-    "PACKAGE_NAME=$PACKAGE_NAME"     \
-    "DEFAULTS=$DEFAULTS"             \
-    python << EOF
-import yaml
-from os import environ
-f = "alidist/defaults-%s.sh" % environ["DEFAULTS"].lower()
-p = environ["PACKAGE_NAME"]
+python - "$AUTOTAG_BRANCH" "$PACKAGE_NAME" "$DEFAULTS" << EOF
+import os, sys, yaml
+_, AUTOTAG_BRANCH, PACKAGE_NAME, DEFAULTS = sys.argv
+f = "alidist/defaults-%s.sh" % DEFAULTS.lower()
 d = yaml.safe_load(open(f).read().split("---")[0])
 open(f+".old", "w").write(yaml.dump(d)+"\n---\n")
 d["overrides"] = d.get("overrides", {})
-d["overrides"][p] = d["overrides"].get(p, {})
-d["overrides"][p]["tag"] = environ["AUTOTAG_BRANCH"]
-v = environ.get("AUTOTAG_OVERRIDE_VERSION")
-if v:
-    d["overrides"][p]["version"] = v
+d["overrides"][PACKAGE_NAME] = d["overrides"].get(PACKAGE_NAME, {})
+d["overrides"][PACKAGE_NAME]["tag"] = AUTOTAG_BRANCH
+v = os.environ.get("AUTOTAG_OVERRIDE_VERSION")
+if v: d["overrides"][PACKAGE_NAME]["version"] = v
 open(f, "w").write(yaml.dump(d)+"\n---\n")
 EOF
 
