@@ -23,16 +23,16 @@ AUTOTAG_BRANCH=rc/$AUTOTAG_TAG
 echo "A Git branch will be created to pinpoint the build operation, with the name $AUTOTAG_BRANCH"
 AUTOTAG_CLONE=$PWD/${PACKAGE_NAME,,}.git
 
-rm -rf "$AUTOTAG_CLONE"
-mkdir "$AUTOTAG_CLONE"
-pushd "$AUTOTAG_CLONE" &> /dev/null
 if ! [ -e ../git-creds ]; then
   git config --global credential.helper "store --file ~/git-creds-autotag"  # backwards compat
 fi
-git clone --bare ${AUTOTAG_MIRROR:+--reference=$AUTOTAG_MIRROR} "$AUTOTAG_REMOTE" .
-AUTOTAG_HASH=$(git ls-remote 2>/dev/null | grep "refs/tags/$AUTOTAG_TAG" | awk 'END{print $1}')
-if [ -n "$AUTOTAG_HASH" ]; then
-  echo "Tag $AUTOTAG_TAG exists already as $AUTOTAG_HASH, using it"
+
+rm -rf "$AUTOTAG_CLONE"
+git clone --bare "${AUTOTAG_MIRROR:+--reference=$AUTOTAG_MIRROR}" "$AUTOTAG_REMOTE" "$AUTOTAG_CLONE"
+pushd "$AUTOTAG_CLONE" &>/dev/null
+if git show-ref -q --verify "refs/tags/$AUTOTAG_TAG"; then
+  autotag_hash=$(git show-ref -s "refs/tags/$AUTOTAG_TAG")
+  echo "Tag $AUTOTAG_TAG exists already as $autotag_hash, using it"
 elif [ "$DO_NOT_CREATE_NEW_TAG" = true ]; then
   # Tag does not exist, but we have requested this job to forcibly use an
   # existing one. Will abort the job.
@@ -42,30 +42,30 @@ elif [ "$DO_NOT_CREATE_NEW_TAG" = true ]; then
 else
   # Tag does not exist. Create release candidate branch, if not existing.
 
-  AUTOTAG_HASH=$(git ls-remote 2>/dev/null | grep "refs/heads/$AUTOTAG_BRANCH" | awk 'END{print $1}')
-
-  if [ -n "$AUTOTAG_HASH" ] && [ "$REMOVE_RC_BRANCH_FIRST" = true ]; then
+  if git show-ref -q --verify "refs/heads/$AUTOTAG_BRANCH" && [ -n "$REMOVE_RC_BRANCH_FIRST" ]; then
     # Remove branch first if requested. Error is fatal.
     git push origin ":refs/heads/$AUTOTAG_BRANCH"
-    AUTOTAG_HASH=
+    git branch -D "$AUTOTAG_BRANCH"
   fi
 
-  if [ -z "$AUTOTAG_HASH" ]; then
+  if git show-ref -q --verify "refs/heads/$AUTOTAG_BRANCH"; then
+    autotag_hash=$(git show-ref -s "refs/heads/$AUTOTAG_BRANCH")
+  else
     # Let's point it to HEAD
-    AUTOTAG_HASH=$(git ls-remote 2>/dev/null | grep -E '\bHEAD$' | awk 'END{print $1}')
-    if [ -z "$AUTOTAG_HASH" ]; then
+    if ! git show-ref -q --verify HEAD; then
       echo "FATAL: Cannot find any hash pointing to HEAD (repo's default branch)!" >&2
       exit 1
     fi
-    echo "Head of $AUTOTAG_REMOTE will be used, it's at $AUTOTAG_HASH"
+    autotag_hash=$(git show-ref -s HEAD)
+    echo "Head of $AUTOTAG_REMOTE will be used, it's at $autotag_hash"
   fi
 fi
 
-# At this point, we have $AUTOTAGH_HASH for sure. It might come from HEAD, an existing rc/* branch,
-# or an existing tag. We always create a new branch out of it
-git push origin "+$AUTOTAG_HASH:refs/heads/$AUTOTAG_BRANCH"
+# At this point, we have $autotag_hash for sure. It might come from HEAD, an
+# existing rc/* branch, or an existing tag. We always create a new branch.
+git push origin "+$autotag_hash:refs/heads/$AUTOTAG_BRANCH"
 
-popd &> /dev/null  # exit Git repo
+popd &>/dev/null  # exit Git repo
 
 : "${DEFAULTS:=release}"
 
@@ -113,7 +113,7 @@ aliBuild --reference-sources mirror                                             
 
 # Now we tag, in case we should
 cd "$AUTOTAG_CLONE"
-git push origin "+$AUTOTAG_HASH:refs/tags/$AUTOTAG_TAG"
+git push origin "+$autotag_hash:refs/tags/$AUTOTAG_TAG"
 # Delete the branch we created earlier.
 git push origin ":refs/heads/$AUTOTAG_BRANCH" || true  # error is not a big deal here
 
