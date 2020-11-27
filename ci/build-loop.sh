@@ -65,11 +65,6 @@ if [ -n "$DEVEL_PKGS" ]; then
   done
 fi
 
-# Set up redirection to shared SOURCES directory to save disk space.
-mkdir -p sw
-[ -d sw/SOURCES ] && rm -rf sw/SOURCES     # ln -f can't replace a directory
-ln -sf ../../sw.shared/SOURCES sw/SOURCES
-
 # Remove logs older than 5 days
 find separate_logs/ -type f -mtime +5 -delete || true
 find separate_logs/ -type d -empty -delete || true
@@ -148,8 +143,7 @@ fi
 if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash             \
                      clean_env long_timeout aliBuild                     \
                      -j "${JOBS:-$(nproc)}" -z "${CHECK_NAME//\//_}"     \
-                     ${FETCH_REPOS:+--fetch-repos}                       \
-                     ${ALIBUILD_DEFAULTS:+--defaults $ALIBUILD_DEFAULTS} \
+                     --defaults "$ALIBUILD_DEFAULTS"                     \
                      ${MIRROR:+--reference-sources $MIRROR}              \
                      ${REMOTE_STORE:+--remote-store $REMOTE_STORE}       \
                      --fetch-repos ${DEBUG:+--debug} build "$PACKAGE"
