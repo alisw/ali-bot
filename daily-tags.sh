@@ -76,22 +76,6 @@ pushd $AUTOTAG_CLONE &> /dev/null
 
 popd &> /dev/null  # exit Git repo
 
-# Select build directory in order to prevent conflicts and allow for cleanups. NODE_NAME is defined
-# by Jenkins
-BUILD_DATE=2015$(( $(date --utc +%s) / (86400 * 3) ))
-MIRROR=mirror
-WORKAREA=sw/$BUILD_DATE
-WORKAREA_INDEX=0
-CURRENT_SLAVE=unknown
-while [[ "$CURRENT_SLAVE" != '' ]]; do
-  WORKAREA_INDEX=$((WORKAREA_INDEX+1))
-  CURRENT_SLAVE=$(cat $WORKAREA/$WORKAREA_INDEX/current_slave 2> /dev/null || true)
-  [[ "$CURRENT_SLAVE" == "$NODE_NAME" ]] && CURRENT_SLAVE=
-done
-mkdir -p $WORKAREA/$WORKAREA_INDEX
-echo $NODE_NAME > $WORKAREA/$WORKAREA_INDEX/current_slave
-echo "Locking current working directory for us: $WORKAREA/$WORKAREA_INDEX"
-
 : ${DEFAULTS:=release}
 
 # Process overrides by changing in-place the given defaults. This requires some
@@ -117,22 +101,26 @@ EOF
 
 diff -rupN alidist/defaults-${DEFAULTS_LOWER}.sh.old alidist/defaults-${DEFAULTS_LOWER}.sh | cat
 
+# Select build directory in order to prevent conflicts and allow for cleanups.
+workarea=$(mktemp -d "$PWD/daily-tags.XXXXXXXXXX")
+
 REMOTE_STORE="${REMOTE_STORE:-rsync://repo.marathon.mesos/store/::rw}"
 JOBS=8
 [[ $MESOS_QUEUE_SIZE == huge ]] && JOBS=30
 echo "Now running aliBuild on $JOBS parallel workers"
-aliBuild --reference-sources $MIRROR                   \
+aliBuild --reference-sources mirror                    \
          --debug                                       \
-         --work-dir $WORKAREA/$WORKAREA_INDEX          \
+         --work-dir "$workarea"                        \
          ${ARCHITECTURE:+--architecture $ARCHITECTURE} \
          --jobs 10                                     \
          --fetch-repos                                 \
          --remote-store $REMOTE_STORE                  \
          ${DEFAULTS:+--defaults $DEFAULTS}             \
-         build $PACKAGE_NAME || BUILDERR=$?
-
-rm -rf $WORKAREA/$WORKAREA_INDEX/current_slave
-[[ "$BUILDERR" != '' ]] && { echo "Exiting with an error ($BUILDERR), not tagging"; exit $BUILDERR; }
+         build "$PACKAGE_NAME" || {
+  builderr=$?
+  echo "Exiting with an error ($builderr), not tagging"
+  exit $builderr
+}
 
 # Now we tag, in case we should
 pushd $AUTOTAG_CLONE &> /dev/null
