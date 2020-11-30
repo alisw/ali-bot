@@ -29,6 +29,7 @@ echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead bt
     # Run this in a subshell as report_pr_errors uses $PR_REPO but we don't want
     # to overwrite the outer for loop's variables, as they are needed for the
     # subsequent build.
+    cd ..
     source_env_files "$envf"
     report_pr_errors --pending -m "Queued ($ahead ahead) on $host_id"
   fi
