@@ -140,9 +140,13 @@ if is_numeric "$PR_NUMBER"; then
   REMOTE_STORE=$BRANCH_REMOTE_STORE
 fi
 
+# Ensure build names do not clash across different PR jobs (O2-373)
+build_identifier=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
+: "${build_identifier:=${CHECK_NAME//\//_}}"
+
 if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash             \
                      clean_env long_timeout aliBuild                     \
-                     -j "${JOBS:-$(nproc)}" -z "${CHECK_NAME//\//_}"     \
+                     -j "${JOBS:-$(nproc)}" -z "$build_identifier"       \
                      --defaults "$ALIBUILD_DEFAULTS"                     \
                      ${MIRROR:+--reference-sources $MIRROR}              \
                      ${REMOTE_STORE:+--remote-store $REMOTE_STORE}       \
