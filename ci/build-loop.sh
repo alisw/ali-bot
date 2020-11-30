@@ -23,7 +23,7 @@ host_id=$(echo "$MESOS_EXECUTOR_ID" |
 : "${host_id:=$(hostname --fqdn)}"
 
 # Update all PRs in the queue with their number before we start building.
-echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead btype PR_NUMBER PR_HASH envf; do
+echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead btype num hash envf; do
   # Only report progress for a PR if it's never been built before.
   if [ "$btype" = untested ]; then
     # Run this in a subshell as report_pr_errors uses $PR_REPO but we don't want
@@ -31,7 +31,7 @@ echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead bt
     # subsequent build.
     cd ..
     source_env_files "$envf"
-    report_pr_errors --pending -m "Queued ($ahead ahead) on $host_id"
+    PR_NUMBER=$num PR_HASH=$hash report_pr_errors --pending -m "Queued ($ahead ahead) on $host_id"
   fi
 done
 
