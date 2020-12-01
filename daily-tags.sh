@@ -104,7 +104,6 @@ diff -rupN alidist/defaults-${DEFAULTS_LOWER}.sh.old alidist/defaults-${DEFAULTS
 # Select build directory in order to prevent conflicts and allow for cleanups.
 workarea=$(mktemp -d "$PWD/daily-tags.XXXXXXXXXX")
 
-REMOTE_STORE="${REMOTE_STORE:-rsync://repo.marathon.mesos/store/::rw}"
 JOBS=8
 [[ $MESOS_QUEUE_SIZE == huge ]] && JOBS=30
 echo "Now running aliBuild on $JOBS parallel workers"
@@ -114,8 +113,8 @@ aliBuild --reference-sources mirror                    \
          ${ARCHITECTURE:+--architecture $ARCHITECTURE} \
          --jobs 10                                     \
          --fetch-repos                                 \
-         --remote-store $REMOTE_STORE                  \
          ${DEFAULTS:+--defaults $DEFAULTS}             \
+         --remote-store "${REMOTE_STORE:-s3://alibuild-repo::rw}" \
          build "$PACKAGE_NAME" || {
   builderr=$?
   echo "Exiting with an error ($builderr), not tagging"
