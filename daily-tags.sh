@@ -131,3 +131,6 @@ pushd $AUTOTAG_CLONE &> /dev/null
   fi
   git push origin :refs/heads/$AUTOTAG_BRANCH || true  # error is not a big deal here
 popd &> /dev/null
+
+# Also tag the appropriate alidist
+(cd alidist && git push origin "HEAD:refs/tags/$PACKAGE-$AUTOTAG_TAG")
