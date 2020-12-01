@@ -10,6 +10,8 @@ from glob import glob
 from os.path import dirname, join, expanduser
 import re
 import os
+import platform
+import shutil
 import sys
 import datetime
 
@@ -102,13 +104,6 @@ def parse_args():
     return args
 
 
-def run_cmd(command, output_only_if_error=False):
-    print(command, file=sys.stderr)
-    err, out = getstatusoutput(command)
-    if not output_only_if_error or err:
-        print(out, file=sys.stderr)
-
-
 class Logs(object):
     def __init__(self, args, is_branch):
         self.work_dir = args.workDir
@@ -123,6 +118,7 @@ class Logs(object):
         self.url = join(args.logsUrl, self.pretty_log)
         self.log_url = join(args.logsUrl, self.full_log)
         self.build_successful = args.success
+        self.pr_built = parse_pr(args.pr)
 
     def parse(self):
         self.find()
@@ -229,26 +225,59 @@ class Logs(object):
                     self.o2checkcode_messages, self.failed_unit_tests,
                     self.errors_only_log, self.compiler_killed,
                     self.cmake_errors))),
+                'hostname': htmlescape(platform.node()),
+                'finish_time': datetime.datetime.utcnow().strftime('%a %-d %b %Y, %H:%M:%S UTC'),
+                'repo': self.pr_built.repo_name,
+                'pr_id': self.pr_built.id,
+                'commit': self.pr_built.commit,
+                'login_cmd': re.sub(
+                    '^(?:thermos-)?([a-z]*)-([a-z]*)-([a-z0-9_-]*)-([0-9]*)(?:-[0-9a-f]*){5}$',
+                    r'aurora task ssh -l root build/\1/\2/\3/\4',
+                    os.getenv('MESOS_EXECUTOR_ID', '(no Mesos ID)')),
             })
 
-    def cat(self, tgtFile, no_delete=False):
-        run_cmd("%s && mkdir -p `dirname copy-logs/%s`" % ("true" if no_delete else "rm -rf copy-logs", tgtFile),
-                output_only_if_error=True)
+    def cat(self, target_file, no_delete=False):
+        if not no_delete:
+            def print_delete_error(func, path, exc):
+                print(func.__name__, "could not delete", path,
+                      sep=": ", file=sys.stderr)
+            shutil.rmtree("copy-logs", onerror=print_delete_error)
+        try:
+            os.makedirs(dirname(join("copy-logs", target_file)))
+        except OSError as err:
+            # Directory already exists. OSError is raised on python2 and
+            # FileExistsError on python3; the latter is a subclass of OSError,
+            # so this clause handles both.
+            print("cannot create target dir:", err, file=sys.stderr)
 
-        run_cmd('echo "Builing on: $(hostname) at $(date +%Y-%m-%d-%H:%M:%S)" >> copy-logs/' + tgtFile)
-
-        if self.logs:
-            run_cmd("echo 'The following files are present in the log:' >> copy-logs/%s" % tgtFile)
-        else:
-            run_cmd("echo 'No logs found. Please check actual builders log in aurora.\n"
-                    "See http://alisw.github.io/infrastructure-pr-testing for more instructions.' >> copy-logs/%s" % tgtFile)
-
-        for log in self.logs:
-            run_cmd("echo '- %s' >> copy-logs/%s" % (log, tgtFile))
-
-        for log in self.logs:
-            run_cmd(("{ echo '## Begin %(log)s'; cat %(log)s; echo '## End %(log)s'; }"
-                     " >> copy-logs/%(tgtFile)s") % {'log': log, 'tgtFile': tgtFile})
+        with open(join("copy-logs", target_file), "w") as logf:
+            print("Finished building on", platform.node(), "at",
+                  datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S"),
+                  file=logf)
+            print("Built commit", self.pr_built.commit, "from",
+                  "https://github.com/%s/pull/%s" % (self.pr_built.repo_name,
+                                                     self.pr_built.id),
+                  file=logf)
+            if "MESOS_EXECUTOR_ID" in os.environ:
+                mesos_id = os.environ["MESOS_EXECUTOR_ID"]
+                print("To log into the build machine, use:\n",
+                      "   aurora task ssh -l root",
+                      re.sub("^(?:thermos-)?([a-z]*)-([a-z]*)-([a-z0-9_-]*)-([0-9]*)(?:-[0-9a-f]*){5}$",
+                             r"build/\1/\2/\3/\4", mesos_id),
+                      file=logf)
+            if self.logs:
+                print("The following files are present in the log:", file=logf)
+                for log in self.logs:
+                    print("-", log, file=logf)
+            else:
+                print("No logs found. Please check the aurora log.",
+                      "See http://alisw.github.io/infrastructure-pr-testing for more instructions.",
+                      sep="\n", file=logf)
+            for log in self.logs:
+                print("## Begin", log, file=logf)
+                with open(log) as sublogf:
+                    logf.writelines(sublogf)
+                print("## End", log, file=logf)
 
     def rsync(self, dest):
         err, out = getstatusoutput("cd copy-logs && rsync -av ./ %s" % dest)
@@ -269,7 +298,7 @@ class Logs(object):
         matches = []
         for root, dirnames, filenames in os.walk('copy-logs'):
             for filename in filenames:
-                matches.append(os.path.join(root, filename))
+                matches.append(join(root, filename))
         for src in matches:
             try:
                 dst = re.compile('^copy-logs/').sub('', src)
@@ -404,6 +433,16 @@ PRETTY_LOG_TEMPLATE = '''\
 </head>
 <body class="%(status)s">
   <h1>The build %(status)s</h1>
+  <table>
+    <tr><th>Build host</th><td>%(hostname)s</td></tr>
+    <tr><th>Finished at</th><td>%(finish_time)s</td></tr>
+    <tr><th>Built PR</th>
+        <td><a href="https://github.com/%(repo)s/pull/%(pr_id)s">%(repo)s#%(pr_id)s</a></td></tr>
+    <tr><th>Built commit</th>
+        <td><a href="https://github.com/%(repo)s/pull/%(pr_id)s/commits/%(commit)s"><code>%(commit)s</code></a></td></tr>
+  </table>
+  <p>Use the following command to log in to the build machine:
+     <pre><code>%(login_cmd)s</code></pre></p>
   <p>The code that finds and extracts error messages may have missed some.</p>
   <p>Check the <a href="%(log_url)s">full build log</a> if you suspect the build failed for reasons not listed below.</p>
   <h3>Table of contents</h3>
