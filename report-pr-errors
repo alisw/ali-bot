@@ -194,7 +194,7 @@ class Logs(object):
         self.compiler_killed = chunk_command_output_by_log(
             "grep -he 'fatal error: Killed signal terminated program' -- %s")
         self.cmake_errors = chunk_command_output_by_log(
-            "sed -En '/^CMake (Error|Warning)/,/^Call Stack/p' %s")
+            "sed -En '/^CMake (Error|Warning)/,/^$/p' %s")
 
     def generate_pretty_log(self):
         '''Extract error messages from logs.
