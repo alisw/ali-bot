@@ -110,7 +110,7 @@ node ("slc7_x86-64-light") {
                 *slc6_x86-64*)
                   perl -p -i -e 's|.*mirrorlist.centos.org.*||;s|#baseurl=http://mirror|baseurl=http://vault|g' /etc/yum.repos.d/*
                   yum install -y --disablerepo=eos centos-release-scl-rh centos-release-scl
-                  yum --enablerepo=centos-sclo-rh --disablerepo=eos -y install rh-python35
+                  yum --disablerepo centos-sclo-sclo --enablerepo=centos-sclo-rh --disablerepo=eos -y install rh-python35
                   source /opt/rh/rh-python35/enable
                 ;;
                 *) yum install -y python3-devel python3-pip python3-setuptools ;;
