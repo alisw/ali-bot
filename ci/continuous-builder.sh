@@ -1,4 +1,5 @@
 #!/bin/bash -x
+# -*- sh-basic-offset: 2 -*-
 # A simple script which keeps building using the latest aliBuild, alidist and
 # AliRoot / AliPhysics. Notice this will do an incremental build, not a full
 # build, so it really to catch errors earlier.
@@ -45,18 +46,18 @@ if [ "$1" != --skip-setup ]; then
   # short, simple name like slc8-gpu that we use for the .env directories.
   CUR_CONTAINER=${CONTAINER_IMAGE#*/}
   export CUR_CONTAINER=${CUR_CONTAINER%-builder:*}
+fi
 
-  # Generate example of force-hashes file. This is used to override what to check for testing
-  if ! [ -e force-hashes ]; then
-    cat > force-hashes <<EOF
+# Generate example of force-hashes file. This is used to override what to check for testing
+if ! [ -e force-hashes ]; then
+  cat > force-hashes <<EOF
 # Override what to build using this file.
 # Lines are of the form:
 # BUILD_TYPE (PR_NUMBER|BRANCH_NAME) PR_HASH ENV_NAME
 # Where:
-# - BUILD_TYPE: one of: not_tested, not_successful, tested, reviewed
+# - BUILD_TYPE: one of: untested, failed, succeeded
 # - ENV_NAME: the basename without ".env" of the .env file to source
 EOF
-  fi
 fi
 
 # Get a list of PRs to build -- force-hashes overrides list-branch-pr.
@@ -90,7 +91,10 @@ if [ -n "$HASHES" ]; then
 
     # Run the build
     . build-loop.sh
-  done
+  done &&
+    # If the loop succeeded, remove force-hashes so we don't keep building the
+    # same PRs forever.
+    rm -f force-hashes
 else
   # If we're idling, wait a while to conserve GitHub API requests.
   sleep "$(get_config_value timeout "${TIMEOUT:-600}")"
