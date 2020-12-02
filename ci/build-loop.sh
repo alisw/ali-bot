@@ -135,9 +135,10 @@ find sw/BUILD/ -maxdepth 1 -name '*latest*' -delete
 find sw/BUILD/ -maxdepth 4 -name coverage.info -delete
 
 # Only publish packages to remote store when we build the master branch. For
-# PRs, PR_NUMBER will be numeric; in that case, disable writing to the store. We
-# can't compare against 'master' here as 'dev' is the "master branch" for O2.
-if is_numeric "$PR_NUMBER"; then
+# PRs, PR_NUMBER will be numeric; in that case, only write to the regular
+# read-only store. We can't compare against 'master' here as 'dev' is the
+# "master branch" for O2.
+if ! is_numeric "$PR_NUMBER"; then
   REMOTE_STORE=$BRANCH_REMOTE_STORE
 fi
 
