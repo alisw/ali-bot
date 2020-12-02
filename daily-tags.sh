@@ -133,4 +133,4 @@ pushd $AUTOTAG_CLONE &> /dev/null
 popd &> /dev/null
 
 # Also tag the appropriate alidist
-(cd alidist && git push origin "HEAD:refs/tags/$PACKAGE-$AUTOTAG_TAG")
+(cd alidist && git push origin "HEAD:refs/tags/$PACKAGE_NAME-$AUTOTAG_TAG")
