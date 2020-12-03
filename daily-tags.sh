@@ -14,6 +14,9 @@ rm -rf alidist/
 ALIDIST_BRANCH="${ALIDIST_SLUG##*@}"
 ALIDIST_REPO="${ALIDIST_SLUG%@*}"
 
+git config --global user.name 'ALICE Builder'
+git config --global user.email alibuild@cern.ch
+
 git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO alidist/
 
 # Install the latest release if ALIBUILD_SLUG is not provided
@@ -88,15 +91,16 @@ import yaml
 from os import environ
 f = "alidist/defaults-%s.sh" % environ["DEFAULTS"].lower()
 p = environ["PACKAGE_NAME"]
-d = yaml.safe_load(open(f).read().split("---")[0])
-open(f+".old", "w").write(yaml.dump(d)+"\n---\n")
+meta, rest = open(f).read().split("\n---\n", 1)
+d = yaml.safe_load(meta)
+open(f+".old", "w").write(yaml.dump(d)+"\n---\n"+rest)
 d["overrides"] = d.get("overrides", {})
 d["overrides"][p] = d["overrides"].get(p, {})
 d["overrides"][p]["tag"] = environ["AUTOTAG_BRANCH"]
 v = environ.get("AUTOTAG_OVERRIDE_VERSION")
 if v:
     d["overrides"][p]["version"] = v
-open(f, "w").write(yaml.dump(d)+"\n---\n")
+open(f, "w").write(yaml.dump(d)+"\n---\n"+rest)
 EOF
 
 diff -rupN alidist/defaults-${DEFAULTS_LOWER}.sh.old alidist/defaults-${DEFAULTS_LOWER}.sh | cat
@@ -133,4 +137,11 @@ pushd $AUTOTAG_CLONE &> /dev/null
 popd &> /dev/null
 
 # Also tag the appropriate alidist
-(cd alidist && git push origin "HEAD:refs/tags/${PACKAGE_NAME:?}-${AUTOTAG_TAG:?}")
+cd alidist
+defaults_fname=defaults-${DEFAULTS,,}.sh
+# If the file was modified, the output of git status will be non-empty.
+if [ -n "$(git status --porcelain=v1 "$defaults_fname")" ]; then
+  git add "$defaults_fname"
+  git commit -m "Auto-update $defaults_fname"
+fi
+git push origin "HEAD:refs/tags/${PACKAGE_NAME:?}-${AUTOTAG_TAG:?}"
