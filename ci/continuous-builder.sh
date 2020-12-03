@@ -68,7 +68,7 @@ fi
 
 if [ -n "$HASHES" ]; then
   # Loop through PRs we can build if there are any.
-  echo "$HASHES" | cat -n | while read -r BUILD_SEQ BUILD_TYPE PR_NUMBER PR_HASH env_name; do
+  echo "$HASHES" | cat -n | while read -r BUILD_SEQ BUILD_TYPE PR_NUMBER PR_HASH env_name; do (
     # Run iterations in a subshell so environment variables are not kept
     # across potentially different repos. This is an issue as env files are
     # allowed to define arbitrary variables that other files (or the defaults
@@ -91,7 +91,7 @@ if [ -n "$HASHES" ]; then
 
     # Run the build
     . build-loop.sh
-  done &&
+  ); done &&
     # If the loop succeeded, remove force-hashes so we don't keep building the
     # same PRs forever.
     rm -f force-hashes
