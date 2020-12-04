@@ -29,15 +29,15 @@ export PATH=/opt/alisw/el7/bin:\$PATH
 export MODULEPATH=$INSTALLPREFIX/$FLAVOUR/modulefiles:$INSTALLPREFIX/$FLAVOUR/etc/Modules/modulefiles:\$MODULEPATH
 EOF
   pushd aliswmod
-    fpm -s dir                        \
-        -t rpm                        \
-        --force                       \
-        --depends environment-modules \
-        --prefix /                    \
-        --architecture $ARCHITECTURE  \
-        --version $ALISWMOD_VERSION   \
-        --iteration 1.$FLAVOUR        \
-        --name alisw-aliswmod         \
+    fpm -s dir                               \
+        -t rpm                               \
+        --force                              \
+        --depends environment-modules >= 4.0 \
+        --prefix /                           \
+        --architecture $ARCHITECTURE         \
+        --version $ALISWMOD_VERSION          \
+        --iteration 1.$FLAVOUR               \
+        --name alisw-aliswmod                \
         .
   popd
   mv aliswmod/$ALISWMOD_RPM .
