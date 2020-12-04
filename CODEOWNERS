@@ -1,7 +1,7 @@
-*                          @ktf
-/cvmfs/*                   @ktf
-/ci/*                      @ktf
-/ci/continuous-builder.sh  @ktf
-/es/*                      @ktf
-/scripts/*                 @ktf
-/publish/*                 @ktf
+*                             @ktf
+/cvmfs/*                      @ktf
+/ci/*                         @ktf
+/es/*                         @ktf
+/scripts/*                    @ktf
+/publish/*                    @ktf
+/publish/aliPublish-rpms.conf @alisw/dataflow-experts
