@@ -40,8 +40,8 @@ Package shipping essential configuration macros to build %scl Software Collectio
 %install
 %scl_install
 
-mkdir -p $RPM_BUILD_ROOT%_sysconfdir/yum.repos.d
-cat > $RPM_BUILD_ROOT%_sysconfdir/yum.repos.d/alisw-el7.repo <<EOF
+mkdir -p $RPM_BUILD_ROOT%_root_sysconfdir/yum.repos.d
+cat > $RPM_BUILD_ROOT%_root_sysconfdir/yum.repos.d/alisw-el7.repo <<EOF
 [alisw-el7]
 name=ALICE Software - EL7
 baseurl=https://s3.cern.ch/swift/v1/alibuild-repo/RPMS/el7.x86_64/
@@ -49,7 +49,7 @@ enabled=0
 gpgcheck=0
 EOF
 
-cat > $RPM_BUILD_ROOT%_sysconfdir/yum.repos.d/alisw-upd-el7.repo <<EOF
+cat > $RPM_BUILD_ROOT%_root_sysconfdir/yum.repos.d/alisw-upd-el7.repo <<EOF
 [alisw-upd-el7]
 name=ALICE Software - EL7
 baseurl=https://s3.cern.ch/swift/v1/alibuild-repo/UpdRPMS/el7.x86_64/
@@ -73,8 +73,8 @@ mkdir -p %{buildroot}%{_mandir}/man7/
 
 %files runtime -f filelist
 %scl_files
-%_sysconfdir/yum.repos.d/alisw-el7.repo
-%_sysconfdir/yum.repos.d/alisw-upd-el7.repo
+%_root_sysconfdir/yum.repos.d/alisw-el7.repo
+%_root_sysconfdir/yum.repos.d/alisw-upd-el7.repo
 
 %files build
 %{_root_sysconfdir}/rpm/macros.%{scl}-config
