@@ -12,12 +12,13 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
+          fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Check publish/
         run: |
           git diff --name-only "$(git merge-base HEAD ${{ github.event.pull_request.base.sha }})" |
-             greq -q '^publish/' ||
+             grep -q '^publish/' ||
              exit 0
           pushd publish
             for conf in aliPublish*.conf; do
@@ -34,7 +35,7 @@ jobs:
       - name: Check cvmfs/
         run: |
           git diff --name-only "$(git merge-base HEAD ${{ github.event.pull_request.base.sha }})" |
-             greq -q '^cvmfs/' ||
+             grep -q '^cvmfs/' ||
              exit 0
           # Install and configure an old bash
           rm -rf "$HOME/cached" "$HOME/scratch"
