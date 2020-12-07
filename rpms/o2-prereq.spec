@@ -40,6 +40,23 @@ Package shipping essential configuration macros to build %scl Software Collectio
 %install
 %scl_install
 
+mkdir -p %{buildroot}/etc/yum.repos.d
+cat > %{buildroot}/etc/yum.repos.d/alisw-el7.repo <<EOF
+[alisw-el7]
+name=ALICE Software - EL7
+baseurl=https://s3.cern.ch/swift/v1/alibuild-repo/RPMS/el7.x86_64/
+enabled=0
+gpgcheck=0
+EOF
+
+cat > %{buildroot}/etc/yum.repos.d/alisw-upd-el7.repo <<EOF
+[alisw-upd-el7]
+name=ALICE Software - EL7
+baseurl=https://s3.cern.ch/swift/v1/alibuild-repo/UpdRPMS/el7.x86_64/
+enabled=0
+gpgcheck=0
+EOF
+
 mkdir -p %{buildroot}%{_scl_prefix}
 cat >> %{buildroot}%{_scl_scripts}/enable << EOF
 export PATH="%{_bindir}:%{_sbindir}\${PATH:+:\${PATH}}"
