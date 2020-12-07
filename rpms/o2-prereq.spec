@@ -73,6 +73,8 @@ mkdir -p %{buildroot}%{_mandir}/man7/
 
 %files runtime -f filelist
 %scl_files
+%{buildroot}/etc/yum.repos.d/alisw-el7.repo
+%{buildroot}/etc/yum.repos.d/alisw-upd-el7.repo
 
 %files build
 %{_root_sysconfdir}/rpm/macros.%{scl}-config
