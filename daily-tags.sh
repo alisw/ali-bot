@@ -83,9 +83,9 @@ popd &> /dev/null  # exit Git repo
 
 # Process overrides by changing in-place the given defaults. This requires some
 # YAML processing so we are better off with Python.
-env AUTOTAG_BRANCH=$AUTOTAG_BRANCH \
-    PACKAGE_NAME=$PACKAGE_NAME     \
-    DEFAULTS=$DEFAULTS             \
+env "AUTOTAG_TAG=$AUTOTAG_TAG"   \
+    "PACKAGE_NAME=$PACKAGE_NAME" \
+    "DEFAULTS=$DEFAULTS"         \
 python <<\EOF
 import yaml
 from os import environ
@@ -96,7 +96,7 @@ d = yaml.safe_load(meta)
 open(f+".old", "w").write(yaml.dump(d)+"\n---\n"+rest)
 d["overrides"] = d.get("overrides", {})
 d["overrides"][p] = d["overrides"].get(p, {})
-d["overrides"][p]["tag"] = environ["AUTOTAG_BRANCH"]
+d["overrides"][p]["tag"] = environ["AUTOTAG_TAG"]
 v = environ.get("AUTOTAG_OVERRIDE_VERSION")
 if v:
     d["overrides"][p]["version"] = v
