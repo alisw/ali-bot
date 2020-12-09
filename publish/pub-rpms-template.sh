@@ -19,7 +19,7 @@ cd $TMPDIR
 
 if [[ $RPM_IS_UPDATABLE ]]; then
   case "%(dependencies)s" in
-    *AliEn-Runtime*) ;;
+    *AliEn-runtime*) ;;
     *) echo "Not publishing %(package)s with version %(version)s as it has AliEn-Runtime as a dependency";  exit 0 ;;
   esac
 fi
