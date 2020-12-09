@@ -17,6 +17,13 @@ RPM_IS_UPDATABLE=%(updatable)s
 which fpm
 cd $TMPDIR
 
+if [[ $RPM_IS_UPDATABLE ]]; then
+  case "%(dependencies)s" in
+    *dataflow*) ;;
+    *) echo "Not publishing %(package)s with version %(version)s as it was not built using the o2-dataflow default";  exit 0 ;;
+  esac
+fi
+
 # Create aliswmod RPM
 ALISWMOD_VERSION=3
 ALISWMOD_RPM="alisw-aliswmod-$ALISWMOD_VERSION-1.%(arch)s.rpm"
