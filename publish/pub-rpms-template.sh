@@ -107,8 +107,6 @@ pushd unpack_rpm
        --connect-timeout $CONNTIMEOUT \
        --retry-delay $CONNRETRYDELAY  \
        --retry $CONNRETRY "%(url)s"   | tar --strip-components=$RPM_TAR_STRIP -xzf -
-  # Make sure Modulefile is there
-  [[ -e "$RPM_ROOT/etc/modulefiles/%(package)s" ]]
   # Rename "bad" files -- see https://github.com/jordansissel/fpm/issues/1385
   while read BAD_FILE; do
     mv -v "$BAD_FILE" "${BAD_FILE//\'/_}"
