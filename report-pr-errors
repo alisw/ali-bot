@@ -181,11 +181,16 @@ class Logs(object):
                     blocks.append(log + "\n" + out)
             return "\n\n\n".join(blocks).strip(" \n\t")
 
-        self.errors_only_log = chunk_command_output_by_log(
-            "grep -he ': internal compiler error:' -e ': error:' -e ': warning:' -A 3 -B 3 -- %s",
+        self.errors_log = chunk_command_output_by_log(
+            r"grep -EC 3 ': (internal compiler |fatal )?error:|^Error:|\*\*\*' -- %s",
             # Errors from this log are reported in o2checkcode_messages
             # already, so don't report them twice. This log also contains false
             # positives, so o2checkcode_messages is better.
+            ignore_log_files=['o2checkcode-latest'])
+        self.warnings_log = chunk_command_output_by_log(
+            "grep -EC 3 ': warning:|^Warning:' -- %s",
+            # Warnings from this log are reported in o2checkcode_messages
+            # already, so don't report them twice.
             ignore_log_files=['o2checkcode-latest'])
         self.o2checkcode_messages = chunk_command_output_by_log(
             "sed -n '/=== List of errors found ===/,$p' %s")
@@ -194,7 +199,7 @@ class Logs(object):
         self.compiler_killed = chunk_command_output_by_log(
             "grep -he 'fatal error: Killed signal terminated program' -- %s")
         self.cmake_errors = chunk_command_output_by_log(
-            "sed -En '/^CMake (Error|Warning)/,/^$/p' %s")
+            "sed -En '/^CMake Error/,/^$/p' %s")
 
     def generate_pretty_log(self):
         '''Extract error messages from logs.
@@ -216,14 +221,16 @@ class Logs(object):
                 'o2c_display': display(self.o2checkcode_messages),
                 'unittests': htmlescape(self.failed_unit_tests),
                 'unit_display': display(self.failed_unit_tests),
-                'errors': htmlescape(self.errors_only_log),
-                'err_display': display(self.errors_only_log),
+                'errors': htmlescape(self.errors_log),
+                'err_display': display(self.errors_log),
+                'warnings': htmlescape(self.warnings_log),
+                'warn_display': display(self.warnings_log),
                 'cmake': htmlescape(self.cmake_errors),
                 'cmake_display': display(self.cmake_errors),
                 'killed_display': display(self.compiler_killed),
                 'noerrors_display': display(not any((
                     self.o2checkcode_messages, self.failed_unit_tests,
-                    self.errors_only_log, self.compiler_killed,
+                    self.errors_log, self.warnings_log, self.compiler_killed,
                     self.cmake_errors))),
                 'hostname': htmlescape(platform.node()),
                 'finish_time': datetime.datetime.utcnow().strftime('%a %-d %b %Y, %H:%M:%S UTC'),
@@ -428,6 +435,7 @@ PRETTY_LOG_TEMPLATE = '''\
    #o2checkcode, #o2checkcode-toc { display: %(o2c_display)s; }
    #tests, #tests-toc { display: %(unit_display)s; }
    #errors, #errors-toc { display: %(err_display)s; }
+   #warnings, #warnings-toc { display: %(warn_display)s; }
    #cmake, #cmake-toc { display: %(cmake_display)s; }
   </style>
 </head>
@@ -453,14 +461,11 @@ PRETTY_LOG_TEMPLATE = '''\
     <li id="o2checkcode-toc"><a href="#o2checkcode"><code>o2checkcode</code> results</a></li>
     <li id="tests-toc"><a href="#tests">Unit test results</a></li>
     <li id="errors-toc"><a href="#errors">Error messages</a></li>
+    <li id="warnings-toc"><a href="#warnings">Compiler warnings</a></li>
   </ol></nav></p>
   <section id="noerrors">
     <h2>No errors found</h2>
     <p>Check the <a href="%(log_url)s">full build log</a> to see all compilation messages.</p>
-  </section>
-  <section id="cmake">
-    <h2>CMake errors and warnings</h2>
-    <p><pre><code>%(cmake)s</code></pre></p>
   </section>
   <section id="compiler-killed">
     <h2>Error: the compiler process was killed</h2>
@@ -474,11 +479,21 @@ PRETTY_LOG_TEMPLATE = '''\
     <h2>Unit test results</h2>
     <p><pre><code>%(unittests)s</code></pre></p>
   </section>
+  <section id="cmake">
+    <h2>CMake errors</h2>
+    <p><pre><code>%(cmake)s</code></pre></p>
+  </section>
   <section id="errors">
-    <h2>Error and warning messages</h2>
+    <h2>Error messages</h2>
     <p>Note that the following list may include false positives! Check the sections above first.</p>
     <p><pre><code>%(errors)s</code></pre></p>
   </section>
+  <section id="warnings">
+    <h2>Compiler warnings</h2>
+    <p>Note that the following list may include false positives! Check the sections above first.</p>
+    <p><pre><code>%(warnings)s</code></pre></p>
+  </section>
+  <p>Check the <a href="%(log_url)s">full build log</a> for potentially more helpful messages.</p>
 </body>
 '''
 
