@@ -38,7 +38,7 @@ done
 if [ "$BUILD_TYPE" = untested ]; then
   # Set a status on GitHub showing the build start time, but only if this is
   # the first build! Rebuilds should only set the final success/failure.
-  report_pr_errors --pending -m "Started $(date +'%a %H:%MZ') @ $host_id"
+  report_pr_errors --pending -m "Started $(date -u +'%a %H:%MZ') @ $host_id"
 fi
 
 # A few common environment variables when reporting status to analytics.
