@@ -518,30 +518,55 @@ def getTimestamp(s):
     return 0
   return getTotalSeconds(dt - datetime(1970, 1, 1))  # yes, it's a mess
 
-def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, autoIncludeDeps,
-         notifEmail, dryRun, jget):
+def sync(pub, architectures, baseUrl, basePrefix, rules, excludeOlderThanSec,
+         includeFirst, autoIncludeDeps, notifEmail, dryRun, connParams):
 
   newPackages = {}
 
   # Template URLs
-  packNamesUrlTpl   = "%(baseUrl)s/%(arch)s/dist-direct/"
-  distUrlTpl        = "%(baseUrl)s/%(arch)s/dist/%(pack)s/%(pack)s-%(ver)s/"
-  distDirectUrlTpl  = "%(baseUrl)s/%(arch)s/dist-direct/%(pack)s/%(pack)s-%(ver)s/"
-  distRuntimeUrlTpl = "%(baseUrl)s/%(arch)s/dist-runtime/%(pack)s/%(pack)s-%(ver)s/"
-  verUrlTpl         = "%(baseUrl)s/%(arch)s/dist-direct/%(pack)s/"
-  getPackUrlTpl     = distDirectUrlTpl + "/%(pack)s-%(ver)s.%(arch)s.tar.gz"
+  packNamesPathTpl = "%(arch)s/dist-direct"
+  distPathTpl      = "%(arch)s/%(dist)s/%(pack)s/%(pack)s-%(ver)s"
+  verPathTpl       = "%(arch)s/dist-direct/%(pack)s"
+  getPackUrlTpl    = "%(baseUrl)s/%(basePrefix)s/%(arch)s/dist-direct/%(pack)s/%(pack)s-%(ver)s/%(pack)s-%(ver)s.%(arch)s.tar.gz"
+
+  def listDir(path):
+    url = format("%(base)s?prefix=%(prefix)s/%(path)s/",
+                 base=baseUrl, prefix=basePrefix, path=path)
+    debug("Getting directory contents for " + url)
+    # This is a list of all file names under path (recursively).
+    files = requests.get(url, verify=connParams["http_ssl_verify"],
+                         timeout=connParams["conn_timeout_s"]) \
+                    .text.splitlines()
+    # Directories aren't listed separately, so we add a directory if we see a
+    # file inside it. This means that directories can be added multiple times
+    # (if they contain multiple files), so deduplicate by using a set here.
+    contents = set()
+    # The server returns file names with this prefix, which we want to ignore.
+    strip = basePrefix + "/" + path + "/"
+    for filename in files:
+      # Strip prefix and path from returned file names
+      if filename.startswith(strip):
+        filename = filename[len(strip):]
+      # We only care about the immediate contents of path, so if the file name
+      # contains a / after stripping path, we know it's a directory with some
+      # contents. In that case, only track the directory. If no / remains, it
+      # must be a file directly under path.
+      name, is_dir, _ = filename.partition("/")
+      contents.add((name, "directory" if is_dir else "file"))
+    # Fake a last-modified time. S3 doesn't provide this info. The timestamp
+    # must end in "UTC" or "GMT", else getTimestamp won't recognise it.
+    now = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
+    # Create a list of directory entries in the format expected below.
+    return [{"name": name, "mtime": now, "type": ftype} for name, ftype in contents]
 
   # Prepare the list of packages to install
   for arch in architectures:
     newPackages[arch] = []
-    packNamesUrl = format(packNamesUrlTpl,
-                          baseUrl=baseUrl, arch=arch)
 
     # Get valid package names for this architecture
-    debug(format("Getting packages for architecture %(arch)s from %(url)s",
-                 arch=arch, url=packNamesUrl))
-    distPackages = [ p["name"] for p in jget(packNamesUrl) if p["type"] == "directory" ]
-    distPackages.sort(key=lambda p: -len(p))
+    distPackages = sorted((p["name"] for p in listDir(format(packNamesPathTpl, arch=arch))
+                           if p["type"] == "directory"),
+                          key=len, reverse=True)
     debug("Packages found: %s" % ", ".join([p for p in distPackages]))
 
     # Packages to publish
@@ -553,11 +578,7 @@ def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, 
         continue
       if not includeFirst and rules["exclude"][arch].get(pkgName) == True:
         continue
-      verUrl = format(verUrlTpl,
-                      baseUrl=baseUrl, arch=arch, pack=pkgName)
-      debug(format("%(arch)s / %(pack)s: listing versions under %(url)s",
-                   arch=arch, pack=pkgName, url=verUrl))
-      for pkgTar in jget(verUrl):
+      for pkgTar in listDir(format(verPathTpl, arch=arch, pack=pkgName)):
         if pkgTar["type"] != "directory":
           continue
         nameVer = nameVerFromTar(pkgTar["name"], arch, [pkgName])
@@ -584,15 +605,15 @@ def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, 
 
         # At this point we have filtered in the package: let's see its dependencies!
         # Note that a package always depends on itself (list cannot be empty).
-        distUrl = format(distRuntimeUrlTpl,
-                         baseUrl=baseUrl, arch=arch, pack=pkgName, ver=pkgVer)
-        runtimeDeps = jget(distUrl)
+        distPath = format(distPathTpl, dist="dist-runtime",
+                          arch=arch, pack=pkgName, ver=pkgVer)
+        runtimeDeps = listDir(distPath)
         if not runtimeDeps:
           error(format("%(arch)s / %(pack)s / %(ver)s: cannot list dependencies from %(url)s: skipping",
-                       arch=arch, pack=pkgName, ver=pkgVer, url=distUrl))
+                       arch=arch, pack=pkgName, ver=pkgVer, url=distPath))
           continue
         debug(format("%(arch)s / %(pack)s / %(ver)s: listing all dependencies under %(url)s",
-                     arch=arch, pack=pkgName, ver=pkgVer, url=distUrl))
+                     arch=arch, pack=pkgName, ver=pkgVer, url=distPath))
         for depTar in runtimeDeps:
           if depTar["type"] != "file":
             continue
@@ -604,7 +625,7 @@ def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, 
           # Append only if it does not exist yet
           if len([p for p in pubPackages if p["name"]==depName and p["ver"]==depVer]) == 0:
             debug(format("%(arch)s / %(pack)s / %(ver)s: adding %(depName)s %(depVer)s to publish",
-                  arch=arch, pack=pkgName, ver=pkgVer, url=distUrl,
+                  arch=arch, pack=pkgName, ver=pkgVer, url=distPath,
                   depName=depName, depVer=depVer))
             pubPackages.append({ "name": depName, "ver": depVer })
 
@@ -615,8 +636,8 @@ def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, 
 
     # Packages installation
     for pack in pubPackages:
-      pkgUrl = format(getPackUrlTpl,
-                       baseUrl=baseUrl, arch=arch, pack=pack["name"], ver=pack["ver"])
+      pkgUrl = format(getPackUrlTpl, baseUrl=baseUrl, basePrefix=basePrefix,
+                      arch=arch, pack=pack["name"], ver=pack["ver"])
 
       if pub.installed(architectures[arch], pack["name"], pack["ver"]):
         debug(format("%(arch)s / %(pack)s / %(ver)s: already installed: skipping",
@@ -625,16 +646,9 @@ def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, 
 
       # Get direct and indirect dependencies
       deps = {}
-      depUrlTpls = { "dist": distUrlTpl,
-                     "dist-direct": distDirectUrlTpl,
-                     "dist-runtime": distRuntimeUrlTpl }
       depFail = False
-      for key,depsUrlTpl in depUrlTpls.iteritems():
-        depsUrl = format(depsUrlTpl,
-                         baseUrl=baseUrl, arch=arch, pack=pack["name"], ver=pack["ver"])
-        debug(format("%(arch)s / %(pack)s / %(ver)s: listing %(key)s dependencies from %(url)s",
-                     arch=arch, pack=pack["name"], ver=pack["ver"], key=key, url=depsUrl))
-        jdeps = jget(depsUrl)
+      for key in ("dist", "dist-direct", "dist-runtime"):
+        jdeps = listDir(format(distPathTpl, dist=key, arch=arch, pack=pack["name"], ver=pack["ver"]))
         if not jdeps:
           error(format("%(arch)s / %(pack)s / %(ver)s: cannot get %(dtype)s dependencies: skipping",
                        arch=arch, pack=pack["name"], ver=pack["ver"], dtype=key))
@@ -1000,13 +1014,14 @@ def main():
     r = sync(pub=pub,
              architectures=architectures,
              baseUrl=conf["base_url"],
+             basePrefix=conf["base_prefix"],
              rules=rules,
              excludeOlderThanSec=conf["exclude_older_d"] * 86400,
              includeFirst=includeFirst,
              autoIncludeDeps=conf["auto_include_deps"],
              notifEmail=conf["notification_email"],
              dryRun=args.dryRun,
-             jget=jget)
+             connParams=connParams)
     debug("Made %d unique HTTP requests (%d remote requests including retries, %d read from cache)" % \
           (jget.count_req, jget.count_req_retries, jget.count_cached))
     debug("Summary of requested URLs (DIR=direct access, HIT=cache hit, MIS=cache miss):")
