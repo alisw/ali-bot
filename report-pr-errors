@@ -188,7 +188,10 @@ class Logs(object):
             # positives, so o2checkcode_messages is better.
             ignore_log_files=['o2checkcode-latest'])
         self.warnings_log = chunk_command_output_by_log(
-            "grep -EC 3 ': warning:|^Warning:' -- %s",
+            # We need -P for (?!...) negative lookaheads, which we use to
+            # filter out a specific linker error that can't be turned off.
+            # Other warnings should go through, though.
+            "grep -PC 3 ': warning:|^Warning: (?!Unused direct dependencies:$)' -- %s",
             # Warnings from this log are reported in o2checkcode_messages
             # already, so don't report them twice.
             ignore_log_files=['o2checkcode-latest'])
