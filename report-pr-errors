@@ -183,7 +183,7 @@ class Logs(object):
 
         self.errors_log = chunk_command_output_by_log(
             r"grep -EC 3 ': (internal compiler |fatal )?error:|^Error(:| in )|"
-            r"make.*: \*\*\*|\*\*\*Failed|^\*{79}$' -- %s",
+            r"make.*: \*\*\*|\*\*\*Failed' -- %s",
             # Errors from this log are reported in o2checkcode_messages
             # already, so don't report them twice. This log also contains false
             # positives, so o2checkcode_messages is better.
