@@ -155,4 +155,8 @@ if [ -n "$(git status --porcelain "$defaults_fname" "$pkg_fname")" ]; then
   git add "$defaults_fname" "$pkg_fname"
   git commit -m "Auto-update $defaults_fname and $pkg_fname"
 fi
-git push origin "HEAD:refs/tags/${PACKAGE_NAME:?}-${AUTOTAG_TAG:?}"
+git push origin -f "HEAD:refs/tags/${PACKAGE_NAME:?}-${AUTOTAG_TAG:?}"
+# If ALIDIST_BRANCH doesn't exist or we can push to it, do it.
+git push origin "HEAD:${ALIDIST_BRANCH:?}" ||
+  # Else, make a PR by pushing an rc/ branch. (An action in the repo handles this.)
+  git push origin -f "HEAD:rc/${ALIDIST_BRANCH:?}"
