@@ -149,10 +149,10 @@ popd &> /dev/null
 # We normally want to build using the tag, and now it exists.
 edit_tags "$AUTOTAG_TAG"
 cd alidist
-defaults_fname=defaults-${DEFAULTS,,}.sh
+defaults_fname=defaults-${DEFAULTS,,}.sh pkg_fname=${PACKAGE_NAME,,}.sh
 # If the file was modified, the output of git status will be non-empty.
-if [ -n "$(git status --porcelain "$defaults_fname")" ]; then
-  git add "$defaults_fname"
-  git commit -m "Auto-update $defaults_fname"
+if [ -n "$(git status --porcelain "$defaults_fname" "$pkg_fname")" ]; then
+  git add "$defaults_fname" "$pkg_fname"
+  git commit -m "Auto-update $defaults_fname and $pkg_fname"
 fi
 git push origin "HEAD:refs/tags/${PACKAGE_NAME:?}-${AUTOTAG_TAG:?}"
