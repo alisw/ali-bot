@@ -277,17 +277,20 @@ def main(args):
         prs = grouped[group]
         if number is not None and number <= len(prs):
             prs = random.sample(prs, number)
-        for pull in prs:
+        # Sort by PR number so that older PRs are built first. Don't use
+        # .sort() here as it modifies the list in-place, and that list might
+        # also be used elsewhere.
+        for pull in sorted(prs, key=lambda pr: pr["number"]):
             print(group, pull["number"], pull["sha"],
                   pull["repo"].build_config, sep="\t")
 
     if grouped["untested"]:
         # If there are untested PRs waiting, build all of them first.
         print_prs("untested")
-    elif grouped["failed"] and random.random() < 0.7:
+    elif grouped["failed"] and (not grouped["succeeded"] or random.random() < 0.7):
         # Rebuild a failed PR, but sometimes fall through and rebuild a
-        # successful one instead. This is so a single red PR can't stop all
-        # green PRs from being rebuilt occasionally.
+        # successful one instead (if there are any). This is so a single red PR
+        # can't stop all green PRs from being rebuilt occasionally.
         print_prs("failed", 1)
     elif grouped["succeeded"]:
         print_prs("succeeded", 1)
