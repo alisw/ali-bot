@@ -71,7 +71,7 @@ find separate_logs/ -type f -mtime +5 -delete || true
 find separate_logs/ -type d -empty -delete || true
 
 # Run preliminary cleanup command
-aliBuild clean ${DEBUG:+--debug}
+aliBuild clean --debug
 
 # We are looping over several build hashes here. We will have one log per build.
 mkdir -p "separate_logs/$(date -u +%Y%m%d-%H%M%S)-$PR_NUMBER-$PR_HASH"
@@ -152,7 +152,7 @@ if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash             \
                      --defaults "$ALIBUILD_DEFAULTS"                     \
                      ${MIRROR:+--reference-sources $MIRROR}              \
                      ${REMOTE_STORE:+--remote-store $REMOTE_STORE}       \
-                     --fetch-repos ${DEBUG:+--debug} build "$PACKAGE"
+                     --fetch-repos --debug build "$PACKAGE"
 then
   if is_numeric "$PR_NUMBER"; then
     # This is a PR. Use the error function (with --success) to still provide logs
@@ -170,7 +170,7 @@ else
 fi
 
 # Run post-build cleanup command
-aliBuild clean ${DEBUG:+--debug}
+aliBuild clean --debug
 
 (
   # Look for any code coverage file for the given commit and push it to

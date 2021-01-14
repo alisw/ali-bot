@@ -74,7 +74,6 @@ function get_config () {
   # If the files have been deleted in the meantime, this will set the variables
   # to the empty string.
   SILENT=$(get_config_value silent)
-  DEBUG=$(get_config_value debug)
 }
 
 function reset_git_repository () {
