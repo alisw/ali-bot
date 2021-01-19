@@ -189,10 +189,20 @@ class Logs(object):
             # positives, so o2checkcode_messages is better.
             ignore_log_files=['o2checkcode-latest'])
         self.warnings_log = chunk_command_output_by_log(
-            # We need -P for (?!...) negative lookaheads, which we use to
-            # filter out a specific linker error that can't be turned off.
-            # Other warnings should go through, though.
-            "grep -PC 3 ': warning:|^Warning: (?!Unused direct dependencies:$)' -- %s",
+            # We need this complexity to filter out a specific linker warning
+            # that can't be turned off. This would be much easier with grep -P,
+            # but that doesn't work on MacOS.
+            # grep prints line numbers delimited by ":", so set -F: in awk.
+            "< /dev/null awk -F: -v logfile=%s 'BEGIN {" + """
+            # This command extracts wanted lines from the log, with their line numbers.
+            grepcmd = "grep -Ehn ': warning:|^Warning: ' -- " logfile " | " \\
+              "grep -Ev '^[0-9]+:Warning: Unused direct dependencies:$'"
+            # Build an array of line numbers that we want to print -- including context lines.
+            while (grepcmd | getline) for (i=$1-3; i<=$1+3; i++) output[i] = 1
+            # Now read the log file and print desired lines. Use ++lineno as line numbers
+            # from grep start at 1. Use uniq to filter out repeated "--" lines.
+            while (getline < logfile) print output[++lineno] ? $0 : "--" | "uniq"
+            """.replace("'", r"'\''") + "}'",
             # Warnings from this log are reported in o2checkcode_messages
             # already, so don't report them twice.
             ignore_log_files=['o2checkcode-latest'])
