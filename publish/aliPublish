@@ -36,23 +36,13 @@ def searchMany(name, exprs):
     return True
   return False
 
-def applyFilter(name, timestamp, includeRules, excludeRules, includeFirst, excludeOlderThanSec):
-  if excludeOlderThanSec > 0 and time()-timestamp > excludeOlderThanSec:
-    return False  # excluding because too old (excludeOlderThanSec == 0: never exclude)
+def applyFilter(name, includeRules, excludeRules, includeFirst):
   if includeFirst:
-    if searchMany(name, includeRules):
-      return not searchMany(name, excludeRules)
-    else:
-      return False
-  else:
-    if searchMany(name, excludeRules):
-      return False
-    else:
-      if includeRules is None:
-        # process exclude first, and no explicit include rule: keep it
-        return True
-      else:
-        return searchMany(name, includeRules)
+    return searchMany(name, includeRules) and not searchMany(name, excludeRules)
+  if searchMany(name, excludeRules):
+    return False
+  # process exclude first, and no explicit include rule: keep it
+  return includeRules is None or searchMany(name, includeRules)
 
 def runInstallScript(script, dryRun, **kwsub):
   if dryRun:
@@ -495,30 +485,7 @@ def nameVerFromTar(tar, arch, validPacks):
       return { "name": vm.group(1), "ver": vm.group(2) }
   return None
 
-if hasattr(datetime, "total_seconds"):
-  # Python 2.7+
-  def getTotalSeconds(dt):
-    return dt.total_seconds()
-else:
-  # Python 2.6
-  def getTotalSeconds(dt):
-    return (dt.microseconds + (dt.seconds + dt.days * 24 * 3600) * 1000000) / 1000000
-
-def getTimestamp(s):
-  # Convert a given string in the format "Thu, 03 Aug 2017 01:12:54 GMT" to
-  # an UTC Unix timestamp and return it. Only strings ending with GMT or UTC
-  # are supported! In case of errors, zero is returned
-  if not s.endswith("GMT") and not s.endswith("UTC"):
-    return 0
-  try:
-    dt = datetime.strptime(s, "%a, %d %b %Y %H:%M:%S %Z")
-  except Exception as e:
-    error("Cannot parse time string {timestring}: {exception}".format(
-      timestring=s, exception=str(e)))
-    return 0
-  return getTotalSeconds(dt - datetime(1970, 1, 1))  # yes, it's a mess
-
-def sync(pub, architectures, baseUrl, basePrefix, rules, excludeOlderThanSec,
+def sync(pub, architectures, baseUrl, basePrefix, rules,
          includeFirst, autoIncludeDeps, notifEmail, dryRun, connParams):
 
   newPackages = {}
@@ -552,22 +519,20 @@ def sync(pub, architectures, baseUrl, basePrefix, rules, excludeOlderThanSec,
       # contents. In that case, only track the directory. If no / remains, it
       # must be a file directly under path.
       name, is_dir, _ = filename.partition("/")
-      contents.add((name, "directory" if is_dir else "file"))
-    # Fake a last-modified time. S3 doesn't provide this info. The timestamp
-    # must end in "UTC" or "GMT", else getTimestamp won't recognise it.
-    now = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
+      if (is_dir and incl_dirs) or (not is_dir and incl_files):
+        contents.add((name, "directory" if is_dir else "file"))
     # Create a list of directory entries in the format expected below.
-    return [{"name": name, "mtime": now, "type": ftype} for name, ftype in contents]
+    return [{"name": name, "type": ftype} for name, ftype in contents]
 
   # Prepare the list of packages to install
   for arch in architectures:
     newPackages[arch] = []
 
     # Get valid package names for this architecture
-    distPackages = sorted((p["name"] for p in listDir(format(packNamesPathTpl, arch=arch))
-                           if p["type"] == "directory"),
+    distPackages = sorted((p["name"] for p in listDir(format(packNamesPathTpl, arch=arch),
+                                                      incl_files=False)),
                           key=len, reverse=True)
-    debug("Packages found: %s" % ", ".join([p for p in distPackages]))
+    debug("Packages found: %s", ", ".join(distPackages))
 
     # Packages to publish
     pubPackages = []
@@ -578,23 +543,17 @@ def sync(pub, architectures, baseUrl, basePrefix, rules, excludeOlderThanSec,
         continue
       if not includeFirst and rules["exclude"][arch].get(pkgName) == True:
         continue
-      for pkgTar in listDir(format(verPathTpl, arch=arch, pack=pkgName)):
-        if pkgTar["type"] != "directory":
-          continue
+      for pkgTar in listDir(format(verPathTpl, arch=arch, pack=pkgName), incl_files=False):
         nameVer = nameVerFromTar(pkgTar["name"], arch, [pkgName])
         if nameVer is None:
           continue
         pkgVer = nameVer["ver"]
-        pkgTime = getTimestamp(pkgTar["mtime"])  # UTC seconds since Unix epoch
         # Here we decide whether to include/exclude it
         if not applyFilter(pkgVer,
-                           pkgTime,
                            rules["include"][arch].get(pkgName, None),
                            rules["exclude"][arch].get(pkgName, None),
-                           includeFirst,
-                           excludeOlderThanSec):
-          debug(format("%(arch)s / %(pack)s / %(ver)s: excluded (timestamp: %(mtime)d)",
-                arch=arch, pack=pkgName, ver=pkgVer, mtime=pkgTime))
+                           includeFirst):
+          debug("%s / %s / %s: excluded", arch, pkgName, pkgVer)
           continue
 
         if not autoIncludeDeps:
@@ -607,7 +566,7 @@ def sync(pub, architectures, baseUrl, basePrefix, rules, excludeOlderThanSec,
         # Note that a package always depends on itself (list cannot be empty).
         distPath = format(distPathTpl, dist="dist-runtime",
                           arch=arch, pack=pkgName, ver=pkgVer)
-        runtimeDeps = listDir(distPath)
+        runtimeDeps = listDir(distPath, incl_dirs=False)
         if not runtimeDeps:
           error(format("%(arch)s / %(pack)s / %(ver)s: cannot list dependencies from %(url)s: skipping",
                        arch=arch, pack=pkgName, ver=pkgVer, url=distPath))
@@ -615,8 +574,6 @@ def sync(pub, architectures, baseUrl, basePrefix, rules, excludeOlderThanSec,
         debug(format("%(arch)s / %(pack)s / %(ver)s: listing all dependencies under %(url)s",
                      arch=arch, pack=pkgName, ver=pkgVer, url=distPath))
         for depTar in runtimeDeps:
-          if depTar["type"] != "file":
-            continue
           depNameVer = nameVerFromTar(depTar["name"], arch, distPackages)
           if depNameVer is None:
             continue
@@ -648,7 +605,9 @@ def sync(pub, architectures, baseUrl, basePrefix, rules, excludeOlderThanSec,
       deps = {}
       depFail = False
       for key in ("dist", "dist-direct", "dist-runtime"):
-        jdeps = listDir(format(distPathTpl, dist=key, arch=arch, pack=pack["name"], ver=pack["ver"]))
+        jdeps = listDir(format(distPathTpl, dist=key, arch=arch,
+                               pack=pack["name"], ver=pack["ver"]),
+                        incl_dirs=False)
         if not jdeps:
           error(format("%(arch)s / %(pack)s / %(ver)s: cannot get %(dtype)s dependencies: skipping",
                        arch=arch, pack=pack["name"], ver=pack["ver"], dtype=key))
@@ -863,7 +822,6 @@ def main():
   conf["conn_retries"]      = conf.get("conn_retries"     , 3)
   conf["conn_dethrottle_s"] = conf.get("conn_dethrottle_s", 0)
   conf["kill_after_s"]      = conf.get("kill_after_s"     , 3600)
-  conf["exclude_older_d"]   = conf.get("exclude_older_d"  , 0)  # in days; 0 == don't exclude
 
   doExit = False
 
@@ -1016,7 +974,6 @@ def main():
              baseUrl=conf["base_url"],
              basePrefix=conf["base_prefix"],
              rules=rules,
-             excludeOlderThanSec=conf["exclude_older_d"] * 86400,
              includeFirst=includeFirst,
              autoIncludeDeps=conf["auto_include_deps"],
              notifEmail=conf["notification_email"],
@@ -1060,14 +1017,11 @@ def main():
       for pkg in testRules[arch]:
         for ver in testRules[arch][pkg]:
           match = applyFilter(ver,
-                              0,
                               rules["include"].get(arch, {}).get(pkg, None),
                               rules["exclude"].get(arch, {}).get(pkg, None),
-                              includeFirst,
-                              0)
-          msg = format(match and "%(arch)s: %(pkg)s ver %(ver)s matches filters"
-                             or "%(arch)s: %(pkg)s ver %(ver)s does NOT match filters",
-                       arch=arch, pkg=pkg, ver=ver)
+                              includeFirst)
+          msg = ("%s: %s ver %s matches filters" if match else
+                 "%s: %s ver %s does NOT match filters") % (arch, pkg, ver)
           if match != testRules[arch][pkg][ver]:
             error(msg + (match and " but it should not" or " but it should"))
             sys.exit(1)
