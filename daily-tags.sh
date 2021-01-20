@@ -140,7 +140,7 @@ popd &> /dev/null
 cd alidist
 defaults_fname=defaults-${DEFAULTS,,}.sh
 # If the file was modified, the output of git status will be non-empty.
-if [ -n "$(git status --porcelain=v1 "$defaults_fname")" ]; then
+if [ -n "$(git status --porcelain "$defaults_fname")" ]; then
   git add "$defaults_fname"
   git commit -m "Auto-update $defaults_fname"
 fi
