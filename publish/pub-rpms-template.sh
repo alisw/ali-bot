@@ -122,10 +122,10 @@ pushd unpack_rpm
   fi
   # Remove useless files conflicting between packages
   if [ ! "X$RPM_IS_UPDATABLE" = X ]; then
-    rm -rfv $RPM_ROOT/.build-hash            \
-            $RPM_ROOT/.rpm-extra-deps        \
-            $RPM_ROOT/etc/profile.d/init.sh* \
-            $RPM_ROOT/.original-unrelocated
+    mv $RPM_ROOT/.build-hash $RPM_ROOT/.build-hash.%(package)s 
+    mv $RPM_ROOT/.rpm-extra-deps $RPM_ROOT/.rpm-extra-deps.%(package)s
+    mv $RPM_ROOT/.original-unrelocated $RPM_ROOT/.original-unrelocated.%(package)s 
+    mv $RPM_ROOT/etc/profile.d/init.sh $RPM_ROOT/etc/profile.d/init.sh.%(package)s  
   fi
 popd
 
