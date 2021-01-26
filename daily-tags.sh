@@ -81,12 +81,17 @@ popd &> /dev/null  # exit Git repo
 
 : ${DEFAULTS:=release}
 
-# Process overrides by changing in-place the given defaults. This requires some
-# YAML processing so we are better off with Python.
-env AUTOTAG_BRANCH=$AUTOTAG_BRANCH \
-    PACKAGE_NAME=$PACKAGE_NAME     \
-    DEFAULTS=$DEFAULTS             \
-python <<\EOF
+edit_tags () {
+  # Patch package definition (e.g. o2.sh)
+  local tag=$1 version=$AUTOTAG_OVERRIDE_VERSION
+  sed -E -i.old \
+      "s|^tag: .*\$|tag: $tag|; ${version:+s|^version: .*\$|version: $version|}" \
+      "alidist/${PACKAGE_NAME,,}.sh"
+
+  # Patch defaults definition (e.g. defaults-o2.sh)
+  # Process overrides by changing in-place the given defaults. This requires
+  # some YAML processing so we are better off with Python.
+  TAG=$1 PACKAGE_NAME=$PACKAGE_NAME DEFAULTS=$DEFAULTS python <<\EOF
 import yaml
 from os import environ
 f = "alidist/defaults-%s.sh" % environ["DEFAULTS"].lower()
@@ -96,12 +101,16 @@ d = yaml.safe_load(meta)
 open(f+".old", "w").write(yaml.dump(d)+"\n---\n"+rest)
 d["overrides"] = d.get("overrides", {})
 d["overrides"][p] = d["overrides"].get(p, {})
-d["overrides"][p]["tag"] = environ["AUTOTAG_BRANCH"]
+d["overrides"][p]["tag"] = environ["TAG"]
 v = environ.get("AUTOTAG_OVERRIDE_VERSION")
 if v:
     d["overrides"][p]["version"] = v
 open(f, "w").write(yaml.dump(d)+"\n---\n"+rest)
 EOF
+}
+
+# The tag doesn't exist yet, so build using the branch first.
+edit_tags "$AUTOTAG_BRANCH"
 
 diff -rupN alidist/defaults-${DEFAULTS_LOWER}.sh.old alidist/defaults-${DEFAULTS_LOWER}.sh | cat
 
@@ -137,11 +146,17 @@ pushd $AUTOTAG_CLONE &> /dev/null
 popd &> /dev/null
 
 # Also tag the appropriate alidist
+# We normally want to build using the tag, and now it exists.
+edit_tags "$AUTOTAG_TAG"
 cd alidist
-defaults_fname=defaults-${DEFAULTS,,}.sh
+defaults_fname=defaults-${DEFAULTS,,}.sh pkg_fname=${PACKAGE_NAME,,}.sh
 # If the file was modified, the output of git status will be non-empty.
-if [ -n "$(git status --porcelain "$defaults_fname")" ]; then
-  git add "$defaults_fname"
-  git commit -m "Auto-update $defaults_fname"
+if [ -n "$(git status --porcelain "$defaults_fname" "$pkg_fname")" ]; then
+  git add "$defaults_fname" "$pkg_fname"
+  git commit -m "Auto-update $defaults_fname and $pkg_fname"
 fi
-git push origin "HEAD:refs/tags/${PACKAGE_NAME:?}-${AUTOTAG_TAG:?}"
+git push origin -f "HEAD:refs/tags/${PACKAGE_NAME:?}-${AUTOTAG_TAG:?}"
+# If ALIDIST_BRANCH doesn't exist or we can push to it, do it.
+git push origin "HEAD:${ALIDIST_BRANCH:?}" ||
+  # Else, make a PR by pushing an rc/ branch. (An action in the repo handles this.)
+  git push origin -f "HEAD:rc/${ALIDIST_BRANCH:?}"
