@@ -85,7 +85,7 @@ edit_tags () {
   # Patch package definition (e.g. o2.sh)
   local tag=$1 version=$AUTOTAG_OVERRIDE_VERSION
   sed -E -i.old \
-      "s|^tag: .*\$|tag: $tag|; ${version:+s|^version: .*\$|version: $version|}" \
+      "s|^tag: .*\$|tag: \"$tag\"|; ${version:+s|^version: .*\$|version: \"$version\"|}" \
       "alidist/${PACKAGE_NAME,,}.sh"
 
   # Patch defaults definition (e.g. defaults-o2.sh)
