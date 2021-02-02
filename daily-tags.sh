@@ -20,7 +20,9 @@ git config --global user.email alibuild@cern.ch
 git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO alidist/
 
 # Install the latest release if ALIBUILD_SLUG is not provided
-pip install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}
+pip install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild} ||
+  # Fall back to explicit pip version if `pip` doesn't exist, like on CentOS 8. (There, python is python3.)
+  pip3 install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}
 
 PACKAGE_LOWER=$(echo $PACKAGE_NAME | tr '[[:upper:]]' '[[:lower:]]')
 RECIPE=alidist/$PACKAGE_LOWER.sh
