@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import logging, sys, json, yaml, requests, urllib3, errno
+import logging, sys, json, yaml, requests, urllib3, errno, boto3
 from glob import glob
 from argparse import ArgumentParser
 from commands import getstatusoutput
@@ -8,16 +8,16 @@ from datetime import datetime
 from requests import RequestException
 from time import sleep, time
 from yaml import YAMLError
-from logging import debug, error, info
+from logging import debug, info, warning, error
 from re import search, escape, sub
 from os.path import isdir, isfile, realpath, dirname, getmtime, join, basename
-from os import chmod, remove, chdir, getcwd, getpid, kill, makedirs, rename
+from os import chmod, remove, chdir, getcwd, getpid, kill, makedirs, rename, environ
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, mkdtemp
 from subprocess import Popen, PIPE, STDOUT
 from smtplib import SMTP
 from socket import getfqdn
-from random import random, choice, shuffle
+from random import random, shuffle
 from urlparse import urlsplit, urlunsplit
 
 def format(s, **kwds):
@@ -485,53 +485,100 @@ def nameVerFromTar(tar, arch, validPacks):
       return { "name": vm.group(1), "ver": vm.group(2) }
   return None
 
-def sync(pub, architectures, baseUrl, basePrefix, rules,
-         includeFirst, autoIncludeDeps, notifEmail, dryRun, connParams):
+def getS3PackageLister(endpointUrl, bucket, basePrefix, architectures,
+                       pathCommonPrefix):
+  """Return a function that gets a directory's contents from S3.
 
-  newPackages = {}
+  Cache the directory tree from S3 in advance, because we tend to use this
+  function to get first the contents of a directory, then one of its
+  subdirectories. S3 can only return the items with a prefix, so when getting
+  the parent dir, we get everything already, so we better use it when getting
+  the subdirectory's contents later.
+
+  There are lots of paths on S3, so we take every bit of common prefix that we
+  can get -- hence the pathCommonPrefix argument. We get all paths with prefix
+  basePrefix/$arch/$pathCommonPrefix (pathCommonPrefix doesn't need to be a
+  full directory name).
+  """
+  s3 = boto3.client("s3", endpoint_url=endpointUrl,
+                    aws_access_key_id=environ["AWS_ACCESS_KEY_ID"],
+                    aws_secret_access_key=environ["AWS_SECRET_ACCESS_KEY"])
+
+  # This will be a dictionary where file-/dirnames are keys and dir contents
+  # are values. Files will be an entry with value None.
+  filesystemTree = {}
+  for arch in architectures:
+    # Build the filesystem tree on the server.
+    debug("Getting directory contents for %s/%s/dist*", basePrefix, arch)
+    pages = s3.get_paginator("list_objects_v2") \
+              .paginate(Bucket=bucket, Prefix='%s/%s/dist' % (basePrefix, arch))
+    for i, page in enumerate(pages):
+      debug("Page %d: got %d items", i, len(page['Contents']))
+      for item in page["Contents"]:
+        filename = item["Key"]
+        # The server returns file names with a prefix, which we want to ignore.
+        # We keep the arch prefix, though.
+        if filename.startswith(basePrefix + "/"):
+          filename = filename[len(basePrefix)+1:]
+        components = filename.split("/")
+        # Start at the root. We kept the arch prefix above in components, so
+        # we'll enter/create the arch directory in the loop below.
+        curDir = filesystemTree
+        # Leading directories: create empty dictionaries for directories we
+        # traverse for the first time.
+        for component in components[:-1]:
+          # If we have a file at this location, overwrite it with a directory
+          # entry. S3 can have files and directories with the same name in the
+          # same directory, but we don't care about the files in that case.
+          if curDir.get(component, {}) is None:
+            curDir[component] = {}
+          # Follow the path down into the next directory.
+          curDir = curDir.setdefault(component, {})
+        # File basename: add an entry to its parent directory's dictionary, but
+        # don't overwrite an existing directory entry here.
+        curDir.setdefault(components[-1], None)
+
+  def listDir(path):
+    """Look up the contents of path in the cached FS tree."""
+    curDir = filesystemTree
+    try:
+      if path:
+        for component in path.split("/"):
+          curDir = curDir[component]
+    except KeyError as err:
+      warning("listDir(%r) => NOT FOUND: %s, returning empty list", path, err)
+      return []
+    # Create a list of directory entries in the format expected below.
+    return [{"name": name, "type": "file" if value is None else "directory"}
+            for name, value in curDir.items()]
+  return listDir
+
+def sync(pub, architectures, endpointUrl, bucket, baseUrl, basePrefix, rules,
+         includeFirst, autoIncludeDeps, notifEmail, dryRun, connParams):
 
   # Template URLs
   packNamesPathTpl = "%(arch)s/dist-direct"
-  distPathTpl      = "%(arch)s/%(dist)s/%(pack)s/%(pack)s-%(ver)s"
+  distPathTpl      = "%(arch)s/dist%(dist)s/%(pack)s/%(pack)s-%(ver)s"
   verPathTpl       = "%(arch)s/dist-direct/%(pack)s"
-  getPackUrlTpl    = "%(baseUrl)s/%(basePrefix)s/%(arch)s/dist-direct/%(pack)s/%(pack)s-%(ver)s/%(pack)s-%(ver)s.%(arch)s.tar.gz"
-
-  def listDir(path):
-    url = format("%(base)s?prefix=%(prefix)s/%(path)s/",
-                 base=baseUrl, prefix=basePrefix, path=path)
-    debug("Getting directory contents for " + url)
-    # This is a list of all file names under path (recursively).
-    files = requests.get(url, verify=connParams["http_ssl_verify"],
-                         timeout=connParams["conn_timeout_s"]) \
-                    .text.splitlines()
-    # Directories aren't listed separately, so we add a directory if we see a
-    # file inside it. This means that directories can be added multiple times
-    # (if they contain multiple files), so deduplicate by using a set here.
-    contents = set()
-    # The server returns file names with this prefix, which we want to ignore.
-    strip = basePrefix + "/" + path + "/"
-    for filename in files:
-      # Strip prefix and path from returned file names
-      if filename.startswith(strip):
-        filename = filename[len(strip):]
-      # We only care about the immediate contents of path, so if the file name
-      # contains a / after stripping path, we know it's a directory with some
-      # contents. In that case, only track the directory. If no / remains, it
-      # must be a file directly under path.
-      name, is_dir, _ = filename.partition("/")
-      if (is_dir and incl_dirs) or (not is_dir and incl_files):
-        contents.add((name, "directory" if is_dir else "file"))
-    # Create a list of directory entries in the format expected below.
-    return [{"name": name, "type": ftype} for name, ftype in contents]
+  getPackUrlTpl    = ("%(baseUrl)s/%(basePrefix)s/%(arch)s/dist-direct/%(pack)s"
+                      "/%(pack)s-%(ver)s/%(pack)s-%(ver)s.%(arch)s.tar.gz")
+  # The path templates (first 3 above) all have a common prefix --
+  # %(arch)s/dist. getS3PackageLister can use this prefix to narrow down the
+  # file list it retrieves from the server, to save some time.
+  listDir = getS3PackageLister(endpointUrl, bucket, basePrefix, architectures,
+                               pathCommonPrefix="dist")
+  newPackages = {}
 
   # Prepare the list of packages to install
   for arch in architectures:
     newPackages[arch] = []
 
     # Get valid package names for this architecture
-    distPackages = sorted((p["name"] for p in listDir(format(packNamesPathTpl, arch=arch),
-                                                      incl_files=False)),
-                          key=len, reverse=True)
+    debug("Getting packages for architecture %s", arch)
+    distPackages = sorted(
+      (p["name"] for p in listDir(packNamesPathTpl % {"arch": arch})
+       if p["type"] == "directory"),
+      key=len, reverse=True)
     debug("Packages found: %s", ", ".join(distPackages))
 
     # Packages to publish
@@ -543,7 +590,9 @@ def sync(pub, architectures, baseUrl, basePrefix, rules,
         continue
       if not includeFirst and rules["exclude"][arch].get(pkgName) == True:
         continue
-      for pkgTar in listDir(format(verPathTpl, arch=arch, pack=pkgName), incl_files=False):
+      for pkgTar in listDir(format(verPathTpl, arch=arch, pack=pkgName)):
+        if pkgTar["type"] != "directory":
+          continue
         nameVer = nameVerFromTar(pkgTar["name"], arch, [pkgName])
         if nameVer is None:
           continue
@@ -564,9 +613,9 @@ def sync(pub, architectures, baseUrl, basePrefix, rules,
 
         # At this point we have filtered in the package: let's see its dependencies!
         # Note that a package always depends on itself (list cannot be empty).
-        distPath = format(distPathTpl, dist="dist-runtime",
+        distPath = format(distPathTpl, dist="-runtime",
                           arch=arch, pack=pkgName, ver=pkgVer)
-        runtimeDeps = listDir(distPath, incl_dirs=False)
+        runtimeDeps = listDir(distPath)
         if not runtimeDeps:
           error(format("%(arch)s / %(pack)s / %(ver)s: cannot list dependencies from %(url)s: skipping",
                        arch=arch, pack=pkgName, ver=pkgVer, url=distPath))
@@ -574,6 +623,8 @@ def sync(pub, architectures, baseUrl, basePrefix, rules,
         debug(format("%(arch)s / %(pack)s / %(ver)s: listing all dependencies under %(url)s",
                      arch=arch, pack=pkgName, ver=pkgVer, url=distPath))
         for depTar in runtimeDeps:
+          if depTar["type"] != "file":
+            continue
           depNameVer = nameVerFromTar(depTar["name"], arch, distPackages)
           if depNameVer is None:
             continue
@@ -604,10 +655,9 @@ def sync(pub, architectures, baseUrl, basePrefix, rules,
       # Get direct and indirect dependencies
       deps = {}
       depFail = False
-      for key in ("dist", "dist-direct", "dist-runtime"):
+      for key in ("", "-direct", "-runtime"):
         jdeps = listDir(format(distPathTpl, dist=key, arch=arch,
-                               pack=pack["name"], ver=pack["ver"]),
-                        incl_dirs=False)
+                               pack=pack["name"], ver=pack["ver"]))
         if not jdeps:
           error(format("%(arch)s / %(pack)s / %(ver)s: cannot get %(dtype)s dependencies: skipping",
                        arch=arch, pack=pack["name"], ver=pack["ver"], dtype=key))
@@ -748,14 +798,6 @@ def hostport(s, defaultPort):
   host = host[0]
   return host,port
 
-def mesos_resolve(host, dns, jget):
-  for d in sorted(dns, key=lambda k: random()):
-    ips = [ x["ip"] for x in jget(format("http://%(dns)s/v1/hosts/%(host)s", dns=d, host=host))
-                    if x.get("ip", None) ]
-    if ips:
-      return ips
-  return [host]  # fallback to input on error
-
 def main():
   parser = ArgumentParser()
   parser.add_argument("action", metavar="sync-cvmfs|sync-dir|sync-alien|sync-rpms|test-rules")
@@ -840,9 +882,6 @@ def main():
   if not isinstance(conf.get("architectures", None), dict):
     error("architectures must be a dict of dicts")
     doExit = True
-  if not isinstance(conf.get("base_url", None), basestring):
-    error("base_url must be a string")
-    doExit = True
   conf["auto_include_deps"] = conf.get("auto_include_deps", True)
   if not isinstance(conf["auto_include_deps"], bool):
     error("auto_include_deps must be a boolean")
@@ -856,12 +895,6 @@ def main():
     doExit = True
 
   if doExit: exit(1)
-
-  # Resolve base_url name via Mesos
-  us = urlsplit(conf["base_url"])
-  if us.netloc.endswith(".mesos") and conf["mesos_dns"] and args.action != "test-rules":
-    us = us._replace( netloc=choice(mesos_resolve(us.netloc, conf["mesos_dns"], jget)) )
-    conf["base_url"] = urlunsplit(us)
 
   debug("Configuration: " + json.dumps(conf, indent=2))
   incexc = conf.get("filter_order", "include,exclude")
@@ -971,6 +1004,8 @@ def main():
     debug("Architecture names mappings: %s" % json.dumps(architectures, indent=2))
     r = sync(pub=pub,
              architectures=architectures,
+             endpointUrl=conf["s3_endpoint_url"],
+             bucket=conf["s3_bucket"],
              baseUrl=conf["base_url"],
              basePrefix=conf["base_prefix"],
              rules=rules,
