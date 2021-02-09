@@ -481,7 +481,7 @@ def sync(pub, architectures, endpointUrl, bucket, baseUrl, basePrefix, rules,
 
   # Template URLs
   packNamesPathTpl = "%(arch)s/dist-direct"
-  distPathTpl      = "%(arch)s/dist%(dist)s/%(pack)s/%(pack)s-%(ver)s"
+  distPathTpl      = "%(arch)s/%(dist)s/%(pack)s/%(pack)s-%(ver)s"
   verPathTpl       = "%(arch)s/dist-direct/%(pack)s"
   getPackUrlTpl    = ("%(baseUrl)s/%(basePrefix)s/%(arch)s/dist-direct/%(pack)s"
                       "/%(pack)s-%(ver)s/%(pack)s-%(ver)s.%(arch)s.tar.gz")
@@ -536,7 +536,7 @@ def sync(pub, architectures, endpointUrl, bucket, baseUrl, basePrefix, rules,
 
         # At this point we have filtered in the package: let's see its dependencies!
         # Note that a package always depends on itself (list cannot be empty).
-        distPath = format(distPathTpl, dist="-runtime",
+        distPath = format(distPathTpl, dist="dist-runtime",
                           arch=arch, pack=pkgName, ver=pkgVer)
         runtimeDeps = listDir(distPath)
         if not runtimeDeps:
@@ -577,7 +577,7 @@ def sync(pub, architectures, endpointUrl, bucket, baseUrl, basePrefix, rules,
       # Get direct and indirect dependencies
       deps = {}
       depFail = False
-      for key in ("", "-direct", "-runtime"):
+      for key in ("dist", "dist-direct", "dist-runtime"):
         jdeps = listDir(format(distPathTpl, dist=key, arch=arch,
                                pack=pack["name"], ver=pack["ver"]))
         if not jdeps:
