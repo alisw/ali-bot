@@ -84,38 +84,42 @@ node ("slc7_x86-64-light") {
       '''
 
       stage "Create daily"
-      timeout (240) {
-        withEnv(["ALIBUILD_SLUG=${ALIBUILD_SLUG}",
-                 "ALIDIST_SLUG=${ALIDIST_SLUG}",
-                 "ALIBOT_SLUG=${ALIBOT_SLUG}",
-                 "ARCHITECTURE=${ARCHITECTURE}",
-                 "PACKAGE_NAME=${PACKAGE_NAME}",
-                 "DEFAULTS=${DEFAULTS}",
-                 "TEST_TAG=${TEST_TAG}",
-                 "REMOTE_STORE=${REMOTE_STORE}",
-                 "AUTOTAG_PATTERN=${AUTOTAG_PATTERN}",
-                 "AUTOTAG_OVERRIDE_VERSION=${AUTOTAG_OVERRIDE_VERSION}",
-                 "MESOS_QUEUE_SIZE=${MESOS_QUEUE_SIZE}",
-                 "REMOVE_RC_BRANCH_FIRST=${REMOVE_RC_BRANCH_FIRST}",
-                 "NODE_NAME=${env.NODE_NAME}"]) {
-          sh '''
-            set -ex
-            [ -d /etc/profile.d/enable-alice.sh ] && source /etc/profile.d/enable-alice.sh
-            export PYTHONUSERBASE=${PWD}/python-bin
-            export PATH=${PYTHONUSERBASE}/bin:$PATH
-            export LD_LIBRARY_PATH=${PYTHONUSERBASE}/lib:${LD_LIBRARY_PATH}
-            echo $NODE_NAME
-            case $NODE_NAME in
-              *slc6_x86-64*)
-                # python3 is not installed on the slc6-builder. Installing it seems to break the build.
-                pip install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG ;;
-              *)
-                yum install -y python3-devel python3-pip python3-setuptools
-                pip3 install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG ;;
-            esac
-            [ -f /opt/rh/rh-git218/enable ] && source /opt/rh/rh-git218/enable
-            daily-tags.sh
-          '''
+      retry (2) {
+        timeout (240) {
+          withEnv(["ALIBUILD_SLUG=${ALIBUILD_SLUG}",
+                   "ALIDIST_SLUG=${ALIDIST_SLUG}",
+                   "ALIBOT_SLUG=${ALIBOT_SLUG}",
+                   "ARCHITECTURE=${ARCHITECTURE}",
+                   "PACKAGE_NAME=${PACKAGE_NAME}",
+                   "DEFAULTS=${DEFAULTS}",
+                   "TEST_TAG=${TEST_TAG}",
+                   "REMOTE_STORE=${REMOTE_STORE}",
+                   "AUTOTAG_PATTERN=${AUTOTAG_PATTERN}",
+                   "AUTOTAG_OVERRIDE_VERSION=${AUTOTAG_OVERRIDE_VERSION}",
+                   "MESOS_QUEUE_SIZE=${MESOS_QUEUE_SIZE}",
+                   "REMOVE_RC_BRANCH_FIRST=${REMOVE_RC_BRANCH_FIRST}",
+                   "NODE_NAME=${env.NODE_NAME}"]) {
+            sh '''
+              set -ex
+              [ -d /etc/profile.d/enable-alice.sh ] && source /etc/profile.d/enable-alice.sh
+              export PYTHONUSERBASE=${PWD}/python-bin
+              export PATH=${PYTHONUSERBASE}/bin:$PATH
+              export LD_LIBRARY_PATH=${PYTHONUSERBASE}/lib:${LD_LIBRARY_PATH}
+              echo $NODE_NAME
+              case $NODE_NAME in
+                *slc6_x86-64*)
+                  # python3 is not installed on the slc6-builder. Installing it seems to break the build.
+                  pip install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG ;;
+                *)
+                  yum install -y python3-devel python3-pip python3-setuptools
+                  pip3 install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG ;;
+              esac
+              [ -f /opt/rh/rh-git218/enable ] && source /opt/rh/rh-git218/enable
+              daily-tags.sh || err=$?
+              rm -rf alidist daily-tags.?????????? mirror
+              exit ${err-0}
+            '''
+          }
         }
       }
     }
