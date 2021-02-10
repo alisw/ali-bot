@@ -3,9 +3,9 @@
 yum install -y rclone
 pip install -U boto3
 
-. /secrets/alibot_secrets
 . /etc/profile.d/enable-alice.sh
-export FLP_RPM_CI_TOKEN SYNC_PASS=$ALIBOT_PASSWORD SYNC_USER=alibot
+. /secrets/aws_bot_secrets
+export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 
 cd "$(dirname "$0")" || exit 2
 while true; do
