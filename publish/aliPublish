@@ -348,7 +348,7 @@ class RPM(object):
     self._dryRun = dryRun
     self._genUpdatableRpms = genUpdatableRpms
     self._repoDir = repoDir
-    self._stageDir = join(repoDir, "staging")
+    self._stageDir = mkdtemp(prefix="staging-", dir=repoDir)
     self._publishScriptTpl = publishScriptTpl
     self._countChanges = 0
     self._connParams = connParams
@@ -385,7 +385,7 @@ class RPM(object):
 
     stageDirArch = join(self._stageDir, arch)
     if not self._dryRun:
-      workDir = mkdtemp(prefix=join(self._stageDir, "tmp", "aliPublish-RPM-"))
+      workDir = mkdtemp(prefix="aliPublish-RPM-", dir=join(self._stageDir, "tmp"))
     else:
       workDir = "/dryrun_doesnotexist"
 
