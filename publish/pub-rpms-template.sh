@@ -12,17 +12,9 @@ SSLVERIFY=%(http_ssl_verify)d
 CONNTIMEOUT=%(conn_timeout_s)d
 CONNRETRY=%(conn_retries)d
 CONNRETRYDELAY=%(conn_dethrottle_s)d
-RPM_IS_UPDATABLE=%(updatable)s
 [[ $SSLVERIFY == 0 ]] && SSLVERIFY=-k || SSLVERIFY=
 which fpm
 cd $TMPDIR
-
-if [[ $RPM_IS_UPDATABLE ]]; then
-  case "%(dependencies)s" in
-    *AliEn-runtime*) ;;
-    *) echo "Not publishing %(package)s with version %(version)s as it has AliEn-Runtime as a dependency";  exit 0 ;;
-  esac
-fi
 
 # Create aliswmod RPM
 ALISWMOD_VERSION=4
@@ -57,31 +49,14 @@ fi
 DEPS=()
 DEPS+=("--depends" "alisw-aliswmod >= $ALISWMOD_VERSION")
 
-# Updatable RPMs don't have the version number hardcoded in the package name
-if [[ $RPM_IS_UPDATABLE ]]; then
-  RPM_VERSION="%(version)s"
-  RPM_VERSION=${RPM_VERSION//-/_}
-  RPM_PACKAGE="alisw-%(package)s"
-  RPM_TAR_STRIP=4
-  RPM_ROOT="."
-  RPM_UNPACK_DIR="."
-  RPM_MODULEFILE_PREFIX=
-  for D in %(dependencies)s; do
-    DEP_NAME=${D%%+*}
-    DEP_VER=${D#*+}
-    DEP_VER=${DEP_VER//-/_}
-    DEPS+=("--depends" "$DEP_NAME >= ${DEP_VER}-1.$FLAVOUR")
-  done
-else
-  RPM_VERSION=1
-  RPM_PACKAGE="alisw-%(package)s+%(version)s"
-  RPM_TAR_STRIP=2
-  RPM_ROOT="%(package)s/%(version)s"
-  RPM_UNPACK_DIR="%(package)s"
-  for D in %(dependencies)s; do
-    DEPS+=("--depends" "$D = 1-1.$FLAVOUR")
-  done
-fi
+RPM_VERSION=1
+RPM_PACKAGE="alisw-%(package)s+%(version)s"
+RPM_TAR_STRIP=2
+RPM_ROOT="%(package)s/%(version)s"
+RPM_UNPACK_DIR="%(package)s"
+for D in %(dependencies)s; do
+  DEPS+=("--depends" "$D = 1-1.$FLAVOUR")
+done
 
 # Create RPM from tarball
 mkdir -p unpack_rpm
@@ -105,12 +80,6 @@ pushd unpack_rpm
     IFS="$OLD_IFS"
   fi
   # Remove useless files conflicting between packages
-  if [ ! "X$RPM_IS_UPDATABLE" = X ]; then
-    mv $RPM_ROOT/.build-hash $RPM_ROOT/.build-hash.%(package)s 
-    mv $RPM_ROOT/.rpm-extra-deps $RPM_ROOT/.rpm-extra-deps.%(package)s
-    mv $RPM_ROOT/.original-unrelocated $RPM_ROOT/.original-unrelocated.%(package)s 
-    mv $RPM_ROOT/etc/profile.d/init.sh $RPM_ROOT/etc/profile.d/init.sh.%(package)s  
-  fi
 popd
 
 AFTER_INSTALL=$TMPDIR/after_install.sh
@@ -118,21 +87,15 @@ AFTER_REMOVE=$TMPDIR/after_remove.sh
 
 cat > $AFTER_INSTALL <<EOF
 #!/bin/bash -e
-RPM_IS_UPDATABLE=$RPM_IS_UPDATABLE
 export WORK_DIR=$INSTALLPREFIX
 cd \$WORK_DIR
-[[ \$RPM_IS_UPDATABLE ]] && export PKGPATH=${FLAVOUR} || export PKGPATH="${FLAVOUR}/%(package)s/%(version)s"
 EOF
 grep -v 'profile\.d/init\.sh\.unrelocated' unpack_rpm/$RPM_ROOT/relocate-me.sh >> $AFTER_INSTALL
 rm -fv unpack_rpm/$RPM_ROOT/relocate-me.sh
 cat >> $AFTER_INSTALL <<EOF
-MODULE_DEST_DIR=$INSTALLPREFIX/$FLAVOUR/\${RPM_IS_UPDATABLE:+etc/Modules/}modulefiles
+MODULE_DEST_DIR=$INSTALLPREFIX/$FLAVOUR/modulefiles
 mkdir -p \$MODULE_DEST_DIR/%(package)s
-if [[ \$RPM_IS_UPDATABLE ]]; then
-  sed -e 's|%(package)s/\$version||g; s|%(package)s/%(version)s||g' $INSTALLPREFIX/$FLAVOUR/etc/modulefiles/%(package)s > \$MODULE_DEST_DIR/%(package)s/%(version)s
-else
-  ln -nfs ../../%(package)s/%(version)s/etc/modulefiles/%(package)s \$MODULE_DEST_DIR/%(package)s/%(version)s
-fi
+ln -nfs ../../%(package)s/%(version)s/etc/modulefiles/%(package)s \$MODULE_DEST_DIR/%(package)s/%(version)s
 mkdir -p \$MODULE_DEST_DIR/BASE
 echo -e "#%%Module\nsetenv BASEDIR $INSTALLPREFIX/$FLAVOUR" > \$MODULE_DEST_DIR/BASE/1.0
 EOF
