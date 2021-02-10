@@ -1,7 +1,7 @@
 #!/bin/bash -x
 
 yum install -y rclone
-pip install -U boto3
+pip install -U requests boto3
 
 . /etc/profile.d/enable-alice.sh
 . /secrets/aws_bot_secrets

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import logging, sys, json, yaml, errno, boto3
+import logging, sys, json, yaml, errno, boto3, requests
 from glob import glob
 from argparse import ArgumentParser
 from commands import getstatusoutput
@@ -566,11 +566,6 @@ def sync(pub, architectures, endpointUrl, bucket, baseUrl, basePrefix, rules,
 
     # Packages installation
     for pack in pubPackages:
-      pkgUrl = format(getPackUrlTpl,
-                      baseUrl=baseUrl.rstrip("/"),
-                      basePrefix=basePrefix, arch=arch,
-                      pack=pack["name"], ver=pack["ver"])
-
       if pub.installed(architectures[arch], pack["name"], pack["ver"]):
         debug("%s / %s / %s: already installed: skipping",
               arch, pack["name"], pack["ver"])
@@ -600,6 +595,17 @@ def sync(pub, architectures, endpointUrl, bucket, baseUrl, basePrefix, rules,
         x for x in deps["dist-direct"]
         if any(x["name"] == y["name"] for y in deps["dist-runtime"])
       ]
+
+      symlinkUrl = format(getPackUrlTpl,
+                          baseUrl=baseUrl.rstrip("/"),
+                          basePrefix=basePrefix, arch=arch,
+                          pack=pack["name"], ver=pack["ver"])
+      pkgUrl = join(baseUrl,
+                    requests.get(symlinkUrl,
+                                 verify=connParams["http_ssl_verify"],
+                                 timeout=connParams["conn_timeout_s"])
+                            .text.rstrip())
+
 
       # Here we can attempt the installation
       def prettyPrintPkgs(key):
