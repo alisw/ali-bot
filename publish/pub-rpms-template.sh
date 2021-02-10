@@ -17,12 +17,12 @@ which fpm
 cd $TMPDIR
 
 # Create aliswmod RPM
-ALISWMOD_VERSION=4
-ALISWMOD_RPM="alisw-aliswmod-$ALISWMOD_VERSION-1.%(arch)s.rpm"
+ALISWMOD_VERSION=1
+ALISWMOD_RPM="alisw-aliswmod4-$ALISWMOD_VERSION-1.%(arch)s.rpm"
 if [[ ! -e "%(repodir)s/$ALISWMOD_RPM" ]]; then
   mkdir -p aliswmod/bin
   mkdir -p aliswmod/etc/profile.d
-  cat > aliswmod/etc/profile.d/99-aliswmod.sh << EOF
+  cat > aliswmod/etc/profile.d/99-aliswmod4.sh << EOF
 export LD_LIBRARY_PATH=/opt/alisw/el7/lib:/opt/alisw/el7/lib64:\$LD_LIBRARY_PATH
 export PATH=/opt/alisw/el7/bin:\$PATH
 export MODULEPATH=$INSTALLPREFIX/$FLAVOUR/modulefiles:$INSTALLPREFIX/$FLAVOUR/etc/Modules/modulefiles:\$MODULEPATH
@@ -36,7 +36,7 @@ EOF
         --architecture $ARCHITECTURE           \
         --version $ALISWMOD_VERSION            \
         --iteration 1.$FLAVOUR                 \
-        --name alisw-aliswmod                  \
+        --name alisw-aliswmod4                 \
         .
   popd
   mv aliswmod/$ALISWMOD_RPM .
@@ -47,7 +47,7 @@ else
 fi
 
 DEPS=()
-DEPS+=("--depends" "alisw-aliswmod >= $ALISWMOD_VERSION")
+DEPS+=("--depends" "alisw-aliswmod4 >= $ALISWMOD_VERSION")
 
 RPM_VERSION=1
 RPM_PACKAGE="alisw-%(package)s+%(version)s"
@@ -128,7 +128,6 @@ pushd unpack_rpm
       --version "$RPM_VERSION"         \
       --iteration 1.$FLAVOUR           \
       --name "$RPM_PACKAGE"            \
-      --exclude compile_commands.json  \
       --after-install $AFTER_INSTALL   \
       --after-remove $AFTER_REMOVE     \
       "$RPM_UNPACK_DIR"
