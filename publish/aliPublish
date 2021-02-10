@@ -24,14 +24,9 @@ def format(s, **kwds):
   return s % kwds
 
 def rmrf(path):
-  try:
-    if isdir(path):
-      rmtree(path)
-    elif isfile(path):
-      remove(path)
-  except OSError as e:
-    debug(format("When deleting %(path)s: %(msg)s (ignored)",
-                 path=path, msg=str(e)))
+  err, out = getstatusoutput("rm -fr %s" % path)
+  if err:
+    debug(out)
 
 def searchMany(name, exprs):
   if isinstance(exprs, list):
