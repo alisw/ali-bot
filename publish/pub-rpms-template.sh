@@ -25,42 +25,26 @@ if [[ $RPM_IS_UPDATABLE ]]; then
 fi
 
 # Create aliswmod RPM
-ALISWMOD_VERSION=3
+ALISWMOD_VERSION=4
 ALISWMOD_RPM="alisw-aliswmod-$ALISWMOD_VERSION-1.%(arch)s.rpm"
 if [[ ! -e "%(repodir)s/$ALISWMOD_RPM" ]]; then
   mkdir -p aliswmod/bin
   mkdir -p aliswmod/etc/profile.d
-  cat > aliswmod/etc/profile.d/99-aliswmod.sh << \EOF
-export LD_LIBRARY_PATH=/opt/alisw/el7/lib:/opt/alisw/el7/lib64:$LD_LIBRARY_PATH
-export PATH=/opt/alisw/el7/bin:$PATH
-EOF
-  cat > aliswmod/bin/aliswmod <<EOF
-#!/bin/bash -e
+  cat > aliswmod/etc/profile.d/99-aliswmod.sh << EOF
+export LD_LIBRARY_PATH=/opt/alisw/el7/lib:/opt/alisw/el7/lib64:\$LD_LIBRARY_PATH
+export PATH=/opt/alisw/el7/bin:\$PATH
 export MODULEPATH=$INSTALLPREFIX/$FLAVOUR/modulefiles:$INSTALLPREFIX/$FLAVOUR/etc/Modules/modulefiles:\$MODULEPATH
 EOF
-  cat >> aliswmod/bin/aliswmod <<\EOF
-MODULES_SHELL=$(ps -e -o pid,command | grep -E "^\s*$PPID\s+" | awk '{print $2}' | sed -e 's/^-\{0,1\}\(.*\)$/\1/')
-IGNORE_ERR="Unable to locate a modulefile for 'Toolchain/"
-[[ $MODULES_SHELL ]] || MODULES_SHELL=bash
-MODULES_SHELL=${MODULES_SHELL##*/}
-if [[ $1 == enter ]]; then
-  shift
-  eval "$((printf '' >&2; modulecmd bash load "$@") 2> >(grep -v "$IGNORE_ERR" >&2))"
-  exec $MODULES_SHELL -i
-fi
-(printf '' >&2; modulecmd $MODULES_SHELL "$@") 2> >(grep -v "$IGNORE_ERR" >&2)
-EOF
-  chmod 0755 aliswmod/bin/aliswmod
   pushd aliswmod
-    fpm -s dir                        \
-        -t rpm                        \
-        --force                       \
-        --depends environment-modules \
-        --prefix /                    \
-        --architecture $ARCHITECTURE  \
-        --version $ALISWMOD_VERSION   \
-        --iteration 1.$FLAVOUR        \
-        --name alisw-aliswmod         \
+    fpm -s dir                                 \
+        -t rpm                                 \
+        --force                                \
+        --depends 'environment-modules >= 4.0' \
+        --prefix /                             \
+        --architecture $ARCHITECTURE           \
+        --version $ALISWMOD_VERSION            \
+        --iteration 1.$FLAVOUR                 \
+        --name alisw-aliswmod                  \
         .
   popd
   mv aliswmod/$ALISWMOD_RPM .
