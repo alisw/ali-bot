@@ -566,8 +566,10 @@ def sync(pub, architectures, endpointUrl, bucket, baseUrl, basePrefix, rules,
 
     # Packages installation
     for pack in pubPackages:
-      pkgUrl = format(getPackUrlTpl, baseUrl=baseUrl, basePrefix=basePrefix,
-                      arch=arch, pack=pack["name"], ver=pack["ver"])
+      pkgUrl = format(getPackUrlTpl,
+                      baseUrl=baseUrl.rstrip("/"),
+                      basePrefix=basePrefix, arch=arch,
+                      pack=pack["name"], ver=pack["ver"])
 
       if pub.installed(architectures[arch], pack["name"], pack["ver"]):
         debug("%s / %s / %s: already installed: skipping",
