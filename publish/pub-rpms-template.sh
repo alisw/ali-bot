@@ -88,6 +88,7 @@ cat > $AFTER_INSTALL <<EOF
 #!/bin/bash -e
 export WORK_DIR=$INSTALLPREFIX
 cd \$WORK_DIR
+export PKGPATH="${FLAVOUR}/%(package)s/%(version)s"
 EOF
 grep -v 'profile\.d/init\.sh\.unrelocated' unpack_rpm/$RPM_ROOT/relocate-me.sh >> $AFTER_INSTALL
 rm -fv unpack_rpm/$RPM_ROOT/relocate-me.sh
