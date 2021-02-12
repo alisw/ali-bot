@@ -119,7 +119,7 @@ aliBuild --reference-sources $MIRROR                    \
          --work-dir $WORKAREA/$WORKAREA_INDEX           \
          ${FETCH_REPOS:+--fetch-repos}                  \
          --architecture $ARCHITECTURE                   \
-         --jobs 12                                      \
+         --jobs 9                                       \
          ${REMOTE_STORE:+--remote-store $REMOTE_STORE}  \
          ${DEFAULTS:+--defaults $DEFAULTS}              \
          ${DISABLE:+--disable $DISABLE}                 \
