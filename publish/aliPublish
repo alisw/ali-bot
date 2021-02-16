@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import logging, sys, json, yaml, requests, urllib3, errno
+import logging, sys, json, yaml, requests, errno, boto3
 from glob import glob
 from argparse import ArgumentParser
 from commands import getstatusoutput
@@ -8,16 +8,16 @@ from datetime import datetime
 from requests import RequestException
 from time import sleep, time
 from yaml import YAMLError
-from logging import debug, error, info
+from logging import debug, info, warning, error
 from re import search, escape, sub
 from os.path import isdir, isfile, realpath, dirname, getmtime, join, basename
-from os import chmod, remove, chdir, getcwd, getpid, kill, makedirs, rename
+from os import chmod, remove, chdir, getcwd, getpid, kill, makedirs, rename, environ
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, mkdtemp
 from subprocess import Popen, PIPE, STDOUT
 from smtplib import SMTP
 from socket import getfqdn
-from random import random, choice, shuffle
+from random import random, shuffle
 from urlparse import urlsplit, urlunsplit
 
 def format(s, **kwds):
@@ -36,23 +36,13 @@ def searchMany(name, exprs):
     return True
   return False
 
-def applyFilter(name, timestamp, includeRules, excludeRules, includeFirst, excludeOlderThanSec):
-  if excludeOlderThanSec > 0 and time()-timestamp > excludeOlderThanSec:
-    return False  # excluding because too old (excludeOlderThanSec == 0: never exclude)
+def applyFilter(name, includeRules, excludeRules, includeFirst):
   if includeFirst:
-    if searchMany(name, includeRules):
-      return not searchMany(name, excludeRules)
-    else:
-      return False
-  else:
-    if searchMany(name, excludeRules):
-      return False
-    else:
-      if includeRules is None:
-        # process exclude first, and no explicit include rule: keep it
-        return True
-      else:
-        return searchMany(name, includeRules)
+    return searchMany(name, includeRules) and not searchMany(name, excludeRules)
+  if searchMany(name, excludeRules):
+    return False
+  # process exclude first, and no explicit include rule: keep it
+  return includeRules is None or searchMany(name, includeRules)
 
 def runInstallScript(script, dryRun, **kwsub):
   if dryRun:
@@ -495,54 +485,101 @@ def nameVerFromTar(tar, arch, validPacks):
       return { "name": vm.group(1), "ver": vm.group(2) }
   return None
 
-if hasattr(datetime, "total_seconds"):
-  # Python 2.7+
-  def getTotalSeconds(dt):
-    return dt.total_seconds()
-else:
-  # Python 2.6
-  def getTotalSeconds(dt):
-    return (dt.microseconds + (dt.seconds + dt.days * 24 * 3600) * 1000000) / 1000000
+def getS3PackageLister(endpointUrl, bucket, basePrefix, architectures,
+                       pathCommonPrefix):
+  """Return a function that gets a directory's contents from S3.
 
-def getTimestamp(s):
-  # Convert a given string in the format "Thu, 03 Aug 2017 01:12:54 GMT" to
-  # an UTC Unix timestamp and return it. Only strings ending with GMT or UTC
-  # are supported! In case of errors, zero is returned
-  if not s.endswith("GMT") and not s.endswith("UTC"):
-    return 0
-  try:
-    dt = datetime.strptime(s, "%a, %d %b %Y %H:%M:%S %Z")
-  except Exception as e:
-    error("Cannot parse time string {timestring}: {exception}".format(
-      timestring=s, exception=str(e)))
-    return 0
-  return getTotalSeconds(dt - datetime(1970, 1, 1))  # yes, it's a mess
+  Cache the directory tree from S3 in advance, because we tend to use this
+  function to get first the contents of a directory, then one of its
+  subdirectories. S3 can only return the items with a prefix, so when getting
+  the parent dir, we get everything already, so we better use it when getting
+  the subdirectory's contents later.
 
-def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, autoIncludeDeps,
-         notifEmail, dryRun, jget):
+  There are lots of paths on S3, so we take every bit of common prefix that we
+  can get -- hence the pathCommonPrefix argument. We get all paths with prefix
+  basePrefix/$arch/$pathCommonPrefix (pathCommonPrefix doesn't need to be a
+  full directory name).
+  """
+  s3 = boto3.client("s3", endpoint_url=endpointUrl,
+                    aws_access_key_id=environ["AWS_ACCESS_KEY_ID"],
+                    aws_secret_access_key=environ["AWS_SECRET_ACCESS_KEY"])
 
-  newPackages = {}
+  # This will be a dictionary where file-/dirnames are keys and dir contents
+  # are values. Files will be an entry with value None.
+  filesystemTree = {}
+  for arch in architectures:
+    # Build the filesystem tree on the server.
+    debug("Getting directory contents for %s/%s/dist*", basePrefix, arch)
+    pages = s3.get_paginator("list_objects_v2") \
+              .paginate(Bucket=bucket, Prefix='%s/%s/dist' % (basePrefix, arch))
+    for i, page in enumerate(pages):
+      debug("Page %d: got %d items", i, len(page['Contents']))
+      for item in page["Contents"]:
+        filename = item["Key"]
+        # The server returns file names with a prefix, which we want to ignore.
+        # We keep the arch prefix, though.
+        if filename.startswith(basePrefix + "/"):
+          filename = filename[len(basePrefix)+1:]
+        components = filename.split("/")
+        # Start at the root. We kept the arch prefix above in components, so
+        # we'll enter/create the arch directory in the loop below.
+        curDir = filesystemTree
+        # Leading directories: create empty dictionaries for directories we
+        # traverse for the first time.
+        for component in components[:-1]:
+          # If we have a file at this location, overwrite it with a directory
+          # entry. S3 can have files and directories with the same name in the
+          # same directory, but we don't care about the files in that case.
+          if curDir.get(component, {}) is None:
+            curDir[component] = {}
+          # Follow the path down into the next directory.
+          curDir = curDir.setdefault(component, {})
+        # File basename: add an entry to its parent directory's dictionary, but
+        # don't overwrite an existing directory entry here.
+        curDir.setdefault(components[-1], None)
+
+  def listDir(path):
+    """Look up the contents of path in the cached FS tree."""
+    curDir = filesystemTree
+    try:
+      if path:
+        for component in path.split("/"):
+          curDir = curDir[component]
+    except KeyError as err:
+      warning("listDir(%r) => NOT FOUND: %s, returning empty list", path, err)
+      return []
+    # Create a list of directory entries in the format expected below.
+    return [{"name": name, "type": "file" if value is None else "directory"}
+            for name, value in curDir.items()]
+  return listDir
+
+def sync(pub, architectures, endpointUrl, bucket, baseUrl, basePrefix, rules,
+         includeFirst, autoIncludeDeps, notifEmail, dryRun, connParams):
 
   # Template URLs
-  packNamesUrlTpl   = "%(baseUrl)s/%(arch)s/dist-direct/"
-  distUrlTpl        = "%(baseUrl)s/%(arch)s/dist/%(pack)s/%(pack)s-%(ver)s/"
-  distDirectUrlTpl  = "%(baseUrl)s/%(arch)s/dist-direct/%(pack)s/%(pack)s-%(ver)s/"
-  distRuntimeUrlTpl = "%(baseUrl)s/%(arch)s/dist-runtime/%(pack)s/%(pack)s-%(ver)s/"
-  verUrlTpl         = "%(baseUrl)s/%(arch)s/dist-direct/%(pack)s/"
-  getPackUrlTpl     = distDirectUrlTpl + "/%(pack)s-%(ver)s.%(arch)s.tar.gz"
+  packNamesPathTpl = "%(arch)s/dist-direct"
+  distPathTpl      = "%(arch)s/%(dist)s/%(pack)s/%(pack)s-%(ver)s"
+  verPathTpl       = "%(arch)s/dist-direct/%(pack)s"
+  getPackUrlTpl    = ("%(baseUrl)s/%(basePrefix)s/%(arch)s/dist-direct/%(pack)s"
+                      "/%(pack)s-%(ver)s/%(pack)s-%(ver)s.%(arch)s.tar.gz")
+  # The path templates (first 3 above) all have a common prefix --
+  # %(arch)s/dist. getS3PackageLister can use this prefix to narrow down the
+  # file list it retrieves from the server, to save some time.
+  listDir = getS3PackageLister(endpointUrl, bucket, basePrefix, architectures,
+                               pathCommonPrefix="dist")
+  newPackages = {}
 
   # Prepare the list of packages to install
   for arch in architectures:
     newPackages[arch] = []
-    packNamesUrl = format(packNamesUrlTpl,
-                          baseUrl=baseUrl, arch=arch)
 
     # Get valid package names for this architecture
-    debug(format("Getting packages for architecture %(arch)s from %(url)s",
-                 arch=arch, url=packNamesUrl))
-    distPackages = [ p["name"] for p in jget(packNamesUrl) if p["type"] == "directory" ]
-    distPackages.sort(key=lambda p: -len(p))
-    debug("Packages found: %s" % ", ".join([p for p in distPackages]))
+    debug("Getting packages for architecture %s", arch)
+    distPackages = sorted(
+      (p["name"] for p in listDir(packNamesPathTpl % {"arch": arch})
+       if p["type"] == "directory"),
+      key=len, reverse=True)
+    debug("Packages found: %s", ", ".join(distPackages))
 
     # Packages to publish
     pubPackages = []
@@ -553,27 +590,19 @@ def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, 
         continue
       if not includeFirst and rules["exclude"][arch].get(pkgName) == True:
         continue
-      verUrl = format(verUrlTpl,
-                      baseUrl=baseUrl, arch=arch, pack=pkgName)
-      debug(format("%(arch)s / %(pack)s: listing versions under %(url)s",
-                   arch=arch, pack=pkgName, url=verUrl))
-      for pkgTar in jget(verUrl):
+      for pkgTar in listDir(format(verPathTpl, arch=arch, pack=pkgName)):
         if pkgTar["type"] != "directory":
           continue
         nameVer = nameVerFromTar(pkgTar["name"], arch, [pkgName])
         if nameVer is None:
           continue
         pkgVer = nameVer["ver"]
-        pkgTime = getTimestamp(pkgTar["mtime"])  # UTC seconds since Unix epoch
         # Here we decide whether to include/exclude it
         if not applyFilter(pkgVer,
-                           pkgTime,
                            rules["include"][arch].get(pkgName, None),
                            rules["exclude"][arch].get(pkgName, None),
-                           includeFirst,
-                           excludeOlderThanSec):
-          debug(format("%(arch)s / %(pack)s / %(ver)s: excluded (timestamp: %(mtime)d)",
-                arch=arch, pack=pkgName, ver=pkgVer, mtime=pkgTime))
+                           includeFirst):
+          debug("%s / %s / %s: excluded", arch, pkgName, pkgVer)
           continue
 
         if not autoIncludeDeps:
@@ -584,15 +613,15 @@ def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, 
 
         # At this point we have filtered in the package: let's see its dependencies!
         # Note that a package always depends on itself (list cannot be empty).
-        distUrl = format(distRuntimeUrlTpl,
-                         baseUrl=baseUrl, arch=arch, pack=pkgName, ver=pkgVer)
-        runtimeDeps = jget(distUrl)
+        distPath = format(distPathTpl, dist="dist-runtime",
+                          arch=arch, pack=pkgName, ver=pkgVer)
+        runtimeDeps = listDir(distPath)
         if not runtimeDeps:
           error(format("%(arch)s / %(pack)s / %(ver)s: cannot list dependencies from %(url)s: skipping",
-                       arch=arch, pack=pkgName, ver=pkgVer, url=distUrl))
+                       arch=arch, pack=pkgName, ver=pkgVer, url=distPath))
           continue
         debug(format("%(arch)s / %(pack)s / %(ver)s: listing all dependencies under %(url)s",
-                     arch=arch, pack=pkgName, ver=pkgVer, url=distUrl))
+                     arch=arch, pack=pkgName, ver=pkgVer, url=distPath))
         for depTar in runtimeDeps:
           if depTar["type"] != "file":
             continue
@@ -604,7 +633,7 @@ def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, 
           # Append only if it does not exist yet
           if len([p for p in pubPackages if p["name"]==depName and p["ver"]==depVer]) == 0:
             debug(format("%(arch)s / %(pack)s / %(ver)s: adding %(depName)s %(depVer)s to publish",
-                  arch=arch, pack=pkgName, ver=pkgVer, url=distUrl,
+                  arch=arch, pack=pkgName, ver=pkgVer, url=distPath,
                   depName=depName, depVer=depVer))
             pubPackages.append({ "name": depName, "ver": depVer })
 
@@ -615,9 +644,6 @@ def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, 
 
     # Packages installation
     for pack in pubPackages:
-      pkgUrl = format(getPackUrlTpl,
-                       baseUrl=baseUrl, arch=arch, pack=pack["name"], ver=pack["ver"])
-
       if pub.installed(architectures[arch], pack["name"], pack["ver"]):
         debug(format("%(arch)s / %(pack)s / %(ver)s: already installed: skipping",
                      arch=arch, pack=pack["name"], ver=pack["ver"]))
@@ -625,16 +651,10 @@ def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, 
 
       # Get direct and indirect dependencies
       deps = {}
-      depUrlTpls = { "dist": distUrlTpl,
-                     "dist-direct": distDirectUrlTpl,
-                     "dist-runtime": distRuntimeUrlTpl }
       depFail = False
-      for key,depsUrlTpl in depUrlTpls.iteritems():
-        depsUrl = format(depsUrlTpl,
-                         baseUrl=baseUrl, arch=arch, pack=pack["name"], ver=pack["ver"])
-        debug(format("%(arch)s / %(pack)s / %(ver)s: listing %(key)s dependencies from %(url)s",
-                     arch=arch, pack=pack["name"], ver=pack["ver"], key=key, url=depsUrl))
-        jdeps = jget(depsUrl)
+      for key in ("dist", "dist-direct", "dist-runtime"):
+        jdeps = listDir(format(distPathTpl, dist=key, arch=arch,
+                               pack=pack["name"], ver=pack["ver"]))
         if not jdeps:
           error(format("%(arch)s / %(pack)s / %(ver)s: cannot get %(dtype)s dependencies: skipping",
                        arch=arch, pack=pack["name"], ver=pack["ver"], dtype=key))
@@ -651,6 +671,17 @@ def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, 
       deps["dist-direct-runtime"] = [ x for x in deps["dist-direct"]
                                       if [ 1 for y in deps["dist-runtime"]
                                            if x["name"] == y["name"] ] ]
+
+      symlinkUrl = format(getPackUrlTpl,
+                          baseUrl=baseUrl.rstrip("/"),
+                          basePrefix=basePrefix, arch=arch,
+                          pack=pack["name"], ver=pack["ver"])
+      pkgUrl = join(baseUrl,
+                    requests.get(symlinkUrl,
+                                 verify=connParams["http_ssl_verify"],
+                                 timeout=connParams["conn_timeout_s"])
+                            .text.rstrip())
+
 
       # Here we can attempt the installation
       info(format("%(arch)s / %(pack)s / %(ver)s: getting and installing",
@@ -775,14 +806,6 @@ def hostport(s, defaultPort):
   host = host[0]
   return host,port
 
-def mesos_resolve(host, dns, jget):
-  for d in sorted(dns, key=lambda k: random()):
-    ips = [ x["ip"] for x in jget(format("http://%(dns)s/v1/hosts/%(host)s", dns=d, host=host))
-                    if x.get("ip", None) ]
-    if ips:
-      return ips
-  return [host]  # fallback to input on error
-
 def main():
   parser = ArgumentParser()
   parser.add_argument("action", metavar="sync-cvmfs|sync-dir|sync-alien|sync-rpms|test-rules")
@@ -849,7 +872,6 @@ def main():
   conf["conn_retries"]      = conf.get("conn_retries"     , 3)
   conf["conn_dethrottle_s"] = conf.get("conn_dethrottle_s", 0)
   conf["kill_after_s"]      = conf.get("kill_after_s"     , 3600)
-  conf["exclude_older_d"]   = conf.get("exclude_older_d"  , 0)  # in days; 0 == don't exclude
 
   doExit = False
 
@@ -868,9 +890,6 @@ def main():
   if not isinstance(conf.get("architectures", None), dict):
     error("architectures must be a dict of dicts")
     doExit = True
-  if not isinstance(conf.get("base_url", None), basestring):
-    error("base_url must be a string")
-    doExit = True
   conf["auto_include_deps"] = conf.get("auto_include_deps", True)
   if not isinstance(conf["auto_include_deps"], bool):
     error("auto_include_deps must be a boolean")
@@ -884,12 +903,6 @@ def main():
     doExit = True
 
   if doExit: exit(1)
-
-  # Resolve base_url name via Mesos
-  us = urlsplit(conf["base_url"])
-  if us.netloc.endswith(".mesos") and conf["mesos_dns"] and args.action != "test-rules":
-    us = us._replace( netloc=choice(mesos_resolve(us.netloc, conf["mesos_dns"], jget)) )
-    conf["base_url"] = urlunsplit(us)
 
   debug("Configuration: " + json.dumps(conf, indent=2))
   incexc = conf.get("filter_order", "include,exclude")
@@ -999,14 +1012,16 @@ def main():
     debug("Architecture names mappings: %s" % json.dumps(architectures, indent=2))
     r = sync(pub=pub,
              architectures=architectures,
+             endpointUrl=conf["s3_endpoint_url"],
+             bucket=conf["s3_bucket"],
              baseUrl=conf["base_url"],
+             basePrefix=conf["base_prefix"],
              rules=rules,
-             excludeOlderThanSec=conf["exclude_older_d"] * 86400,
              includeFirst=includeFirst,
              autoIncludeDeps=conf["auto_include_deps"],
              notifEmail=conf["notification_email"],
              dryRun=args.dryRun,
-             jget=jget)
+             connParams=connParams)
     debug("Made %d unique HTTP requests (%d remote requests including retries, %d read from cache)" % \
           (jget.count_req, jget.count_req_retries, jget.count_cached))
     debug("Summary of requested URLs (DIR=direct access, HIT=cache hit, MIS=cache miss):")
@@ -1045,14 +1060,11 @@ def main():
       for pkg in testRules[arch]:
         for ver in testRules[arch][pkg]:
           match = applyFilter(ver,
-                              0,
                               rules["include"].get(arch, {}).get(pkg, None),
                               rules["exclude"].get(arch, {}).get(pkg, None),
-                              includeFirst,
-                              0)
-          msg = format(match and "%(arch)s: %(pkg)s ver %(ver)s matches filters"
-                             or "%(arch)s: %(pkg)s ver %(ver)s does NOT match filters",
-                       arch=arch, pkg=pkg, ver=ver)
+                              includeFirst)
+          msg = ("%s: %s ver %s matches filters" if match else
+                 "%s: %s ver %s does NOT match filters") % (arch, pkg, ver)
           if match != testRules[arch][pkg][ver]:
             error(msg + (match and " but it should not" or " but it should"))
             sys.exit(1)
