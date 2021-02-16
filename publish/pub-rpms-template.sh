@@ -108,4 +108,4 @@ pushd unpack_rpm
   mkdir -vp %(repodir)s
   mv -v $RPM ../
 popd
-mv -v $RPM $ALISWMOD_RPM %(stagedir)s
+mv -v $RPM %(stagedir)s
