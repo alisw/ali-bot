@@ -1,0 +1,982 @@
+#!/usr/bin/env python
+
+import logging, sys, json, yaml, errno, boto3, requests
+from glob import glob
+from argparse import ArgumentParser
+from commands import getstatusoutput
+from datetime import datetime
+from time import time
+from logging import debug, info, warning, error
+from re import search, escape
+from os.path import isdir, isfile, realpath, dirname, getmtime, join, basename
+from os import chmod, remove, chdir, getcwd, getpid, kill, makedirs, rename, environ
+from shutil import rmtree
+from tempfile import NamedTemporaryFile, mkdtemp
+from subprocess import Popen, PIPE, STDOUT
+from smtplib import SMTP
+
+def format(s, **kwds):
+  return s % kwds
+
+def rmrf(path):
+  err, out = getstatusoutput("rm -fr %s" % path)
+  if err:
+    debug(out)
+
+def searchMany(name, exprs):
+  if isinstance(exprs, list):
+    for e in exprs:
+      if search(e, name): return True
+  elif exprs == True:
+    return True
+  return False
+
+def applyFilter(name, includeRules, excludeRules, includeFirst):
+  if includeFirst:
+    return searchMany(name, includeRules) and not searchMany(name, excludeRules)
+  if searchMany(name, excludeRules):
+    return False
+  # process exclude first, and no explicit include rule: keep it
+  return includeRules is None or searchMany(name, includeRules)
+
+def runInstallScript(script, dryRun, **kwsub):
+  if dryRun:
+    debug(("Dry run: publish script follows:\n" + script) % kwsub)
+    return 0
+  with NamedTemporaryFile(delete=False) as fp:
+    fn = fp.name
+    fp.write(format(script, **kwsub))
+  chmod(fn, 0o700)
+  debug("Created unpack script: %s", fn)
+  rv = execute(fn)
+  remove(fn)
+  debug("Unpack script %s returned %d", fn, rv)
+  return rv
+
+def execute(command):
+  popen = Popen(command, shell=False, stdout=PIPE, stderr=STDOUT)
+  for line in iter(popen.stdout.readline, ""):
+    debug("Script: %s", line.strip("\n"))  # yield line
+  output, _ = popen.communicate()
+  debug("Script returned: %s", output)
+  return popen.returncode
+
+def grabOutput(command):
+  debug("Executing command: %s", " ".join(command))
+  popen = Popen(command, shell=False, stdout=PIPE, stderr=STDOUT)
+  return popen.returncode, popen.communicate()[0]
+
+class PublishException(Exception):
+  pass
+
+class PlainFilesystem(object):
+
+  def __init__(self, modulefileTpl, pkgdirTpl, publishScriptTpl,
+                     connParams, dryRun=False):
+
+    self._repository         = ""
+    self._modulefileTpl      = modulefileTpl
+    self._pkgdirTpl          = pkgdirTpl
+    self._publishScriptTpl   = publishScriptTpl
+    self._connParams         = connParams
+    self._dryRun             = dryRun
+    self._countChanges       = 0
+
+  def _kw(self, url, arch, pkgName, pkgVer):
+    kw =  { "url": url, "package": pkgName, "version": pkgVer, "repo": self._repository or "filesystem",
+            "arch": arch }
+    kw.update({ "pkgdir": format(self._pkgdirTpl, **kw) })
+    kw.update({ "modulefile": format(self._modulefileTpl, **kw) })
+    kw.update(self._connParams)
+    kw["http_ssl_verify"] = 1 if kw["http_ssl_verify"] else 0
+    return kw
+
+  def installed(self, arch, pkgName, pkgVer):
+    kw = self._kw(None, arch, pkgName, pkgVer)
+    debug("%(repo)s: checking if %(package)s %(version)s is installed for %(arch)s" % kw)
+    return isdir(kw["pkgdir"]) or isfile(kw["modulefile"])
+
+  def install(self, url, arch, pkgName, pkgVer, deps, allDeps):
+    kw = self._kw(url, arch, pkgName, pkgVer)
+    rv = runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
+    if rv == 0:
+      self._countChanges += 1
+    else:
+      self._cleanup(arch, pkgName, pkgVer)
+    return rv
+
+  def _cleanup(self, arch, pkgName, pkgVer):
+    kw = self._kw(None, arch, pkgName, pkgVer)
+    debug("%(repo)s: cleaning up %(pkgdir)s and %(modulefile)s" % kw)
+    rmrf(kw["pkgdir"])
+    rmrf(kw["modulefile"])
+
+  def transaction(self):
+    return True
+
+  def abort(self):
+    return True
+
+  def publish(self):
+    return True
+
+
+class CvmfsServer(PlainFilesystem):
+
+  def __init__(self, repository, modulefileTpl, pkgdirTpl, publishScriptTpl,
+                     connParams, dryRun=False):
+    super(CvmfsServer, self).__init__(modulefileTpl, pkgdirTpl,
+                                      publishScriptTpl, connParams, dryRun)
+    self._inCvmfsTransaction = False
+    self._repository         = repository
+
+  def transaction(self):
+    if self._inCvmfsTransaction:
+      debug("%s: already in a transaction", self._repository)
+      return True
+    elif self._dryRun:
+      info("%s: started transaction (dry run)", self._repository)
+      self._inCvmfsTransaction = True
+      return True
+    else:
+      if execute([ "cvmfs_server", "transaction", self._repository ]) == 0:
+        info("%s: started transaction", self._repository)
+        self._inCvmfsTransaction = True
+        return True
+      error("%s: cannot commence transaction: maybe another one is in progress?",
+            self._repository)
+      return False
+
+  def abort(self, force=False):
+    if not self._inCvmfsTransaction and not force:
+      debug("%s: no transaction to abort", self._repository)
+      return True
+    if self._dryRun and not force:
+      info("%s: transaction aborted (dry run)", self._repository)
+      self._inCvmfsTransaction = False
+      return True
+    rv = execute([ "cvmfs_server", "abort", "-f", self._repository ])
+    if rv == 0:
+      info("%s: transaction aborted", self._repository)
+      self._inCvmfsTransaction = False
+      return True
+    error("%s: cannot abort transaction", self._repository)
+    return False
+
+  def publish(self):
+    if not self._inCvmfsTransaction:
+      debug("%s: not in a transaction", self._repository)
+      return True
+    if not self._countChanges:
+      debug("%s: nothing to publish, cancelling transaction", self._repository)
+      return self.abort()
+    info("%s: publishing transaction, %d new package(s)",
+         self._repository, self._countChanges)
+    if self._dryRun:
+      info("%s: transaction published (dry run)", self._repository)
+      return True
+    rv = execute([ "cvmfs_server", "publish", self._repository ])
+    if rv == 0:
+      info("%s: transaction published!", self._repository)
+      self._inCvmfsTransaction = False
+      return True
+    else:
+      error("%s: cannot publish CVMFS transaction, aborting", self._repository)
+      self.abort()
+      return False
+
+
+class AliEnPackMan(object):
+
+  def __init__(self, publishScriptTpl, connParams, dryRun=False):
+    self._dryRun = dryRun
+    self._publishScriptTpl = publishScriptTpl
+    self._packs = None
+    self._connParams = connParams
+    self._cachedArchs = []
+
+  def _kw(self, url, arch, pkgName, pkgVer, deps):
+    kw =  { "url": url, "package": pkgName, "version": pkgVer, "arch": arch, "dependencies": deps }
+    kw.update(self._connParams)
+    kw["http_ssl_verify"] = 1 if kw["http_ssl_verify"] else 0
+    return kw
+
+  def installed(self, arch, pkgName, pkgVer):
+    kw = self._kw(None, arch, pkgName, pkgVer, None)
+    debug("PackMan: checking if %(package)s %(version)s is installed for %(arch)s" % kw)
+
+    if self._packs is None:
+      self._packs = {}
+      for line in grabOutput([ "alien", "-exec",
+                               "packman", "list", "-all", "-force" ])[1].split("\n"):
+        m = search(r"VO_ALICE@(.+?)::([^\s]+)", line)
+        if not m: continue
+        pkg = m.group(1)
+        ver = m.group(2)
+        if not pkg in self._packs:
+          self._packs[pkg] = {}
+        self._packs[pkg].update({ver: []})
+
+    if not self._packs:
+      raise PublishException("PackMan: could not get list of packages from AliEn this time")
+
+    if not arch in self._cachedArchs:
+      for line in grabOutput([ "alien", "-exec", "find", "/alice/packages", arch ])[1].split("\n"):
+        m = search(r"^/alice/packages/([^/]+)/([^/]+)/", line)
+        if not m: continue
+        pkg = m.group(1)
+        ver = m.group(2)
+        if not pkg in self._packs: continue
+        self._packs[pkg].get(ver, []).append(arch)
+      self._cachedArchs.append(arch)
+
+    return arch in self._packs.get(pkgName, {}).get(pkgVer, [])
+
+  def install(self, url, arch, pkgName, pkgVer, deps, allDeps):
+    kw = self._kw(url, arch, pkgName, pkgVer,
+                  ",".join(["VO_ALICE@"+x["name"]+"::"+x["ver"] for x in deps]))
+    return runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
+
+  def transaction(self):
+    # Not actually opening a "transaction", but failing if AliEn appears down.
+    # If we don't fail here, package list appears empty and we'll attempt to
+    # publish *every* package, and failing...
+    _,out = grabOutput([ "alien", "-exec", "ls", "/alice/packages" ])
+    if "AliRoot" in out.split("\n"):
+      debug("PackMan: AliEn connection and APIs appear to work")
+      return True
+    error("PackMan: API response incorrect, assuming AliEn is not working at the moment")
+    return False
+
+  def abort(self, force=False):
+    return True
+
+  def publish(self):
+    return True
+
+class RPM(object):
+
+  def __init__(self, repoDir, publishScriptTpl, connParams, genUpdatableRpms, dryRun=False):
+    self._dryRun = dryRun
+    self._genUpdatableRpms = genUpdatableRpms
+    self._repoDir = repoDir
+    self._stageDir = mkdtemp(prefix="staging-", dir=repoDir)
+    self._publishScriptTpl = publishScriptTpl
+    self._countChanges = 0
+    self._connParams = connParams
+    self._archs = []
+    self._inRpmTransaction = False
+
+  def _kw(self, url, arch, pkgName, pkgVer, workDir=None, stageDir=None, deps=None):
+    kw =  { "url"          : url,
+            "package"      : pkgName,
+            "version"      : pkgVer,
+            "version_rpm"  : pkgVer.replace("-", "_"),
+            "arch"         : arch,
+            "dependencies" : deps,
+            "repodir"      : self._repoDir+"/"+arch,
+            "workdir"      : workDir,
+            "stagedir"     : stageDir,
+            "updatable"    : "1" if self._genUpdatableRpms else "" }
+    kw.update(self._connParams)
+    kw["http_ssl_verify"] = 1 if kw["http_ssl_verify"] else 0
+    if self._genUpdatableRpms:
+      kw.update({ "rpm": format("alisw-%(package)s-%(version_rpm)s-1.%(arch)s.rpm", **kw) })
+    else:
+      kw.update({ "rpm": format("alisw-%(package)s+%(version)s-1-1.%(arch)s.rpm", **kw) })
+    return kw
+
+  def installed(self, arch, pkgName, pkgVer):
+    kw = self._kw(None, arch, pkgName, pkgVer)
+    debug("RPM: checking if %(rpm)s exists for %(package)s %(version)s on %(arch)s" % kw)
+    return isfile(format("%(repodir)s/%(rpm)s", **kw))
+
+  def install(self, url, arch, pkgName, pkgVer, deps, allDeps):
+    # All RPMs are created in workDir (temporary, destroyed after creation). Eventually they are
+    # moved to stageDirArch (not the repository)
+
+    stageDirArch = join(self._stageDir, arch)
+    if not self._dryRun:
+      workDir = mkdtemp(prefix="aliPublish-RPM-", dir=join(self._stageDir, "tmp"))
+    else:
+      workDir = "/dryrun_doesnotexist"
+
+    kw = self._kw(url, arch, pkgName, pkgVer, workDir, stageDirArch,
+                  " ".join(["alisw-%s+%s" % (x["name"], x["ver"]) for x in deps]))
+
+    if not self._dryRun:
+      debug("RPM: created temporary working directory %(workdir)s" % kw)
+      debug("RPM: creating staging directory %s", stageDirArch)
+      try:
+        makedirs(stageDirArch)
+      except OSError as exc:
+        if not isdir(stageDirArch) or exc.errno != errno.EEXIST:
+          error("RPM: error creating staging directory %s", stageDirArch)
+          return 1
+
+    rv = runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
+    if rv == 0:
+      if not arch in self._archs:
+        self._archs.append(arch)
+      self._countChanges += 1
+    debug("RPM: removing temporary working directory %(workdir)s" % kw)
+    rmrf(workDir)
+    return rv
+
+  def transaction(self):
+    if not self._inRpmTransaction and not self._dryRun:
+      self._inRpmTransaction = True
+      debug("RPM: cleaning up staging dir %s", self._stageDir)
+      rmrf(self._stageDir)
+      stagingTmp = join(self._stageDir, "tmp")
+      debug("RPM: creating staging tempdir %s", stagingTmp)
+      try:
+        makedirs(stagingTmp)
+      except OSError as exc:
+        if not isdir(stagingTmp) or exc.errno != errno.EEXIST:
+          error("RPM: error creating staging tempdir %s", stagingTmp)
+          return False
+    return True
+
+  def abort(self, force=False):
+    if self._inRpmTransaction and not self._dryRun:
+      debug("RPM: aborting: cleaning up staging dir %s", self._stageDir)
+      rmrf(self._stageDir)
+      self._inRpmTransaction = False
+    return True
+
+  def publish(self):
+    if self._countChanges > 0:
+      info("RPM: updating repository: %s new package(s)", self._countChanges)
+      if not self._dryRun:
+        for arch in self._archs:
+          cachedir = join(self._repoDir, "createrepo_cachedir", arch)
+          archdir = join(self._repoDir, arch)
+          stagedir = join(self._stageDir, arch)
+
+          try:
+            makedirs(cachedir)
+          except OSError as exc:
+            if not isdir(cachedir) or exc.errno != errno.EEXIST:
+              error("RPM: error creating createrepo cachedir %s", cachedir)
+              return False
+
+          try:
+            makedirs(archdir)
+          except OSError as exc:
+            if not isdir(archdir) or exc.errno != errno.EEXIST:
+              error("RPM: error creating repository dir %s", archdir)
+              return False
+
+          info("RPM: moving newly created packages from %s to %s", stagedir, archdir)
+          for srcRpm in glob(join(stagedir, "*.rpm")):
+            try:
+              info("RPM: moving %s to %s", srcRpm, archdir)
+              rename(srcRpm, join(archdir, basename(srcRpm)))
+            except OSError:
+              error("RPM: cannot move %s to %s", srcRpm, archdir)
+
+          # We can already remove the staging directory before calling
+          # `createrepo`. Errors here are not fatal.
+          debug("RPM: removing staging directory %s", self._stageDir)
+          rmrf(self._stageDir)
+
+          if execute([ "time", "createrepo", "--cachedir", cachedir, "--update", archdir ]) == 0:
+            info("RPM: repository updated for %s", arch)
+          else:
+            error("RPM: error updating repository for %s", arch)
+            return False
+        return True
+      elif self._dryRun:
+        info("RPM: not updating repository, dry run")
+        return True
+      else:
+        error("RPM: error updating repository")
+        return False
+    debug("RPM: nothing new to publish")
+    return True
+
+def nameVerFromTar(tar, arch, validPacks):
+  for pkgName in validPacks:
+    vre = format("^(%(pack)s)-(.*?)(\.%(arch)s\.tar\.gz)?$", pack=escape(pkgName), arch=arch)
+    vm = search(vre, tar)
+    if vm:
+      return { "name": vm.group(1), "ver": vm.group(2) }
+  return None
+
+def prettyPrintPkg(pkg):
+  """Return a human-readable representation of the package."""
+  return pkg["name"] + " " + pkg["ver"]
+
+def getS3PackageLister(endpointUrl, bucket, basePrefix, architectures,
+                       pathCommonPrefix):
+  """Return a function that gets a directory's contents from S3.
+
+  Cache the directory tree from S3 in advance, because we tend to use this
+  function to get first the contents of a directory, then one of its
+  subdirectories. S3 can only return the items with a prefix, so when getting
+  the parent dir, we get everything already, so we better use it when getting
+  the subdirectory's contents later.
+
+  There are lots of paths on S3, so we take every bit of common prefix that we
+  can get -- hence the pathCommonPrefix argument. We get all paths with prefix
+  basePrefix/$arch/$pathCommonPrefix (pathCommonPrefix doesn't need to be a
+  full directory name).
+  """
+  s3 = boto3.client("s3", endpoint_url=endpointUrl,
+                    aws_access_key_id=environ["AWS_ACCESS_KEY_ID"],
+                    aws_secret_access_key=environ["AWS_SECRET_ACCESS_KEY"])
+
+  # This will be a dictionary where file-/dirnames are keys and dir contents
+  # are values. Files will be an entry with value None.
+  filesystemTree = {}
+  for arch in architectures:
+    # Build the filesystem tree on the server.
+    debug("Getting directory contents for %s/%s/dist*", basePrefix, arch)
+    pages = s3.get_paginator("list_objects_v2") \
+              .paginate(Bucket=bucket, Prefix='%s/%s/dist' % (basePrefix, arch))
+    for i, page in enumerate(pages):
+      debug("Page %d: got %d items", i, len(page['Contents']))
+      for item in page["Contents"]:
+        filename = item["Key"]
+        # The server returns file names with a prefix, which we want to ignore.
+        # We keep the arch prefix, though.
+        if filename.startswith(basePrefix + "/"):
+          filename = filename[len(basePrefix)+1:]
+        components = filename.split("/")
+        # Start at the root. We kept the arch prefix above in components, so
+        # we'll enter/create the arch directory in the loop below.
+        curDir = filesystemTree
+        # Leading directories: create empty dictionaries for directories we
+        # traverse for the first time.
+        for component in components[:-1]:
+          # If we have a file at this location, overwrite it with a directory
+          # entry. S3 can have files and directories with the same name in the
+          # same directory, but we don't care about the files in that case.
+          if curDir.get(component, {}) is None:
+            curDir[component] = {}
+          # Follow the path down into the next directory.
+          curDir = curDir.setdefault(component, {})
+        # File basename: add an entry to its parent directory's dictionary, but
+        # don't overwrite an existing directory entry here.
+        curDir.setdefault(components[-1], None)
+
+  def listDir(path):
+    """Look up the contents of path in the cached FS tree."""
+    curDir = filesystemTree
+    try:
+      if path:
+        for component in path.split("/"):
+          curDir = curDir[component]
+    except KeyError as err:
+      warning("listDir(%r) => NOT FOUND: %s, returning empty list", path, err)
+      return []
+    # Create a list of directory entries in the format expected below.
+    return [{"name": name, "type": "file" if value is None else "directory"}
+            for name, value in curDir.items()]
+  return listDir
+
+def sync(pub, architectures, endpointUrl, bucket, baseUrl, basePrefix, rules,
+         includeFirst, autoIncludeDeps, notifEmail, dryRun, connParams):
+
+  # Template URLs
+  packNamesPathTpl = "%(arch)s/dist-direct"
+  distPathTpl      = "%(arch)s/%(dist)s/%(pack)s/%(pack)s-%(ver)s"
+  verPathTpl       = "%(arch)s/dist-direct/%(pack)s"
+  getPackUrlTpl    = ("%(baseUrl)s/%(basePrefix)s/%(arch)s/dist-direct/%(pack)s"
+                      "/%(pack)s-%(ver)s/%(pack)s-%(ver)s.%(arch)s.tar.gz")
+  # The path templates (first 3 above) all have a common prefix --
+  # %(arch)s/dist. getS3PackageLister can use this prefix to narrow down the
+  # file list it retrieves from the server, to save some time.
+  listDir = getS3PackageLister(endpointUrl, bucket, basePrefix, architectures,
+                               pathCommonPrefix="dist")
+  newPackages = {}
+
+  # Prepare the list of packages to install
+  for arch in architectures:
+    newPackages[arch] = []
+
+    # Get valid package names for this architecture
+    debug("Getting packages for architecture %s", arch)
+    distPackages = sorted(
+      (p["name"] for p in listDir(packNamesPathTpl % {"arch": arch})
+       if p["type"] == "directory"),
+      key=len, reverse=True)
+    debug("Packages found: %s", ", ".join(distPackages))
+
+    # Packages to publish
+    pubPackages = []
+
+    # Get versions for all valid packages and filter them according to the rules
+    for pkgName in distPackages:
+      if includeFirst and pkgName not in rules["include"][arch]:
+        continue
+      if not includeFirst and rules["exclude"][arch].get(pkgName) == True:
+        continue
+      for pkgTar in listDir(format(verPathTpl, arch=arch, pack=pkgName)):
+        if pkgTar["type"] != "directory":
+          continue
+        nameVer = nameVerFromTar(pkgTar["name"], arch, [pkgName])
+        if nameVer is None:
+          continue
+        pkgVer = nameVer["ver"]
+        # Here we decide whether to include/exclude it
+        if not applyFilter(pkgVer,
+                           rules["include"][arch].get(pkgName, None),
+                           rules["exclude"][arch].get(pkgName, None),
+                           includeFirst):
+          debug("%s / %s / %s: excluded", arch, pkgName, pkgVer)
+          continue
+
+        if not autoIncludeDeps:
+          # Not automatically including dependencies, add this package only.
+          # Not checking for dups because we can't have any
+          pubPackages.append({ "name": pkgName, "ver": pkgVer })
+          continue
+
+        # At this point we have filtered in the package: let's see its dependencies!
+        # Note that a package always depends on itself (list cannot be empty).
+        distPath = format(distPathTpl, dist="dist-runtime",
+                          arch=arch, pack=pkgName, ver=pkgVer)
+        runtimeDeps = listDir(distPath)
+        if not runtimeDeps:
+          error("%s / %s / %s: cannot list dependencies from %s: skipping",
+                arch, pkgName, pkgVer, distPath)
+          continue
+        debug("%s / %s / %s: listing all dependencies under %s",
+              arch, pkgName, pkgVer, distPath)
+        for depTar in runtimeDeps:
+          if depTar["type"] != "file":
+            continue
+          depNameVer = nameVerFromTar(depTar["name"], arch, distPackages)
+          if depNameVer is None:
+            continue
+          depName = depNameVer["name"]
+          depVer = depNameVer["ver"]
+          # Append only if it does not exist yet
+          if not any(p["name"] == depName and p["ver"] == depVer
+                     for p in pubPackages):
+            debug("%s / %s / %s: adding %s %s to publish",
+                  arch, pkgName, pkgVer, depName, depVer)
+            pubPackages.append({"name": depName, "ver": depVer})
+
+    pubPackages.sort(key=lambda itm: itm["name"])
+    debug("%s: %d package(s) candidate for publication: %s",
+          arch, len(pubPackages), ", ".join(map(prettyPrintPkg, pubPackages)))
+
+    # Packages installation
+    for pack in pubPackages:
+      if pub.installed(architectures[arch], pack["name"], pack["ver"]):
+        debug("%s / %s / %s: already installed: skipping",
+              arch, pack["name"], pack["ver"])
+        continue
+
+      # Get direct and indirect dependencies
+      deps = {}
+      depFail = False
+      for key in ("dist", "dist-direct", "dist-runtime"):
+        jdeps = listDir(format(distPathTpl, dist=key, arch=arch,
+                               pack=pack["name"], ver=pack["ver"]))
+        if not jdeps:
+          error("%s / %s / %s: cannot get %s dependencies: skipping",
+                arch, pack["name"], pack["ver"], key)
+          newPackages[arch].append({
+            "name": pack["name"], "ver": pack["ver"], "success": False})
+          depFail = True
+          break
+        deps[key] = [nameVerFromTar(x["name"], arch, distPackages)
+                     for x in jdeps if x["type"] == "file"]
+        deps[key] = [x for x in deps[key]
+                     if x is not None and x["name"] != pack["name"]]
+      if depFail:
+        continue
+      # dist-direct-runtime: all entries in dist-direct also in dist-runtime
+      deps["dist-direct-runtime"] = [
+        x for x in deps["dist-direct"]
+        if any(x["name"] == y["name"] for y in deps["dist-runtime"])
+      ]
+
+      symlinkUrl = format(getPackUrlTpl,
+                          baseUrl=baseUrl.rstrip("/"),
+                          basePrefix=basePrefix, arch=arch,
+                          pack=pack["name"], ver=pack["ver"])
+      pkgUrl = join(baseUrl,
+                    requests.get(symlinkUrl,
+                                 verify=connParams["http_ssl_verify"],
+                                 timeout=connParams["conn_timeout_s"])
+                            .text.rstrip())
+
+
+      # Here we can attempt the installation
+      def prettyPrintPkgs(key):
+        return ", ".join(map(prettyPrintPkg, deps[key]))
+      info("%s / %s / %s: getting and installing", arch, pack["name"], pack["ver"])
+      info(" * Source: %s", pkgUrl)
+      info(" * Direct deps: %s", prettyPrintPkgs("dist-direct"))
+      info(" * All deps: %s", prettyPrintPkgs("dist"))
+      info(" * Direct runtime deps: %s", prettyPrintPkgs("dist-direct-runtime"))
+      info(" * Runtime deps: %s", prettyPrintPkgs("dist-runtime"))
+
+      if not pub.transaction():
+        sys.exit(2)  # fatal
+      rv = pub.install(pkgUrl, architectures[arch], pack["name"], pack["ver"],
+                       deps["dist-direct-runtime"], deps["dist-runtime"])
+      newPackages[arch].append({
+        "name": pack["name"],
+        "ver": pack["ver"],
+        "success": rv == 0,
+        "deps": deps["dist-direct-runtime"],
+        "alldeps": deps["dist-runtime"],
+      })
+      if rv == 0:
+        info("%s / %s / %s: installed successfully",
+             arch, pack["name"], pack["ver"])
+      else:
+        error("%s / %s / %s: publish script failed with %d",
+              arch, pack["name"], pack["ver"], rv)
+
+  # Publish eventually
+  if pub.publish():
+    totSuccess = 0
+    totFail = 0
+    for arch, packStatus in newPackages.iteritems():
+      nSuccess = sum(1 for x in packStatus if x["success"])
+      nFail = len(packStatus) - nSuccess
+      totSuccess += nSuccess
+      totFail += nFail
+      info("%s: install OK for %d/%d package(s): %s", arch, nSuccess, len(packStatus),
+           ", ".join(prettyPrintPkg(x) for x in packStatus if x["success"]))
+      if nFail:
+        error("%s: install failed for %d/%d package(s): %s", arch, nFail, len(packStatus),
+              ", ".join(prettyPrintPkg(x) for x in packStatus if not x["success"]))
+    if notifEmail:
+      notify(notifEmail, architectures, newPackages, dryRun)
+    else:
+      debug("No email notification configured")
+    return totFail == 0 or totSuccess > 0
+
+  return False
+
+def notify(conf, archs, pack, dryRun):
+  if not "server" in conf:
+    return
+  try:
+    mailer = SMTP(conf["server"], conf.get("port", 25))
+  except Exception as e:
+    error("Email notification: cannot connect to %s", conf["server"])
+    return
+  for arch, packs in pack.iteritems():
+    for p in packs:
+      key = "success" if p["success"] else "failure"
+      deps_fmt = "".join(format(conf.get("package_format", "%(package)s %(version)s "),
+                                package=x["name"],
+                                version=x["ver"],
+                                arch=archs[arch]) for x in p.get("alldeps", []))
+      kw = {
+        "package": p["name"],
+        "version": p["ver"],
+        "arch": archs[arch],
+        "dependencies_fmt": "".join(
+          format(conf.get("package_format", "%(package)s %(version)s "),
+                 package=x["name"], version=x["ver"], arch=archs[arch])
+          for x in p.get("deps", [])),
+        "alldependencies_fmt": "".join(
+          format(conf.get("package_format", "%(package)s %(version)s "),
+                 package=x["name"], version=x["ver"], arch=archs[arch])
+          for x in p.get("alldeps", [])),
+      }
+
+      body = conf.get(key, {}).get("body", "") % kw
+      subj = conf.get(key, {}).get("subject", "%(package)s %(version)s: " + key) % kw
+
+      to = conf.get(key, {}).get("to", "")
+      if isinstance(to, dict):
+        to = to.get(p["name"], to.get("default", ""))
+      if isinstance(to, list):
+        to = ",".join(to)
+      to = [x.strip() for x in to.split(",")] if to else []
+
+      sender = conf.get(key, {}).get("from", "noreply@localhost") % kw
+      if not body or not to:
+        debug("Not sending email notification for %s %s (%s)",
+              p["name"], p["ver"], archs[arch])
+        continue
+      body = ("Subject: %s\nFrom: %s\nTo: %s\n\n%s" %
+              (subj, sender, ", ".join(to), body))
+      if dryRun:
+        debug("Notification email for %s %s (%s) follows:\n%s",
+              p["name"], p["ver"], archs[arch], body)
+        continue
+      try:
+        mailer.sendmail(sender, to, body)
+      except Exception as e:
+        error("Cannot send email notification for %s %s (%s): %s",
+              p["name"], p["ver"], archs[arch], e)
+        continue
+      debug("Sent email notification for %s %s (%s)",
+            p["name"], p["ver"], archs[arch])
+
+def hostport(s, defaultPort):
+  host = s.split(":", 1)
+  try:
+    port = len(host) == 2 and int(host[1]) or defaultPort
+  except ValueError:
+    port = defaultPort
+  host = host[0]
+  return host,port
+
+def main():
+  parser = ArgumentParser()
+  parser.add_argument("action", metavar="sync-cvmfs|sync-dir|sync-alien|sync-rpms|test-rules")
+  parser.add_argument("--pkgname", dest="pkgName")
+  parser.add_argument("--pkgver", dest="pkgVer")
+  parser.add_argument("--pkgarch", dest="pkgArch")
+  parser.add_argument("--test-conf", dest="testConf")
+  parser.add_argument("--config", "-c", dest="configFile", default="aliPublish.conf",
+                      help="Configuration file")
+  parser.add_argument("--debug", "-d", dest="debug", action="store_true", default=False,
+                      help="Debug output")
+  parser.add_argument("--abort-at-start", dest="abort", action="store_true", default=False,
+                      help="Abort any pending CVMFS transaction at start")
+  parser.add_argument("--no-notification", dest="notify", action="store_false", default=True,
+                      help="Do not send any notification (ignore configuration)")
+  parser.add_argument("--dry-run", "-n", dest="dryRun", action="store_true", default=False,
+                      help="Do not write or publish anything")
+  parser.add_argument("--pidfile", "-p", dest="pidFile", default=None,
+                      help="Write PID to this file and do not run if already running")
+  parser.add_argument("--override", dest="override", nargs="+",
+                      help="Override configuration options in JSON format")
+  args = parser.parse_args()
+
+  overrideConf = {}
+  try:
+    for o in args.override if args.override else {}:
+      overrideConf.update(json.loads(o))
+  except:
+    parser.error("Malformed JSON in --override")
+
+  logger = logging.getLogger()
+  loggerHandler = logging.StreamHandler()
+  logger.addHandler(loggerHandler)
+  loggerHandler.setFormatter(logging.Formatter('%(levelname)-5s: %(message)s'))
+  logger.setLevel(logging.DEBUG if args.debug else logging.INFO)
+
+  progDir = dirname(realpath(__file__))
+
+  try:
+    debug("Reading configuration from %s (current directory: %s)",
+          args.configFile, getcwd())
+    with open(args.configFile, "r") as cf:
+      conf = yaml.safe_load(cf.read())
+  except (IOError, yaml.YAMLError) as e:
+    error("While reading %s: %s", args.configFile, e)
+    return 1
+
+  if overrideConf:
+    debug("Overriding configuration: %s", json.dumps(overrideConf, indent=2))
+    conf.update(overrideConf)
+
+  if conf is None: conf = {}
+  if conf.get("include", None) is None: conf["include"] = {}
+  if conf.get("exclude", None) is None: conf["exclude"] = {}
+  conf.setdefault("http_ssl_verify", True)
+  conf.setdefault("conn_timeout_s", 6.05)
+  conf.setdefault("conn_retries", 3)
+  conf.setdefault("conn_dethrottle_s", 0)
+  conf.setdefault("kill_after_s", 3600)
+
+  doExit = False
+
+  # Connection handler
+  connParams = {k: conf[k] for k in ("http_ssl_verify", "conn_timeout_s",
+                                     "conn_retries", "conn_dethrottle_s")}
+
+  conf.setdefault("package_dir", conf.get("cvmfs_package_dir", None))
+  conf.setdefault("modulefile", conf.get("cvmfs_modulefile", None))
+
+  if not isinstance(conf.get("architectures", None), dict):
+    error("architectures must be a dict of dicts")
+    doExit = True
+  conf["auto_include_deps"] = conf.get("auto_include_deps", True)
+  if not isinstance(conf["auto_include_deps"], bool):
+    error("auto_include_deps must be a boolean")
+    doExit = True
+  conf["notification_email"] = conf.get("notification_email", {}) if args.notify else {}
+  if not isinstance(conf["notification_email"], dict):
+    error("notification_email must be a dict of dicts")
+    doExit = True
+  if not isinstance(conf["http_ssl_verify"], bool):
+    error("http_ssl_verify must be a bool")
+    doExit = True
+
+  if doExit: exit(1)
+
+  debug("Configuration: %s", json.dumps(conf, indent=2))
+  incexc = conf.get("filter_order", "include,exclude")
+  if incexc == "include,exclude": includeFirst = True
+  elif incexc == "exclude,include": includeFirst = False
+  else:
+    error("filter_order can be include,exclude or exclude,include")
+    return 1
+
+  rules = { "include": {}, "exclude": {} }
+  for arch,maps in conf["architectures"].iteritems():
+    for r in rules.keys():
+      rules[r][arch] = isinstance(maps, dict) and maps.get(r, {}) or {}
+      for uk in set(conf[r].keys()+rules[r][arch].keys()):
+
+        # Specific (per-arch) rule always wins
+        general  = conf[r].get(uk, [])
+        specific = rules[r][arch].get(uk, [])
+
+        if isinstance(general, list) and isinstance(specific, list):
+          rules[r][arch][uk] = specific + general
+        elif not specific and specific != False:
+          # specific not specified: general wins
+          rules[r][arch][uk] = general
+        elif isinstance(specific, bool):
+          # specific overrides all (it's a bool)
+          rules[r][arch][uk] = specific
+        elif isinstance(general, bool):
+          # specific overrides all, again (it's a list)
+          rules[r][arch][uk] = specific
+        else:
+          assert False, "Unhandled case: %s rule for %s (%s): general=%s, specific=%s" % (r, uk, arch, general, specific)
+
+  debug("Per architecture include/exclude rules: %s", json.dumps(rules, indent=2))
+
+  if args.action in [ "sync-cvmfs", "sync-dir", "sync-alien", "sync-rpms" ]:
+    chdir("/")
+    if args.pidFile:
+      try:
+        otherPid = int(open(args.pidFile, "r").read().strip())
+        kill(otherPid, 0)
+        runningFor = time() - getmtime(args.pidFile)
+        if runningFor > conf["kill_after_s"]:
+          kill(otherPid, 9)
+          error("aliPublish with PID %d in overtime (%ds): killed", otherPid, runningFor)
+          otherPid = 0
+      except (IOError, OSError, ValueError):
+        otherPid = 0
+      if otherPid:
+        error("aliPublish already running with PID %d for %ds", otherPid, runningFor)
+        return 1
+      try:
+        with open(args.pidFile, "w") as f:
+          f.write(str(getpid()))
+      except IOError as e:
+        error("Cannot write pidfile %s, aborting", args.pidFile)
+        return 1
+    if args.action in [ "sync-cvmfs", "sync-dir" ]:
+      if not isinstance(conf["package_dir"], basestring):
+        error("[cvmfs_]package_dir must be a string")
+        doExit = True
+      if not isinstance(conf["modulefile"], basestring):
+        error("[cvmfs_]modulefile must be a string")
+        doExit = True
+    if args.action == "sync-cvmfs":
+      if not isinstance(conf.get("cvmfs_repository", None), basestring):
+        error("cvmfs_repository must be a string")
+        doExit = True
+      if doExit: return 1
+      archKey = "CVMFS"
+      pub = CvmfsServer(repository=conf["cvmfs_repository"],
+                        modulefileTpl=conf["modulefile"],
+                        pkgdirTpl=conf["package_dir"],
+                        publishScriptTpl=open(progDir+"/pub-file-template.sh").read(),
+                        connParams=connParams,
+                        dryRun=args.dryRun)
+    elif args.action == "sync-dir":
+      if doExit: return 1
+      archKey = "dir"
+      pub = PlainFilesystem(modulefileTpl=conf["modulefile"],
+                            pkgdirTpl=conf["package_dir"],
+                            publishScriptTpl=open(progDir+"/pub-file-template.sh").read(),
+                            connParams=connParams,
+                            dryRun=args.dryRun)
+    elif args.action == "sync-alien":
+      archKey = "AliEn"
+      pub = AliEnPackMan(publishScriptTpl=open(progDir+"/pub-alien-template.sh").read(),
+                         connParams=connParams,
+                         dryRun=args.dryRun)
+    else:
+      if not isinstance(conf.get("rpm_repo_dir", None), basestring):
+        error("rpm_repo_dir must be a string")
+        return 1
+      conf["rpm_updatable"] = conf.get("rpm_updatable", False)
+      archKey = "RPM"
+      pub = RPM(repoDir=conf["rpm_repo_dir"],
+                publishScriptTpl=open(progDir+"/pub-rpms-template.sh").read(),
+                connParams=connParams,
+                genUpdatableRpms=conf["rpm_updatable"],
+                dryRun=args.dryRun)
+    if args.abort:
+      pub.abort(force=True)
+
+    architectures = {arch: maps.get(archKey, arch) if isinstance(maps, dict) else arch
+                     for arch, maps in conf["architectures"].iteritems()}
+    architectures = {k: v for k, v in architectures.iteritems() if v}
+    debug("Architecture names mappings: %s", json.dumps(architectures, indent=2))
+    return int(not sync(pub=pub,
+                        architectures=architectures,
+                        endpointUrl=conf["s3_endpoint_url"],
+                        bucket=conf["s3_bucket"],
+                        baseUrl=conf["base_url"],
+                        basePrefix=conf["base_prefix"],
+                        rules=rules,
+                        includeFirst=includeFirst,
+                        autoIncludeDeps=conf["auto_include_deps"],
+                        notifEmail=conf["notification_email"],
+                        dryRun=args.dryRun,
+                        connParams=connParams))
+  if args.action == "test-rules":
+    testRules = {}
+
+    if args.pkgName and args.pkgVer and args.pkgArch:
+      # Test rules using command-line arguments
+      if args.testConf:
+        parser.error("cannot specify at the same time a test file and --pkg* arguments")
+      testRules = {args.pkgArch: {args.pkgName: {args.pkgVer: True}}}
+
+    else:
+      # Test rules by reading them from a configuration file
+      if args.pkgName or args.pkgVer or args.pkgArch:
+        parser.error("not all required --pkg* arguments were specified")
+
+      # Do we need to use a default test file?
+      if not args.testConf:
+        m = search("^aliPublish(|.*)\.conf$", args.configFile)
+        if m:
+          args.testConf = "test%s.yaml" % m.group(1)
+          debug("Using %s as default configuration file for tests", args.testConf)
+
+      try:
+        testRules = yaml.safe_load(open(args.testConf).read())
+      except (IOError, yaml.YAMLError) as e:
+        error("Cannot open rules to test: %s", e)
+        return 1
+
+    # At this point we have everything in testRules, let's test them
+    for arch in testRules:
+      for pkg in testRules[arch]:
+        for ver in testRules[arch][pkg]:
+          match = applyFilter(ver,
+                              rules["include"].get(arch, {}).get(pkg, None),
+                              rules["exclude"].get(arch, {}).get(pkg, None),
+                              includeFirst)
+          msg = ("%s: %s ver %s matches filters%s" if match else
+                 "%s: %s ver %s does NOT match filters%s")
+          if match != testRules[arch][pkg][ver]:
+            error(msg, arch, pkg, ver,
+                  " but it should not" if match else " but it should")
+            return 1
+          info(msg, arch, pkg, ver)
+    info("All rules%s tested with success",
+         " in "+args.testConf if args.testConf else "")
+    return 0
+
+  else:
+    parser.error("wrong action, see --help")
+
+if __name__ == "__main__":
+  sys.exit(main())
