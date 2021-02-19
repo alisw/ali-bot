@@ -6,6 +6,8 @@ try:
     from commands import getstatusoutput
 except ImportError:
     from subprocess import getstatusoutput
+from collections import deque
+from fnmatch import fnmatch
 from glob import glob
 from os.path import dirname, join, expanduser
 import re
@@ -148,11 +150,65 @@ class Logs(object):
                      if dirname(x).endswith(suffix)}
         print("Found:\n%s" % "\n".join(self.logs), file=sys.stderr)
 
+    def grepall(self, regex, context_before=3, context_after=3,
+                ignore_log_files=()):
+        '''Grep logfiles for regex, keeping context lines around matches.
+
+        Each logfile is searched for lines matching regex. If a line matches,
+        it is returned, together with the preceding context_before and
+        following context_after lines. Overlapping context lines are only
+        returned once. File names matching a glob pattern in ignore_log_files
+        are not searched.
+
+        Matching lines and context lines from all files are returned
+        concatenated into a single string.
+        '''
+        context_sep = '--\n'
+        out_lines = []
+        for log in self.logs:
+            if any(fnmatch(log, ignore) for ignore in ignore_log_files):
+                continue
+            # This deque will discard old lines when new ones are appended.
+            context_lines = deque(maxlen=context_before)
+            future_context = 0
+            first_match = True
+            try:
+                with open(log) as logf:
+                    for line in logf:
+                        if re.search(regex, line):
+                            # If this is the first match in this file, print
+                            # the file name header. This means we get no header
+                            # if nothing in this file matches, as intended.
+                            if first_match:
+                                out_lines.append('## %s\n' % log)
+                                first_match = False
+                            if future_context <= 0:
+                                # If we're not currently in context, start a
+                                # new block and output the last few lines.
+                                out_lines.append(context_sep)
+                                out_lines.extend(context_lines)
+                                # The current line is output below.
+                            future_context = context_after + 1
+                        context_lines.append(line)
+                        if future_context > 0:
+                            out_lines.append(line)
+                            future_context -= 1
+                # If we matched at least once, we must've output at least one
+                # block, so close it here by outputting a block separator line,
+                # and separate files from each other using newlines.
+                if not first_match:
+                    out_lines.append(context_sep + '\n\n')
+            except Exception as err:
+                out_lines.append('\n!!! {} parsing {}: {}\n\n'
+                                 .format(type(err), log, err))
+        return ''.join(out_lines)
+
     def grep(self):
         """Grep for errors in the build logs, or, if none are found,
         return the last N lines where N is the limit argument.
 
-        Also extract messages from failed unit tests and o2checkcode.
+        Also extract errors from failed unit tests and o2checkcode, and various
+        other helpful messages.
         """
         error_log_lines = []
         for log in self.logs:
@@ -165,45 +221,25 @@ class Logs(object):
             error_log_lines.extend(out.split("\n"))
         self.error_log = "\n".join(error_log_lines[:self.limit]).strip(" \n\t")
 
-        def chunk_command_output_by_log(command, ignore_log_files=()):
-            ignore_log_files = [join(self.work_dir, 'BUILD', log, 'log')
-                                for log in ignore_log_files]
-            blocks = []
-            for log in self.logs:
-                if log in ignore_log_files:
-                    continue
-                err, out = getstatusoutput(command % log)
-                if err:
-                    # Most likely caused by grep not finding the search term.
-                    print("error while parsing logs:", out, file=sys.stderr)
-                    continue
-                if out:
-                    blocks.append(log + "\n" + out)
-            return "\n\n\n".join(blocks).strip(" \n\t")
-
-        self.errors_log = chunk_command_output_by_log(
-            r"grep -EC 3 ': (internal compiler |fatal )?error:|^Error(:| in )|"
-            r"make.*: \*\*\*|\*\*\*Failed' -- %s",
-            # Errors from this log are reported in o2checkcode_messages
-            # already, so don't report them twice. This log also contains false
-            # positives, so o2checkcode_messages is better.
-            ignore_log_files=['o2checkcode-latest'])
-        self.warnings_log = chunk_command_output_by_log(
-            # We need -P for (?!...) negative lookaheads, which we use to
-            # filter out a specific linker error that can't be turned off.
-            # Other warnings should go through, though.
-            "grep -PC 3 ': warning:|^Warning: (?!Unused direct dependencies:$)' -- %s",
-            # Warnings from this log are reported in o2checkcode_messages
-            # already, so don't report them twice.
-            ignore_log_files=['o2checkcode-latest'])
-        self.o2checkcode_messages = chunk_command_output_by_log(
-            "sed -n '/=== List of errors found ===/,$p' %s")
-        self.failed_unit_tests = chunk_command_output_by_log(
-            r"grep -he 'Test *#[0-9]*: .*\*\*\*Failed' -e '%% tests passed' -- %s")
-        self.compiler_killed = chunk_command_output_by_log(
-            "grep -he 'fatal error: Killed signal terminated program' -- %s")
-        self.cmake_errors = chunk_command_output_by_log(
-            "sed -En '/^CMake Error/,/^$/p' %s")
+        # Messages from the general error/warning logs are reported in
+        # o2checkcode_messages as well, so don't report them twice. The general
+        # logs also contain false positives, so o2checkcode_messages is better.
+        self.errors_log = self.grepall(
+            r': (internal compiler |fatal )?error:|^Error(:| in )|'
+            r'make.*: \*\*\*|\*\*\*Failed',
+            ignore_log_files=['*/o2checkcode-latest*/log'])
+        self.warnings_log = self.grepall(
+            r': warning:|^Warning: (?!Unused direct dependencies:$)',
+            ignore_log_files=['*/o2checkcode-latest*/log'])
+        self.o2checkcode_messages = self.grepall(
+            r'=== List of errors found ===',
+            context_before=0, context_after=float('inf'))
+        self.failed_unit_tests = self.grepall(
+            r'Test *#[0-9]*: .*\*\*\*Failed|%% tests passed')
+        self.compiler_killed = self.grepall(
+            r'fatal error: Killed signal terminated program')
+        self.cmake_errors = self.grepall(
+            r'^CMake Error', context_before=0, context_after=10)
 
     def generate_pretty_log(self):
         '''Extract error messages from logs.
