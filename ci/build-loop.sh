@@ -146,13 +146,17 @@ fi
 build_identifier=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
 : "${build_identifier:=${CHECK_NAME//\//_}}"
 
-if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash             \
-                     clean_env long_timeout aliBuild                     \
-                     -j "${JOBS:-$(nproc)}" -z "$build_identifier"       \
-                     --defaults "$ALIBUILD_DEFAULTS"                     \
-                     ${MIRROR:+--reference-sources $MIRROR}              \
-                     ${REMOTE_STORE:+--remote-store $REMOTE_STORE}       \
-                     --fetch-repos --debug build "$PACKAGE"
+# o2checkcode needs the ALIBUILD_{HEAD,BASE}_HASH variables.
+# We need "--no-auto-cleanup" so that build logs for dependencies are kept, too.
+# For instance, when building O2FullCI, we want to keep the o2checkcode log, as
+# report-pr-errors looks for errors in it.
+if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
+     clean_env long_timeout aliBuild build "$PACKAGE"        \
+     -j "${JOBS:-$(nproc)}" -z "$build_identifier"           \
+     --defaults "$ALIBUILD_DEFAULTS"                         \
+     ${MIRROR:+--reference-sources "$MIRROR"}                \
+     ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}         \
+     --fetch-repos --debug --no-auto-cleanup
 then
   if is_numeric "$PR_NUMBER"; then
     # This is a PR. Use the error function (with --success) to still provide logs
