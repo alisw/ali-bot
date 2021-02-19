@@ -240,6 +240,12 @@ class Logs(object):
             r'fatal error: Killed signal terminated program')
         self.cmake_errors = self.grepall(
             r'^CMake Error', context_before=0, context_after=10)
+        # These two sections are for the O2 full system test.
+        self.fst_task_timeout = self.grepall(
+            r'task timeout reached', context_before=3, context_after=0)
+        self.full_system_test = self.grepall(
+            r'Detected critical problem in logfile',
+            context_before=0, context_after=20)
 
     def generate_pretty_log(self):
         '''Extract error messages from logs.
@@ -272,6 +278,9 @@ class Logs(object):
                     self.o2checkcode_messages, self.failed_unit_tests,
                     self.errors_log, self.warnings_log, self.compiler_killed,
                     self.cmake_errors))),
+                'fst_logfile': htmlescape(self.full_system_test),
+                'fst_timeout': htmlescape(self.fst_task_timeout),
+                'fst_display': display(self.full_system_test or self.fst_task_timeout),
                 'hostname': htmlescape(platform.node()),
                 'finish_time': datetime.datetime.utcnow().strftime('%a %-d %b %Y, %H:%M:%S UTC'),
                 'repo': self.pr_built.repo_name,
@@ -477,6 +486,7 @@ PRETTY_LOG_TEMPLATE = '''\
    #errors, #errors-toc { display: %(err_display)s; }
    #warnings, #warnings-toc { display: %(warn_display)s; }
    #cmake, #cmake-toc { display: %(cmake_display)s; }
+   #fullsystest, #fullsystest-toc { display: %(fst_display)s; }
   </style>
 </head>
 <body class="%(status)s">
@@ -500,6 +510,7 @@ PRETTY_LOG_TEMPLATE = '''\
     <li id="cmake-toc"><a href="#cmake">CMake errors and warnings</a></li>
     <li id="o2checkcode-toc"><a href="#o2checkcode"><code>o2checkcode</code> results</a></li>
     <li id="tests-toc"><a href="#tests">Unit test results</a></li>
+    <li id="fullsystest-toc"><a href="#fullsystest">O2 full system test</a></li>
     <li id="errors-toc"><a href="#errors">Error messages</a></li>
     <li id="warnings-toc"><a href="#warnings">Compiler warnings</a></li>
   </ol></nav></p>
@@ -518,6 +529,11 @@ PRETTY_LOG_TEMPLATE = '''\
   <section id="tests">
     <h2>Unit test results</h2>
     <p><pre><code>%(unittests)s</code></pre></p>
+  </section>
+  <section id="fullsystest">
+    <h2>O2 full system test</h2>
+    <p><pre><code>%(fst_timeout)s</code></pre></p>
+    <p><pre><code>%(fst_logfile)s</code></pre></p>
   </section>
   <section id="cmake">
     <h2>CMake errors</h2>
