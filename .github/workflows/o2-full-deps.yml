@@ -54,4 +54,5 @@ jobs:
           cat << EOF > /tmp/rclone.conf
           ${{ secrets.S3_RCLONE_CONFIG }}
           EOF
-          rclone --config /tmp/rclone.conf --transfers=10 --progress --delete-before sync local:./ rpms3:alibuild-repo/RPMS/o2-full-deps_x86-64/
+          ls -la
+          #rclone --config /tmp/rclone.conf --transfers=10 --progress --delete-before sync local:./ rpms3:alibuild-repo/RPMS/o2-full-deps_x86-64/
