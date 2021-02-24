@@ -46,6 +46,10 @@ if [ "$1" != --skip-setup ]; then
   # short, simple name like slc8-gpu that we use for the .env directories.
   CUR_CONTAINER=${CONTAINER_IMAGE#*/}
   export CUR_CONTAINER=${CUR_CONTAINER%-builder:*}
+
+  # On MacOS, the default ulimit for open files is 256. This is too low for git
+  # when fetching some large repositories (e.g. O2, Clang).
+  ulimit -n 1024
 fi
 
 # Generate example of force-hashes file. This is used to override what to check for testing
@@ -103,10 +107,6 @@ fi
 # Get updates to ali-bot
 TIMEOUT=$(get_config_value timeout "${TIMEOUT:-600}") reset_git_repository ali-bot
 
-# Run CI builder under screen if possible and we're not already there. This is
-# for the macOS builders.
-if [ "$MESOS_ROLE" != macos ] || [ -n "$STY" ] || ! type screen > /dev/null; then
-  exec "$0" --skip-setup
-else
-  exec screen -dmS "ci_$WORKER_INDEX" "$0" --skip-setup
-fi
+# Re-exec ourselves. This lets us update pick up updates to this script, e.g.
+# when upgraded by pip.
+exec "$0" --skip-setup
