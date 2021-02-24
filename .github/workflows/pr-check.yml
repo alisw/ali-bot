@@ -3,7 +3,13 @@
 name: PR checker
 
 on:
-  - pull_request_target
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - edited
+      - ready_for_review
+      - synchronize
 
 jobs:
   build:
@@ -19,7 +25,7 @@ jobs:
         run: |
           sudo apt update -y
           sudo apt install -y build-essential python3-dev python3-pip python3-setuptools python3-wheel \
-                              libldap2-dev libsasl2-dev
+                              libldap2-dev libsasl2-dev environment-modules
           pip install -r requirements.txt
 
       - name: Check publish/
@@ -84,5 +90,104 @@ jobs:
           sudo mount --bind $PWD/cvmfs/alienv /cvmfs/alice.cern.ch/bin/alienv
           md5sum /cvmfs/alice.cern.ch/bin/alienv
           cmp /cvmfs/alice.cern.ch/bin/alienv $PWD/cvmfs/alienv
+
           # Run the actual test
-          cvmfs/test-alienv.sh
+          set -exo pipefail
+
+          pe () { printf '\033[31mERROR:\033[m %s\n' "$@" >&2; exit 1; }
+          pi () { printf '\033[34mINFO:\033[m %s\n' "$@" >&2; }
+          pt () { printf '\n\033[35m*** TEST: %s ***\033[m\n' "$@" >&2; }
+          pg () { printf '\033[32mSUCCESS:\033[m %s\n' "$@" >&2; }
+
+          # Check if required conditions to run the test are met
+          [ -d .git ] || pe "you must run from the Git repository root"
+
+          # We normally test `alienv` faked as being on CVMFS. For local tests
+          # we might want to override it
+          ALIENV=/cvmfs/alice.cern.ch/bin/alienv
+          pi "Testing alienv from $ALIENV"
+
+          # Overriding platform (not important for our tests)
+          export ALIENV_OVERRIDE_PLATFORM=el6-x86_64
+          pi "Overriding platform to $ALIENV_OVERRIDE_PLATFORM"
+
+          for np in /tmp/alienv_bin /tmp/alienv_path/bin; do
+            pt "run alienv from a non-standard path ($np) with full symlink"
+            ( mkdir -p "$np"
+              ln -nfs "$ALIENV" "$np/alienv"
+              export PATH=$np:$PATH
+              ALIENV_DEBUG=1 alienv q | grep AliPhysics | tail -n1
+            )
+          done
+
+          np=/tmp/alienv_symlink/bin
+          pt "run alienv from a non-standard path ($np) with relative symlink"
+          ( mkdir -p "$np"
+            ln -nfs "$(dn=$(dirname "$ALIENV"); while [ "$dn" != / ]; do dn=$(dirname "$dn"); printf ../; done)$ALIENV" "$np/alienv"
+            export PATH=$np:$PATH
+            ALIENV_DEBUG=1 alienv q | grep AliPhysics | tail -n1
+          )
+          unset np
+          export PATH=$(dirname "$ALIENV"):$PATH
+          [ "$(which alienv)" = "$ALIENV" ]
+
+          pt "test package reordering"
+          ALIENV_DEBUG=1 alienv setenv VO_ALICE@AliEn-Runtime::v2-19-le-21,VO_ALICE@ROOT::v5-34-30-alice7-2,VO_ALICE@AliPhysics::vAN-20170301-1 -c true 2>&1 |
+            grep 'normalized to AliPhysics/vAN-20170301-1 ROOT/v5-34-30-alice7-2 AliEn-Runtime/v2-19-le-21'
+
+          pt "test checkenv command with a successful combination"
+          alienv checkenv AliPhysics/vAN-20170301-1,AliRoot/v5-08-22-1 ||
+            pe "expected 0, returned $?"
+
+          pt "test checkenv command with a faulty combination"
+          alienv checkenv AliPhysics/vAN-20170301-1,AliPhysics/vAN-20170201-1 2>&1 | tee log.txt && :
+          ec=$?
+          [ $ec -eq 1 ] || pe "expected 1, returned $ec"
+          unset ec
+          grep -q 'conflicting version' log.txt ||
+            pe "could not find expected output message"
+          rm -f log.txt
+
+          pt "test checkenv command with dependencies from multiple platforms"
+          alienv checkenv AliGenerators/v20180424-1 ||
+            pe "expected 0, returned $?"
+
+          pt "list AliPhysics packages"
+          alienv q | grep AliPhysics | tail -n5
+          alienv_test () {
+            local method=$1 package=$2 command=$3
+            case $method in
+              setenv) alienv setenv "$package" -c "$command";;
+              printenv) (eval "$(alienv printenv "$package")"; $command);;
+              enter) (echo 'echo TEST=`'"$command"'`' | alienv enter "$package" |
+                        grep '^TEST=' | cut -d= -f2-);;
+            esac
+          }
+
+          # Define an "old" and "new" version of AliPhysics to check for. "new" has AliEn
+          # as dependency, "old" does not
+          OLD_VER=AliPhysics/vAN-20150131 NEW_VER=AliPhysics/vAN-20170301-1
+
+          pt "check that the legacy AliEn package can be loaded"
+          for method in setenv printenv enter; do
+            [[ $(alienv_test $method AliEn 'which aliensh') == */AliEn/* ]]
+          done
+          for ALIENV_OVERRIDE_PLATFORM in el6 el7 ubuntu1404; do
+            export ALIENV_OVERRIDE_PLATFORM
+            for method in setenv printenv enter; do
+              for ver in "$NEW_VER" "$OLD_VER"; do
+                pt "check g++ with $ver on $ALIENV_OVERRIDE_PLATFORM"
+                [ "$ver" = "$NEW_VER" ] && EXPECT="/cvmfs/alice.cern.ch/$ALIENV_OVERRIDE_PLATFORM" || EXPECT=/usr/
+                [[ $(alienv_test $method $ver 'which g++') == "$EXPECT"* ]]
+
+                pt "check aliroot with $ver on $ALIENV_OVERRIDE_PLATFORM"
+                [[ $(alienv_test $method $ver 'which aliroot') == /cvmfs/alice.cern.ch/*bin/aliroot ]]
+
+                pt "check AliEn-Runtime with $ver on $ALIENV_OVERRIDE_PLATFORM"
+                [ "$ver" = "$NEW_VER" ] && EXPECT=/AliEn-Runtime/ || EXPECT=/AliEn/
+                [[ $(alienv_test $method $ver 'which aliensh') == /cvmfs/alice.cern.ch/*"$EXPECT"* ]]
+              done
+            done
+          done
+
+          pg "all tests successful"
