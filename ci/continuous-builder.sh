@@ -49,7 +49,7 @@ if [ "$1" != --skip-setup ]; then
 
   # On MacOS, the default ulimit for open files is 256. This is too low for git
   # when fetching some large repositories (e.g. O2, Clang).
-  ulimit -n 1024
+  [ "$(ulimit -n)" -ge 10240 ] || ulimit -n 10240
 fi
 
 # Generate example of force-hashes file. This is used to override what to check for testing
