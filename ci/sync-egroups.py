@@ -14,12 +14,12 @@ def egroup_members(egroup):
     if len(rdata) < 1 or len(rdata[0]) < 2 or not "member" in rdata[0][1]:
       return []
     for m in rdata[0][1]["member"]:
-      cn = [ x[3:] for x in m.split(",") if x.startswith("CN=") ][0]
-      if "OU=Users" in m:
+      cn = [ x.encode("latin-1")[3:] for x in m.decode("latin-1").split(",") if x.startswith("CN=") ][0]
+      if "OU=Users" in m.decode("latin-1"):
         members.append(cn)
-      elif "OU=e-groups" in m:
+      elif "OU=e-groups" in m.decode("latin-1"):
         members.extend(egroup_members(cn))
-    return sorted(list(set(members)))
+    return [ x.decode("latin-1") for x in sorted(list(set(members)))]
   return []
 
 # If egroups are provided as params, print them to stdout and quit
