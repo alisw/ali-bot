@@ -16,37 +16,9 @@ CONNRETRYDELAY=%(conn_dethrottle_s)d
 which fpm
 cd $TMPDIR
 
-# Create aliswmod RPM
-ALISWMOD_VERSION=2
-ALISWMOD_RPM="alisw-aliswmod4-$ALISWMOD_VERSION-1.%(arch)s.rpm"
-if [[ ! -e "%(repodir)s/$ALISWMOD_RPM" ]]; then
-  mkdir -p aliswmod/etc/profile.d
-  cat > aliswmod/etc/profile.d/99-aliswmod4.sh << EOF
-export LD_LIBRARY_PATH=/opt/alisw/el7/lib:/opt/alisw/el7/lib64:\$LD_LIBRARY_PATH
-export PATH=/opt/alisw/el7/bin:\$PATH
-export MODULEPATH=$INSTALLPREFIX/$FLAVOUR/modulefiles:$INSTALLPREFIX/$FLAVOUR/etc/Modules/modulefiles:\$MODULEPATH
-EOF
-  pushd aliswmod
-    fpm -s dir                                 \
-        -t rpm                                 \
-        --force                                \
-        --depends 'environment-modules >= 4.0' \
-        --prefix /                             \
-        --architecture $ARCHITECTURE           \
-        --version $ALISWMOD_VERSION            \
-        --iteration 1.$FLAVOUR                 \
-        --name alisw-aliswmod4                 \
-        .
-  popd
-  mv aliswmod/$ALISWMOD_RPM .
-  rm -rf aliswmod/
-else
-  echo No need to create the package, skipping
-  ALISWMOD_RPM=
-fi
-
 DEPS=()
-DEPS+=("--depends" "alisw-aliswmod4 >= $ALISWMOD_VERSION")
+# Use env modules v4 instead of aliswmod
+DEPS+=("--depends" "environment-modules >= 4.0")
 
 RPM_VERSION=1
 RPM_PACKAGE="alisw-%(package)s+%(version)s"
@@ -136,4 +108,4 @@ pushd unpack_rpm
   mkdir -vp %(repodir)s
   mv -v $RPM ../
 popd
-mv -v $RPM $ALISWMOD_RPM %(stagedir)s
+mv -v $RPM %(stagedir)s
