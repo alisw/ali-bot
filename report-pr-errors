@@ -225,8 +225,8 @@ class Logs(object):
         # o2checkcode_messages as well, so don't report them twice. The general
         # logs also contain false positives, so o2checkcode_messages is better.
         self.errors_log = self.grepall(
-            r': (internal compiler |fatal )?error:|^Error(:| in )|'
-            r'make.*: \*\*\*|\*\*\*Failed',
+            r': (internal compiler |fatal )?error:|^Error(:| in )|^fatal: |'
+            r'ninja: build stopped: |make.*: \*\*\*|\[ERROR\]|\*\*\*Failed',
             ignore_log_files=['*/o2checkcode-latest*/log'])
         self.warnings_log = self.grepall(
             r': warning:|^Warning: (?!Unused direct dependencies:$)',
