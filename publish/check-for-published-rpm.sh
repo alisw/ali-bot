@@ -25,7 +25,7 @@ while [ -n "$(s3cmd ls "s3://alibuild-repo/rpmstatus/$canary")" ]; do
 done
 
 # Now see if the RPM we want has been published.
-# Show only lines in "file 1", i.e. filenames that are only in S3.
+# Show only lines in "file 1", i.e. only new filenames.
 lsrpm | comm -23 - old-rpms.txt > new-rpms.txt
 
 # Check if there are any new RPMs.
@@ -48,9 +48,16 @@ EOF
 
 # Try to install the new RPMs (don't actually install, only check for errors in
 # case of an install), to see whether they're actually valid.
-if ! xargs -rtd '\n' -a new-rpms.txt yum install -q --assumeno; then
-  echo 'FAILED: could not install new RPMs. See above for errors from yum.'
-  exit 1
+xargs -rtd '\n' -a new-rpms.txt yum install --assumeyes --setopt tsflags=test
+yumerr=$?
+
+if [ $yumerr -gt 0 ]; then
+  echo 'FAILED: could not install new RPMs. See above for errors from yum.' >&2
+else
+  echo 'SUCCESS: no errors reported when installing new RPMs (dry-run only)' >&2
 fi
 
-echo 'SUCCESS: no errors reported when installing new RPMs (dry-run only)' >&2
+# We don't need the downloaded RPMs any more, so clear the cache to avoid
+# accumulating crud.
+yum clean packages || true
+exit $yumerr
