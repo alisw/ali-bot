@@ -1,134 +1,125 @@
 #!groovy
-node ("slc7_x86-64-light") {
-  try {
-    currentBuild.displayName = "#${env.BUILD_NUMBER} - $PACKAGE_NAME $DEFAULTS $ARCHITECTURE"
+try {
+  stage('Construct tag name') {
+    /* Turn AUTOTAG_PATTERN into AUTOTAG_TAG now, before waiting for PRs,
+     * because waiting can take hours, and that would mean we use the incorrect
+     * date to name the tag.
+     * Run on any free node -- doesn't matter which, but we need one to use sh.
+     */
+    node {
+      AUTOTAG_TAG = sh(script: "LANG=C TZ=Europe/Zurich date '+$AUTOTAG_PATTERN'",
+                       returnStdout: true).trim()
+    }
+    currentBuild.displayName = ("#${env.BUILD_NUMBER} - $PACKAGE_NAME " +
+                                AUTOTAG_TAG + " $DEFAULTS $ARCHITECTURE")
+  }
 
-    stage "Wait pull requests"
-    if ("$WAIT_PR" == "true") {
-      timeout (7200) {
-        withEnv(["ALIBOT_SLUG=${ALIBOT_SLUG}",
-                 "WAIT_PR_LIMIT=${WAIT_PR_LIMIT}",
-                 "PACKAGE_NAME=${PACKAGE_NAME}"]) {
-          withCredentials([[$class: 'StringBinding',
-                            credentialsId: 'github_token',
-                            variable: 'GITHUB_TOKEN']]) {
-            sh '''
-              set -e
-              echo $GITHUB_TOKEN > ~/.github-token
-              chmod 0600 ~/.github-token
-              # Use pip to get the Python scripts (with all the correct dependencies)
-              export PYTHONUSERBASE="$PWD/localpython"
-              export PATH="$PYTHONUSERBASE/bin:$PATH"
-              rm -rf "$PYTHONUSERBASE"
-              yum install -y python3-pip python3-devel python3-setuptools
-              pip3 install --user --upgrade --ignore-installed "${ALIBOT_SLUG:+git+https://github.com/${ALIBOT_SLUG}}"
-              type check-open-pr
-              if [[ $PACKAGE_NAME == AliPhysics ]]; then
-                WAIT_TESTS="build/AliPhysics/release build/AliPhysics/root6"
-              else
-                WAIT_TESTS="build/$PACKAGE_NAME/release"
-              fi
-              while ! check-open-pr $WAIT_PR_LIMIT alisw/$PACKAGE_NAME $WAIT_TESTS; do
-                echo "Waiting for all pull requests to be merged"
-                sleep 120
-              done
-            '''
+  stage('Wait for pull requests') {
+    if ("$WAIT_PR" == 'true') {
+      node('slc7_x86-64-light') {
+        timeout(7200) {
+          withEnv(["ALIBOT_SLUG=$ALIBOT_SLUG",
+                   "WAIT_PR_LIMIT=$WAIT_PR_LIMIT",
+                   "PACKAGE_NAME=$PACKAGE_NAME"]) {
+            withCredentials([string(credentialsId: 'github_token',
+                                    variable: 'GITHUB_TOKEN')]) {
+              sh '''
+                set -e
+                (umask 077; echo "$GITHUB_TOKEN" > ~/.github-token)
+                # Use pip to get the Python scripts (with all the correct dependencies)
+                export PYTHONUSERBASE=$PWD/localpython
+                export PATH=$PYTHONUSERBASE/bin:$HOME/.local/bin${PATH:+:}$PATH
+                rm -rf "$PYTHONUSERBASE"
+                yum install -y python3-pip python3-devel python3-setuptools
+                pip3 install --user --upgrade "git+https://github.com/$ALIBOT_SLUG"
+                type check-open-pr
+                case "$PACKAGE_NAME" in
+                  AliPhysics) WAIT_TESTS='build/AliPhysics/release build/AliPhysics/root6';;
+                  *) WAIT_TESTS=build/$PACKAGE_NAME/release;;
+                esac
+                while ! check-open-pr "$WAIT_PR_LIMIT" "alisw/$PACKAGE_NAME" $WAIT_TESTS; do
+                  echo 'Waiting for all pull requests to be merged' >&2
+                  sleep 120
+                done
+              '''
+            }
           }
         }
       }
+    } else {
+      println('Not waiting for open pull requests')
     }
-    else {
-      println("Not waiting for open pull requests")
+  }
+
+  node("$ARCHITECTURE-$MESOS_QUEUE_SIZE") {
+    stage('Configure credentials') {
+      withCredentials([usernamePassword(credentialsId: 'github_alibuild',
+                                        usernameVariable: 'GITHUB_USER',
+                                        passwordVariable: 'GITHUB_PASS'),
+                       usernamePassword(credentialsId: '369b09bf-5f5e-4b68-832a-2f30cad28755',
+                                        usernameVariable: 'GITCERN_USER',
+                                        passwordVariable: 'GITCERN_PASS'),
+                       usernamePassword(credentialsId: 'gitlab_alibuild',
+                                        usernameVariable: 'GITLAB_USER',
+                                        passwordVariable: 'GITLAB_PASS')]) {
+        sh '''
+          set -eo pipefail
+          git config --global user.name 'ALICE Builder'
+          git config --global user.email alibuild@cern.ch
+          git config --global credential.helper "store --file $PWD/git-creds"
+          printf 'protocol=https\\nhost=%s\\nusername=%s\\npassword=%s\\n' \
+                 github.com "$GITHUB_USER" "$GITHUB_PASS"                  \
+                 git.cern.ch "$GITCERN_USER" "$GITCERN_PASS"               \
+                 gitlab.cern.ch "$GITLAB_USER" "$GITLAB_PASS"              |
+            git credential-store --file git-creds store
+        '''
+      }
     }
 
-    node ("$ARCHITECTURE-$MESOS_QUEUE_SIZE") {
-
-      stage "Config credentials"
-      withCredentials([[$class: 'UsernamePasswordMultiBinding',
-                        credentialsId: 'github_alibuild',
-                        usernameVariable: 'GIT_BOT_USER',
-                        passwordVariable: 'GIT_BOT_PASS']]) {
-        sh '''
-          set -e
-          set -o pipefail
-          printf "protocol=https\nhost=github.com\nusername=$GIT_BOT_USER\npassword=$GIT_BOT_PASS\n" | \
-            git credential-store --file $PWD/git-creds store
-        '''
-      }
-      withCredentials([[$class: 'UsernamePasswordMultiBinding',
-                        credentialsId: '369b09bf-5f5e-4b68-832a-2f30cad28755',
-                        usernameVariable: 'GIT_BOT_USER',
-                        passwordVariable: 'GIT_BOT_PASS']]) {
-        sh '''
-          set -e
-          set -o pipefail
-          printf "protocol=https\nhost=git.cern.ch\nusername=$GIT_BOT_USER\npassword=$GIT_BOT_PASS\n" | \
-            git credential-store --file $PWD/git-creds store
-        '''
-      }
-      withCredentials([[$class: 'UsernamePasswordMultiBinding',
-                        credentialsId: 'gitlab_alibuild',
-                        usernameVariable: 'GIT_BOT_USER',
-                        passwordVariable: 'GIT_BOT_PASS']]) {
-        sh '''
-          set -e
-          set -o pipefail
-          printf "protocol=https\nhost=gitlab.cern.ch\nusername=$GIT_BOT_USER\npassword=$GIT_BOT_PASS\n" | \
-            git credential-store --file $PWD/git-creds store
-        '''
-      }
-      sh '''
-        set -e
-        git config --global credential.helper "store --file $PWD/git-creds"
-        ls -l $PWD/git-creds
-      '''
-
-      stage "Create daily"
-      retry (2) {
-        timeout (240) {
-          withEnv(["ALIBUILD_SLUG=${ALIBUILD_SLUG}",
-                   "ALIDIST_SLUG=${ALIDIST_SLUG}",
-                   "ALIBOT_SLUG=${ALIBOT_SLUG}",
-                   "ARCHITECTURE=${ARCHITECTURE}",
-                   "PACKAGE_NAME=${PACKAGE_NAME}",
-                   "DEFAULTS=${DEFAULTS}",
-                   "TEST_TAG=${TEST_TAG}",
-                   "REMOTE_STORE=${REMOTE_STORE}",
-                   "AUTOTAG_PATTERN=${AUTOTAG_PATTERN}",
-                   "AUTOTAG_OVERRIDE_VERSION=${AUTOTAG_OVERRIDE_VERSION}",
-                   "MESOS_QUEUE_SIZE=${MESOS_QUEUE_SIZE}",
-                   "REMOVE_RC_BRANCH_FIRST=${REMOVE_RC_BRANCH_FIRST}",
+    stage('Build and tag daily') {
+      retry(2) {
+        timeout(240) {
+          withEnv(["ALIBUILD_SLUG=$ALIBUILD_SLUG",
+                   "ALIDIST_SLUG=$ALIDIST_SLUG",
+                   "ALIBOT_SLUG=$ALIBOT_SLUG",
+                   "ARCHITECTURE=$ARCHITECTURE",
+                   "PACKAGE_NAME=$PACKAGE_NAME",
+                   "DEFAULTS=$DEFAULTS",
+                   "AUTOTAG_TAG=" + AUTOTAG_TAG,
+                   "REMOTE_STORE=$REMOTE_STORE",
+                   "AUTOTAG_OVERRIDE_VERSION=$AUTOTAG_OVERRIDE_VERSION",
+                   "REMOVE_RC_BRANCH_FIRST=$REMOVE_RC_BRANCH_FIRST",
                    "NODE_NAME=${env.NODE_NAME}"]) {
             sh '''
-              set -ex
-              [ -d /etc/profile.d/enable-alice.sh ] && source /etc/profile.d/enable-alice.sh
-              export PYTHONUSERBASE=${PWD}/python-bin
-              export PATH=${PYTHONUSERBASE}/bin:$PATH
-              export LD_LIBRARY_PATH=${PYTHONUSERBASE}/lib:${LD_LIBRARY_PATH}
-              echo $NODE_NAME
-              case $NODE_NAME in
+              set +ex   # We don't care about tracing these, and we ignore errors.
+              [ -f /etc/profile.d/enable-alice.sh ] && . /etc/profile.d/enable-alice.sh
+              [ -f /opt/rh/rh-git218/enable ] && . /opt/rh/rh-git218/enable
+              set -ex   # Back to our code, so reenable tracing and errexit.
+              case "$NODE_NAME" in
                 *slc6_x86-64*)
                   # python3 is not installed on the slc6-builder. Installing it seems to break the build.
-                  pip install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG ;;
+                  pip=pip ;;
                 *)
                   yum install -y python3-devel python3-pip python3-setuptools
-                  pip3 install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG ;;
+                  pip=pip3 ;;
               esac
-              [ -f /opt/rh/rh-git218/enable ] && source /opt/rh/rh-git218/enable
-              daily-tags.sh || err=$?
-              rm -rf alidist daily-tags.?????????? mirror
-              exit ${err-0}
+              export PYTHONUSERBASE=$PWD/python-bin
+              export PATH=$PYTHONUSERBASE/bin:$HOME/.local/bin${PATH:+:}$PATH
+              export LD_LIBRARY_PATH=${PYTHONUSERBASE}/lib:${LD_LIBRARY_PATH}
+              "$pip" install --user --upgrade git+https://github.com/$ALIBOT_SLUG \
+                     "${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}"
+              exec daily-tags.sh
             '''
           }
         }
       }
     }
   }
-  catch (e) {
-    // Notify failures
-    emailext(subject: "Daily ${PACKAGE_NAME} tag failed",
-             body: "More details here: ${env.BUILD_URL}",
-             to: "${NOTIFY_EMAILS}")
-    throw e
-  }
+
+} catch (e) {
+  // Notify of any build failures.
+  emailext(subject: "Daily $PACKAGE_NAME tag failed",
+           body: "More details here: ${env.BUILD_URL}",
+           to: "$NOTIFY_EMAILS")
+  throw e
 }
