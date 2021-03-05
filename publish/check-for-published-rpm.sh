@@ -30,8 +30,22 @@ lsrpm | comm -23 - old-rpms.txt > new-rpms.txt
 
 # Check if there are any new RPMs.
 if [ -z "$(cat new-rpms.txt)" ]; then
-  echo "FAILED: aliPublish finished, but produced no new RPM for $PACKAGE_NAME" >&2
-  exit 1
+  cat >&2 << EOF
+
+WARNING: aliPublish finished, but produced no new RPM for $PACKAGE_NAME
+
+This may be because aliPublish failed, or because an existing package was
+rebuilt.
+
+Please check that:
+
+- build-any-ib actually built a new revision of $PACKAGE_NAME
+  (if it did not, we won't have a new RPM; this is expected)
+- your build job configuration in Jenkins is correct
+- aliPublish-*.conf is correct (which file depends on the architecture)
+
+EOF
+  exit 10   # Special exit code, sets the build to "unstable" in Jenkins.
 fi
 
 echo "New RPMs for $PACKAGE_NAME follow:" >&2
