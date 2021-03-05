@@ -40,11 +40,13 @@ while true; do
   esac
 
   for conf in "$@"; do
-    "$aliPublish" --config "$conf" --debug sync-rpms >&2
+    if "$aliPublish" --config "$conf" --debug sync-rpms >&2; then
+      timeout 300 rclone sync --config /secrets/alibuild_rclone_config --transfers=10 --verbose \
+              "local:/repo/RPMS/$arch/" "rpms3:alibuild-repo/RPMS/$arch/" || true
+    else
+      echo "ERROR: $aliPublish ($conf) failed with $?; not syncing to S3" >&2
+    fi
   done
-
-  timeout 300 rclone sync --config /secrets/alibuild_rclone_config --transfers=10 --verbose \
-          "local:/repo/RPMS/$arch/" "rpms3:alibuild-repo/RPMS/$arch/" || true
 
   # Now that we've uploaded all the new RPMs, we can delete the canary files to
   # tell Jenkins jobs that we're done.
