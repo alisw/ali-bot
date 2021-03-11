@@ -4,7 +4,7 @@ set -x
 # Check for required variables
 ALIDIST_SLUG=${ALIDIST_SLUG:-alisw/alidist@master}
 [ ! -z "$PACKAGE_NAME" ]
-[ ! -z "$AUTOTAG_PATTERN" ]
+[ ! -z "$AUTOTAG_TAG" ]
 [ ! -z "$NODE_NAME" ]
 
 # Clean up old stuff
@@ -28,7 +28,6 @@ PACKAGE_LOWER=$(echo $PACKAGE_NAME | tr '[[:upper:]]' '[[:lower:]]')
 RECIPE=alidist/$PACKAGE_LOWER.sh
 AUTOTAG_REMOTE=$(grep -E '^(source:|write_repo:)' $RECIPE | sort -r | head -n1 | cut -d: -f2- | xargs echo)
 AUTOTAG_MIRROR=$MIRROR/$PACKAGE_LOWER
-AUTOTAG_TAG=$(LANG=C TZ=Europe/Rome date +"$AUTOTAG_PATTERN")
 [[ "$TEST_TAG" == "true" ]] && AUTOTAG_TAG=TEST-IGNORE-$AUTOTAG_TAG
 echo "A Git tag will be created, upon success and if not existing, with the name $AUTOTAG_TAG"
 AUTOTAG_BRANCH=rc/$AUTOTAG_TAG

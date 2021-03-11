@@ -1,7 +1,19 @@
 #!groovy
 node ("slc7_x86-64-light") {
   try {
-    currentBuild.displayName = "#${env.BUILD_NUMBER} - $PACKAGE_NAME $DEFAULTS $ARCHITECTURE"
+    stage('Construct tag name') {
+      /* Turn AUTOTAG_PATTERN into AUTOTAG_TAG now, before waiting for PRs,
+       * because waiting can take hours, and that would mean we use the incorrect
+       * date to name the tag.
+       * Run on any free node -- doesn't matter which, but we need one to use sh.
+       */
+      node {
+        AUTOTAG_TAG = sh(script: "LANG=C TZ=Europe/Zurich date '+$AUTOTAG_PATTERN'",
+                         returnStdout: true).trim()
+      }
+      currentBuild.displayName = ("#${env.BUILD_NUMBER} - $PACKAGE_NAME " +
+                                  AUTOTAG_TAG + " $DEFAULTS $ARCHITECTURE")
+    }
 
     stage "Wait pull requests"
     if ("$WAIT_PR" == "true") {
@@ -94,7 +106,7 @@ node ("slc7_x86-64-light") {
                    "DEFAULTS=${DEFAULTS}",
                    "TEST_TAG=${TEST_TAG}",
                    "REMOTE_STORE=${REMOTE_STORE}",
-                   "AUTOTAG_PATTERN=${AUTOTAG_PATTERN}",
+                   "AUTOTAG_TAG=" + AUTOTAG_TAG,
                    "AUTOTAG_OVERRIDE_VERSION=${AUTOTAG_OVERRIDE_VERSION}",
                    "MESOS_QUEUE_SIZE=${MESOS_QUEUE_SIZE}",
                    "REMOVE_RC_BRANCH_FIRST=${REMOVE_RC_BRANCH_FIRST}",
