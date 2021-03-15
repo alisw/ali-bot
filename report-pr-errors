@@ -235,7 +235,7 @@ class Logs(object):
             r'=== List of errors found ===',
             context_before=0, context_after=float('inf'))
         self.failed_unit_tests = self.grepall(
-            r'Test *#[0-9]*: .*\*\*\*Failed|%% tests passed')
+            r'Test *#[0-9]*: .*\*\*\*(Failed|Timeout)|% tests passed')
         self.compiler_killed = self.grepall(
             r'fatal error: Killed signal terminated program')
         self.cmake_errors = self.grepall(
