@@ -78,20 +78,29 @@ function get_config () {
 
 function reset_git_repository () {
   # Reset the specified git repository to its original, remote state.
-  pushd "$1" || return 10
-  local local_branch
-  local_branch=$(git rev-parse --abbrev-ref HEAD)
-  if [ "$local_branch" != HEAD ]; then
-    # Cleanup first
-    if [ -d .git/refs/remotes/origin/pr ]; then
-      find .git/refs/remotes/origin/pr | sed 's|^\.git/||' | xargs -n 1 git update-ref -d
+  local repodir=$1
+  shift   # $@ now contains args for git checkout
+  if pushd "$repodir"; then
+    # The repo already exists.
+    local local_branch
+    local_branch=$(git rev-parse --abbrev-ref HEAD)
+    if [ "$local_branch" != HEAD ]; then
+      # Cleanup first
+      if [ -d .git/refs/remotes/origin/pr ]; then
+        find .git/refs/remotes/origin/pr | sed 's|^\.git/||' | xargs -n 1 git update-ref -d
+      fi
+      # Try to reset to corresponding remote branch (assume it's origin/<branch>)
+      short_timeout git fetch origin "+$local_branch:refs/remotes/origin/$local_branch"
+      git reset --hard "origin/$local_branch"
+      git clean -fxd
     fi
-    # Try to reset to corresponding remote branch (assume it's origin/<branch>)
-    short_timeout git fetch origin "+$local_branch:refs/remotes/origin/$local_branch"
-    git reset --hard "origin/$local_branch"
-    git clean -fxd
+    popd || return 10
+  else
+    # Directory doesn't exist or we can't read it; clone the repo from scratch.
+    rm -rf "$repodir"
+    # Sometimes the clone gets stuck on large repos, so we need the timeout.
+    short_timeout git clone "$@" "$repodir"
   fi
-  popd || return 10
 }
 
 function report_pr_errors () {
