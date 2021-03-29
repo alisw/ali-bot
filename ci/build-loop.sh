@@ -55,16 +55,12 @@ export ALIBOT_ANALYTICS_USER_UUID ALIBOT_ANALYTICS_ARCHITECTURE
 export ALIBOT_ANALYTICS_APP_NAME=continuous-builder.sh
 
 # Get dependency development packages
-if [ -n "$DEVEL_PKGS" ]; then
-  echo "$DEVEL_PKGS" | while read -r gh_url branch checkout_name; do
-    : "${checkout_name:=$(basename "$gh_url")}"
-    if [ -d "$checkout_name" ]; then
-      reset_git_repository "$checkout_name"
-    else
-      git clone "https://github.com/$gh_url" ${branch:+--branch "$branch"} "$checkout_name"
-    fi
-  done
-fi
+# Use printf without a trailing newline so that the while loop doesn't run if
+# $DEVEL_PKGS is empty.
+printf %s "$DEVEL_PKGS" | while read -r gh_url branch checkout_name; do
+  reset_git_repository "${checkout_name:-$(basename "$gh_url")}" \
+                       "https://github.com/$gh_url" ${branch:+--branch "$branch"}
+done
 
 # Remove logs older than 5 days
 find separate_logs/ -type f -mtime +5 -delete || true
