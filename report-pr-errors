@@ -9,7 +9,7 @@ except ImportError:
 from collections import deque
 from fnmatch import fnmatch
 from glob import glob
-from os.path import dirname, join, expanduser
+from os.path import dirname, join, expanduser, getmtime
 import re
 import os
 import platform
@@ -146,8 +146,9 @@ class Logs(object):
         search_path = join(self.work_dir, "BUILD/*latest*/log")
         print("Searching all logs matching: %s" % search_path, file=sys.stderr)
         suffix = ("latest-" + self.develPrefix).rstrip("-")
-        self.logs = {x for x in glob(search_path)
-                     if dirname(x).endswith(suffix)}
+        self.logs = [x for x in glob(search_path)
+                     if dirname(x).endswith(suffix)]
+        self.logs.sort(key=getmtime)
         print("Found:\n%s" % "\n".join(self.logs), file=sys.stderr)
 
     def grepall(self, regex, context_before=3, context_after=3,
@@ -322,7 +323,7 @@ class Logs(object):
                              r"build/\1/\2/\3/\4", mesos_id),
                       file=logf)
             if self.logs:
-                print("The following files are present in the log:", file=logf)
+                print("The following files (oldest first) are present in the log:", file=logf)
                 for log in self.logs:
                     print("-", log, file=logf)
             else:
