@@ -15,6 +15,8 @@ if [ "$1" != --skip-setup ]; then
               AWS_SECRET_ACCESS_KEY INFLUXDB_WRITE_URL ALIBOT_ANALYTICS_ID \
               MONALISA_HOST MONALISA_PORT MESOS_ROLE CONTAINER_IMAGE \
               WORKER_INDEX WORKERS_POOL_SIZE
+  # This can be empty or unspecified (in which case it defaults to empty).
+  export ALIBOT_CONFIG_SUFFIX
 
   # Disable aliBuild analytics prompt
   mkdir -p ~/.config/alibuild

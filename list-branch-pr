@@ -66,7 +66,7 @@ class RepoConfig:
         self.worker_index = args.worker_index
 
         # Parse .env files for this build config to initialise above variables.
-        mesos, docker = args.mesos_role, args.container_name
+        mesos, docker = args.mesos_role, args.container_name + args.config_suffix
         env_file_path = build_config + ".env"
         for envpath in [
                 os.path.join(CONFIG_PATH, DEFAULTENV_NAME),
@@ -256,8 +256,8 @@ def main(args):
         # for each build config.
         grouped = defaultdict(list)
         for env_file in glob.glob(os.path.join(
-                "ali-bot", "ci", "repo-config", args.mesos_role,
-                args.container_name, "*.env")):
+                CONFIG_PATH, args.mesos_role,
+                args.container_name + args.config_suffix, "*.env")):
             env_file_name = os.path.basename(env_file)
             if env_file_name == "DEFAULTS.env":
                 continue
@@ -348,6 +348,14 @@ def parse_args():
 
     add_env_arg("-c", "--container-name", "CUR_CONTAINER",
                 help="Short name of the container we're running in, e.g. slc8")
+
+    parser.add_argument(
+        "-s", "--config-suffix", metavar="SUFFIX",
+        default=os.environ.get("ALIBOT_CONFIG_SUFFIX", ""),
+        help=("Suffix to disambiguate which .env files should be chosen for the"
+              " current Mesos role and container (default ALIBOT_CONFIG_SUFFIX="
+              "%(default)s or empty if undefined). If %(metavar)s starts with a"
+              " dash, use -s=%(metavar)s instead of -s %(metavar)s."))
 
     return parser.parse_args()
 
