@@ -119,8 +119,8 @@ function source_env_files () {
   # iteration, i.e. nonzero if $env_name.env doesn't exist or failed.
   for _envf in "$base/DEFAULTS.env" \
                  "$base/$MESOS_ROLE/DEFAULTS.env" \
-                 "$base/$MESOS_ROLE/$CUR_CONTAINER/DEFAULTS.env" \
-                 "$base/$MESOS_ROLE/$CUR_CONTAINER/$env_name.env"
+                 "$base/$MESOS_ROLE/$CUR_CONTAINER$ALIBOT_CONFIG_SUFFIX/DEFAULTS.env" \
+                 "$base/$MESOS_ROLE/$CUR_CONTAINER$ALIBOT_CONFIG_SUFFIX/$env_name.env"
   do
     [ -e "$_envf" ] && . "$_envf"
   done
