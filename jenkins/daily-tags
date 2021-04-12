@@ -124,8 +124,6 @@ node ("slc7_x86-64-light") {
                   pip install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG ;;
                 *slc8*)
                   export ALIBUILD_O2_FORCE_GPU=1
-                  export ALIBUILD_O2_TESTS=
-                  export ENABLE_UPGRADES=ON
                   export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH:+$CMAKE_PREFIX_PATH:}/opt/rocm/lib/cmake:/opt/clang/lib/cmake
                   export AMDAPPSDKROOT=/opt/amd-app
                   export PATH=$PATH${PATH:+:}/usr/local/cuda/bin
