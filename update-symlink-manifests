@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+
+"""Update the cache file listing remote store symlinks.
+
+This manifest is used by aliBuild to speed up cloning the remote store.
+"""
+
+import argparse
+import logging
+import math
+import os
+import os.path
+import queue
+import threading
+import boto3
+import botocore.exceptions
+
+
+MANIFEST_EXT = ".manifest"
+IGNORE_PACKAGE_DIRS = "/dist/", "/dist-direct/", "/dist-runtime/", "/store/"
+
+
+def main(args):
+    """Script entry point."""
+    threading.current_thread().name = "main"
+    setup_logging(args.verbose)
+    log = logging.getLogger(__name__)
+    s3c = create_s3_client(args)
+
+    # Set up download workers in separate threads, to speed up downloading the
+    # many small, individual symlink files.
+    req_queue = queue.Queue(maxsize=256)
+    fmt = "worker-%%0%dd" % math.ceil(math.log10(args.download_threads))
+    workers = [threading.Thread(target=package_manifest_builder,
+                                daemon=True,   # kill with the main thread
+                                name=fmt % i, args=(args, req_queue))
+               for i in range(args.download_threads)]
+    for worker in workers:
+        worker.start()
+
+    # Loop through packages and their individual symlinks, and queue each
+    # symlink for download.
+    for arch in list_subdirs(s3c, args.s3_bucket, args.store_prefix):
+        for package in list_subdirs(s3c, args.s3_bucket, arch):
+            if any(map(package.endswith, IGNORE_PACKAGE_DIRS)):
+                log.debug("skipped non-package directory: %s", package)
+                continue
+            log.debug("queueing package: %s", package)
+            req_queue.put(package)
+
+    # We're done filling the queue, so wait for all remaining items to be done.
+    req_queue.join()
+
+
+def package_manifest_builder(args, req_queue):
+    """Fetch symlinks and create a new manifest for packages in the queue.
+
+    A sentinel value of None in req_queue causes this function to return.
+    """
+    log = logging.getLogger(__name__)
+    s3c = create_s3_client(args)
+
+    while True:
+        package = req_queue.get()
+        symlinks = {}
+        manifest = package.rstrip("/") + MANIFEST_EXT
+
+        # First, fetch the existing manifest (if any) for this package.
+        try:
+            lines = read_object(s3c, args.s3_bucket, manifest).splitlines()
+        except botocore.exceptions.ClientError as err:
+            # Treat a missing manifest like an empty one; i.e., use only the
+            # individual symlinks.
+            log.warning("skipping %s: error while fetching: %s", manifest, err)
+        else:
+            log.info("found existing manifest %s", manifest)
+            for i, line in enumerate(lines):
+                linkname, sep, target = line.partition("\t")
+                if sep and linkname and target:
+                    symlinks[linkname] = target.rstrip("\n")
+                else:
+                    log.warning("%s:%d: ignored malformed line: %r",
+                                manifest, i + 1, line)
+
+        # Now go through the individual symlinks to fill out the new manifest.
+        for linkpath in list_files(s3c, args.s3_bucket, package):
+            if not os.path.basename(linkpath).startswith(
+                    os.path.basename(package)):
+                log.warning("rejected symlink: not for package %s: %s",
+                            os.path.basename(package), linkpath)
+                continue
+            if not linkpath.endswith(".tar.gz"):
+                log.warning("rejected symlink: not a tarball: %s", linkpath)
+                continue
+            target = read_object(s3c, args.s3_bucket, linkpath).rstrip("\r\n")
+            log.debug("using symlink %s -> %s", linkpath, target)
+            symlinks[os.path.basename(linkpath)] = target
+
+        # Now write out the new manifest.
+        # We must have a trailing newline at the end of the content, so that
+        # e.g. `curl | while read` won't ignore the last line.
+        content = "".join("%s\t%s\n" % (name, target)
+                          for name, target in symlinks.items())
+        if args.read_only:
+            log.info("read-only mode; new %s follows:\n%s",
+                     manifest, content.rstrip("\n"))
+        else:
+            log.info("writing %d record(s) to %s", len(symlinks), manifest)
+            s3c.put_object(Bucket=args.s3_bucket, Key=manifest,
+                           Body=content.encode("utf-8"))
+
+        req_queue.task_done()
+
+
+def read_object(s3c, bucket, key):
+    """Return the content of the specified object as a str."""
+    return s3c.get_object(Bucket=bucket, Key=key)["Body"] \
+              .read().decode("utf-8")
+
+
+def list_subdirs(s3c, bucket, prefix):
+    """Return a list of subdirectory names under prefix."""
+    for page in s3c.get_paginator("list_objects_v2").paginate(
+            Bucket=bucket, Delimiter="/", Prefix=prefix):
+        for item in page.get("CommonPrefixes", ()):
+            yield item["Prefix"]
+
+
+def list_files(s3c, bucket, prefix):
+    """Return file names directly under prefix."""
+    for page in s3c.get_paginator("list_objects_v2").paginate(
+            Bucket=bucket, Delimiter="/", Prefix=prefix):
+        for item in page.get("Contents", ()):
+            yield item["Key"]
+
+
+def create_s3_client(args):
+    """Create a boto3 client for S3."""
+    return boto3.client(
+        "s3", endpoint_url=args.s3_endpoint_url,
+        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"])
+
+
+def setup_logging(verbose):
+    """Create and return a Logger for this script."""
+    log = logging.getLogger(__name__)
+    logger_handler = logging.StreamHandler()
+    logger_handler.setFormatter(logging.Formatter(
+        "%(filename)s:%(threadName)s:%(levelname)s: %(message)s"))
+    log.addHandler(logger_handler)
+    log.setLevel(logging.DEBUG if verbose else logging.INFO)
+
+
+def parse_args():
+    """Parse and return command-line arguments."""
+    parser = argparse.ArgumentParser(description=__doc__, epilog="""\
+    S3 credentials are read from the AWS_ACCESS_KEY_ID and
+    AWS_SECRET_ACCESS_KEY environment variables. These are required.
+    """)
+    parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="show debug logging output")
+    parser.add_argument(
+        "-r", "--read-only", action="store_true",
+        help="don't write new manifests to S3")
+    parser.add_argument(
+        "-j", "--download-threads", default=4, type=int, metavar="N",
+        help="fetch symlinks using %(metavar)s threads (default %(default)s)")
+    parser.add_argument(
+        "-p", "--store-prefix", default="TARS/", metavar="PREFIX/",
+        help="path prefix on S3 with trailing '/' (default %(default)s)")
+    parser.add_argument(
+        "--s3-bucket", default="alibuild-repo", metavar="BUCKET",
+        help="S3 bucket to read (default %(default)s)")
+    parser.add_argument(
+        "--s3-endpoint-url", default="https://s3.cern.ch", metavar="ENDPOINT",
+        help="base URL of the S3 API (default %(default)s)")
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    main(parse_args())
