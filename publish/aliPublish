@@ -3,7 +3,10 @@
 import logging, sys, json, yaml, requests, urllib3, errno
 from glob import glob
 from argparse import ArgumentParser
-from commands import getstatusoutput
+try:
+  from commands import getstatusoutput
+except:
+  from subprocess import getstatusoutput
 from datetime import datetime
 from requests import RequestException
 from time import sleep, time
@@ -18,7 +21,11 @@ from subprocess import Popen, PIPE, STDOUT
 from smtplib import SMTP
 from socket import getfqdn
 from random import random, choice, shuffle
-from urlparse import urlsplit, urlunsplit
+try:
+  from urlparse import urlsplit, urlunsplit
+except:
+  from urllib.parse import urlsplit, urlunsplit
+
 
 def format(s, **kwds):
   return s % kwds
