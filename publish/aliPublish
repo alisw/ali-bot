@@ -1,5 +1,4 @@
 #!/usr/bin/env python2
-
 import logging, sys, json, yaml, requests, urllib3, errno
 from glob import glob
 from argparse import ArgumentParser
