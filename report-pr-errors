@@ -499,11 +499,14 @@ PRETTY_LOG_TEMPLATE = '''\
         <td><a href="https://github.com/%(repo)s/pull/%(pr_id)s">%(repo)s#%(pr_id)s</a></td></tr>
     <tr><th>Built commit</th>
         <td><a href="https://github.com/%(repo)s/pull/%(pr_id)s/commits/%(commit)s"><code>%(commit)s</code></a></td></tr>
+    <tr><th rowspan="2">SSH command</th>
+        <td><code>%(login_cmd)s</code></td></tr>
+    <tr><td><small>Note that you cannot use this command to log in to some machines
+                   (<code>alientest*</code>; see <em>build host</em> above).
+                   Ask Costin to add your SSH key if you need access.</small></td></tr>
   </table>
-  <p>Use the following command to log in to the build machine:
-     <pre><code>%(login_cmd)s</code></pre></p>
-  <p>The code that finds and extracts error messages may have missed some.</p>
-  <p>Check the <a href="%(log_url)s">full build log</a> if you suspect the build failed for reasons not listed below.</p>
+  <p>The code that finds and extracts error messages may have missed some.
+     Check the <a href="%(log_url)s">full build log</a> if you suspect the build failed for reasons not listed below.</p>
   <h3>Table of contents</h3>
   <p><nav><ol>
     <li id="noerrors-toc"><a href="#noerrors">No errors found</a></li>
@@ -521,7 +524,8 @@ PRETTY_LOG_TEMPLATE = '''\
   </section>
   <section id="compiler-killed">
     <h2>Error: the compiler process was killed</h2>
-    <p>This can happen in case of memory pressure. A later automatic build may solve this.</p>
+    <p>This can happen in case of memory pressure.
+       A rebuild may solve this; these happen automatically.</p>
   </section>
   <section id="o2checkcode">
     <h2><code>o2checkcode</code> results</h2>
@@ -550,7 +554,6 @@ PRETTY_LOG_TEMPLATE = '''\
     <p>Note that the following list may include false positives! Check the sections above first.</p>
     <p><pre><code>%(warnings)s</code></pre></p>
   </section>
-  <p>Check the <a href="%(log_url)s">full build log</a> for potentially more helpful messages.</p>
 </body>
 '''
 
