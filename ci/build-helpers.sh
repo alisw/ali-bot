@@ -106,11 +106,18 @@ function reset_git_repository () {
 
 function report_pr_errors () {
   # This is a wrapper for report-pr-errors with some default switches.
+  local extra_args=()
+  # If we're not checking alidist, only include logs for the package we're
+  # actually building in the HTML log. If we are checking alidist, all logs are
+  # potentially relevant.
+  if [ "$PR_REPO" != alisw/alidist ] && [ -n "$PACKAGE" ]; then
+    extra_args+=(--main-package "$PACKAGE")
+  fi
   short_timeout report-pr-errors ${SILENT:+--dry-run} --default "$BUILD_SUFFIX" \
                 --pr "$PR_REPO#$PR_NUMBER@$PR_HASH" -s "$CHECK_NAME"            \
                 --logs-dest s3://alice-build-logs.s3.cern.ch                    \
                 --log-url https://ali-ci.cern.ch/alice-build-logs/              \
-                "$@"
+                "${extra_args[@]}" "$@"
 }
 
 function source_env_files () {
