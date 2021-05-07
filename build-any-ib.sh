@@ -29,9 +29,15 @@ WORKAREA_INDEX=0
 export PYTHONUSERBASE=$(mktemp -d)
 export PATH=$PYTHONUSERBASE/bin:$PATH
 export LD_LIBRARY_PATH=$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH
+# Set the default python and pip depending on the architecture...
 case $ARCHITECTURE in
-  slc8*) PIP=pip3 ; PYTHON=python3 ;;
-  *) PIP=pip ; PYTHON=python ;;
+  slc8*) PIP=pip3 PYTHON=python3 ;;
+  *) PIP=pip PYTHON=python ;;
+esac
+# ...and override it if PYTHON_VERSION is specified.
+case "$PYTHON_VERSION" in
+  2) PIP=pip2 PYTHON=python2 ;;
+  3) PIP=pip3 PYTHON=python3 ;;
 esac
 $PIP install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+"git+https://github.com/${ALIBUILD_SLUG}"}
 type aliBuild
