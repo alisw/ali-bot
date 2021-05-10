@@ -19,10 +19,19 @@ git config --global user.email alibuild@cern.ch
 
 git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO alidist/
 
+# Set the default python and pip depending on the architecture...
+case $ARCHITECTURE in
+  slc8*) PIP=pip3 PYTHON=python3 ;;
+  *) PIP=pip PYTHON=python ;;
+esac
+# ...and override it if PYTHON_VERSION is specified.
+case "$PYTHON_VERSION" in
+  2) PIP=pip2 PYTHON=python2 ;;
+  3) PIP=pip3 PYTHON=python3 ;;
+esac
+
 # Install the latest release if ALIBUILD_SLUG is not provided
-pip install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild} ||
-  # Fall back to explicit pip version if `pip` doesn't exist, like on CentOS 8. (There, python is python3.)
-  pip3 install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}
+$PIP install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}
 
 PACKAGE_LOWER=$(echo $PACKAGE_NAME | tr '[[:upper:]]' '[[:lower:]]')
 RECIPE=alidist/$PACKAGE_LOWER.sh
@@ -92,7 +101,7 @@ edit_tags () {
   # Patch defaults definition (e.g. defaults-o2.sh)
   # Process overrides by changing in-place the given defaults. This requires
   # some YAML processing so we are better off with Python.
-  TAG=$1 PACKAGE_NAME=$PACKAGE_NAME DEFAULTS=$DEFAULTS python <<\EOF
+  TAG=$1 PACKAGE_NAME=$PACKAGE_NAME DEFAULTS=$DEFAULTS $PYTHON <<\EOF
 import yaml
 from os import environ
 f = "alidist/defaults-%s.sh" % environ["DEFAULTS"].lower()

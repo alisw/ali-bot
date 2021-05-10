@@ -108,6 +108,7 @@ node ("slc7_x86-64-light") {
                    "REMOTE_STORE=${REMOTE_STORE}",
                    "AUTOTAG_TAG=" + AUTOTAG_TAG,
                    "AUTOTAG_OVERRIDE_VERSION=${AUTOTAG_OVERRIDE_VERSION}",
+                   "PYTHON_VERSION=${PYTHON_VERSION}",
                    "MESOS_QUEUE_SIZE=${MESOS_QUEUE_SIZE}",
                    "REMOVE_RC_BRANCH_FIRST=${REMOVE_RC_BRANCH_FIRST}",
                    "NODE_NAME=${env.NODE_NAME}"]) {
@@ -121,18 +122,17 @@ node ("slc7_x86-64-light") {
               case $NODE_NAME in
                 *slc6_x86-64*)
                   # python3 is not installed on the slc6-builder. Installing it seems to break the build.
-                  pip install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG ;;
+                  pip=pip2 ;;
                 *slc8*)
                   export ALIBUILD_O2_FORCE_GPU=1
                   export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH:+$CMAKE_PREFIX_PATH:}/opt/rocm/lib/cmake:/opt/clang/lib/cmake
                   export AMDAPPSDKROOT=/opt/amd-app
                   export PATH=$PATH${PATH:+:}/usr/local/cuda/bin
-                  yum install -y python3-devel python3-pip python3-setuptools
-                  pip3 install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG ;;
+                  pip=pip3 ;;
                 *)
-                  yum install -y python3-devel python3-pip python3-setuptools
-                  pip3 install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG ;;
+                  pip=pip3 ;;
               esac
+              $pip install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG
               [ -f /opt/rh/rh-git218/enable ] && source /opt/rh/rh-git218/enable
               daily-tags.sh || err=$?
               rm -rf alidist daily-tags.?????????? mirror
