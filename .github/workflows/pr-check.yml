@@ -24,9 +24,10 @@ jobs:
       - name: Install prerequisites
         run: |
           sudo apt update -y
-          sudo apt install -y build-essential python3-dev python3-pip python3-setuptools python3-wheel \
-                              libldap2-dev libsasl2-dev environment-modules python-yaml
-          pip install -r requirements.txt
+          sudo apt install -y build-essential libldap2-dev libsasl2-dev environment-modules \
+                              python3-dev python3-pip python3-setuptools python3-wheel \
+                              python-dev python-pip python-setuptools python-wheel
+          pip3 install -r requirements.txt
           pip2 install -r requirements.txt
 
       - name: Check publish/
