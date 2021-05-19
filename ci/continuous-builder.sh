@@ -98,10 +98,10 @@ if [ -n "$HASHES" ]; then
 
     # Run the build
     . build-loop.sh
-  ); done &&
-    # If the loop succeeded, remove force-hashes so we don't keep building the
-    # same PRs forever.
-    rm -f force-hashes
+
+    # Something inside this subshell is reading stdin, which causes some hashes
+    # from above to be ignored. It shouldn't, so redirect from /dev/null.
+  ) < /dev/null; done
 else
   # If we're idling, wait a while to conserve GitHub API requests.
   sleep "$(get_config_value timeout "${TIMEOUT:-600}")"

@@ -32,7 +32,7 @@ echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead bt
     cd ..
     source_env_files "$envf"
     PR_NUMBER=$num PR_HASH=$hash report_pr_errors --pending -m "Queued ($ahead ahead) on $host_id"
-  ); fi
+  ); fi < /dev/null  # Stop commands from slurping hashes, just in case.
 done
 
 if [ "$BUILD_TYPE" = untested ]; then
@@ -57,8 +57,9 @@ export ALIBOT_ANALYTICS_APP_NAME=continuous-builder.sh
 # Get dependency development packages
 if [ -n "$DEVEL_PKGS" ]; then
   echo "$DEVEL_PKGS" | while read -r gh_url branch checkout_name; do
-    reset_git_repository "${checkout_name:-$(basename "$gh_url")}" \
-                         "https://github.com/$gh_url" ${branch:+--branch "$branch"}
+    reset_git_repository "${checkout_name:-$(basename "$gh_url")}"                  \
+                         "https://github.com/$gh_url" ${branch:+--branch "$branch"} \
+                         < /dev/null   # Make sure we're not reading DEVEL_PKGS here.
   done
 fi
 
