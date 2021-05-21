@@ -53,6 +53,7 @@ jobs:
       # Runs a set of commands using the runners shell
       - name: Build the EL8 RPM and create a yum repo.
         run: |
+          set -xe
           yum install -y rpm-build scl-utils-build createrepo unzip git python3-setuptools python3
           ALIBUILD_TAG=v1.8.4
           curl https://rclone.org/install.sh | bash
