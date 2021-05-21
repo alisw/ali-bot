@@ -24,10 +24,17 @@ jobs:
       # Runs a set of commands using the runners shell
       - name: Build the EL7 RPM and create a yum repo.
         run: |
-          yum install -y rpm-build scl-utils-build createrepo unzip
+          yum install -y rpm-build scl-utils-build createrepo unzip git
+          ALIBUILD_TAG=v1.8.4
           curl https://rclone.org/install.sh | bash
           rpmbuild -ba rpms/o2-prereq.spec
-          cd  ~/rpmbuild/RPMS/x86_64/
+          git clone -b $ALIBUILD_TAG https://github.com/alisw/alibuild
+          pushd alibuild
+            perl -p -i -e "s/LAST_TAG/$ALIBUILD_TAG/g" setup.py
+            python setup.py bdist_rpm --requires python,git,PyYAML
+            cp dist/alibuild-*.noarch.rpm ~/rpmbuild/RPMS/x86_64/ 
+          popd
+          cd ~/rpmbuild/RPMS/x86_64/
           createrepo .
           cat << EOF > /tmp/rclone.conf
           ${{ secrets.S3_RCLONE_CONFIG }}
@@ -46,9 +53,16 @@ jobs:
       # Runs a set of commands using the runners shell
       - name: Build the EL8 RPM and create a yum repo.
         run: |
-          yum install -y rpm-build scl-utils-build createrepo unzip
+          yum install -y rpm-build scl-utils-build createrepo unzip git
+          ALIBUILD_TAG=v1.8.4
           curl https://rclone.org/install.sh | bash
           rpmbuild -ba rpms/o2-prereq-cc8.spec
+          git clone -b $ALIBUILD_TAG https://github.com/alisw/alibuild
+          pushd alibuild
+            perl -p -i -e "s/LAST_TAG/$ALIBUILD_TAG/g" setup.py
+            python setup.py bdist_rpm --requires python3,git,python3-pyyaml
+            cp dist/alibuild-*.noarch.rpm ~/rpmbuild/RPMS/x86_64/
+          popd
           cd  ~/rpmbuild/RPMS/x86_64/
           createrepo .
           cat << EOF > /tmp/rclone.conf
