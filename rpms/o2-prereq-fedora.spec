@@ -8,7 +8,7 @@
 
 %scl_package %scl
 %global _scl_prefix /opt/alice
-%global __python /usr/bin/python3
+%define __python /usr/bin/python3
 
 Summary: Package that installs %scl
 Name: %scl_name
