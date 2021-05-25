@@ -88,7 +88,7 @@ jobs:
           yum install -y rpm-build scl-utils-build createrepo unzip git python3-setuptools python3
           ALIBUILD_TAG=v1.8.4
           curl https://rclone.org/install.sh | bash
-          rpmbuild -ba rpms/o2-prereq-cc8.spec
+          rpmbuild -ba rpms/o2-prereq-fedora.spec
           git clone -b $ALIBUILD_TAG https://github.com/alisw/alibuild
           pushd alibuild
             perl -p -i -e "s/LAST_TAG/$ALIBUILD_TAG/g" setup.py
