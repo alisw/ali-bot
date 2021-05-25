@@ -8,6 +8,7 @@
 
 %scl_package %scl
 %global _scl_prefix /opt/alice
+%global __python /usr/bin/python3
 
 Summary: Package that installs %scl
 Name: %scl_name
@@ -41,18 +42,18 @@ Package shipping essential configuration macros to build %scl Software Collectio
 %scl_install
 
 mkdir -p $RPM_BUILD_ROOT%_root_sysconfdir/yum.repos.d
-cat > $RPM_BUILD_ROOT%_root_sysconfdir/yum.repos.d/alisw-el8.repo <<EOF
-[alisw-el7]
-name=ALICE Software - EL8
-baseurl=https://s3.cern.ch/swift/v1/alibuild-repo/RPMS/el8.x86_64/
+cat > $RPM_BUILD_ROOT%_root_sysconfdir/yum.repos.d/alisw-fedora.repo <<EOF
+[alisw-fedora]
+name=ALICE Software - Fedora
+baseurl=https://s3.cern.ch/swift/v1/alibuild-repo/RPMS/fedora.x86_64/
 enabled=0
 gpgcheck=0
 EOF
 
-cat > $RPM_BUILD_ROOT%_root_sysconfdir/yum.repos.d/alisw-upd-el8.repo <<EOF
-[alisw-upd-el7]
-name=ALICE Software - EL8
-baseurl=https://s3.cern.ch/swift/v1/alibuild-repo/UpdRPMS/el8.x86_64/
+cat > $RPM_BUILD_ROOT%_root_sysconfdir/yum.repos.d/alisw-upd-fedora.repo <<EOF
+[alisw-upd-fedora]
+name=ALICE Software - Fedora
+baseurl=https://s3.cern.ch/swift/v1/alibuild-repo/UpdRPMS/fedora.x86_64/
 enabled=0
 gpgcheck=0
 EOF
@@ -73,8 +74,8 @@ mkdir -p %{buildroot}%{_mandir}/man7/
 
 %files runtime -f filelist
 %scl_files
-%_root_sysconfdir/yum.repos.d/alisw-el8.repo
-%_root_sysconfdir/yum.repos.d/alisw-upd-el8.repo
+%_root_sysconfdir/yum.repos.d/alisw-fedora.repo
+%_root_sysconfdir/yum.repos.d/alisw-upd-fedora.repo
 
 %files build
 %{_root_sysconfdir}/rpm/macros.%{scl}-config
