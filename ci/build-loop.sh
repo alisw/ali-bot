@@ -112,7 +112,9 @@ if pushd "$PR_REPO_CHECKOUT"; then
   popd
 fi
 
-if ! clean_env short_timeout aliDoctor --defaults "$ALIBUILD_DEFAULTS" "$PACKAGE"; then
+if ! clean_env short_timeout aliDoctor --architecture "$ARCHITECTURE" \
+     --docker-image "$CONTAINER_IMAGE" --defaults "$ALIBUILD_DEFAULTS" "$PACKAGE"
+then
   # We do not want to kill the system is github is not working
   # so we ignore the result code for now
   short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/error" -m 'aliDoctor error' ||
@@ -149,6 +151,9 @@ build_identifier=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
 # report-pr-errors looks for errors in it.
 if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
      clean_env long_timeout aliBuild build "$PACKAGE"        \
+     --architecture "$ARCHITECTURE"                          \
+     --docker-image "$CONTAINER_IMAGE"                       \
+     --docker-extra-args "$DOCKER_EXTRA_ARGS"                \
      -j "${JOBS:-$(nproc)}" -z "$build_identifier"           \
      --defaults "$ALIBUILD_DEFAULTS"                         \
      ${MIRROR:+--reference-sources "$MIRROR"}                \

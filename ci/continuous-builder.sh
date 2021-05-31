@@ -41,7 +41,9 @@ if [ "$1" != --skip-setup ]; then
   # This turns a container image (e.g. alisw/slc8-gpu-builder:latest) into a
   # short, simple name like slc8-gpu that we use for the .env directories.
   CUR_CONTAINER=${CONTAINER_IMAGE#*/}
-  export CUR_CONTAINER=${CUR_CONTAINER%-builder:*}
+  CUR_CONTAINER=${CUR_CONTAINER%-builder:*}
+  ARCHITECTURE=${CUR_CONTAINER%%-*}_$(uname -m | tr _ -)
+  export CUR_CONTAINER ARCHITECTURE
 
   # On MacOS, the default ulimit for open files is 256. This is too low for git
   # when fetching some large repositories (e.g. O2, Clang).
