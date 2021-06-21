@@ -54,6 +54,10 @@ ALIBOT_ANALYTICS_ARCHITECTURE=${CUR_CONTAINER}_$(uname -m)
 export ALIBOT_ANALYTICS_USER_UUID ALIBOT_ANALYTICS_ARCHITECTURE
 export ALIBOT_ANALYTICS_APP_NAME=continuous-builder.sh
 
+# Fetch/update needed Docker image, then clean up untagged, unused images.
+docker pull "$CONTAINER_IMAGE"
+docker image prune -f
+
 # Get dependency development packages
 if [ -n "$DEVEL_PKGS" ]; then
   echo "$DEVEL_PKGS" | while read -r gh_url branch checkout_name; do
