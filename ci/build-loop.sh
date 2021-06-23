@@ -153,11 +153,13 @@ build_identifier=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
 # We need "--no-auto-cleanup" so that build logs for dependencies are kept, too.
 # For instance, when building O2FullCI, we want to keep the o2checkcode log, as
 # report-pr-errors looks for errors in it.
+# --docker-extra-args=... uses an equals sign as its arg can start with "--",
+# --which would confuse argparse if passed as a separate argument.
 if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
      clean_env long_timeout aliBuild build "$PACKAGE"        \
      --architecture "$ARCHITECTURE"                          \
      --docker-image "$CONTAINER_IMAGE"                       \
-     --docker-extra-args "$DOCKER_EXTRA_ARGS"                \
+     --docker-extra-args="$DOCKER_EXTRA_ARGS"                \
      -j "${JOBS:-$(nproc)}" -z "$build_identifier"           \
      --defaults "$ALIBUILD_DEFAULTS"                         \
      ${MIRROR:+--reference-sources "$MIRROR"}                \
