@@ -43,6 +43,7 @@ if [ "$1" != --skip-setup ]; then
   CUR_CONTAINER=${CONTAINER_IMAGE#*/}
   CUR_CONTAINER=${CUR_CONTAINER%-builder:*}
   ARCHITECTURE=${CUR_CONTAINER%%-*}_$(uname -m | tr _ -)
+  ARCHITECTURE=${ARCHITECTURE/#cs/slc}
   export CUR_CONTAINER ARCHITECTURE
 
   # On MacOS, the default ulimit for open files is 256. This is too low for git
