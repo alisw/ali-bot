@@ -247,6 +247,9 @@ class Logs(object):
         self.full_system_test = self.grepall(
             r'Detected critical problem in logfile',
             context_before=0, context_after=20)
+        self.fst_failed_command = self.grepall(
+            r'^command .* had nonzero exit code [0-9]+$',
+            context_before=0, context_after=float('inf'))
 
     def generate_pretty_log(self):
         '''Extract error messages from logs.
@@ -281,7 +284,10 @@ class Logs(object):
                     self.cmake_errors))),
                 'fst_logfile': htmlescape(self.full_system_test),
                 'fst_timeout': htmlescape(self.fst_task_timeout),
-                'fst_display': display(self.full_system_test or self.fst_task_timeout),
+                'fst_failedcmd': htmlescape(self.fst_failed_command),
+                'fst_display': display(self.full_system_test or
+                                       self.fst_task_timeout or
+                                       self.fst_failed_command),
                 'hostname': htmlescape(platform.node()),
                 'finish_time': datetime.datetime.utcnow().strftime('%a %-d %b %Y, %H:%M:%S UTC'),
                 'repo': self.pr_built.repo_name,
@@ -539,6 +545,7 @@ PRETTY_LOG_TEMPLATE = '''\
     <h2>O2 full system test</h2>
     <p><pre><code>%(fst_timeout)s</code></pre></p>
     <p><pre><code>%(fst_logfile)s</code></pre></p>
+    <p><pre><code>%(fst_failedcmd)s</code></pre></p>
   </section>
   <section id="cmake">
     <h2>CMake errors</h2>
