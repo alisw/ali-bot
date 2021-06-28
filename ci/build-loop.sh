@@ -164,6 +164,10 @@ if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
      --defaults "$ALIBUILD_DEFAULTS"                         \
      ${MIRROR:+--reference-sources "$MIRROR"}                \
      ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}         \
+     -e GIT_CONFIG_COUNT=1                                   \
+     -e GIT_CONFIG_KEY_0=credential.helper                   \
+     -e GIT_CONFIG_VALUE_0='store --file /.git-creds'        \
+     -v ~/.git-creds:/.git-creds:ro                          \
      --fetch-repos --debug --no-auto-cleanup
 then
   if is_numeric "$PR_NUMBER"; then
