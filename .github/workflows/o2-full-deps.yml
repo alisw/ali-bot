@@ -25,7 +25,7 @@ jobs:
       - name: Build the EL7 RPM and create a yum repo.
         run: |
           yum install -y rpm-build scl-utils-build createrepo unzip git python-setuptools
-          ALIBUILD_TAG=v1.8.4
+          ALIBUILD_TAG=v1.8.6
           curl https://rclone.org/install.sh | bash
           rpmbuild -ba rpms/o2-prereq.spec
           git clone -b $ALIBUILD_TAG https://github.com/alisw/alibuild
