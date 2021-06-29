@@ -10,7 +10,6 @@
 get_config
 
 ensure_vars CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS
-export ALIBUILD_O2_TESTS
 : "${WORKERS_POOL_SIZE:=1}" "${WORKER_INDEX:=0}" "${PR_REPO_CHECKOUT:=$(basename "$PR_REPO")}"
 [ -d /build/mirror ] && : "${MIRROR:=/build/mirror}"
 
@@ -46,9 +45,6 @@ fi
 # processing and events to indicate all the things we would consider as
 # fatal in a non deamon process but that here simply make us go to the
 # next step.
-echo "ALIBUILD_O2_FORCE_GPU: $ALIBUILD_O2_FORCE_GPU"
-echo "AMDAPPSDKROOT: $AMDAPPSDKROOT"
-echo "CMAKE_PREFIX_PATH: $CMAKE_PREFIX_PATH"
 ALIBOT_ANALYTICS_USER_UUID=$(hostname -s)-$WORKER_INDEX${CI_NAME:+-$CI_NAME}
 ALIBOT_ANALYTICS_ARCHITECTURE=${CUR_CONTAINER}_$(uname -m)
 export ALIBOT_ANALYTICS_USER_UUID ALIBOT_ANALYTICS_ARCHITECTURE
@@ -164,6 +160,7 @@ if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
      --defaults "$ALIBUILD_DEFAULTS"                         \
      ${MIRROR:+--reference-sources "$MIRROR"}                \
      ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}         \
+     -e "ALIBUILD_O2_TESTS=$ALIBUILD_O2_TESTS"               \
      -e GIT_CONFIG_COUNT=1                                   \
      -e GIT_CONFIG_KEY_0=credential.helper                   \
      -e GIT_CONFIG_VALUE_0='store --file /.git-creds'        \
