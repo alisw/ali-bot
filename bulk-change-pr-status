@@ -52,7 +52,8 @@ def process_pr(cgh, args, repo, pull):
                 commit=repo + '@' + pull_hash,
                 status=check + '/' + args.to_status,
                 message=args.message,
-                url=status.get('target_url', '') if args.keep_urls else ''))
+                url=status.get('target_url', '') if args.keep_urls else ''
+            ), debug_print=args.verbose)
             action = 'changed'
 
         # Log line to show what PR and check we're processing.
@@ -90,6 +91,8 @@ def parse_args():
     any character; things in [] are optional). If no +HH:MM timezone offset is
     given, UTC is assumed.
     ''')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help='print debug messages when changing statuses')
     parser.add_argument('-y', '--do-it', action='store_true',
                         help=("actually change the statuses, "
                               "don't just print what would be done"))
