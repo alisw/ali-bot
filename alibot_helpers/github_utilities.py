@@ -318,11 +318,12 @@ def parseGithubRef(s):
     pr_n = re.split("[@#]", s)[1] if "#" in s else None
     return (repo_name, pr_n, commit_ref)
 
-def setGithubStatus(cgh, args):
+def setGithubStatus(cgh, args, debug_print=True):
     repo_name, _, commit_ref = parseGithubRef(args.commit)
     state_context = args.status.rsplit("/", 1)[0] if "/" in args.status else ""
     state_value = args.status.rsplit("/", 1)[1] if "/" in args.status else args.status
-    print(state_value, state_context)
+    if debug_print:
+        print(state_value, state_context)
 
     VALID_STATES = ["pending", "success", "error", "failure"]
     if state_value not in VALID_STATES:
@@ -337,9 +338,10 @@ def setGithubStatus(cgh, args):
             (s["state"] != state_value or
              s["target_url"] != args.url or
              s["description"] != args.message)):
-            print(s)
-            print("Last status for %s does not match. Updating." % state_context, file=sys.stderr)
-            print(cgh.rate_limiting) 
+            if debug_print:
+                print(s)
+                print("Last status for %s does not match. Updating." % state_context, file=sys.stderr)
+                print(cgh.rate_limiting)
 
             data = {
                 "state": state_value,
@@ -358,13 +360,14 @@ def setGithubStatus(cgh, args):
             s["state"] == state_value and
             s["target_url"] == args.url and
             s["description"] == args.message):
-            msg = "Last status for %s is already matching. Exiting" % state_context
-            print(msg, file=sys.stderr)
-            cgh.printStats()
+            if debug_print:
+                print("Last status for %s is already matching. Exiting" % state_context, file=sys.stderr)
+                cgh.printStats()
             return
 
     # If the state does not exists, create it.
-    print("%s does not exist. Creating." % state_context, file=sys.stderr)
+    if debug_print:
+        print("%s does not exist. Creating." % state_context, file=sys.stderr)
     data = {
         "state": state_value,
         "context": state_context,

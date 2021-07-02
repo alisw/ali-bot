@@ -20,50 +20,49 @@ import alibot_helpers.github_utilities as ghutil
 
 def deduplicate_statuses(cgh, repo, pull_hash):
     '''Create a list of the latest status only for each check.'''
-    all_statuses = [
-        (s['context'],
-         datetime.fromisoformat(s['updated_at'].replace('Z', '+00:00')),
-         s['state'])
-        for s in cgh.get('/repos/{repo}/commits/{ref}/statuses',
-                         repo=repo, ref=pull_hash)
-    ]
-    # For each context (= check), sort statuses, newest last.
-    all_statuses.sort()
+    all_statuses = sorted(cgh.get('/repos/{repo}/commits/{ref}/statuses',
+                                  repo=repo, ref=pull_hash),
+                          # Sort statuses, newest last.
+                          key=lambda status: status['updated_at'])
     # Newer statuses 'overwrite' older ones in this dict comprehension.
-    return {check: (date, state) for check, date, state in all_statuses}
+    return {status['context']: status for status in all_statuses}
 
 
 def process_pr(cgh, args, repo, pull):
     '''Set the statuses on a single pull request.'''
     pull_hash = pull['head']['sha']
-    for check, (date, state) in deduplicate_statuses(cgh, repo, pull_hash).items():
-        if check in args.check_name:
-            should_process = state == args.from_status and \
-                args.filter_after < date < args.filter_before
-            if not should_process:
-                # This isn't a status we should change.
-                action = 'no change'
-            elif not args.do_it:
-                # -y not given, so only say what we would do.
-                action = 'would change'
-            else:
-                # This is a status we want to change and we have -y, so do it.
-                ghutil.setGithubStatus(cgh, Namespace(
-                    # Of the form org/repo#pr@sha, but setGithubStatus doesn't
-                    # use pr so we can leave it out.
-                    commit=repo + '@' + pull_hash,
-                    status=check + '/' + args.to_status,
-                    message=args.message,
-                    url=''))
-                action = 'changed'
+    for check, status in deduplicate_statuses(cgh, repo, pull_hash).items():
+        if check not in args.check_name:
+            continue
+        date = datetime.fromisoformat(
+            status['updated_at'].replace('Z', '+00:00'))
+        should_process = status['state'] == args.from_status and \
+            args.filter_after < date < args.filter_before
+        if not should_process:
+            # This isn't a status we should change.
+            action = 'no change'
+        elif not args.do_it:
+            # -y not given, so only say what we would do.
+            action = 'would change'
+        else:
+            # This is a status we want to change and we have -y, so do it.
+            ghutil.setGithubStatus(cgh, Namespace(
+                # Of the form org/repo#pr@sha, but setGithubStatus doesn't
+                # use pr so we can leave it out.
+                commit=repo + '@' + pull_hash,
+                status=check + '/' + args.to_status,
+                message=args.message,
+                url=status.get('target_url', '') if args.keep_urls else ''
+            ), debug_print=args.verbose)
+            action = 'changed'
 
-            # Log line to show what PR and check we're processing.
-            pr_line = '{action:>13}: {repo}#{pr} @{date} {check}/{status}' \
-                .format(action=action, repo=repo, pr=pull['number'], date=date,
-                        check=check, status=state)
-            if should_process:
-                pr_line += ' -> ' + args.to_status
-            print(pr_line, file=stderr)
+        # Log line to show what PR and check we're processing.
+        pr_line = '{action:>13}: {repo}#{pr} @{date} {check}/{status}' \
+            .format(action=action, repo=repo, pr=pull['number'], date=date,
+                    check=check, status=status['state'])
+        if should_process:
+            pr_line += ' -> ' + args.to_status
+        print(pr_line, file=stderr)
 
 
 def main(args):
@@ -92,9 +91,14 @@ def parse_args():
     any character; things in [] are optional). If no +HH:MM timezone offset is
     given, UTC is assumed.
     ''')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help='print debug messages when changing statuses')
     parser.add_argument('-y', '--do-it', action='store_true',
                         help=("actually change the statuses, "
                               "don't just print what would be done"))
+    parser.add_argument('-k', '--keep-urls', action='store_true',
+                        help=("don't clear statuses' result URLs, for "
+                              'inspection of previous build results'))
     parser.add_argument('-C', '--github-cache-file', metavar='GHCACHE',
                         default=expanduser('~/.github-cached-commits'),
                         help='GitHub cache location; default %(default)s')
