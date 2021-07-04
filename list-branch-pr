@@ -20,13 +20,13 @@ import glob
 import hashlib
 import os.path
 import random
-import shlex
 import sys
 
 from argparse import ArgumentParser
 from collections import defaultdict
 from alibot_helpers.github_utilities \
     import GithubCachedClient, PickledCache, github_token
+from alibot_helpers.utilities import parse_env_file
 
 CONFIG_PATH = os.path.join("ali-bot", "ci", "repo-config")
 DEFAULTENV_NAME = "DEFAULTS.env"
@@ -86,42 +86,29 @@ class RepoConfig:
 
     def _parse_env_file(self, env_file_path):
         """Apply settings from env_file_path to this class."""
-        with open(env_file_path) as envf:
-            try:
-                tokens = shlex.split(envf.read(), comments=False)
-            except ValueError as err:
-                # Some values are multiline, e.g. DEVEL_PKGS. This confuses
-                # shlex. None of the variables we care about are multiline.
-                print("shlex", err, "in file", env_file_path,
-                      sep=": ", file=sys.stderr)
-                return
-
-            # Some variables are used elsewhere in the CI builder, so they
-            # are defined as shell variables. Handle these here (including
-            # multiple assignments on one line). Note that non-assignments
-            # containing "=" (e.g. command arguments), variables valid only
-            # for one command, and the like confuse this simple approach.
-            for token in tokens:
-                var, is_assignment, value = token.partition("=")
-                if not is_assignment:
-                    continue
-                if var == "PR_REPO":
-                    self.repo_name = value
-                elif var == "PR_BRANCH":
-                    self.branch_ref = value
-                elif var == "CHECK_NAME":
-                    self.check_name = value
-                elif var == "TRUST_COLLABORATORS":
-                    # Shell-style boolean: True if non-empty.
-                    self.trust_contributors = bool(value)
-                elif var == "TRUSTED_USERS":
-                    self.trusted_users = value.split(",")
-                elif var == "TRUSTED_TEAM" and value:
-                    teams = self.cgh.get("/orgs/{org}/teams", org=self.org)
-                    for team in teams:
-                        if team["name"] == value:
-                            self.trusted_team = team["id"]
-                            break
+        # Some variables are used elsewhere in the CI builder, so they
+        # are defined as shell variables. Handle these here (including
+        # multiple assignments on one line). Note that non-assignments
+        # containing "=" (e.g. command arguments), variables valid only
+        # for one command, and the like confuse this simple approach.
+        for var, value in parse_env_file(env_file_path):
+            if var == "PR_REPO":
+                self.repo_name = value
+            elif var == "PR_BRANCH":
+                self.branch_ref = value
+            elif var == "CHECK_NAME":
+                self.check_name = value
+            elif var == "TRUST_COLLABORATORS":
+                # Shell-style boolean: True if non-empty.
+                self.trust_contributors = bool(value)
+            elif var == "TRUSTED_USERS":
+                self.trusted_users = value.split(",")
+            elif var == "TRUSTED_TEAM" and value:
+                teams = self.cgh.get("/orgs/{org}/teams", org=self.org)
+                for team in teams:
+                    if team["name"] == value:
+                        self.trusted_team = team["id"]
+                        break
 
     @property
     def org(self):
