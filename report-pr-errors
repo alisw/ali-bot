@@ -51,10 +51,12 @@ def parse_args():
                         default=False,
                         help="Use Details button, do not post a comment")
 
-    parser.add_argument("--main-package", default=None,
-                        help=("Only this package's build logs are searched for "
-                              "warnings to be shown in the HTML log. If not "
-                              "given, all packages' logs are included."))
+    parser.add_argument("--main-package",
+                        default=[], action="append", dest="main_packages",
+                        help=("Only this package's build logs are searched for"
+                              " warnings to be shown in the HTML log. If not"
+                              " given, all packages' logs are included. Can"
+                              " be given multiple times."))
 
     status_gp = parser.add_mutually_exclusive_group()
 
@@ -126,7 +128,7 @@ class Logs(object):
         self.log_url = join(args.logsUrl, self.full_log)
         self.build_successful = args.success
         self.pr_built = parse_pr(args.pr)
-        self.main_package = args.main_package
+        self.main_packages = args.main_packages
 
     def parse(self):
         self.find()
@@ -156,20 +158,23 @@ class Logs(object):
                          if dirname(x).endswith(suffix)]
         self.all_logs.sort(key=getmtime)
         print("Found:", *self.all_logs, sep="\n", file=sys.stderr)
-        if self.main_package is None:
+        if not self.main_packages:
             print("No main package given, using warnings from all logs", file=sys.stderr)
             self.important_logs = self.all_logs
             return
-        important_search_path = join(self.work_dir, "BUILD",
-                                     self.main_package + "-latest*", "log")
-        print("Important logs match:", important_search_path, file=sys.stderr)
-        self.important_logs = [x for x in glob(important_search_path)
-                               if dirname(x).endswith(suffix)]
+        self.important_logs = []
+        for package in self.main_packages:
+            important_search_path = join(self.work_dir, "BUILD",
+                                         package + "-latest*", "log")
+            print("Important logs for package", package, "match:",
+                  important_search_path, file=sys.stderr)
+            self.important_logs.extend(x for x in glob(important_search_path)
+                                       if dirname(x).endswith(suffix))
         self.important_logs.sort(key=getmtime)
         print("Important:", *self.important_logs, sep="\n", file=sys.stderr)
 
     def grep_logs(self, regex, context_before=3, context_after=3,
-                  main_package_only=False, ignore_log_files=()):
+                  main_packages_only=False, ignore_log_files=()):
         '''Grep logfiles for regex, keeping context lines around matches.
 
         Each logfile is searched for lines matching regex. If a line matches,
@@ -183,7 +188,7 @@ class Logs(object):
         '''
         context_sep = '--\n'
         out_lines = []
-        for log in self.important_logs if main_package_only else self.all_logs:
+        for log in self.important_logs if main_packages_only else self.all_logs:
             if any(fnmatch(log, ignore) for ignore in ignore_log_files):
                 continue
             # This deque will discard old lines when new ones are appended.
@@ -248,7 +253,7 @@ class Logs(object):
             ignore_log_files=['*/o2checkcode-latest*/log'])
         self.warnings_log = self.grep_logs(
             r': warning:|^Warning: (?!Unused direct dependencies:$)',
-            main_package_only=True)
+            main_packages_only=True)
         self.o2checkcode_messages = self.grep_logs(
             r'=== List of errors found ===',
             context_before=0, context_after=float('inf'))
