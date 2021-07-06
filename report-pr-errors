@@ -270,7 +270,7 @@ class Logs(object):
         self.full_system_test = self.grep_logs(
             r'Detected critical problem in logfile',
             context_before=0, context_after=20)
-        self.fst_failed_command = self.grepall(
+        self.fst_failed_command = self.grep_logs(
             r'^command .* had nonzero exit code [0-9]+$',
             context_before=0, context_after=float('inf'))
 
