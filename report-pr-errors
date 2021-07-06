@@ -51,6 +51,13 @@ def parse_args():
                         default=False,
                         help="Use Details button, do not post a comment")
 
+    parser.add_argument("--main-package",
+                        default=[], action="append", dest="main_packages",
+                        help=("Only this package's build logs are searched for"
+                              " warnings to be shown in the HTML log. If not"
+                              " given, all packages' logs are included. Can"
+                              " be given multiple times."))
+
     status_gp = parser.add_mutually_exclusive_group()
 
     status_gp.add_argument("--success",
@@ -121,6 +128,7 @@ class Logs(object):
         self.log_url = join(args.logsUrl, self.full_log)
         self.build_successful = args.success
         self.pr_built = parse_pr(args.pr)
+        self.main_packages = args.main_packages
 
     def parse(self):
         self.find()
@@ -143,16 +151,30 @@ class Logs(object):
                     "pretty.html" if pretty else "fullLog.txt")
 
     def find(self):
-        search_path = join(self.work_dir, "BUILD/*latest*/log")
-        print("Searching all logs matching: %s" % search_path, file=sys.stderr)
+        search_path = join(self.work_dir, "BUILD", "*latest*", "log")
+        print("Searching all logs matching:", search_path, file=sys.stderr)
         suffix = ("latest-" + self.develPrefix).rstrip("-")
-        self.logs = [x for x in glob(search_path)
-                     if dirname(x).endswith(suffix)]
-        self.logs.sort(key=getmtime)
-        print("Found:\n%s" % "\n".join(self.logs), file=sys.stderr)
+        self.all_logs = [x for x in glob(search_path)
+                         if dirname(x).endswith(suffix)]
+        self.all_logs.sort(key=getmtime)
+        print("Found:", *self.all_logs, sep="\n", file=sys.stderr)
+        if not self.main_packages:
+            print("No main package given, using warnings from all logs", file=sys.stderr)
+            self.important_logs = self.all_logs
+            return
+        self.important_logs = []
+        for package in self.main_packages:
+            important_search_path = join(self.work_dir, "BUILD",
+                                         package + "-latest*", "log")
+            print("Important logs for package", package, "match:",
+                  important_search_path, file=sys.stderr)
+            self.important_logs.extend(x for x in glob(important_search_path)
+                                       if dirname(x).endswith(suffix))
+        self.important_logs.sort(key=getmtime)
+        print("Important:", *self.important_logs, sep="\n", file=sys.stderr)
 
-    def grepall(self, regex, context_before=3, context_after=3,
-                ignore_log_files=()):
+    def grep_logs(self, regex, context_before=3, context_after=3,
+                  main_packages_only=False, ignore_log_files=()):
         '''Grep logfiles for regex, keeping context lines around matches.
 
         Each logfile is searched for lines matching regex. If a line matches,
@@ -166,7 +188,7 @@ class Logs(object):
         '''
         context_sep = '--\n'
         out_lines = []
-        for log in self.logs:
+        for log in self.important_logs if main_packages_only else self.all_logs:
             if any(fnmatch(log, ignore) for ignore in ignore_log_files):
                 continue
             # This deque will discard old lines when new ones are appended.
@@ -212,7 +234,7 @@ class Logs(object):
         other helpful messages.
         """
         error_log_lines = []
-        for log in self.logs:
+        for log in self.all_logs:
             err, out = getstatusoutput("grep -he ': error:' -A 3 -B 3 -- %s "
                                        "|| tail -n %s %s" % (log, self.limit, log))
             if err:
@@ -225,30 +247,30 @@ class Logs(object):
         # Messages from the general error/warning logs are reported in
         # o2checkcode_messages as well, so don't report them twice. The general
         # logs also contain false positives, so o2checkcode_messages is better.
-        self.errors_log = self.grepall(
+        self.errors_log = self.grep_logs(
             r': (internal compiler |fatal )?error:|^Error(:| in )|^fatal: |'
             r'ninja: build stopped: |make.*: \*\*\*|\[(ERROR|FATAL)\]|\*\*\*Failed',
             ignore_log_files=['*/o2checkcode-latest*/log'])
-        self.warnings_log = self.grepall(
+        self.warnings_log = self.grep_logs(
             r': warning:|^Warning: (?!Unused direct dependencies:$)',
-            ignore_log_files=['*/o2checkcode-latest*/log'])
-        self.o2checkcode_messages = self.grepall(
+            main_packages_only=True)
+        self.o2checkcode_messages = self.grep_logs(
             r'=== List of errors found ===',
             context_before=0, context_after=float('inf'))
-        self.failed_unit_tests = self.grepall(
+        self.failed_unit_tests = self.grep_logs(
             r'Test *#[0-9]*: .*\*\*\*(Failed|Timeout)|% tests passed',
             context_before=0, context_after=0)
-        self.compiler_killed = self.grepall(
+        self.compiler_killed = self.grep_logs(
             r'fatal error: Killed signal terminated program')
-        self.cmake_errors = self.grepall(
+        self.cmake_errors = self.grep_logs(
             r'^CMake Error', context_before=0, context_after=10)
         # These two sections are for the O2 full system test.
-        self.fst_task_timeout = self.grepall(
+        self.fst_task_timeout = self.grep_logs(
             r'task timeout reached', context_before=3, context_after=0)
-        self.full_system_test = self.grepall(
+        self.full_system_test = self.grep_logs(
             r'Detected critical problem in logfile',
             context_before=0, context_after=20)
-        self.fst_failed_command = self.grepall(
+        self.fst_failed_command = self.grep_logs(
             r'^command .* had nonzero exit code [0-9]+$',
             context_before=0, context_after=float('inf'))
 
@@ -329,15 +351,15 @@ class Logs(object):
                       re.sub("^(?:thermos-)?([a-z]*)-([a-z]*)-([a-z0-9_-]*)-([0-9]*)(?:-[0-9a-f]*){5}$",
                              r"build/\1/\2/\3/\4", mesos_id),
                       file=logf)
-            if self.logs:
+            if self.all_logs:
                 print("The following files (oldest first) are present in the log:", file=logf)
-                for log in self.logs:
+                for log in self.all_logs:
                     print("-", log, file=logf)
             else:
                 print("No logs found. Please check the aurora log.",
                       "See http://alisw.github.io/infrastructure-pr-testing for more instructions.",
                       sep="\n", file=logf)
-            for log in self.logs:
+            for log in self.all_logs:
                 print("## Begin", log, file=logf)
                 with open(log) as sublogf:
                     logf.writelines(sublogf)
