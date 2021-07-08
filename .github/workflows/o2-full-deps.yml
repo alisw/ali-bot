@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     container: centos:7
     env:
-      ALIBUILD_TAG: v1.8.7
+      ALIBUILD_TAG: v1.8.8
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     container: centos:8
     env:
-      ALIBUILD_TAG: v1.8.7
+      ALIBUILD_TAG: v1.8.8
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -76,7 +76,7 @@ jobs:
     runs-on: ubuntu-latest
     container: fedora:33
     env:
-      ALIBUILD_TAG: v1.8.7
+      ALIBUILD_TAG: v1.8.8
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
