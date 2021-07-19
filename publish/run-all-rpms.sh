@@ -34,7 +34,8 @@ while true; do
 
   case "$arch" in
     el8.*)
-      pip install boto3    # aliPublishS3 needs boto3.
+      # aliPublishS3 needs boto3, which in turn needs concurrent.futures.
+      pip install boto3 futures
       aliPublish=./aliPublishS3;;
     *) aliPublish=./aliPublish;;
   esac
