@@ -19,8 +19,9 @@ cd "$(dirname "$0")"
 
 while true; do
   # Reset the specified git repository to its original, remote state.
-  git fetch -f origin +master:refs/remotes/origin/master
-  git reset --hard origin/master
+  branch=$(git rev-parse --abbrev-ref HEAD)
+  git fetch -f origin "+$branch:refs/remotes/origin/$branch"
+  git reset --hard "origin/$branch"
   git clean -fxd
 
   # Look for any canary files from Jenkins builds that finished since we last ran.
@@ -33,12 +34,10 @@ while true; do
   s3cmd ls "s3://alibuild-repo/rpmstatus/$arch/" | cut -b 32- > canaries.txt
 
   case "$arch" in
-    el8.*)
-      # aliPublishS3 needs boto3, which in turn needs concurrent.futures.
-      pip install boto3 futures
-      aliPublish=./aliPublishS3;;
-    *) aliPublish=./aliPublish;;
+    el8.*) pip=pip3 aliPublish=./aliPublishS3;;
+    *) pip=pip aliPublish=./aliPublish;;
   esac
+  "$pip" install -r ../requirements.txt
 
   for conf in "$@"; do
     if "$aliPublish" --config "$conf" --debug sync-rpms >&2; then
