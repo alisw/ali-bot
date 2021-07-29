@@ -50,9 +50,13 @@ ALIBOT_ANALYTICS_ARCHITECTURE=${CUR_CONTAINER}_$(uname -m)
 export ALIBOT_ANALYTICS_USER_UUID ALIBOT_ANALYTICS_ARCHITECTURE
 export ALIBOT_ANALYTICS_APP_NAME=continuous-builder.sh
 
-# Fetch/update needed Docker image, then clean up untagged, unused images.
-docker pull "$CONTAINER_IMAGE"
-docker image prune -f
+case $(uname -s) in
+  Darwin) use_docker=;;  # We don't run under docker on MacOS.
+  *) # Fetch/update needed Docker image, then clean up untagged, unused images.
+    docker pull "$CONTAINER_IMAGE"
+    docker image prune -f
+    use_docker=true;;
+esac
 
 # Get dependency development packages
 if [ -n "$DEVEL_PKGS" ]; then
@@ -112,8 +116,8 @@ if pushd "$PR_REPO_CHECKOUT"; then
   popd
 fi
 
-if ! clean_env short_timeout aliDoctor --architecture "$ARCHITECTURE" \
-     --docker-image "$CONTAINER_IMAGE" --defaults "$ALIBUILD_DEFAULTS" "$PACKAGE"
+if ! clean_env short_timeout aliDoctor --defaults "$ALIBUILD_DEFAULTS" "$PACKAGE" \
+     ${use_docker:+--architecture "$ARCHITECTURE" --docker-image "$CONTAINER_IMAGE"}
 then
   # We do not want to kill the system is github is not working
   # so we ignore the result code for now
@@ -153,18 +157,18 @@ build_identifier=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
 # --which would confuse argparse if passed as a separate argument.
 if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
      clean_env long_timeout aliBuild build "$PACKAGE"        \
-     --architecture "$ARCHITECTURE"                          \
-     --docker-image "$CONTAINER_IMAGE"                       \
-     --docker-extra-args="$DOCKER_EXTRA_ARGS"                \
      -j "${JOBS:-$(nproc)}" -z "$build_identifier"           \
      --defaults "$ALIBUILD_DEFAULTS"                         \
      ${MIRROR:+--reference-sources "$MIRROR"}                \
      ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}         \
      -e "ALIBUILD_O2_TESTS=$ALIBUILD_O2_TESTS"               \
-     -e GIT_CONFIG_COUNT=1                                   \
-     -e GIT_CONFIG_KEY_0=credential.helper                   \
-     -e GIT_CONFIG_VALUE_0='store --file /.git-creds'        \
-     -v ~/.git-creds:/.git-creds:ro                          \
+     ${use_docker:+-e GIT_CONFIG_COUNT=1}                    \
+     ${use_docker:+-e GIT_CONFIG_KEY_0=credential.helper}    \
+     ${use_docker:+-e GIT_CONFIG_VALUE_0='store --file /.git-creds'} \
+     ${use_docker:+-v "$HOME/.git-creds:/.git-creds:ro"}     \
+     ${use_docker:+--architecture "$ARCHITECTURE"}           \
+     ${use_docker:+--docker-image "$CONTAINER_IMAGE"}        \
+     ${use_docker:+--docker-extra-args="$DOCKER_EXTRA_ARGS"} \
      --fetch-repos --debug --no-auto-cleanup
 then
   if is_numeric "$PR_NUMBER"; then
