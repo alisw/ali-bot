@@ -1,9 +1,8 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
-import logging, sys, json, yaml, requests, urllib3, errno
+import logging, sys, json, yaml, errno, requests
 from glob import glob
 from argparse import ArgumentParser
-from commands import getstatusoutput
 from datetime import datetime
 from requests import RequestException
 from time import sleep, time
@@ -12,13 +11,11 @@ from logging import debug, error, info
 from re import search, escape, sub
 from os.path import isdir, isfile, realpath, dirname, getmtime, join, basename
 from os import chmod, remove, chdir, getcwd, getpid, kill, makedirs, rename
-from shutil import rmtree
 from tempfile import NamedTemporaryFile, mkdtemp
-from subprocess import Popen, PIPE, STDOUT
+from subprocess import Popen, PIPE, STDOUT, DEVNULL, getstatusoutput
 from smtplib import SMTP
-from socket import getfqdn
 from random import random, choice, shuffle
-from urlparse import urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 
 def format(s, **kwds):
   return s % kwds
@@ -60,7 +57,7 @@ def runInstallScript(script, dryRun, **kwsub):
     return 0
   with NamedTemporaryFile(delete=False) as fp:
     fn = fp.name
-    fp.write(format(script, **kwsub))
+    fp.write((script % kwsub).encode("utf-8"))
   chmod(fn, 0o700)
   debug(format("Created unpack script: %(file)s", file=fn))
   rv = execute(fn)
@@ -69,7 +66,8 @@ def runInstallScript(script, dryRun, **kwsub):
   return rv
 
 def execute(command):
-  popen = Popen(command, shell=False, stdout=PIPE, stderr=STDOUT)
+  popen = Popen(command, shell=False, stdin=DEVNULL, stdout=PIPE, stderr=STDOUT,
+                universal_newlines=True)
   linesIterator = iter(popen.stdout.readline, "")
   for line in linesIterator:
     debug(line.strip("\n"))  # yield line
@@ -139,7 +137,7 @@ class JGet(object):
         error(format("Error getting %(url)s, %(att)d attempt(s) left: %(msg)s",
                      url=url,
                      att=self.conn_retries-i,
-                     msg=str(e)))
+                     msg=e))
         dethrottle = 2*dethrottle
         j = None
       self.last_ts = time()
@@ -514,7 +512,7 @@ def getTimestamp(s):
     dt = datetime.strptime(s, "%a, %d %b %Y %H:%M:%S %Z")
   except Exception as e:
     error("Cannot parse time string {timestring}: {exception}".format(
-      timestring=s, exception=str(e)))
+      timestring=s, exception=e))
     return 0
   return getTotalSeconds(dt - datetime(1970, 1, 1))  # yes, it's a mess
 
@@ -629,7 +627,7 @@ def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, 
                      "dist-direct": distDirectUrlTpl,
                      "dist-runtime": distRuntimeUrlTpl }
       depFail = False
-      for key,depsUrlTpl in depUrlTpls.iteritems():
+      for key,depsUrlTpl in depUrlTpls.items():
         depsUrl = format(depsUrlTpl,
                          baseUrl=baseUrl, arch=arch, pack=pack["name"], ver=pack["ver"])
         debug(format("%(arch)s / %(pack)s / %(ver)s: listing %(key)s dependencies from %(url)s",
@@ -682,7 +680,7 @@ def sync(pub, architectures, baseUrl, rules, excludeOlderThanSec, includeFirst, 
   if pub.publish():
     totSuccess = 0
     totFail = 0
-    for arch,packStatus in newPackages.iteritems():
+    for arch,packStatus in newPackages.items():
       nSuccess = sum([1 for x in packStatus if x["success"]])
       nFail = len(packStatus) - nSuccess
       totSuccess = totSuccess + nSuccess
@@ -714,7 +712,7 @@ def notify(conf, archs, pack, dryRun):
   except Exception as e:
     error("Email notification: cannot connect to %s" % conf["server"])
     return
-  for arch,packs in pack.iteritems():
+  for arch,packs in pack.items():
     for p in packs:
       key = "success" if p["success"] else "failure"
       deps_fmt = "".join([ format(conf.get("package_format", "%(package)s %(version)s "),
@@ -868,7 +866,7 @@ def main():
   if not isinstance(conf.get("architectures", None), dict):
     error("architectures must be a dict of dicts")
     doExit = True
-  if not isinstance(conf.get("base_url", None), basestring):
+  if not isinstance(conf.get("base_url", None), str):
     error("base_url must be a string")
     doExit = True
   conf["auto_include_deps"] = conf.get("auto_include_deps", True)
@@ -900,10 +898,10 @@ def main():
     sys.exit(1)
 
   rules = { "include": {}, "exclude": {} }
-  for arch,maps in conf["architectures"].iteritems():
-    for r in rules.keys():
+  for arch, maps in conf["architectures"].items():
+    for r in rules:
       rules[r][arch] = isinstance(maps, dict) and maps.get(r, {}) or {}
-      for uk in set(conf[r].keys()+rules[r][arch].keys()):
+      for uk in set(conf[r].keys()) | set(rules[r][arch].keys()):
 
         # Specific (per-arch) rule always wins
         general  = conf[r].get(uk, [])
@@ -948,14 +946,14 @@ def main():
         error("Cannot write pidfile %s, aborting" % args.pidFile)
         sys.exit(1)
     if args.action in [ "sync-cvmfs", "sync-dir" ]:
-      if not isinstance(conf["package_dir"], basestring):
+      if not isinstance(conf["package_dir"], str):
         error("[cvmfs_]package_dir must be a string")
         doExit = True
-      if not isinstance(conf["modulefile"], basestring):
+      if not isinstance(conf["modulefile"], str):
         error("[cvmfs_]modulefile must be a string")
         doExit = True
     if args.action == "sync-cvmfs":
-      if not isinstance(conf.get("cvmfs_repository", None), basestring):
+      if not isinstance(conf.get("cvmfs_repository", None), str):
         error("cvmfs_repository must be a string")
         doExit = True
       if doExit: sys.exit(1)
@@ -980,7 +978,7 @@ def main():
                          connParams=connParams,
                          dryRun=args.dryRun)
     else:
-      if not isinstance(conf.get("rpm_repo_dir", None), basestring):
+      if not isinstance(conf.get("rpm_repo_dir", None), str):
         error("rpm_repo_dir must be a string")
         sys.exit(1)
       conf["rpm_updatable"] = conf.get("rpm_updatable", False)
@@ -993,9 +991,9 @@ def main():
     if args.abort:
       pub.abort(force=True)
 
-    architectures = dict((arch, maps.get(archKey, arch) if isinstance(maps, dict) else arch)
-                         for (arch,maps) in conf["architectures"].iteritems())
-    architectures = dict((k,v) for (k,v) in architectures.iteritems() if v)
+    architectures = {arch: maps.get(archKey, arch) if isinstance(maps, dict) else arch
+                     for arch, maps in conf["architectures"].items()}
+    architectures = {k: v for k, v in architectures.items() if v}
     debug("Architecture names mappings: %s" % json.dumps(architectures, indent=2))
     r = sync(pub=pub,
              architectures=architectures,
