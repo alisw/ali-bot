@@ -249,7 +249,7 @@ class Logs(object):
         # logs also contain false positives, so o2checkcode_messages is better.
         self.errors_log = self.grep_logs(
             r': (internal compiler |fatal )?error:|^Error(:| in )|^fatal: |'
-            r'ninja: build stopped: |make.*: \*\*\*|\[(ERROR|FATAL)\]|\*\*\*Failed',
+            r'ninja: build stopped: |make.*: \*\*\*|\[(ERROR|FATAL)\]',
             ignore_log_files=['*/o2checkcode-latest*/log'])
         self.warnings_log = self.grep_logs(
             r': warning:|^Warning: (?!Unused direct dependencies:$)',
