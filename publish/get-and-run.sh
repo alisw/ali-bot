@@ -67,6 +67,8 @@ if [[ ! $NO_UPDATE ]]; then
   popd
 fi
 
+pip3 install --user -Ur "$DEST/requirements.txt"
+
 ln -nfs $(basename $LOG.error) $PWD/log/latest
 CACHE=$PWD/cache
 mkdir -p $CACHE
