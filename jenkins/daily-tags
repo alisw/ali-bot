@@ -1,22 +1,22 @@
 #!groovy
-node ("slc7_x86-64-light") {
-  try {
-    stage('Construct tag name') {
-      /* Turn AUTOTAG_PATTERN into AUTOTAG_TAG now, before waiting for PRs,
-       * because waiting can take hours, and that would mean we use the incorrect
-       * date to name the tag.
-       * Run on any free node -- doesn't matter which, but we need one to use sh.
-       */
-      node {
-        AUTOTAG_TAG = sh(script: "LANG=C TZ=Europe/Zurich date '+$AUTOTAG_PATTERN'",
-                         returnStdout: true).trim()
-      }
-      currentBuild.displayName = ("#${env.BUILD_NUMBER} - $PACKAGE_NAME " +
-                                  AUTOTAG_TAG + " $DEFAULTS $ARCHITECTURE")
+try {
+  stage('Construct tag name') {
+    /* Turn AUTOTAG_PATTERN into AUTOTAG_TAG now, before waiting for PRs,
+     * because waiting can take hours, and that would mean we use the incorrect
+     * date to name the tag.
+     * Run on any free node -- doesn't matter which, but we need one to use sh.
+     */
+    node {
+      AUTOTAG_TAG = sh(script: "LANG=C TZ=Europe/Zurich date '+$AUTOTAG_PATTERN'",
+                       returnStdout: true).trim()
     }
+    currentBuild.displayName = ("#${env.BUILD_NUMBER} - $PACKAGE_NAME " +
+                                AUTOTAG_TAG + " $DEFAULTS $ARCHITECTURE")
+  }
 
-    stage "Wait pull requests"
-    if ("$WAIT_PR" == "true") {
+  stage "Wait pull requests"
+  if ("$WAIT_PR" == "true") {
+    node ("slc7_x86-64-light") {
       timeout (7200) {
         withEnv(["ALIBOT_SLUG=${ALIBOT_SLUG}",
                  "WAIT_PR_LIMIT=${WAIT_PR_LIMIT}",
@@ -49,70 +49,70 @@ node ("slc7_x86-64-light") {
         }
       }
     }
-    else {
-      println("Not waiting for open pull requests")
-    }
+  } else {
+    println("Not waiting for open pull requests")
+  }
 
-    node ("$ARCHITECTURE-$MESOS_QUEUE_SIZE") {
+  node ("$ARCHITECTURE-$MESOS_QUEUE_SIZE") {
 
-      stage "Config credentials"
-      withCredentials([[$class: 'UsernamePasswordMultiBinding',
-                        credentialsId: 'github_alibuild',
-                        usernameVariable: 'GIT_BOT_USER',
-                        passwordVariable: 'GIT_BOT_PASS']]) {
-        sh '''
+    stage "Config credentials"
+    withCredentials([[$class: 'UsernamePasswordMultiBinding',
+                      credentialsId: 'github_alibuild',
+                      usernameVariable: 'GIT_BOT_USER',
+                      passwordVariable: 'GIT_BOT_PASS']]) {
+      sh '''
           set -e
           set -o pipefail
           printf "protocol=https\nhost=github.com\nusername=$GIT_BOT_USER\npassword=$GIT_BOT_PASS\n" | \
             git credential-store --file $PWD/git-creds store
         '''
-      }
-      withCredentials([[$class: 'UsernamePasswordMultiBinding',
-                        credentialsId: '369b09bf-5f5e-4b68-832a-2f30cad28755',
-                        usernameVariable: 'GIT_BOT_USER',
-                        passwordVariable: 'GIT_BOT_PASS']]) {
-        sh '''
+    }
+    withCredentials([[$class: 'UsernamePasswordMultiBinding',
+                      credentialsId: '369b09bf-5f5e-4b68-832a-2f30cad28755',
+                      usernameVariable: 'GIT_BOT_USER',
+                      passwordVariable: 'GIT_BOT_PASS']]) {
+      sh '''
           set -e
           set -o pipefail
           printf "protocol=https\nhost=git.cern.ch\nusername=$GIT_BOT_USER\npassword=$GIT_BOT_PASS\n" | \
             git credential-store --file $PWD/git-creds store
         '''
-      }
-      withCredentials([[$class: 'UsernamePasswordMultiBinding',
-                        credentialsId: 'gitlab_alibuild',
-                        usernameVariable: 'GIT_BOT_USER',
-                        passwordVariable: 'GIT_BOT_PASS']]) {
-        sh '''
+    }
+    withCredentials([[$class: 'UsernamePasswordMultiBinding',
+                      credentialsId: 'gitlab_alibuild',
+                      usernameVariable: 'GIT_BOT_USER',
+                      passwordVariable: 'GIT_BOT_PASS']]) {
+      sh '''
           set -e
           set -o pipefail
           printf "protocol=https\nhost=gitlab.cern.ch\nusername=$GIT_BOT_USER\npassword=$GIT_BOT_PASS\n" | \
             git credential-store --file $PWD/git-creds store
         '''
-      }
-      sh '''
+    }
+    sh '''
         set -e
         git config --global credential.helper "store --file $PWD/git-creds"
         ls -l $PWD/git-creds
       '''
 
-      stage "Create daily"
-      retry (2) {
-        timeout (240) {
-          withEnv(["ALIBUILD_SLUG=${ALIBUILD_SLUG}",
-                   "ALIDIST_SLUG=${ALIDIST_SLUG}",
-                   "ALIBOT_SLUG=${ALIBOT_SLUG}",
-                   "ARCHITECTURE=${ARCHITECTURE}",
-                   "PACKAGE_NAME=${PACKAGE_NAME}",
-                   "DEFAULTS=${DEFAULTS}",
-                   "TEST_TAG=${TEST_TAG}",
-                   "REMOTE_STORE=${REMOTE_STORE}",
-                   "AUTOTAG_TAG=" + AUTOTAG_TAG,
-                   "AUTOTAG_OVERRIDE_VERSION=${AUTOTAG_OVERRIDE_VERSION}",
-                   "PYTHON_VERSION=${PYTHON_VERSION}",
-                   "MESOS_QUEUE_SIZE=${MESOS_QUEUE_SIZE}",
-                   "REMOVE_RC_BRANCH_FIRST=${REMOVE_RC_BRANCH_FIRST}",
-                   "NODE_NAME=${env.NODE_NAME}"]) {
-            sh '''
+    stage "Create daily"
+    retry (2) {
+      timeout (240) {
+        withEnv(["ALIBUILD_SLUG=${ALIBUILD_SLUG}",
+                 "ALIDIST_SLUG=${ALIDIST_SLUG}",
+                 "ALIBOT_SLUG=${ALIBOT_SLUG}",
+                 "ARCHITECTURE=${ARCHITECTURE}",
+                 "PACKAGE_NAME=${PACKAGE_NAME}",
+                 "DEFAULTS=${DEFAULTS}",
+                 "TEST_TAG=${TEST_TAG}",
+                 "REMOTE_STORE=${REMOTE_STORE}",
+                 "AUTOTAG_TAG=" + AUTOTAG_TAG,
+                 "AUTOTAG_OVERRIDE_VERSION=${AUTOTAG_OVERRIDE_VERSION}",
+                 "PYTHON_VERSION=${PYTHON_VERSION}",
+                 "MESOS_QUEUE_SIZE=${MESOS_QUEUE_SIZE}",
+                 "REMOVE_RC_BRANCH_FIRST=${REMOVE_RC_BRANCH_FIRST}",
+                 "NODE_NAME=${env.NODE_NAME}"]) {
+          sh '''
               set -ex
               [ -d /etc/profile.d/enable-alice.sh ] && source /etc/profile.d/enable-alice.sh
               export PYTHONUSERBASE=${PWD}/python-bin
@@ -138,16 +138,14 @@ node ("slc7_x86-64-light") {
               rm -rf alidist daily-tags.?????????? mirror
               exit ${err-0}
             '''
-          }
         }
       }
     }
   }
-  catch (e) {
-    // Notify failures
-    emailext(subject: "Daily ${PACKAGE_NAME} tag failed",
-             body: "More details here: ${env.BUILD_URL}",
-             to: "${NOTIFY_EMAILS}")
-    throw e
-  }
+} catch (e) {
+  // Notify failures
+  emailext(subject: "Daily ${PACKAGE_NAME} tag failed",
+           body: "More details here: ${env.BUILD_URL}",
+           to: "${NOTIFY_EMAILS}")
+  throw e
 }
