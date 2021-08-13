@@ -11,6 +11,7 @@ This script is useful when cleaning up after a stuck CI builder.
 
 from __future__ import print_function
 from argparse import ArgumentParser, Namespace
+from collections import defaultdict
 from datetime import datetime, timezone
 from os.path import expanduser
 from sys import stderr
@@ -18,26 +19,58 @@ from sys import stderr
 import alibot_helpers.github_utilities as ghutil
 
 
-def deduplicate_statuses(cgh, repo, pull_hash):
-    '''Create a list of the latest status only for each check.'''
-    all_statuses = sorted(cgh.get('/repos/{repo}/commits/{ref}/statuses',
-                                  repo=repo, ref=pull_hash),
-                          # Sort statuses, newest last.
-                          key=lambda status: status['updated_at'])
-    # Newer statuses 'overwrite' older ones in this dict comprehension.
-    return {status['context']: status for status in all_statuses}
+def get_all_statuses(cgh, repo, pull_hash):
+    '''Create a list of all statuses for each check, newest first.'''
+    statuses = defaultdict(list)
+    for status in cgh.get('/repos/{repo}/commits/{ref}/statuses',
+                          repo=repo, ref=pull_hash):
+        statuses[status['context']].append(status)
+    for status_list in statuses.values():
+        status_list.sort(key=lambda status: status['updated_at'], reverse=True)
+    return statuses
+
+
+def parse_timestr(timestr):
+    '''Parse a datetime string as returned by the GitHub API.'''
+    return datetime.fromisoformat(timestr.replace('Z', '+00:00'))
 
 
 def process_pr(cgh, args, repo, pull):
     '''Set the statuses on a single pull request.'''
     pull_hash = pull['head']['sha']
-    for check, status in deduplicate_statuses(cgh, repo, pull_hash).items():
-        if check not in args.check_name:
+    for check, statuses in get_all_statuses(cgh, repo, pull_hash).items():
+        if check not in args.check_name or not statuses:
             continue
-        date = datetime.fromisoformat(
-            status['updated_at'].replace('Z', '+00:00'))
-        should_process = status['state'] == args.from_status and \
+        latest = statuses[0]
+        try:
+            if args.filter_after:
+                before_last = [status for status in statuses
+                               if parse_timestr(status['updated_at'])
+                               <= args.filter_after][0]
+            else:
+                before_last = statuses[1]
+        except IndexError:
+            before_last = {'state': 'pending'}
+        date = parse_timestr(latest['updated_at'])
+        should_process = latest['state'] == args.from_status and \
             args.filter_after < date < args.filter_before
+        to_status = args.to_status
+        if args.delete_latest:
+            to_status = before_last['state']
+            # If we're resetting to an earlier error, the logs are gone now
+            # (they get overwritten each time). Set to pending for fresh logs.
+            if to_status in ('error', 'failure'):
+                to_status = 'pending'
+        new_url = ''
+        if args.delete_latest:
+            new_url = before_last.get('target_url', '')
+        elif args.keep_urls:
+            new_url = latest.get('target_url', '')
+        message = args.message
+        if args.delete_latest and 'updated_at' in before_last:
+            message += ' (reset to status of %s)' % before_last['updated_at']
+        elif args.delete_latest:
+            message += ' (reset to pending)'
         if not should_process:
             # This isn't a status we should change.
             action = 'no change'
@@ -50,18 +83,17 @@ def process_pr(cgh, args, repo, pull):
                 # Of the form org/repo#pr@sha, but setGithubStatus doesn't
                 # use pr so we can leave it out.
                 commit=repo + '@' + pull_hash,
-                status=check + '/' + args.to_status,
-                message=args.message,
-                url=status.get('target_url', '') if args.keep_urls else ''
+                status=check + '/' + to_status,
+                message=message, url=new_url
             ), debug_print=args.verbose)
             action = 'changed'
 
         # Log line to show what PR and check we're processing.
         pr_line = '{action:>13}: {repo}#{pr} @{date} {check}/{status}' \
             .format(action=action, repo=repo, pr=pull['number'], date=date,
-                    check=check, status=status['state'])
+                    check=check, status=latest['state'])
         if should_process:
-            pr_line += ' -> ' + args.to_status
+            pr_line += ' -> {}    "{}"'.format(to_status, message)
         print(pr_line, file=stderr)
 
 
@@ -114,10 +146,18 @@ def parse_args():
                         default='error', dest='from_status',
                         help=('change checks with this status; '
                               'one of %(choices)s; default %(default)s'))
-    parser.add_argument('-t', '--to', metavar='TO', choices=statuses,
+    to_arg = parser.add_mutually_exclusive_group()
+    to_arg.add_argument('-t', '--to', metavar='TO', choices=statuses,
                         default='pending', dest='to_status',
                         help=('change matching statuses to this one; '
                               'one of %(choices)s; default %(default)s'))
+    # Can't use -d as that's treated specially by alibot_helpers.
+    to_arg.add_argument('-D', '--delete-latest', action='store_true', default=False,
+                        help=('reset the status to what it was before the '
+                              'current one, for statuses matching -f/--from. '
+                              'Takes -a/--after into account, if given. '
+                              'As a special case, previous error/failure '
+                              'statuses will be reset to pending'))
     parser.add_argument('-m', '--message', default='',
                         help='optional short text to show with pending status')
     parser.add_argument('-r', '--repo-name', action='append', required=True,
