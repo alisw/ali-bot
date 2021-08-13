@@ -34,13 +34,10 @@ while true; do
   s3cmd ls "s3://alibuild-repo/rpmstatus/$arch/" | cut -b 32- > canaries.txt
 
   case "$arch" in
-    el8.*)
-      aliPublish=./aliPublishS3
-      pip3 install -r ../requirements.txt;;
-    *)
-      aliPublish=./aliPublish
-      pip install requests pyyaml;;
+    el8.*) aliPublish=./aliPublishS3;;
+    *) aliPublish=./aliPublish;;
   esac
+  pip3 install -r ../requirements.txt
 
   for conf in "$@"; do
     if "$aliPublish" --config "$conf" --debug sync-rpms >&2; then
