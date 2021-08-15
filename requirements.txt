@@ -3,7 +3,7 @@ argparse
 requests
 pytz
 klein
-python-ldap
+python-ldap[services]
 boto3
 s3cmd
 pyyaml
