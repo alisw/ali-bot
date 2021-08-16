@@ -46,8 +46,10 @@ function clean_env () {
 function pipinst () {
   # Sometimes pip gets stuck when cloning the ali-bot or alibuild repos. In
   # that case: time out, skip and try again later.
-  # pip's shebang mangling messes up if we don't use --install-option=--old-and-unmanageable.
-  short_timeout pip install --upgrade --install-option=--old-and-unmanageable "git+https://github.com/$1"
+  case $(uname -s) in
+    Darwin) short_timeout pip install -U --install-option=--old-and-unmanageable "git+https://github.com/$1";;
+    *) short_timeout pip3 install --user --upgrade "git+https://github.com/$1";;
+  esac
 }
 
 # Allow overriding a number of variables by fly, so that we can change the
