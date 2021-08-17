@@ -21,13 +21,13 @@ git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO alidist/
 
 # Set the default python and pip depending on the architecture...
 case $ARCHITECTURE in
-  slc8*) PIP=pip3 PYTHON=python3 ;;
-  *) PIP=pip PYTHON=python ;;
+  slc8*) PIP=pip3 ;;
+  *) PIP=pip ;;
 esac
 # ...and override it if PYTHON_VERSION is specified.
 case "$PYTHON_VERSION" in
-  2) PIP=pip2 PYTHON=python2 ;;
-  3) PIP=pip3 PYTHON=python3 ;;
+  2) PIP=pip2 ;;
+  3) PIP=pip3 ;;
 esac
 
 # Install the latest release if ALIBUILD_SLUG is not provided
@@ -97,32 +97,10 @@ edit_tags () {
   sed -E -i.old \
       "s|^tag: .*\$|tag: \"$tag\"|; ${version:+s|^version: .*\$|version: \"$version\"|}" \
       "alidist/${PACKAGE_NAME,,}.sh"
-
-  # Patch defaults definition (e.g. defaults-o2.sh)
-  # Process overrides by changing in-place the given defaults. This requires
-  # some YAML processing so we are better off with Python.
-  TAG=$1 PACKAGE_NAME=$PACKAGE_NAME DEFAULTS=$DEFAULTS $PYTHON <<\EOF
-import yaml
-from os import environ
-f = "alidist/defaults-%s.sh" % environ["DEFAULTS"].lower()
-p = environ["PACKAGE_NAME"]
-meta, rest = open(f).read().split("\n---\n", 1)
-d = yaml.safe_load(meta)
-open(f+".old", "w").write(yaml.dump(d)+"\n---\n"+rest)
-d["overrides"] = d.get("overrides", {})
-d["overrides"][p] = d["overrides"].get(p, {})
-d["overrides"][p]["tag"] = environ["TAG"]
-v = environ.get("AUTOTAG_OVERRIDE_VERSION")
-if v:
-    d["overrides"][p]["version"] = v
-open(f, "w").write(yaml.dump(d)+"\n---\n"+rest)
-EOF
 }
 
 # The tag doesn't exist yet, so build using the branch first.
 edit_tags "$AUTOTAG_BRANCH"
-
-diff -rupN alidist/defaults-${DEFAULTS_LOWER}.sh.old alidist/defaults-${DEFAULTS_LOWER}.sh | cat
 
 # Select build directory in order to prevent conflicts and allow for cleanups.
 workarea=$(mktemp -d "$PWD/daily-tags.XXXXXXXXXX")
@@ -156,11 +134,11 @@ popd &> /dev/null
 # We normally want to build using the tag, and now it exists.
 edit_tags "$AUTOTAG_TAG"
 cd alidist
-defaults_fname=defaults-${DEFAULTS,,}.sh pkg_fname=${PACKAGE_NAME,,}.sh
+pkg_fname=${PACKAGE_NAME,,}.sh
 # If the file was modified, the output of git status will be non-empty.
-if [ -n "$(git status --porcelain "$defaults_fname" "$pkg_fname")" ]; then
-  git add "$defaults_fname" "$pkg_fname"
-  git commit -m "Auto-update $defaults_fname and $pkg_fname"
+if [ -n "$(git status --porcelain "$pkg_fname")" ]; then
+  git add "$pkg_fname"
+  git commit -m "Auto-update $pkg_fname"
 fi
 git push origin -f "HEAD:refs/tags/${PACKAGE_NAME:?}-${AUTOTAG_TAG:?}"
 # If ALIDIST_BRANCH doesn't exist or we can push to it, do it.
