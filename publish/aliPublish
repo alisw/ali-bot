@@ -80,7 +80,7 @@ def grabOutput(command):
   debug("Executing command: " + " ".join(command))
   popen = Popen(command, shell=False, stdout=PIPE, stderr=STDOUT)
   out = popen.communicate()[0]
-  return (popen.returncode, out)
+  return (popen.returncode, out.decode("utf-8"))
 
 class JGet(object):
   def __init__(self, http_ssl_verify, conn_timeout_s, conn_retries, conn_dethrottle_s, cache_dir):
