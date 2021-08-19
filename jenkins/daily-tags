@@ -111,7 +111,8 @@ try {
                  "PYTHON_VERSION=${PYTHON_VERSION}",
                  "MESOS_QUEUE_SIZE=${MESOS_QUEUE_SIZE}",
                  "REMOVE_RC_BRANCH_FIRST=${REMOVE_RC_BRANCH_FIRST}",
-                 "NODE_NAME=${env.NODE_NAME}"]) {
+                 "NODE_NAME=${env.NODE_NAME}",
+                 "JOBS=${JOBS}"]) {
           sh '''
               set -ex
               [ -d /etc/profile.d/enable-alice.sh ] && source /etc/profile.d/enable-alice.sh

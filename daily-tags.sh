@@ -132,7 +132,7 @@ aliBuild --reference-sources mirror                    \
          --debug                                       \
          --work-dir "$workarea"                        \
          ${ARCHITECTURE:+--architecture $ARCHITECTURE} \
-         --jobs 8                                      \
+         --jobs "${JOBS:-8}"                           \
          --fetch-repos                                 \
          --remote-store $REMOTE_STORE                  \
          ${DEFAULTS:+--defaults $DEFAULTS}             \
