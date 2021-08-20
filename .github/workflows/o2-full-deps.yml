@@ -30,7 +30,7 @@ jobs:
           git clone -b $ALIBUILD_TAG https://github.com/alisw/alibuild
           pushd alibuild
             perl -p -i -e "s/LAST_TAG/$ALIBUILD_TAG/g" alibuild_helpers/__init__.py
-            python setup.py bdist_rpm --requires python3,python3-requests,git,python3-PyYAML
+            python3 setup.py bdist_rpm --requires python3,python3-requests,git,python3-PyYAML
             cp dist/alibuild-*.noarch.rpm ~/rpmbuild/RPMS/x86_64/
           popd
           cd ~/rpmbuild/RPMS/x86_64/
