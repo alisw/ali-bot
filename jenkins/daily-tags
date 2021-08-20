@@ -10,7 +10,7 @@ try {
       AUTOTAG_TAG = sh(script: "LANG=C TZ=Europe/Zurich date '+$AUTOTAG_PATTERN'",
                        returnStdout: true).trim()
     }
-    currentBuild.displayName = ("#${env.BUILD_NUMBER} - $PACKAGE_NAME " +
+    currentBuild.displayName = ("#${env.BUILD_NUMBER} - $PACKAGES " +
                                 AUTOTAG_TAG + " $DEFAULTS $ARCHITECTURE")
   }
 
@@ -20,7 +20,7 @@ try {
       timeout (7200) {
         withEnv(["ALIBOT_SLUG=${ALIBOT_SLUG}",
                  "WAIT_PR_LIMIT=${WAIT_PR_LIMIT}",
-                 "PACKAGE_NAME=${PACKAGE_NAME}"]) {
+                 "PACKAGES=${PACKAGES}"]) {
           withCredentials([[$class: 'StringBinding',
                             credentialsId: 'github_token',
                             variable: 'GITHUB_TOKEN']]) {
@@ -35,12 +35,12 @@ try {
               yum install -y python3-pip python3-devel python3-setuptools
               pip3 install --user --upgrade --ignore-installed "${ALIBOT_SLUG:+git+https://github.com/${ALIBOT_SLUG}}"
               type check-open-pr
-              if [[ $PACKAGE_NAME == AliPhysics ]]; then
+              if [ "${PACKAGES%% *}" = AliPhysics ]; then
                 WAIT_TESTS="build/AliPhysics/release build/AliPhysics/root6"
               else
-                WAIT_TESTS="build/$PACKAGE_NAME/release"
+                WAIT_TESTS="build/${PACKAGES%% *}/release"
               fi
-              while ! check-open-pr $WAIT_PR_LIMIT alisw/$PACKAGE_NAME $WAIT_TESTS; do
+              while ! check-open-pr $WAIT_PR_LIMIT "alisw/${PACKAGES%% *}" $WAIT_TESTS; do
                 echo "Waiting for all pull requests to be merged"
                 sleep 120
               done
@@ -102,7 +102,7 @@ try {
                  "ALIDIST_SLUG=${ALIDIST_SLUG}",
                  "ALIBOT_SLUG=${ALIBOT_SLUG}",
                  "ARCHITECTURE=${ARCHITECTURE}",
-                 "PACKAGE_NAME=${PACKAGE_NAME}",
+                 "PACKAGES=${PACKAGES}",
                  "DEFAULTS=${DEFAULTS}",
                  "TEST_TAG=${TEST_TAG}",
                  "REMOTE_STORE=${REMOTE_STORE}",
@@ -145,7 +145,7 @@ try {
   }
 } catch (e) {
   // Notify failures
-  emailext(subject: "Daily ${PACKAGE_NAME} tag failed",
+  emailext(subject: "Daily ${PACKAGES} tag failed",
            body: "More details here: ${env.BUILD_URL}",
            to: "${NOTIFY_EMAILS}")
   throw e
