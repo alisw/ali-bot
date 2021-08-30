@@ -1,11 +1,17 @@
 #!/bin/bash -ex
-set -x
+set -ex
 
 # Check for required variables
 ALIDIST_SLUG=${ALIDIST_SLUG:-alisw/alidist@master}
-[ ! -z "$PACKAGE_NAME" ]
-[ ! -z "$AUTOTAG_TAG" ]
-[ ! -z "$NODE_NAME" ]
+# PACKAGES contains whitespace-separated package names to tag. Only the first is
+# built, but every listed package's tag is edited in the resulting commit. This
+# enables tagging e.g. O2 and O2Physics at the same time, with the same tag, and
+# building O2Physics (which pulls in O2 as well).
+main_pkg=${PACKAGES%% *}
+[ -n "$PACKAGES" ]
+[ -n "$main_pkg" ]
+[ -n "$AUTOTAG_TAG" ]
+[ -n "$NODE_NAME" ]
 
 # Clean up old stuff
 rm -rf alidist/
@@ -33,29 +39,24 @@ esac
 # Install the latest release if ALIBUILD_SLUG is not provided
 $PIP install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}
 
-PACKAGE_LOWER=$(echo $PACKAGE_NAME | tr '[[:upper:]]' '[[:lower:]]')
-RECIPE=alidist/$PACKAGE_LOWER.sh
-AUTOTAG_REMOTE=$(grep -E '^(source:|write_repo:)' $RECIPE | sort -r | head -n1 | cut -d: -f2- | xargs echo)
-AUTOTAG_MIRROR=$MIRROR/$PACKAGE_LOWER
-[[ "$TEST_TAG" == "true" ]] && AUTOTAG_TAG=TEST-IGNORE-$AUTOTAG_TAG
-echo "A Git tag will be created, upon success and if not existing, with the name $AUTOTAG_TAG"
-AUTOTAG_BRANCH=rc/$AUTOTAG_TAG
-echo "A Git branch will be created to pinpoint the build operation, with the name $AUTOTAG_BRANCH"
-AUTOTAG_CLONE=$PWD/$PACKAGE_LOWER.git
+[ "$TEST_TAG" = true ] && AUTOTAG_TAG=TEST-IGNORE-$AUTOTAG_TAG
+[ -e git-creds ] || git config --global credential.helper "store --file ~/git-creds-autotag"  # backwards compat
 
-[[ -d $AUTOTAG_MIRROR ]] || AUTOTAG_MIRROR=
-rm -rf $AUTOTAG_CLONE
-mkdir $AUTOTAG_CLONE
-pushd $AUTOTAG_CLONE &> /dev/null
-  [[ -e ../git-creds ]] || git config --global credential.helper "store --file ~/git-creds-autotag"  # backwards compat
-  git clone --bare                                         \
-            ${AUTOTAG_MIRROR:+--reference=$AUTOTAG_MIRROR} \
-            $AUTOTAG_REMOTE .
-  AUTOTAG_HASH=$( (git ls-remote 2> /dev/null | grep refs/tags/$AUTOTAG_TAG || true) | awk 'END{print $1}' )
-  if [[ "$AUTOTAG_HASH" != '' ]]; then
+for package in $PACKAGES; do (
+  AUTOTAG_REMOTE=$(grep -E '^(source:|write_repo:)' "alidist/${package,,}.sh" | sort -r | head -n1 | cut -d: -f2- | xargs echo)
+  AUTOTAG_MIRROR=$MIRROR/${package,,}
+  echo "A Git tag will be created, upon success and if not existing, with the name $AUTOTAG_TAG"
+  echo "A Git branch will be created to pinpoint the build operation, with the name rc/$AUTOTAG_TAG"
+
+  [[ -d $AUTOTAG_MIRROR ]] || AUTOTAG_MIRROR=
+  rm -rf "${package,,}.git"
+  mkdir "${package,,}.git"
+  cd "${package,,}.git"
+  git clone --bare ${AUTOTAG_MIRROR:+--reference=$AUTOTAG_MIRROR} "$AUTOTAG_REMOTE" .
+  AUTOTAG_HASH=$(git ls-remote origin "refs/tags/$AUTOTAG_TAG" | tail -1 | cut -f1)
+  if [ -n "$AUTOTAG_HASH" ]; then
     echo "Tag $AUTOTAG_TAG exists already as $AUTOTAG_HASH, using it"
-    AUTOTAG_ORIGIN=tag
-  elif [[ $DO_NOT_CREATE_NEW_TAG == true ]]; then
+  elif [ "$DO_NOT_CREATE_NEW_TAG" = true ]; then
     # Tag does not exist, but we have requested this job to forcibly use an existing one.
     # Will abort the job.
     echo "Tag $AUTOTAG_TAG was not found, however we have been requested to not create a new one" \
@@ -63,66 +64,66 @@ pushd $AUTOTAG_CLONE &> /dev/null
     exit 1
   else
     # Tag does not exist. Create release candidate branch, if not existing.
+    AUTOTAG_HASH=$(git ls-remote origin "refs/heads/rc/$AUTOTAG_TAG" | tail -1 | cut -f1)
 
-    AUTOTAG_HASH=$( (git ls-remote 2> /dev/null | grep refs/heads/$AUTOTAG_BRANCH || true) | awk 'END{print $1}' )
-    AUTOTAG_ORIGIN=rcbranch
-
-    if [[ "$AUTOTAG_HASH" != '' && "$REMOVE_RC_BRANCH_FIRST" == true ]]; then
+    if [ -n "$AUTOTAG_HASH" ] && [ "$REMOVE_RC_BRANCH_FIRST" = true ]; then
       # Remove branch first if requested. Error is fatal.
-      git push origin :refs/heads/$AUTOTAG_BRANCH
+      git push origin ":refs/heads/rc/$AUTOTAG_TAG"
       AUTOTAG_HASH=
     fi
 
-    if [[ ! $AUTOTAG_HASH ]]; then
+    if [ -z "$AUTOTAG_HASH" ]; then
       # Let's point it to HEAD
-      AUTOTAG_HASH=$( (git ls-remote 2> /dev/null | sed -e 's/\t/ /g' | grep -E ' HEAD$' || true) | awk 'END{print $1}' )
-      [[ $AUTOTAG_HASH ]] || { echo "FATAL: Cannot find any hash pointing to HEAD (repo's default branch)!" >&2; exit 1; }
+      AUTOTAG_HASH=$(git ls-remote origin HEAD | tail -1 | cut -f1)
+      if [ -z "$AUTOTAG_HASH" ]; then
+        echo "FATAL: Cannot find any hash pointing to HEAD (repo's default branch)!" >&2
+        exit 1
+      fi
       echo "Head of $AUTOTAG_REMOTE will be used, it's at $AUTOTAG_HASH"
-      AUTOTAG_ORIGIN=HEAD
     fi
-
   fi
 
-  # At this point, we have $AUTOTAGH_HASH for sure. It might come from HEAD, an existing rc/* branch,
+  # At this point, we have $AUTOTAG_HASH for sure. It might come from HEAD, an existing rc/* branch,
   # or an existing tag. We always create a new branch out of it
-  git push origin +$AUTOTAG_HASH:refs/heads/$AUTOTAG_BRANCH
-
-popd &> /dev/null  # exit Git repo
+  git push origin "+$AUTOTAG_HASH:refs/heads/rc/$AUTOTAG_TAG"
+); done
 
 : ${DEFAULTS:=release}
 
 edit_tags () {
   # Patch package definition (e.g. o2.sh)
-  local tag=$1 version=$AUTOTAG_OVERRIDE_VERSION
-  sed -E -i.old \
-      "s|^tag: .*\$|tag: \"$tag\"|; ${version:+s|^version: .*\$|version: \"$version\"|}" \
-      "alidist/${PACKAGE_NAME,,}.sh"
+  local package tag=$1 version=$AUTOTAG_OVERRIDE_VERSION
+  for package in $PACKAGES; do
+    sed -E -i.old \
+        "s|^tag: .*\$|tag: \"$tag\"|; ${version:+s|^version: .*\$|version: \"$version\"|}" \
+        "alidist/${package,,}.sh"
 
-  # Patch defaults definition (e.g. defaults-o2.sh)
-  # Process overrides by changing in-place the given defaults. This requires
-  # some YAML processing so we are better off with Python.
-  TAG=$1 PACKAGE_NAME=$PACKAGE_NAME DEFAULTS=$DEFAULTS $PYTHON <<\EOF
+    # Patch defaults definition (e.g. defaults-o2.sh)
+    # Process overrides by changing in-place the given defaults. This requires
+    # some YAML processing so we are better off with Python.
+    tag=$tag package=$package DEFAULTS=$DEFAULTS $PYTHON <<\EOF
 import yaml
 from os import environ
 f = "alidist/defaults-%s.sh" % environ["DEFAULTS"].lower()
-p = environ["PACKAGE_NAME"]
+p = environ["package"]
 meta, rest = open(f).read().split("\n---\n", 1)
 d = yaml.safe_load(meta)
 open(f+".old", "w").write(yaml.dump(d)+"\n---\n"+rest)
 d["overrides"] = d.get("overrides", {})
 d["overrides"][p] = d["overrides"].get(p, {})
-d["overrides"][p]["tag"] = environ["TAG"]
+d["overrides"][p]["tag"] = environ["tag"]
 v = environ.get("AUTOTAG_OVERRIDE_VERSION")
 if v:
     d["overrides"][p]["version"] = v
 open(f, "w").write(yaml.dump(d)+"\n---\n"+rest)
 EOF
+  done
 }
 
 # The tag doesn't exist yet, so build using the branch first.
-edit_tags "$AUTOTAG_BRANCH"
+edit_tags "rc/$AUTOTAG_TAG"
 
-diff -rupN alidist/defaults-${DEFAULTS_LOWER}.sh.old alidist/defaults-${DEFAULTS_LOWER}.sh | cat
+git -C alidist diff || :
 
 # Select build directory in order to prevent conflicts and allow for cleanups.
 workarea=$(mktemp -d "$PWD/daily-tags.XXXXXXXXXX")
@@ -136,33 +137,43 @@ aliBuild --reference-sources mirror                    \
          --fetch-repos                                 \
          --remote-store $REMOTE_STORE                  \
          ${DEFAULTS:+--defaults $DEFAULTS}             \
-         build "$PACKAGE_NAME" || {
+         build "$main_pkg" || {
   builderr=$?
   echo "Exiting with an error ($builderr), not tagging"
   exit $builderr
 }
 
 # Now we tag, in case we should
-pushd $AUTOTAG_CLONE &> /dev/null
-  if [[ $AUTOTAG_ORIGIN != tag ]]; then
-    git push origin +$AUTOTAG_HASH:refs/tags/$AUTOTAG_TAG
+for package in $PACKAGES; do
+  pushd "${package,,}.git" &> /dev/null
+  if [ -n "$(git ls-remote origin "refs/tags/$AUTOTAG_TAG")" ]; then
+    echo "Not tagging: tag $AUTOTAG_TAG exists already"
   else
-    echo "Not tagging: tag $AUTOTAG_TAG exists already as $AUTOTAG_HASH"
+    # We previously pushed AUTOTAG_HASH to refs/heads/rc/$AUTOTAG_TAG.
+    # For some reason, +refs/remotes/origin/rc/$AUTOTAG_TAG:... doesn't work --
+    # even though we push above, the ref doesn't seem to be remembered locally.
+    autotag_hash=$(git ls-remote origin "refs/heads/rc/$AUTOTAG_TAG" | cut -f1)
+    [ -n "$autotag_hash" ]
+    git push origin "+$autotag_hash:refs/tags/$AUTOTAG_TAG"
   fi
-  git push origin :refs/heads/$AUTOTAG_BRANCH || true  # error is not a big deal here
-popd &> /dev/null
+  git push origin ":refs/heads/rc/$AUTOTAG_TAG" || :  # error is not a big deal here
+  popd &> /dev/null
+done
 
 # Also tag the appropriate alidist
 # We normally want to build using the tag, and now it exists.
 edit_tags "$AUTOTAG_TAG"
 cd alidist
-defaults_fname=defaults-${DEFAULTS,,}.sh pkg_fname=${PACKAGE_NAME,,}.sh
+edited_files=("defaults-${DEFAULTS,,}.sh")
+for edited_pkg in $PACKAGES; do
+  edited_files+=("${edited_pkg,,}.sh")
+done
 # If the file was modified, the output of git status will be non-empty.
-if [ -n "$(git status --porcelain "$defaults_fname" "$pkg_fname")" ]; then
-  git add "$defaults_fname" "$pkg_fname"
-  git commit -m "Auto-update $defaults_fname and $pkg_fname"
+if [ -n "$(git status --porcelain "${edited_files[@]}")" ]; then
+  git add "${edited_files[@]}"
+  git commit -m "Auto-update: ${edited_files[*]}"
 fi
-git push origin -f "HEAD:refs/tags/${PACKAGE_NAME:?}-${AUTOTAG_TAG:?}"
+git push origin -f "HEAD:refs/tags/$main_pkg-$AUTOTAG_TAG"
 # If ALIDIST_BRANCH doesn't exist or we can push to it, do it.
 git push origin "HEAD:${ALIDIST_BRANCH:?}" ||
   # Else, make a PR by pushing an rc/ branch. (An action in the repo handles this.)
