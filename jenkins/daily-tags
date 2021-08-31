@@ -121,9 +121,12 @@ try {
               export LD_LIBRARY_PATH=${PYTHONUSERBASE}/lib:${LD_LIBRARY_PATH}
               echo $NODE_NAME
               case $NODE_NAME in
-                *slc6_x86-64*)
+                *slc6*)
                   # python3 is not installed on the slc6-builder. Installing it seems to break the build.
                   pip=pip2 ;;
+                *ubuntu*)
+                  # On Ubuntu 20.04, pip is pip3. (On Ubuntu 18.04, it's still pip2.)
+                  pip=pip ;;
                 *slc8*)
                   export ALIBUILD_O2_FORCE_GPU=1
                   export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH:+$CMAKE_PREFIX_PATH:}/opt/rocm/lib/cmake:/opt/clang/lib/cmake
