@@ -109,13 +109,17 @@ p = environ["package"]
 meta, rest = open(f).read().split("\n---\n", 1)
 d = yaml.safe_load(meta)
 open(f+".old", "w").write(yaml.dump(d)+"\n---\n"+rest)
-d["overrides"] = d.get("overrides", {})
-d["overrides"][p] = d["overrides"].get(p, {})
-d["overrides"][p]["tag"] = environ["tag"]
+write = False
+overrides = d.setdefault("overrides", {}).setdefault(p, {})
+if "tag" in overrides:
+    overrides["tag"] = environ["tag"]
+    write = True
 v = environ.get("AUTOTAG_OVERRIDE_VERSION")
-if v:
-    d["overrides"][p]["version"] = v
-open(f, "w").write(yaml.dump(d)+"\n---\n"+rest)
+if v and "version" in overrides:
+    overrides["version"] = v
+    write = True
+if write:
+    open(f, "w").write(yaml.dump(d)+"\n---\n"+rest)
 EOF
   done
 }
