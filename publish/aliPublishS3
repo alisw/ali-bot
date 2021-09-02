@@ -3,13 +3,11 @@
 import logging, sys, json, yaml, errno, boto3, requests
 from glob import glob
 from argparse import ArgumentParser
-from datetime import datetime
 from time import time
 from logging import debug, info, warning, error
 from re import search, escape
-from os.path import isdir, isfile, realpath, dirname, getmtime, join, basename
-from os import chmod, remove, chdir, getcwd, getpid, kill, makedirs, rename, environ
-from shutil import rmtree
+from os.path import isdir, isfile, realpath, dirname, getmtime, join, basename, abspath
+from os import chmod, remove, chdir, getcwd, getpid, kill, makedirs, rename, environ, listdir
 from tempfile import NamedTemporaryFile, mkdtemp
 from subprocess import Popen, PIPE, STDOUT, DEVNULL, getstatusoutput
 from smtplib import SMTP
@@ -257,7 +255,8 @@ class AliEnPackMan(object):
 
 class RPM(object):
 
-  def __init__(self, repoDir, publishScriptTpl, connParams, genUpdatableRpms, dryRun=False):
+  def __init__(self, repoDir, publishScriptTpl, connParams, genUpdatableRpms,
+               baseUrl, s3Client, s3Bucket, dryRun=False):
     self._dryRun = dryRun
     self._genUpdatableRpms = genUpdatableRpms
     self._repoDir = repoDir
@@ -267,6 +266,9 @@ class RPM(object):
     self._connParams = connParams
     self._archs = []
     self._inRpmTransaction = False
+    self._s3 = s3Client
+    self._baseUrl = baseUrl
+    self._bucket = s3Bucket
 
   def _kw(self, url, arch, pkgName, pkgVer, workDir=None, stageDir=None, deps=None):
     kw =  { "url"          : url,
@@ -351,16 +353,9 @@ class RPM(object):
       info("RPM: updating repository: %s new package(s)", self._countChanges)
       if not self._dryRun:
         for arch in self._archs:
-          cachedir = join(self._repoDir, "createrepo_cachedir", arch)
           archdir = join(self._repoDir, arch)
           stagedir = join(self._stageDir, arch)
-
-          try:
-            makedirs(cachedir)
-          except OSError as exc:
-            if not isdir(cachedir) or exc.errno != errno.EEXIST:
-              error("RPM: error creating createrepo cachedir %s", cachedir)
-              return False
+          mergedir = join(self._stageDir, "merged")
 
           try:
             makedirs(archdir)
@@ -377,16 +372,50 @@ class RPM(object):
             except OSError:
               error("RPM: cannot move %s to %s", srcRpm, archdir)
 
-          # We can already remove the staging directory before calling
-          # `createrepo`. Errors here are not fatal.
+          if execute(["time", "createrepo", archdir]) == 0:
+            info("RPM: repository created with new packages for %s", arch)
+          else:
+            error("RPM: error creating repository for %s", arch)
+            return False
+
+          if execute(["time", "mergerepo", "--nogroups", "--noupdateinfo",
+                      "--repo", self._baseUrl.rstrip("/") + "/RPMS/" + arch,
+                      "--repo", "file://" + abspath(archdir),
+                      "--outputdir", mergedir]) == 0:
+            info("RPM: repository merged with existing repo for %s", arch)
+          else:
+            error("RPM: error merging repositories for %s", arch)
+            return False
+
+          debug("RPM: uploading new RPMs and merged metadata to S3")
+          # 1. Upload new RPMs.
+          for rpm in glob(join(archdir, "*.rpm")):
+            info("RPM: uploading new RPM %s", basename(rpm))
+            self._s3.upload_file(Filename=rpm, Bucket=self._bucket,
+                                 Key=join("RPMS", arch, basename(rpm)))
+          # 2. Get current metadata files on S3, so we can clean up afterwards.
+          old_repo_files = {"Objects": [
+            {"Key": old_file["Key"]} for old_file in self._s3.list_objects_v2(
+              Bucket=self._bucket, Delimiter="/",
+              Prefix="RPMS/%s/repodata/" % arch)["Contents"]
+            # repomd.xml is replaced directly, so we don't want to delete it.
+            if not old_file["Key"].endswith("/repomd.xml")
+          ]}
+          # 3. Upload merged metadata files. Upload repomd.xml last, so that
+          #    the files it refers to are already in place.
+          for new_file in sorted(listdir(join(mergedir, "repodata"))):
+            info("RPM: uploading new repo metadata: %s", new_file)
+            self._s3.upload_file(
+              Filename=join(mergedir, "repodata", new_file),
+              Bucket=self._bucket, Key=join("RPMS", arch, "repodata", new_file))
+          # 4. Delete old leftover metadata files from earlier.
+          info("RPM: deleting old repo metadata")
+          self._s3.delete_objects(Bucket=self._bucket, Delete=old_repo_files)
+
+          # Errors here are not fatal.
           debug("RPM: removing staging directory %s", self._stageDir)
           rmrf(self._stageDir)
 
-          if execute([ "time", "createrepo", "--cachedir", cachedir, "--update", archdir ]) == 0:
-            info("RPM: repository updated for %s", arch)
-          else:
-            error("RPM: error updating repository for %s", arch)
-            return False
         return True
       elif self._dryRun:
         info("RPM: not updating repository, dry run")
@@ -409,8 +438,7 @@ def prettyPrintPkg(pkg):
   """Return a human-readable representation of the package."""
   return pkg["name"] + " " + pkg["ver"]
 
-def getS3PackageLister(endpointUrl, bucket, basePrefix, architectures,
-                       pathCommonPrefix):
+def getS3PackageLister(s3, bucket, basePrefix, architectures, pathCommonPrefix):
   """Return a function that gets a directory's contents from S3.
 
   Cache the directory tree from S3 in advance, because we tend to use this
@@ -424,10 +452,6 @@ def getS3PackageLister(endpointUrl, bucket, basePrefix, architectures,
   basePrefix/$arch/$pathCommonPrefix (pathCommonPrefix doesn't need to be a
   full directory name).
   """
-  s3 = boto3.client("s3", endpoint_url=endpointUrl,
-                    aws_access_key_id=environ["AWS_ACCESS_KEY_ID"],
-                    aws_secret_access_key=environ["AWS_SECRET_ACCESS_KEY"])
-
   # This will be a dictionary where file-/dirnames are keys and dir contents
   # are values. Files will be an entry with value None.
   filesystemTree = {}
@@ -477,7 +501,7 @@ def getS3PackageLister(endpointUrl, bucket, basePrefix, architectures,
             for name, value in curDir.items()]
   return listDir
 
-def sync(pub, architectures, endpointUrl, bucket, baseUrl, basePrefix, rules,
+def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
          includeFirst, autoIncludeDeps, notifEmail, dryRun, connParams):
 
   # Template URLs
@@ -489,7 +513,7 @@ def sync(pub, architectures, endpointUrl, bucket, baseUrl, basePrefix, rules,
   # The path templates (first 3 above) all have a common prefix --
   # %(arch)s/dist. getS3PackageLister can use this prefix to narrow down the
   # file list it retrieves from the server, to save some time.
-  listDir = getS3PackageLister(endpointUrl, bucket, basePrefix, architectures,
+  listDir = getS3PackageLister(s3Client, bucket, basePrefix, architectures,
                                pathCommonPrefix="dist")
   newPackages = {}
 
@@ -875,6 +899,11 @@ def main():
       if not isinstance(conf["modulefile"], str):
         error("[cvmfs_]modulefile must be a string")
         doExit = True
+
+    s3Client = boto3.client("s3", endpoint_url=conf["s3_endpoint_url"],
+                            aws_access_key_id=environ["AWS_ACCESS_KEY_ID"],
+                            aws_secret_access_key=environ["AWS_SECRET_ACCESS_KEY"])
+
     if args.action == "sync-cvmfs":
       if not isinstance(conf.get("cvmfs_repository", None), str):
         error("cvmfs_repository must be a string")
@@ -910,6 +939,9 @@ def main():
                 publishScriptTpl=open(progDir+"/pub-rpms-template.sh").read(),
                 connParams=connParams,
                 genUpdatableRpms=conf["rpm_updatable"],
+                baseUrl=conf["base_url"],
+                s3Client=s3Client,
+                s3Bucket=conf["s3_bucket"],
                 dryRun=args.dryRun)
     if args.abort:
       pub.abort(force=True)
@@ -920,7 +952,7 @@ def main():
     debug("Architecture names mappings: %s", json.dumps(architectures, indent=2))
     return int(not sync(pub=pub,
                         architectures=architectures,
-                        endpointUrl=conf["s3_endpoint_url"],
+                        s3Client=s3Client,
                         bucket=conf["s3_bucket"],
                         baseUrl=conf["base_url"],
                         basePrefix=conf["base_prefix"],
