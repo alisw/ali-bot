@@ -43,6 +43,7 @@ $PIP install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+git+https://gi
 [ -e git-creds ] || git config --global credential.helper "store --file ~/git-creds-autotag"  # backwards compat
 
 for package in $PACKAGES; do (
+  rm -rf "${package,,}.git"
   AUTOTAG_REMOTE=$(grep -E '^(source:|write_repo:)' "alidist/${package,,}.sh" | sort -r | head -n1 | cut -d: -f2- | xargs echo)
   if [ -n "$AUTOTAG_REMOTE" ]; then
     AUTOTAG_MIRROR=$MIRROR/${package,,}
@@ -50,7 +51,6 @@ for package in $PACKAGES; do (
     echo "A Git branch will be created to pinpoint the build operation, with the name rc/$AUTOTAG_TAG"
 
     [[ -d $AUTOTAG_MIRROR ]] || AUTOTAG_MIRROR=
-    rm -rf "${package,,}.git"
     mkdir "${package,,}.git"
     cd "${package,,}.git"
     git clone --bare ${AUTOTAG_MIRROR:+--reference=$AUTOTAG_MIRROR} "$AUTOTAG_REMOTE" .
