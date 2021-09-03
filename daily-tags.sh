@@ -44,7 +44,7 @@ $PIP install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+git+https://gi
 
 for package in $PACKAGES; do (
   AUTOTAG_REMOTE=$(grep -E '^(source:|write_repo:)' "alidist/${package,,}.sh" | sort -r | head -n1 | cut -d: -f2- | xargs echo)
-  [ -n "$AUTOTAG_REMOTE" ] || return  # continue with next iteration
+  [ -n "$AUTOTAG_REMOTE" ] || exit  # continue with next iteration
   AUTOTAG_MIRROR=$MIRROR/${package,,}
   echo "A Git tag will be created, upon success and if not existing, with the name $AUTOTAG_TAG"
   echo "A Git branch will be created to pinpoint the build operation, with the name rc/$AUTOTAG_TAG"
