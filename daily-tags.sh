@@ -44,49 +44,50 @@ $PIP install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+git+https://gi
 
 for package in $PACKAGES; do (
   AUTOTAG_REMOTE=$(grep -E '^(source:|write_repo:)' "alidist/${package,,}.sh" | sort -r | head -n1 | cut -d: -f2- | xargs echo)
-  [ -n "$AUTOTAG_REMOTE" ] || exit  # continue with next iteration
-  AUTOTAG_MIRROR=$MIRROR/${package,,}
-  echo "A Git tag will be created, upon success and if not existing, with the name $AUTOTAG_TAG"
-  echo "A Git branch will be created to pinpoint the build operation, with the name rc/$AUTOTAG_TAG"
+  if [ -n "$AUTOTAG_REMOTE" ]; then
+    AUTOTAG_MIRROR=$MIRROR/${package,,}
+    echo "A Git tag will be created, upon success and if not existing, with the name $AUTOTAG_TAG"
+    echo "A Git branch will be created to pinpoint the build operation, with the name rc/$AUTOTAG_TAG"
 
-  [[ -d $AUTOTAG_MIRROR ]] || AUTOTAG_MIRROR=
-  rm -rf "${package,,}.git"
-  mkdir "${package,,}.git"
-  cd "${package,,}.git"
-  git clone --bare ${AUTOTAG_MIRROR:+--reference=$AUTOTAG_MIRROR} "$AUTOTAG_REMOTE" .
-  AUTOTAG_HASH=$(git ls-remote origin "refs/tags/$AUTOTAG_TAG" | tail -1 | cut -f1)
-  if [ -n "$AUTOTAG_HASH" ]; then
-    echo "Tag $AUTOTAG_TAG exists already as $AUTOTAG_HASH, using it"
-  elif [ "$DO_NOT_CREATE_NEW_TAG" = true ]; then
-    # Tag does not exist, but we have requested this job to forcibly use an existing one.
-    # Will abort the job.
-    echo "Tag $AUTOTAG_TAG was not found, however we have been requested to not create a new one" \
-         "(DO_NOT_CREATE_NEW_TAG is true). Aborting with error"
-    exit 1
-  else
-    # Tag does not exist. Create release candidate branch, if not existing.
-    AUTOTAG_HASH=$(git ls-remote origin "refs/heads/rc/$AUTOTAG_TAG" | tail -1 | cut -f1)
+    [[ -d $AUTOTAG_MIRROR ]] || AUTOTAG_MIRROR=
+    rm -rf "${package,,}.git"
+    mkdir "${package,,}.git"
+    cd "${package,,}.git"
+    git clone --bare ${AUTOTAG_MIRROR:+--reference=$AUTOTAG_MIRROR} "$AUTOTAG_REMOTE" .
+    AUTOTAG_HASH=$(git ls-remote origin "refs/tags/$AUTOTAG_TAG" | tail -1 | cut -f1)
+    if [ -n "$AUTOTAG_HASH" ]; then
+      echo "Tag $AUTOTAG_TAG exists already as $AUTOTAG_HASH, using it"
+    elif [ "$DO_NOT_CREATE_NEW_TAG" = true ]; then
+      # Tag does not exist, but we have requested this job to forcibly use an existing one.
+      # Will abort the job.
+      echo "Tag $AUTOTAG_TAG was not found, however we have been requested to not create a new one" \
+          "(DO_NOT_CREATE_NEW_TAG is true). Aborting with error"
+      exit 1
+    else
+      # Tag does not exist. Create release candidate branch, if not existing.
+      AUTOTAG_HASH=$(git ls-remote origin "refs/heads/rc/$AUTOTAG_TAG" | tail -1 | cut -f1)
 
-    if [ -n "$AUTOTAG_HASH" ] && [ "$REMOVE_RC_BRANCH_FIRST" = true ]; then
-      # Remove branch first if requested. Error is fatal.
-      git push origin ":refs/heads/rc/$AUTOTAG_TAG"
-      AUTOTAG_HASH=
-    fi
-
-    if [ -z "$AUTOTAG_HASH" ]; then
-      # Let's point it to HEAD
-      AUTOTAG_HASH=$(git ls-remote origin HEAD | tail -1 | cut -f1)
-      if [ -z "$AUTOTAG_HASH" ]; then
-        echo "FATAL: Cannot find any hash pointing to HEAD (repo's default branch)!" >&2
-        exit 1
+      if [ -n "$AUTOTAG_HASH" ] && [ "$REMOVE_RC_BRANCH_FIRST" = true ]; then
+        # Remove branch first if requested. Error is fatal.
+        git push origin ":refs/heads/rc/$AUTOTAG_TAG"
+        AUTOTAG_HASH=
       fi
-      echo "Head of $AUTOTAG_REMOTE will be used, it's at $AUTOTAG_HASH"
-    fi
-  fi
 
-  # At this point, we have $AUTOTAG_HASH for sure. It might come from HEAD, an existing rc/* branch,
-  # or an existing tag. We always create a new branch out of it
-  git push origin "+$AUTOTAG_HASH:refs/heads/rc/$AUTOTAG_TAG"
+      if [ -z "$AUTOTAG_HASH" ]; then
+        # Let's point it to HEAD
+        AUTOTAG_HASH=$(git ls-remote origin HEAD | tail -1 | cut -f1)
+        if [ -z "$AUTOTAG_HASH" ]; then
+          echo "FATAL: Cannot find any hash pointing to HEAD (repo's default branch)!" >&2
+          exit 1
+        fi
+        echo "Head of $AUTOTAG_REMOTE will be used, it's at $AUTOTAG_HASH"
+      fi
+    fi
+
+    # At this point, we have $AUTOTAG_HASH for sure. It might come from HEAD, an existing rc/* branch,
+    # or an existing tag. We always create a new branch out of it
+    git push origin "+$AUTOTAG_HASH:refs/heads/rc/$AUTOTAG_TAG"
+  fi
 ); done
 
 : ${DEFAULTS:=release}
