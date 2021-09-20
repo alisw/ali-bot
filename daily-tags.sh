@@ -128,6 +128,9 @@ EOF
 
 # The tag doesn't exist yet, so build using the branch first.
 edit_tags "rc/$AUTOTAG_TAG"
+# Switch the recipes for the packages specified in ALIDIST_OVERRIDE_PKGS
+# to the version found in the alidist branch specified by ALIDIST_OVERRIDE_BRANCH
+git checkout $ALIDIST_OVERRIDE_BRANCH -- $(echo $ALIDIST_OVERRIDE_PKGS |tr , \ | xargs -r -n1 echo | sed -e 's/$/.sh/g;s/^/alidist\//g')
 
 git -C alidist diff || :
 
