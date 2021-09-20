@@ -130,7 +130,9 @@ EOF
 edit_tags "rc/$AUTOTAG_TAG"
 # Switch the recipes for the packages specified in ALIDIST_OVERRIDE_PKGS
 # to the version found in the alidist branch specified by ALIDIST_OVERRIDE_BRANCH
-git checkout $ALIDIST_OVERRIDE_BRANCH -- $(echo $ALIDIST_OVERRIDE_PKGS |tr , \ | xargs -r -n1 echo | sed -e 's/$/.sh/g;s/^/alidist\//g')
+if [ ! "X$ALIDIST_OVERRIDE_BRANCH" = X ]; then
+  git checkout $ALIDIST_OVERRIDE_BRANCH -- $(echo $ALIDIST_OVERRIDE_PKGS |tr , \ | xargs -r -n1 echo | sed -e 's/$/.sh/g;s/^/alidist\//g')
+fi
 
 git -C alidist diff || :
 
