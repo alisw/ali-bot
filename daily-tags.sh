@@ -3,6 +3,22 @@ set -ex
 
 # Check for required variables
 ALIDIST_SLUG=${ALIDIST_SLUG:-alisw/alidist@master}
+if echo "$ALIDIST_SLUG" | grep -q '!!FLPSUITE_LATEST!!'; then
+  case $(date +%u) in
+    1)  # Monday (for Sunday night build)
+      # Sort available flp-suite-* branches by version number, then pick the latest one.
+      flpsuite_latest=$(git ls-remote "https://github.com/${ALIDIST_SLUG%@*}" 'refs/heads/flp-suite-*' |
+                          sort -rVt - -k 3 | sed -rn '1s|[0-9a-f]+\trefs/heads/||p') ;;
+    *)  # Tuesday-Sunday
+      # Fetch the latest installed FLP suite version, but amend the patch version
+      # number to .0 (as that's how the alidist branches are named).
+      flpsuite_latest=$(curl -fSsL http://aliecs.cern.ch/ |
+                          sed -rn 's/.*\(([0-9.]+)\.[0-9]+\) - ALICE Global Commissioning head node.*/flp-suite-v\1.0/p') ;;
+  esac
+  ALIDIST_SLUG=${ALIDIST_SLUG//!!FLPSUITE_LATEST!!/$flpsuite_latest}
+  unset flpsuite_latest
+fi
+
 # PACKAGES contains whitespace-separated package names to tag. Only the first is
 # built, but every listed package's tag is edited in the resulting commit. This
 # enables tagging e.g. O2 and O2Physics at the same time, with the same tag, and
