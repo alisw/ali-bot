@@ -75,7 +75,7 @@ setup(
     # requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=['PyGithub==1.45', 'argparse', 'requests', 'pytz',
-                      'pytz', 'boto3', 's3cmd', 'pyyaml'],
+                      'boto3', 's3cmd', 'pyyaml'],
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). You can install these using the following syntax,
@@ -111,6 +111,8 @@ setup(
                # GitHub API monitoring
                "monitor-github-api",
                "monitor-github-api-monalisa.sh",
+               # S3 housekeeping
+               "repo-s3-cleanup",
                # Check daily tags
                "check-daily-slack",
                "daily-tags.sh",
