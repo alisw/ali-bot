@@ -183,6 +183,7 @@ class RepoConfig:
             sys.stderr.flush()
 
             item = {"number": pull_number, "sha": pull_hash, "repo": self,
+                    "updated_at": pull["updated_at"],
                     "reviewed": False, "tested": False, "success": False}
             try:
                 # If we specified a status to approve changes to tests we need
@@ -280,7 +281,7 @@ def main(args):
         # Sort by PR number so that older PRs are built first. Don't use
         # .sort() here as it modifies the list in-place, and that list might
         # also be used elsewhere.
-        for pull in sorted(prs, key=lambda pr: pr["number"]):
+        for pull in sorted(prs, key=lambda pr: pr["updated_at"]):
             print(group, pull["number"], pull["sha"],
                   pull["repo"].build_config, sep="\t")
 
