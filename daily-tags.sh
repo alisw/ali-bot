@@ -156,7 +156,14 @@ git -C alidist diff || :
 # Select build directory in order to prevent conflicts and allow for cleanups.
 workarea=$(mktemp -d "$PWD/daily-tags.XXXXXXXXXX")
 
-REMOTE_STORE="${REMOTE_STORE:-rsync://repo.marathon.mesos/store/::rw}"
+: "${REMOTE_STORE:=rsync://repo.marathon.mesos/store/::rw}"
+case "$REMOTE_STORE" in
+  b3://*)
+    set +x  # avoid leaking secrets
+    . /secrets/aws_bot_secrets
+    export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+    set -x ;;
+esac
 aliBuild --reference-sources mirror                    \
          --debug                                       \
          --work-dir "$workarea"                        \
@@ -170,6 +177,7 @@ aliBuild --reference-sources mirror                    \
   echo "Exiting with an error ($builderr), not tagging"
   exit $builderr
 }
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 
 # Now we tag, in case we should
 for package in $PACKAGES; do
