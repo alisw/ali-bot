@@ -156,7 +156,11 @@ git -C alidist diff || :
 # Select build directory in order to prevent conflicts and allow for cleanups.
 workarea=$(mktemp -d "$PWD/daily-tags.XXXXXXXXXX")
 
-: "${REMOTE_STORE:=rsync://repo.marathon.mesos/store/::rw}"
+# Set default remote store -- S3 on slc8 and Ubuntu, rsync everywhere else.
+case "$ARCHITECTURE" in
+  slc8_*|ubuntu*) : "${REMOTE_STORE:=b3://alibuild-repo::rw}" ;;
+  *) : "${REMOTE_STORE:=rsync://repo.marathon.mesos/store/::rw}" ;;
+esac
 case "$REMOTE_STORE" in
   b3://*)
     set +x  # avoid leaking secrets
