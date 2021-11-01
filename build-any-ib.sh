@@ -115,10 +115,20 @@ else
   rm -rf AliPhysics
 fi
 
-RWOPT='::rw'
-[[ "$PUBLISH_BUILDS" == "false" ]] && RWOPT=
-REMOTE_STORE="${REMOTE_STORE:-rsync://repo.marathon.mesos/store/}$RWOPT"
-[[ "$USE_REMOTE_STORE" == "false" ]] && REMOTE_STORE=
+case "$ARCHITECTURE" in
+  slc8_*|ubuntu*) : "${REMOTE_STORE:=b3://alibuild-repo}" ;;
+  *) : "${REMOTE_STORE:=rsync://repo.marathon.mesos/store/}" ;;
+esac
+[ "$PUBLISH_BUILDS" = true ] && REMOTE_STORE=$REMOTE_STORE::rw
+[ "$USE_REMOTE_STORE" = false ] && REMOTE_STORE=
+case "$REMOTE_STORE" in
+  b3://*)
+    set +x  # avoid leaking secrets
+    . /secrets/aws_bot_secrets
+    export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+    set -x ;;
+esac
+
 FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
 aliBuild --reference-sources $MIRROR                    \
          --debug                                        \
