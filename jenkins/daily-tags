@@ -33,7 +33,7 @@ try {
               export PATH="$PYTHONUSERBASE/bin:$PATH"
               rm -rf "$PYTHONUSERBASE"
               yum install -y python3-pip python3-devel python3-setuptools
-              pip3 install --user --upgrade --ignore-installed "${ALIBOT_SLUG:+git+https://github.com/${ALIBOT_SLUG}}"
+              pip3 install --user --upgrade "${ALIBOT_SLUG:+git+https://github.com/${ALIBOT_SLUG}}"
               type check-open-pr
               if [ "${PACKAGES%% *}" = AliPhysics ]; then
                 WAIT_TESTS="build/AliPhysics/release build/AliPhysics/root6"
@@ -136,7 +136,7 @@ try {
                 *)
                   pip=pip3 ;;
               esac
-              $pip install --ignore-installed --upgrade --user git+https://github.com/$ALIBOT_SLUG
+              $pip install --upgrade --user "git+https://github.com/$ALIBOT_SLUG"
               [ -f /opt/rh/rh-git218/enable ] && source /opt/rh/rh-git218/enable
               daily-tags.sh || err=$?
               rm -rf alidist daily-tags.?????????? mirror

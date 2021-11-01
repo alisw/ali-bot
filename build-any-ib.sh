@@ -39,7 +39,7 @@ case "$PYTHON_VERSION" in
   2) PIP=pip2 PYTHON=python2 ;;
   3) PIP=pip3 PYTHON=python3 ;;
 esac
-$PIP install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+"git+https://github.com/${ALIBUILD_SLUG}"}
+$PIP install --user --upgrade "${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}"
 type aliBuild
 
 rm -rf alidist
