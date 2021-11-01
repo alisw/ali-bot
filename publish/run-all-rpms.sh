@@ -1,8 +1,19 @@
-#!/bin/bash
-. /etc/profile.d/enable-alice.sh
-
-# enable-alice.sh doesn't work with set -e, so only enable it now.
+#!/bin/bash -ex
 set -exo pipefail
+
+publish_s3 () {
+  ./aliPublishS3 --config "$1" --debug sync-rpms
+}
+
+publish_both () {
+  if ./aliPublish --config "$1" --debug sync-rpms; then
+    timeout 300 rclone sync --config /secrets/alibuild_rclone_config --transfers=10 --verbose \
+            "local:/repo/RPMS/$arch/" "rpms3:alibuild-repo/RPMS/$arch/" || true
+  else
+    echo "ERROR: aliPublish ($1) failed with $?; not syncing to S3" >&2
+    return 1
+  fi
+}
 
 # The architecture should correspond to the architecture built using the
 # requested config files -- only these architectures' repos will be synced.
@@ -35,40 +46,32 @@ while true; do
   # architecture-specific canary files under rpmstatus/$arch/.
   s3cmd ls "s3://alibuild-repo/rpmstatus/$arch/" | cut -b 32- > canaries.txt
 
-  pip3 install -Ur ../requirements.txt
   case "$arch" in
-    el8.*)
-      for conf in "$@"; do
-        ./aliPublishS3 --config "$conf" --debug sync-rpms
-      done ;;
+    el8.*) publish=publish_s3 ;;
+    *) publish=publish_both ;;
+  esac
 
-    *)
-      for conf in "$@"; do
-        # Save current list of RPMs so we can see which ones are new later.
-        # Sort it so comm is happy.
-        (cd "/repo/RPMS/$arch" && ls -1 -- *.rpm) | sort > before.pkgs
+  pip3 install -Ur ../requirements.txt
+  for conf in "$@"; do
+    # Save current list of RPMs so we can see which ones are new later.
+    # Sort it so comm is happy.
+    s3cmd ls "s3://alibuild-repo/RPMS/$arch/" | sed 's|.*/||' | sort > before.pkgs
 
-        if ./aliPublish --config "$conf" --debug sync-rpms; then
-          timeout 300 rclone sync --config /secrets/alibuild_rclone_config --transfers=10 --verbose \
-                  "local:/repo/RPMS/$arch/" "rpms3:alibuild-repo/RPMS/$arch/" || true
+    "$publish" "$conf"
 
-          # Compare the file list to the dir now, to see which RPMs were published.
-          (cd "/repo/RPMS/$arch" && ls -1 -- *.rpm) | sort |
-            comm -13 before.pkgs - > new.pkgs
-          # Post in the Release Integration channel if we have new RPMs.
-          if [ "$(wc -l < new.pkgs)" -gt 0 ]; then
-            curl -ifsSX POST -H 'Content-Type: application/json' \
-                 -d "{\"text\": \"# New RPMs published for \`$arch\`
+    # Compare the file list to the dir now, to see which RPMs were published.
+    s3cmd ls "s3://alibuild-repo/RPMS/$arch/" | sed 's|.*/||' | sort |
+      comm -13 before.pkgs - > new.pkgs
+    # Post in the Release Integration channel if we have new RPMs.
+    if [ -s new.pkgs ]; then
+      curl -ifsSX POST -H 'Content-Type: application/json' \
+           -d "{\"text\": \"# New RPMs published for \`$arch\`
 
 $(sed 's/^/- `/; s/$/`/' new.pkgs)\"}" \
-                 "$MATTERMOST_O2_RELEASE_INTEGRATION_URL"
-          fi
-        else
-          echo "ERROR: aliPublish ($conf) failed with $?; not syncing to S3" >&2
-        fi
-        rm -f before.pkgs new.pkgs
-      done ;;
-  esac
+           "$MATTERMOST_O2_RELEASE_INTEGRATION_URL" || true
+    fi
+    rm -f before.pkgs new.pkgs
+  done
 
   # Now that we've uploaded all the new RPMs, we can delete the canary files to
   # tell Jenkins jobs that we're done.
