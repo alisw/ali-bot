@@ -53,7 +53,7 @@ case "$PYTHON_VERSION" in
 esac
 
 # Install the latest release if ALIBUILD_SLUG is not provided
-$PIP install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}
+$PIP install --user --upgrade "${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}"
 
 [ "$TEST_TAG" = true ] && AUTOTAG_TAG=TEST-IGNORE-$AUTOTAG_TAG
 [ -e git-creds ] || git config --global credential.helper "store --file ~/git-creds-autotag"  # backwards compat
