@@ -258,7 +258,7 @@ class Logs(object):
             r'=== List of errors found ===',
             context_before=0, context_after=float('inf'))
         self.failed_unit_tests = self.grep_logs(
-            r'Test *#[0-9]*: .*\*\*\*(Failed|Timeout)|% tests passed',
+            r'Test *#[0-9]*: .*\*\*\*(Failed|Timeout|Exception)|% tests passed',
             context_before=0, context_after=0)
         self.compiler_killed = self.grep_logs(
             r'fatal error: Killed signal terminated program')
