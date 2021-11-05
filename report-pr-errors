@@ -419,6 +419,7 @@ def handle_pr_id(cgh, pr, logs, args):
                      ref=pr.commit)
     sha = commit["sha"]
 
+    message = ""
     if not args.pending:
         message = "Error while checking %s for %s at %s:\n" % (args.status, sha, datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
         if args.message:
