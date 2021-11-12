@@ -55,7 +55,7 @@ while true; do
   s3cmd ls "s3://alibuild-repo/rpmstatus/$arch/" | cut -b 32- > canaries.txt
 
   case "$arch" in
-    el8.*) publish=publish_s3 ;;
+    el8*) publish=publish_s3 ;;
     *) publish=publish_both ;;
   esac
 
