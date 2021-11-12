@@ -7,7 +7,7 @@ from time import time
 from logging import debug, info, warning, error
 from re import search, escape
 from os.path import isdir, isfile, realpath, dirname, getmtime, join, basename, abspath
-from os import chmod, remove, getcwd, getpid, kill, makedirs, rename, environ, listdir
+from os import chmod, remove, getcwd, getpid, kill, makedirs, environ, listdir
 from tempfile import NamedTemporaryFile, mkdtemp
 from subprocess import Popen, PIPE, STDOUT, DEVNULL, getstatusoutput
 from smtplib import SMTP
@@ -428,7 +428,7 @@ def prettyPrintPkg(pkg):
   """Return a human-readable representation of the package."""
   return pkg["name"] + " " + pkg["ver"]
 
-def getS3PackageLister(s3, bucket, basePrefix, architectures, pathCommonPrefix):
+def getS3PackageLister(s3, bucket, basePrefix, architectures):
   """Return a function that gets a directory's contents from S3.
 
   Cache the directory tree from S3 in advance, because we tend to use this
@@ -436,20 +436,15 @@ def getS3PackageLister(s3, bucket, basePrefix, architectures, pathCommonPrefix):
   subdirectories. S3 can only return the items with a prefix, so when getting
   the parent dir, we get everything already, so we better use it when getting
   the subdirectory's contents later.
-
-  There are lots of paths on S3, so we take every bit of common prefix that we
-  can get -- hence the pathCommonPrefix argument. We get all paths with prefix
-  basePrefix/$arch/$pathCommonPrefix (pathCommonPrefix doesn't need to be a
-  full directory name).
   """
   # This will be a dictionary where file-/dirnames are keys and dir contents
   # are values. Files will be an entry with value None.
   filesystemTree = {}
   for arch in architectures:
     # Build the filesystem tree on the server.
-    debug("Getting directory contents for %s/%s/dist*", basePrefix, arch)
+    debug("Getting directory contents for %s/%s/", basePrefix, arch)
     pages = s3.get_paginator("list_objects_v2") \
-              .paginate(Bucket=bucket, Prefix='%s/%s/dist' % (basePrefix, arch))
+              .paginate(Bucket=bucket, Prefix='%s/%s/' % (basePrefix, arch))
     for i, page in enumerate(pages):
       debug("Page %d: got %d items", i, len(page.get("Contents", ())))
       for item in page.get("Contents", ()):
@@ -500,16 +495,19 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
   verPathTpl       = "%(arch)s/dist-direct/%(pack)s"
   getPackUrlTpl    = ("%(baseUrl)s/%(basePrefix)s/%(arch)s/dist-direct/%(pack)s"
                       "/%(pack)s-%(ver)s/%(pack)s-%(ver)s.%(arch)s.tar.gz")
-  # The path templates (first 3 above) all have a common prefix --
-  # %(arch)s/dist. getS3PackageLister can use this prefix to narrow down the
-  # file list it retrieves from the server, to save some time.
-  listDir = getS3PackageLister(s3Client, bucket, basePrefix, architectures,
-                               pathCommonPrefix="dist")
+  listDir = getS3PackageLister(s3Client, bucket, basePrefix, architectures)
   newPackages = {}
 
   # Prepare the list of packages to install
   for arch in architectures:
     newPackages[arch] = []
+    tarballs = [
+      tarball["name"]
+      for short_hash_dir in listDir("%s/store" % arch)
+      for hash_dir in listDir("%s/store/%s" % (arch, short_hash_dir["name"]))
+      for tarball in listDir("%s/store/%s/%s" % (arch, short_hash_dir["name"],
+                                                 hash_dir["name"]))
+    ]
 
     # Get valid package names for this architecture
     debug("Getting packages for architecture %s", arch)
@@ -541,6 +539,11 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
                            rules["exclude"][arch].get(pkgName, None),
                            includeFirst):
           debug("%s / %s / %s: excluded", arch, pkgName, pkgVer)
+          continue
+
+        if "%s-%s.%s.tar.gz" % (pkgName, pkgVer, arch) not in tarballs:
+          debug("%s / %s / %s: excluded because matching tarball not found",
+                arch, pkgName, pkgVer)
           continue
 
         if not autoIncludeDeps:
@@ -775,6 +778,9 @@ def main():
   logger.addHandler(loggerHandler)
   loggerHandler.setFormatter(logging.Formatter('%(levelname)-5s: %(message)s'))
   logger.setLevel(logging.DEBUG if args.debug else logging.INFO)
+  logging.getLogger("boto3").setLevel(logging.WARNING)
+  logging.getLogger("botocore").setLevel(logging.WARNING)
+  logging.getLogger("urllib3").setLevel(logging.WARNING)
 
   progDir = dirname(realpath(__file__))
 
