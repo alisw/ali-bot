@@ -141,6 +141,11 @@ aliBuild --reference-sources $MIRROR                    \
          ${DISABLE:+--disable $DISABLE}                 \
          build $PACKAGE_NAME || BUILDERR=$?
 
+for logf in "$WORKAREA/$WORKAREA_INDEX/BUILD"/*/*/*.log; do
+  [ -e "$logf" ] || continue
+  s3cmd put "$logf" "s3://alibuild-repo/build-any-ib-logs/$logf" || :
+done
+
 rm -f $WORKAREA/$WORKAREA_INDEX/current_slave
 [[ "$BUILDERR" != '' ]] && exit $BUILDERR
 
