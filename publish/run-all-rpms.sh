@@ -1,4 +1,7 @@
-#!/bin/bash -ex
+#!/bin/bash
+set +e
+. /etc/profile.d/enable-alice.sh
+# enable-alice.sh doesn't work with set -e, so only enable it now.
 set -exo pipefail
 
 publish_s3 () {
