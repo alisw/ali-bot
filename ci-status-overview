@@ -5,18 +5,22 @@
 The overview links to check results in supporting terminals.
 '''
 
+from __future__ import annotations
+import abc
 import argparse
 import glob
+import io
 import itertools as it
 import math
 import os
 import os.path
 import shutil
+import sys
 from collections import defaultdict
 from collections.abc import Iterable, Mapping   # for type checking
 from datetime import datetime, timedelta
 from textwrap import dedent
-from typing import Optional, Union, Literal, Final, TypedDict
+from typing import cast, Optional, Union, Literal, Final, TypedDict, TextIO
 
 from gql import Client, gql
 from gql.transport.requests import RequestsHTTPTransport
@@ -27,12 +31,12 @@ from alibot_helpers.utilities import parse_env_file
 DEFAULTENV: Final[str] = 'DEFAULTS.env'
 TIMEFORMAT: Final[str] = '%Y-%m-%dT%H:%M:%SZ'
 NOW: Final[datetime] = datetime.utcnow()
-INDENT: Final[str] = '  '
-SEPARATOR: Final[str] = '  '
+PR_URL_FMT: Final[str] = 'https://github.com/{repo}/pull/{pr}'
+API_URL: Final[str] = 'https://api.github.com/graphql'
 GET_PR_STATUSES_GRAPHQL: Final[DocumentNode] = gql('''\
 query statuses($repoOwner: String!, $repoName: String!, $baseBranch: String!) {
   repository(owner: $repoOwner, name: $repoName) {
-    pullRequests(last: 50, baseRefName: $baseBranch, states: OPEN) {
+    pullRequests(last: 100, baseRefName: $baseBranch, states: OPEN) {
       nodes {
         number
         title
@@ -46,6 +50,7 @@ query statuses($repoOwner: String!, $repoName: String!, $baseBranch: String!) {
                   context
                   state
                   createdAt
+                  targetUrl
                 }
               }
             }
@@ -72,11 +77,21 @@ class Check(TypedDict, total=False):
     repo: str
     pr: int
     commit_sha: str
-    ci_name: str
+    targetUrl: str
 
 
-def get_check_statuses(client, repo: str, branch: str, checks: list[str],
-                       names_table: Mapping[str, str]) \
+def get_status_url(status: Check) -> Optional[str]:
+    '''Construct a useful URL for the given check, falling back to its PR.'''
+    url = status.get('targetUrl')
+    if url:
+        return url
+    try:
+        return PR_URL_FMT.format(**status)
+    except KeyError:
+        return None
+
+
+def get_check_statuses(client, repo: str, branch: str, checks: list[str]) \
         -> Mapping[str, list[Check]]:
     '''Yield {check: [status]} for all given checks on PRs in repo.'''
     owner, is_valid, repo_name = repo.partition('/')
@@ -101,20 +116,14 @@ def get_check_statuses(client, repo: str, branch: str, checks: list[str],
                 'repo': repo,
                 'pr': pull['number'],
                 'commit_sha': commit['oid'],
-                'ci_name': names_table[check],
             })
     return statuses
 
 
 def get_all_checks(defs_dir: str, roles: list[str], containers: list[str],
                    repos: list[str], checks: list[str]) \
-        -> tuple[Mapping[tuple[str, str], list[str]], Mapping[str, str]]:
-    '''Parse .env files and return checks in each repo, plus a name dict.
-
-    The name dict translates user-visible check names to internal names used in
-    the result URL.
-    '''
-    name_table: Mapping[str, str] = {}
+        -> Mapping[tuple[str, str], list[str]]:
+    '''Parse .env files and return checks in each repo.'''
     all_checks: defaultdict[tuple[str, str], list[str]] = defaultdict(list)
     for env_path in glob.glob(os.path.join(defs_dir, '*', '*', '*.env')):
         if env_path.endswith(os.sep + DEFAULTENV):
@@ -137,110 +146,249 @@ def get_all_checks(defs_dir: str, roles: list[str], containers: list[str],
             continue
         if checks and name not in checks:
             continue
-        name_table[name] = check['CI_NAME']
         all_checks[(repo, branch)].append(name)
-    return all_checks, name_table
+    return all_checks
 
 
-def output_check_table(pr_statuses: list[Check], recent_days: int) -> None:
-    '''Print a nicely formatted table of PR results for the given check.'''
-    pr_statuses.sort(key=lambda c: c['createdAt'], reverse=True)
-    prnum_len = 1 + math.floor(math.log10(max(c['pr'] for c in pr_statuses)))
-    terminal_width = shutil.get_terminal_size((80, 1)).columns
-    items_per_row = ((terminal_width - 2*len(INDENT) + len(SEPARATOR)) //
-                     (len('#') + prnum_len + len(SEPARATOR)))
-    for _, row in it.groupby(enumerate(pr_statuses),
-                             key=lambda tpl: tpl[0] // items_per_row):
-        print(format_table_row((
-            (status, f'#{{:{prnum_len}d}}'.format(status['pr']))
-            for _, status in row
-        ), recent_days))
+class Output(abc.ABC):
+    '''The base class for output formatters.'''
 
+    def __init__(self: Output, recent_hours: float,
+                 output_file: TextIO = sys.stdout) -> None:
+        self.recent_cutoff = (NOW - timedelta(hours=recent_hours)).strftime(TIMEFORMAT)
+        self.output_file = output_file
 
-def format_status(status: Check, text: str, recent_days: int) -> str:
-    '''Color the given text as appropriate for the given status.
-
-    If possible, the text is also formatted as a hyperlink to the document
-    reporting check results.
-    '''
-    ansi_escaped = ''
-    url: Optional[str] = None
-    # If the check is pending or expected, there won't be a result yet.
-    if status['state'] in ('SUCCESS', 'FAILURE', 'ERROR'):
-        try:
-            url = '/'.join([
-                'https://ali-ci.cern.ch/alice-build-logs', status["repo"],
-                str(status["pr"]), status["commit_sha"], status["ci_name"],
-                'pretty.html'
-            ])
-        except KeyError:
-            pass
-    if url:
-        ansi_escaped += '\033]8;;' + url + '\033\\'  # opening URL code
-
-    ansi_escaped += '\033[' + {   # start opening color code
-        'PENDING': '33',   # yellow
-        'EXPECTED': '35',  # magenta
-        'SUCCESS': '32',   # green
-        'FAILURE': '31',   # red
-        'ERROR': '31;1',   # bold red
-    }[status['state']]
-
-    recent_cutoff = (NOW - timedelta(days=recent_days)).strftime(TIMEFORMAT)
-    if status['createdAt'] > recent_cutoff:
-        ansi_escaped += ';7'  # reverse video -- swap foreground and background
-
-    ansi_escaped += 'm' + text   # finish opening color code and append text
-    if url:
-        ansi_escaped += '\033]8;;\033\\'  # closing URL code
-    return ansi_escaped + '\033[0m'  # closing color code
-
-
-def format_repo_header(repo: str, branch: str) -> str:
-    '''Format repo bold and underlined, and italicize branch.'''
-    return f'\033[4;1m{repo}\033[0m  \033[3m({branch})\033[0m'
-
-
-def format_check_header(check_name: str) -> str:
-    '''Format the given check name by underlining.'''
-    return f'{INDENT}\033[4m{check_name}\033[0m'
-
-
-def format_table_row(statuses_and_text: Iterable[tuple[Check, str]],
-                     recent_days: int) -> str:
-    '''Format each text for its accompanying status and optional URL.'''
-    return 2*INDENT + SEPARATOR.join(format_status(status, text, recent_days)
-                                     for status, text in statuses_and_text)
-
-
-def format_empty_table():
-    '''Create a helpful message for a table with no PRs.'''
-    return 2*INDENT + '\033[3;90m(no open non-draft PRs here)\033[0m'
-
-
-def main(args: argparse.Namespace) -> None:
-    '''Main entry point.'''
-    transport = RequestsHTTPTransport(
-        url='https://api.github.com/graphql',
-        auth=('bearer', os.environ['GITHUB_TOKEN']))
-    with Client(transport=transport) as session:
-        all_checks, names = \
-            get_all_checks(args.definitions_dir, args.roles,
-                           args.containers, args.repos, args.checks)
+    def document(self: Output, client,
+                 all_checks: Mapping[tuple[str, str], list[str]]) -> None:
+        '''Display the entire overview document for the given checks.'''
+        self.begin()
         for (repo, branch), checks in sorted(all_checks.items()):
-            print(format_repo_header(repo, branch))
-            statuses = get_check_statuses(session, repo, branch, checks, names)
+            self.repo_header(repo, branch)
+            statuses = get_check_statuses(client, repo, branch, checks)
             for check in sorted(checks):
-                print(format_check_header(check))
+                self.check_header(check)
                 if statuses[check]:
-                    output_check_table(statuses[check], args.recent_days)
+                    self.overview_table(statuses[check])
                 else:
-                    print(format_empty_table())
-                print()
+                    self.empty_table()
+        self.end()
 
+    def begin(self: Output) -> None:
+        '''Output anything that is required to be before the overview table.'''
+
+    @abc.abstractmethod
+    def repo_header(self: Output, repo: str, branch: str) -> None:
+        '''Display the repository and branch name.'''
+
+    @abc.abstractmethod
+    def check_header(self: Output, check_name: str) -> None:
+        '''Display the given check name.'''
+
+    @abc.abstractmethod
+    def empty_table(self: Output) -> None:
+        '''Display a helpful message for a table with no PRs.'''
+
+    @staticmethod
+    def overview_table_prep(statuses: list[Check]) -> tuple[int, str]:
+        '''Sort statuses and return the length and template of labels.'''
+        statuses.sort(key=lambda c: c['createdAt'], reverse=True)
+        prnum_len = 1 + math.floor(math.log10(max(c['pr'] for c in statuses)))
+        return prnum_len, f'#{{:{prnum_len}d}}'
+
+    @abc.abstractmethod
+    def overview_table(self: Output, pr_statuses: list[Check]) -> None:
+        '''Show a nicely formatted table of PR results for the given check.'''
+
+    def end(self: Output) -> None:
+        '''Output anything that is required to be after the overview table.'''
+
+
+class TextOutput(Output):
+    '''Show the overview on the terminal in nice colours.'''
+    INDENT: Final[str] = '  '
+    SEPARATOR: Final[str] = '  '
+
+    def repo_header(self: TextOutput, repo: str, branch: str) -> None:
+        '''Format repo bold and underlined, and italicize branch.'''
+        print(f'\033[4;1m{repo}\033[0m  \033[3m({branch})\033[0m',
+              file=self.output_file)
+
+    def check_header(self: TextOutput, check_name: str) -> None:
+        '''Format the given check name by underlining.'''
+        print(f'{self.INDENT}\033[4m{check_name}\033[0m',
+              file=self.output_file)
+
+    def empty_table(self: TextOutput) -> None:
+        '''Create a helpful message for a table with no PRs.'''
+        print(self.INDENT, self.INDENT,
+              '\033[3;90m(no open non-draft PRs here)\033[0m',
+              sep='', end='\n\n', file=self.output_file)
+
+    def overview_table(self: TextOutput, pr_statuses: list[Check]) -> None:
+        '''Print a nicely formatted table of PR results for the given check.'''
+        prnum_len, template = self.overview_table_prep(pr_statuses)
+        terminal_width = shutil.get_terminal_size((80, 1)).columns
+        items_per_row = ((terminal_width - 2*len(self.INDENT) + len(self.SEPARATOR)) //
+                         (len('#') + prnum_len + len(self.SEPARATOR)))
+        for _, row in it.groupby(enumerate(pr_statuses),
+                                 key=lambda tpl: tpl[0] // items_per_row):
+            self.table_row(((status, template.format(status['pr']))
+                            for _, status in row))
+        print(file=self.output_file)
+
+    def table_row(self: TextOutput,
+                  statuses_and_text: Iterable[tuple[Check, str]]) -> None:
+        '''Format each text for its accompanying status and optional URL.'''
+        print(self.INDENT, self.INDENT, sep='', end='', file=self.output_file)
+        print(*(self.format_status(status, text)
+                for status, text in statuses_and_text),
+              sep=self.SEPARATOR, file=self.output_file)
+
+    def format_status(self: TextOutput, status: Check, text: str) -> str:
+        '''Color the given text as appropriate for the given status.
+
+        If possible, the text is also formatted as a hyperlink to the document
+        reporting check results.
+        '''
+        ansi_escaped = ''
+        url = get_status_url(status)
+        if url:
+            ansi_escaped += '\033]8;;' + url + '\033\\'  # opening URL code
+
+        ansi_escaped += '\033[' + {   # start opening color code
+            'PENDING': '33',    # yellow
+            'EXPECTED': '90',   # gray (bright black)
+            'SUCCESS': '32',    # green
+            'ERROR': '31',      # red
+            'FAILURE': '31;1',  # bold red
+        }[status['state']]
+
+        if status['createdAt'] > self.recent_cutoff:
+            ansi_escaped += ';7'  # reverse video -- swap fore- and background
+
+        ansi_escaped += 'm' + text   # finish color code and append text
+        if url:
+            ansi_escaped += '\033]8;;\033\\'  # closing URL code
+        return ansi_escaped + '\033[0m'  # closing color code
+
+
+class HtmlOutput(Output):
+    '''Export the overview table as a HTML document.'''
+
+    def begin(self: HtmlOutput) -> None:
+        '''Output the HTML <head> element and initial boilerplate.'''
+        print(dedent('''\
+        <!doctype html>
+        <html>
+        <head>
+        <meta charset="utf-8">
+        <title>ALICE CI overview</title>
+        <style type="text/css">
+        body { font-family: sans-serif; margin: 0; padding: 1rem; }
+        #key { padding: 0.5rem; }
+        #key[open] { border: 0.15rem dashed #777; }
+        #key summary { font-weight: bold; }
+        .branch-name { font-family: monospace; font-size: 1.25rem;
+                       font-style: italic; margin-left: 0.75rem; }
+        .branch-name::before { content: "("; }
+        .branch-name::after { content: ")"; }
+        .check-name { margin-left: 1rem; }
+        .empty { font-size: 0.875rem; color: #777; font-style: italic; }
+        .table { margin-left: 1.75rem; display: flex; place-content: start;
+                 flex-wrap: wrap; }
+        .status { padding: 0.25rem; margin: 0.25rem;
+                  border: 0.1rem solid transparent; color: var(--status-color); }
+        .status a { display: block; color: inherit; }
+        .status.recent { border-color: var(--status-color); }
+        .status.EXPECTED { --status-color: #24292f; border-style: dotted; }
+        .status.PENDING { --status-color: #bf8700; }
+        .status.SUCCESS { --status-color: #1a7f37; }
+        .status.ERROR { --status-color: #cf222e; }
+        .status.FAILURE { --status-color: #cf222e; font-weight: bold; }
+        </style>
+        </head>
+        <body>
+        <h1>ALICE CI overview</h1>
+        '''), dedent(f'''\
+        <p>Document generated at {NOW.strftime(TIMEFORMAT)}.
+           Statuses newer than {self.recent_cutoff} are marked as recent.</p>
+        <details id="key"><summary>Key</summary>
+        '''), file=self.output_file)
+        self.repo_header('repository name', 'main branch')
+        self.check_header('check name')
+        now_stamp = NOW.strftime(TIMEFORMAT)
+        earlier_stamp = (NOW - timedelta(days=2)).strftime(TIMEFORMAT)
+        print('<div class="table">',
+              *(self.format_status(cast(Check, status), text)
+                for status, text in it.chain((
+                        ({'state': status, 'createdAt': now_stamp},
+                         status.lower() + ' (recent)')
+                        for status in VALID_STATUSES
+                ), (
+                    ({'state': status, 'createdAt': earlier_stamp},
+                     status.lower() + ' (older)')
+                    for status in VALID_STATUSES
+                ))),
+              '</div>', sep='\n', file=self.output_file)
+        print('</details>', file=self.output_file)
+
+    def repo_header(self: HtmlOutput, repo: str, branch: str) -> None:
+        '''Output a heading with the repository and branch name.'''
+        print(f'<h2>{repo} <span class="branch-name">{branch}</span></h2>',
+              file=self.output_file)
+
+    def check_header(self: HtmlOutput, check_name: str) -> None:
+        '''Output the given check name.'''
+        print(f'<h3 class="check-name">{check_name}</h3>',
+              file=self.output_file)
+
+    def empty_table(self: HtmlOutput) -> None:
+        '''Output a helpful message for a table with no PRs.'''
+        print('<div class="table empty">(no open non-draft PRs here)</div>',
+              file=self.output_file)
+
+    def overview_table(self: HtmlOutput, pr_statuses: list[Check]) -> None:
+        '''Show a nicely formatted table of PR results for the given check.'''
+        _, template = self.overview_table_prep(pr_statuses)
+        print('<div class="table">',
+              *(self.format_status(status, template.format(status['pr']))
+                for status in pr_statuses),
+              '</div>', sep='\n', file=self.output_file)
+
+    def format_status(self: HtmlOutput, status: Check, text: str) -> str:
+        '''Tag the given text as appropriate for the given status.
+
+        If possible, the text is also hyperlinked to the document reporting
+        check results.
+        '''
+        url = get_status_url(status)
+        link = f'<a href="{url}">{text}</a>' if url else text
+        date = 'recent' if status['createdAt'] > self.recent_cutoff else 'old'
+        return f'<div class="status {status["state"]} {date}">{link}</div>'
+
+    def end(self: HtmlOutput) -> None:
+        '''Close any open tags.'''
+        print('</body></html>', file=self.output_file)
 
 def parse_args() -> argparse.Namespace:
     '''Parse and return command-line args.'''
+    with io.StringIO() as demo_io:
+        demo_text_output = TextOutput(recent_hours=1, output_file=demo_io)
+        demo_text_output.repo_header('owner/repository', 'base branch')
+        demo_text_output.check_header('check name')
+        demo_text_output.table_row((
+            ({'state': status, 'createdAt': NOW.strftime(TIMEFORMAT)},
+             status.lower() + ' (recent)')
+            for status in VALID_STATUSES
+        ))
+        demo_text_output.table_row((
+            ({'state': status,
+              'createdAt': (NOW - timedelta(hours=2)).strftime(TIMEFORMAT)},
+             status.lower() + ' (older) ')
+            for status in VALID_STATUSES
+        ))
+        table = demo_io.getvalue()
+
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -248,38 +396,28 @@ def parse_args() -> argparse.Namespace:
         This script needs a GITHUB_TOKEN environment variable.
 
         Key to the output:
-        {repo_header}
-        {check_header}
-        {recent_table_row}
-        {old_table_row}
+        {table}
 
         "Expected" means no builder has picked the check up yet. Draft PRs
         (those marked as drafts and those with "[WIP]" in the title) are not
         shown. Read tables left to right, then down.
-        ''').format(
-            repo_header=format_repo_header('owner/repository', 'base branch'),
-            check_header=format_check_header('check name'),
-            recent_table_row=format_table_row((
-                ({'state': status, 'createdAt': NOW.strftime(TIMEFORMAT)},
-                 status.lower() + ' (recent)')
-                for status in VALID_STATUSES
-            ), 2),
-            old_table_row=format_table_row((
-                ({'state': status,
-                  'createdAt': (NOW - timedelta(days=1)).strftime(TIMEFORMAT)},
-                 status.lower() + ' (older) ')
-                for status in VALID_STATUSES
-            ), 0)))
+        ''').format(table=table))
 
+    parser.add_argument(
+        '-o', '--html-output', dest='html_output_file', metavar='FILE',
+        type=argparse.FileType('wt'),
+        help=('output a complete HTML document containing the overview '
+              'to %(metavar)s (use "-" for stdout)'))
     parser.add_argument(
         '--definitions-dir', metavar='DIR', default='ali-bot/ci/repo-config',
         help=('directory where .env files are located in a hierarchy; expects '
-              'a directory structure of the form DIR/ROLE/CONTAINER/*.env '
-              '(default %(default)s)'))
+              'a directory structure of the form %(metavar)s/ROLE/CONTAINER/'
+              '*.env (default %(default)s)'))
     parser.add_argument(
-        '-t', '--recent-days', metavar='DAYS', type=int, default=1,
+        '-t', '--recent-hours', metavar='HOURS', type=float, default=24.0,
         help=('consider check results from the last %(metavar)s days recent '
-              '(these are printed in reverse video; default %(default)d)'))
+              '(these are printed in reverse video; default %(default)g; '
+              'this can be a non-integer value)'))
 
     filtering = parser.add_argument_group('filter displayed checks', dedent('''\
     Each filtering argument can be given multiple times. If no filtering
@@ -313,6 +451,21 @@ def parse_args() -> argparse.Namespace:
     if 'GITHUB_TOKEN' not in os.environ:
         parser.error('GITHUB_TOKEN environment variable is required')
     return args
+
+
+def main(args: argparse.Namespace) -> None:
+    '''Main entry point.'''
+    output: Output
+    if args.html_output_file:
+        output = HtmlOutput(args.recent_hours, args.html_output_file)
+    else:
+        output = TextOutput(args.recent_hours)
+    with Client(transport=RequestsHTTPTransport(url=API_URL, headers={
+            'Authorization': 'bearer ' + os.environ['GITHUB_TOKEN'],
+    }), fetch_schema_from_transport=True) as session:
+        output.document(session, get_all_checks(
+            args.definitions_dir, args.roles, args.containers, args.repos,
+            args.checks))
 
 
 if __name__ == '__main__':
