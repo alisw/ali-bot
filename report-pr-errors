@@ -31,7 +31,7 @@ except ImportError:
 
 
 ERRORS_RE = re.compile(
-    r': (internal compiler |fatal )?error:|^Error(:| in )|^fatal: |'
+    r': (\x1f\[[0-9;]+m)?(internal compiler |fatal )?error:|^Error(:| in )|'
     r'ninja: build stopped: |make.*: \*\*\*|\[(ERROR|FATAL)\]')
 WARNINGS_RE = re.compile(
     r': warning:|^Warning: (?!Unused direct dependencies:$)')
@@ -45,14 +45,14 @@ FST_TASK_TIMEOUT_RE = re.compile(r'task timeout reached')
 FST_LOGFILE_RE = re.compile(r'Detected critical problem in logfile')
 FST_FAILED_CMD_RE = re.compile(r'^command .* had nonzero exit code [0-9]+$')
 # For the comment previewing error messages, if any
-ALL_ERROR_MSG_RE = re.compile('|'.join((
-    ERRORS_RE.pattern,
-    FAILED_UNIT_TEST_RE.pattern,
-    KILLED_RE.pattern,
-    CMAKE_ERROR_RE.pattern,
-    FST_TASK_TIMEOUT_RE.pattern,
-    FST_LOGFILE_RE.pattern,
-    FST_FAILED_CMD_RE.pattern,
+ALL_ERROR_MSG_RE = re.compile('|'.join(regex.pattern for regex in (
+    ERRORS_RE,
+    FAILED_UNIT_TEST_RE,
+    KILLED_RE,
+    CMAKE_ERROR_RE,
+    FST_TASK_TIMEOUT_RE,
+    FST_LOGFILE_RE,
+    FST_FAILED_CMD_RE,
     # Excluding WARNINGS_RE (unwanted in preview comment) and O2CHECKCODE_RE
     # (not useful without context, and the errors it shows should be found by
     # other regexes in the o2checkcode log anyway).
