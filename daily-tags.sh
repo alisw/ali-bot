@@ -12,7 +12,7 @@ if echo "$ALIDIST_SLUG" | grep -q '!!FLPSUITE_LATEST!!'; then
     *)  # Tuesday-Sunday
       # Fetch the latest installed FLP suite version, but amend the patch version
       # number to .0 (as that's how the alidist branches are named).
-      flpsuite_latest=$(curl -fSsL http://aliecs.cern.ch/ |
+      flpsuite_latest=$(curl -fSsL http://ali-flp.cern.ch/ |
                           sed -rn 's/.*\(([0-9.]+)\.[0-9]+\) - ALICE Global Commissioning head node.*/flp-suite-v\1.0/p') ;;
   esac
   ALIDIST_SLUG=${ALIDIST_SLUG//!!FLPSUITE_LATEST!!/$flpsuite_latest}
