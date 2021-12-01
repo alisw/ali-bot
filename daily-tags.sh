@@ -14,7 +14,7 @@ if echo "$ALIDIST_SLUG" | grep -q '!!FLPSUITE_LATEST!!'; then
       # Fetch the latest installed FLP suite version, but amend the patch version
       # number to .0 (as that's how the alidist branches are named).
       flpsuite_latest=$(curl -Lk http://ali-flp.cern.ch/tags | jq -r '.[0].name' | 
-                        sed -e 's/.*v\([0-9.][0-9.]*\)\.[0-9].*/\1.0/') ;;
+                        sed -e 's/.*\(v[0-9.][0-9.]*\)\.[0-9].*/\1.0/') ;;
   esac
   ALIDIST_SLUG=${ALIDIST_SLUG//!!FLPSUITE_LATEST!!/$flpsuite_latest}
   unset flpsuite_latest
