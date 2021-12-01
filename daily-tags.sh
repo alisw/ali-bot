@@ -4,6 +4,7 @@ set -ex
 # Check for required variables
 ALIDIST_SLUG=${ALIDIST_SLUG:-alisw/alidist@master}
 if echo "$ALIDIST_SLUG" | grep -q '!!FLPSUITE_LATEST!!'; then
+  yum install -y jq
   case $(date +%u) in
     1)  # Monday (for Sunday night build)
       # Sort available flp-suite-* branches by version number, then pick the latest one.
@@ -12,7 +13,7 @@ if echo "$ALIDIST_SLUG" | grep -q '!!FLPSUITE_LATEST!!'; then
     *)  # Tuesday-Sunday
       # Fetch the latest installed FLP suite version, but amend the patch version
       # number to .0 (as that's how the alidist branches are named).
-      flpsuite_latest=$(curl -L http://ali-flp.cern.ch/tags | jq -r '.[0].name' | 
+      flpsuite_latest=$(curl -Lk http://ali-flp.cern.ch/tags | jq -r '.[0].name' | 
                         sed -rn 's/.*\(([0-9.]+)\.[0-9]+\).*/flp-suite-v\1.0/p') ;;
   esac
   ALIDIST_SLUG=${ALIDIST_SLUG//!!FLPSUITE_LATEST!!/$flpsuite_latest}
