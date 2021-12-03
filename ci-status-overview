@@ -295,8 +295,8 @@ class HtmlOutput(Output):
         .check-name { margin-left: 1rem; }
         .empty { font-size: 0.875rem; color: #777; font-style: italic; }
         .table { margin-left: 1.75rem; display: flex; place-content: start;
-                 flex-wrap: wrap; }
-        .status { padding: 0.25rem; margin: 0.25rem;
+                 flex-flow: row wrap; }
+        .status { padding: 0.25rem; margin: 0.25rem; --status-color: currentColor;
                   border: 0.1rem solid transparent; color: var(--status-color); }
         .status a { display: block; color: inherit; }
         .status.recent { border-color: var(--status-color); }
@@ -311,26 +311,32 @@ class HtmlOutput(Output):
         <h1>ALICE CI overview</h1>
         '''), dedent(f'''\
         <p>Document generated at {NOW.strftime(TIMEFORMAT)}.
-           Statuses newer than {self.recent_cutoff} are marked as recent.</p>
-        <details id="key"><summary>Key</summary>
-        '''), file=self.output_file)
-        self.repo_header('repository name', 'main branch')
-        self.check_header('check name')
-        now_stamp = NOW.strftime(TIMEFORMAT)
-        earlier_stamp = (NOW - timedelta(days=2)).strftime(TIMEFORMAT)
-        print('<div class="table">',
-              *(self.format_status(cast(Check, status), text)
-                for status, text in it.chain((
-                        ({'state': status, 'createdAt': now_stamp},
-                         status.lower() + ' (recent)')
-                        for status in VALID_STATUSES
-                ), (
-                    ({'state': status, 'createdAt': earlier_stamp},
-                     status.lower() + ' (older)')
-                    for status in VALID_STATUSES
-                ))),
-              '</div>', sep='\n', file=self.output_file)
-        print('</details>', file=self.output_file)
+           Statuses newer than {self.recent_cutoff} are marked as
+           <span class="status recent expected">recent</span>.</p>
+        '''), dedent('''\
+        <details id="key"><summary>Explanation (click to expand)</summary>
+        <p>The results of the check listed in each heading are shown for each
+           pull request in a list.</p>
+        <p>Results are ordered most recent first.</p>
+        <p>Results from after a set cutoff point (see the top of this document)
+           have an additional border around them.</p>
+        <p>The colour coding works as follows:</p>
+        <ul>
+          <li><span class="status EXPECTED">#0000</span> is an "expected"
+              status, which means that the CI has not picked up this PR at all
+              yet for the respective check.</li>
+          <li><span class="status PENDING">#0000</span> is a "pending" status,
+              which means that the CI has picked this PR up, but the check has
+              not yet completed.</li>
+          <li><span class="status SUCCESS">#0000</span> is a successful status,
+              i.e. this check has run and no errors were found.</li>
+          <!--<li><span class="status FAILURE">#0000</span> is a failed status,
+              which doesn't happen with the current CI system.</li>-->
+          <li><span class="status ERROR">#0000</span> is an error status, which
+              means that the check has run but a build error occurred.</li>
+        </ul>
+        </details>
+        '''), sep='', file=self.output_file)
 
     def repo_header(self: HtmlOutput, repo: str, branch: str) -> None:
         '''Output a heading with the repository and branch name.'''
