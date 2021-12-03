@@ -367,10 +367,11 @@ class HtmlOutput(Output):
         If possible, the text is also hyperlinked to the document reporting
         check results.
         '''
-        url = get_status_url(status)
-        link = f'<a href="{url}">{text}</a>' if url else text
+        if (url := get_status_url(status)):
+            text = f'<a href="{url}">{text}</a>'
         date = 'recent' if status['createdAt'] > self.recent_cutoff else 'old'
-        return f'<div class="status {status["state"]} {date}">{link}</div>'
+        return (f'<div class="status {status["state"]} {date}"'
+                f' title="{status.get("createdAt", "")}">{text}</div>')
 
     def end(self: HtmlOutput) -> None:
         '''Close any open tags.'''
