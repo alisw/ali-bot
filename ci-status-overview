@@ -20,7 +20,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Mapping   # for type checking
 from datetime import datetime, timedelta
 from textwrap import dedent
-from typing import cast, Optional, Union, Literal, Final, TypedDict, TextIO
+from typing import Optional, Union, Literal, Final, TypedDict, TextIO
 
 from gql import Client, gql
 from gql.transport.requests import RequestsHTTPTransport
@@ -155,6 +155,7 @@ class Output(abc.ABC):
 
     def __init__(self: Output, recent_hours: float,
                  output_file: TextIO = sys.stdout) -> None:
+        self.recent_hours = recent_hours
         self.recent_cutoff = (NOW - timedelta(hours=recent_hours)).strftime(TIMEFORMAT)
         self.output_file = output_file
 
@@ -310,16 +311,18 @@ class HtmlOutput(Output):
         <body>
         <h1>ALICE CI overview</h1>
         '''), dedent(f'''\
-        <p>Document generated at {NOW.strftime(TIMEFORMAT)}.
-           Statuses newer than {self.recent_cutoff} are marked as
-           <span class="status recent expected">recent</span>.</p>
+        <p>Document generated at {NOW.strftime(TIMEFORMAT)}. Statuses from the
+           last <strong>{self.recent_hours:g} hours</strong>, i.e. newer than
+           {self.recent_cutoff}, are marked as
+           <span class="status recent">recent</span>.</p>
         '''), dedent('''\
         <details id="key"><summary>Explanation (click to expand)</summary>
         <p>The results of the check listed in each heading are shown for each
            pull request in a list.</p>
         <p>Results are ordered most recent first.</p>
-        <p>Results from after a set cutoff point (see the top of this document)
-           have an additional border around them.</p>
+        <p>Checks that completed after a set cutoff point (see the top of this
+           document for the specific time) have a border around them,
+           <span class="status recent">like this</span>.</p>
         <p>The colour coding works as follows:</p>
         <ul>
           <li><span class="status EXPECTED">#0000</span> is an "expected"
@@ -336,7 +339,7 @@ class HtmlOutput(Output):
               means that the check has run but a build error occurred.</li>
         </ul>
         </details>
-        '''), sep='', file=self.output_file)
+        '''), sep='', end='', file=self.output_file)
 
     def repo_header(self: HtmlOutput, repo: str, branch: str) -> None:
         '''Output a heading with the repository and branch name.'''
