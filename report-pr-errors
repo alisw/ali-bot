@@ -31,10 +31,12 @@ except ImportError:
 
 
 ERRORS_RE = re.compile(
-    ': (\x1f\\[[0-9;]+m)?(internal compiler |fatal )?error:|^Error(:| in )|'
+    ': (\x1b\\[[0-9;]+m)?(internal compiler |fatal )?error:|^Error(:| in )|'
+    ' !!! \x1b\\[[0-9;]+mError - |'
     r'ninja: build stopped: |make.*: \*\*\*|\[(ERROR|FATAL)\]')
 WARNINGS_RE = re.compile(
-    r': warning:|^Warning: (?!Unused direct dependencies:$)')
+    ': warning:|^Warning: (?!Unused direct dependencies:$)|'
+    '  !  \x1b\\[[0-9;]+mWarning - ')
 FAILED_UNIT_TEST_RE = re.compile(
     r'Test *#[0-9]*: .*\*\*\*(Failed|Timeout|Exception)|% tests passed')
 KILLED_RE = re.compile(r'fatal error: Killed signal terminated program')
