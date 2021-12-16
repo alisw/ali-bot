@@ -162,6 +162,7 @@ if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
      ${MIRROR:+--reference-sources "$MIRROR"}                \
      ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}         \
      -e "ALIBUILD_O2_TESTS=$ALIBUILD_O2_TESTS"               \
+     -e "ALIBUILD_O2PHYSICS_TESTS=$ALIBUILD_O2PHYSICS_TESTS" \
      ${use_docker:+-e GIT_CONFIG_COUNT=1}                    \
      ${use_docker:+-e GIT_CONFIG_KEY_0=credential.helper}    \
      ${use_docker:+-e GIT_CONFIG_VALUE_0='store --file /.git-creds'} \
