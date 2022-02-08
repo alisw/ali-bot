@@ -102,7 +102,8 @@ pushd unpack_rpm
       --name "$RPM_PACKAGE"            \
       --after-install $AFTER_INSTALL   \
       --after-remove $AFTER_REMOVE     \
-      --rpm-tag '%define _build_id_links none' --rpm-tag '%undefine _missing_build_ids_terminate_build' \
+      --rpm-tag '%%define _build_id_links none' \
+      --rpm-tag '%%undefine _missing_build_ids_terminate_build' \
       "$RPM_UNPACK_DIR"
   RPM="${RPM_PACKAGE}-${RPM_VERSION}-1.%(arch)s.rpm"
   [[ -e $RPM ]]
