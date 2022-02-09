@@ -106,6 +106,17 @@ function reset_git_repository () {
   fi
 }
 
+function build_type_to_status () {
+  # Translate a build type from list-branch-pr into a GitHub check status.
+  case "$1" in
+    untested) echo pending;;
+    failed) echo error;;
+    succeeded) echo success;;
+    *) echo "WARNING: unrecognised status $BUILD_TYPE, falling back to pending" >&2
+       echo pending;;
+  esac
+}
+
 function report_pr_errors () {
   # This is a wrapper for report-pr-errors with some default switches.
   local repo checkout_name extra_args=()

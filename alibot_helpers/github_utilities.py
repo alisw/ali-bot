@@ -336,7 +336,7 @@ def setGithubStatus(cgh, args, debug_print=True):
         # If the state already exists and it's different, create a new one
         if (s["context"] == state_context and
             (s["state"] != state_value or
-             s["target_url"] != args.url or
+             (not args.keep_url and s["target_url"] != args.url) or
              s["description"] != args.message)):
             if debug_print:
                 print(s)
@@ -347,7 +347,7 @@ def setGithubStatus(cgh, args, debug_print=True):
                 "state": state_value,
                 "context": state_context,
                 "description": args.message,
-                "target_url": args.url
+                "target_url": s["target_url"] if args.keep_url else args.url
             }
             cgh.post("/repos/{repo_name}/statuses/{ref}",
                      data=data,
@@ -358,7 +358,7 @@ def setGithubStatus(cgh, args, debug_print=True):
         # If the state already exists and it's the same, exit
         if (s["context"] == state_context and
             s["state"] == state_value and
-            s["target_url"] == args.url and
+            (args.keep_url or s["target_url"] == args.url) and
             s["description"] == args.message):
             if debug_print:
                 print("Last status for %s is already matching. Exiting" % state_context, file=sys.stderr)
@@ -372,7 +372,7 @@ def setGithubStatus(cgh, args, debug_print=True):
         "state": state_value,
         "context": state_context,
         "description": args.message,
-        "target_url": args.url
+        "target_url": "" if args.keep_url else args.url
     }
     cgh.post(
         "/repos/{repo_name}/statuses/{ref}",
