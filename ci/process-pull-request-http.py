@@ -123,13 +123,22 @@ class State(object):
     else:
       for fn in pull.get_files():
         debug("determining permissions for file %s" % fn)
+        num_approve_this_file = 0
+        approvers_for_file = set()
         for rule in perms:
           num_approve,approve = rule(fn, pull.who)  # approve can be bool or set (not list)
           if approve:
             debug("file %s matched by rule %s: %s" % (fn, rule.path_regexp, approve))
-            self.approvers.push(num_approve, approve)
-            break
-        assert approve, "this should not happen: for file %s no rule matches" % fn
+            # This isn't quite airtight: we're trying to construct an OR-ed
+            # rule here. 1 of {x, y} OR 1 of {a, b} == 1 of {a, b, x, y}, so
+            # this is fine, but e.g. 2 of {x, y, z} OR 1 of {a, b} is not the
+            # same as 2 of {a, b, x, y, z}. If we take num_approve to mean we
+            # need this many approvers in general, not necessarily out of the
+            # specific set given, then this algorithm is fine.
+            num_approve_this_file = max(num_approve_this_file, num_approve)
+            approvers_for_file |= frozenset(approve)
+        assert approvers_for_file, "this should not happen: for file %s no rule matches" % fn
+        self.approvers.push(num_approve_this_file, list(approvers_for_file))
     debug("computed list of approvers: %s (override: %s)" % (self.approvers, self.approvers.users_override))
     self.approvers_unchanged = Approvers.from_str(str(self.approvers), users_override=self.approvers.users_override)
     self.action_approval_required(git, pr, perms, tests)
