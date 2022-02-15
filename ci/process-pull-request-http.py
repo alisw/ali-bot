@@ -156,6 +156,9 @@ class State(object):
               approvers_for_file |= approve
         assert approvers_for_file != set(), \
           "this should not happen: for file %s no rule matches" % fn
+        debug("approvers are (n=%d): %r", num_approve_this_file,
+              approvers_for_file if isinstance(approvers_for_file, bool)
+              else sorted(approvers_for_file))
         self.approvers.push(num_approve_this_file,
                             approvers_for_file if isinstance(approvers_for_file, bool)
                             else sorted(approvers_for_file))
