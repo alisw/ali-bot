@@ -123,7 +123,7 @@ class State(object):
     else:
       for fn in pull.get_files():
         debug("determining permissions for file %s" % fn)
-        num_approve_this_file = 0
+        num_approve_this_file = 1   # 0 is treated specially, see below
         approvers_for_file = set()
         for rule in perms:
           num_approve,approve = rule(fn, pull.who)  # approve can be bool or set (not list)
@@ -135,7 +135,7 @@ class State(object):
             # same as 2 of {a, b, x, y, z}. If we take num_approve to mean we
             # need this many approvers in general, not necessarily out of the
             # specific set given, then this algorithm is fine.
-            if num_approve > 0:
+            if num_approve > 0 and num_approve_this_file > 0:
               num_approve_this_file = max(num_approve_this_file, num_approve)
             else:
               # If num_approve is zero, that means approve is True, and we need
