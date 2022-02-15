@@ -136,7 +136,24 @@ class State(object):
             # need this many approvers in general, not necessarily out of the
             # specific set given, then this algorithm is fine.
             num_approve_this_file = max(num_approve_this_file, num_approve)
-            approvers_for_file |= frozenset(approve)
+            # approvers_for_file = approvers_for_file OR approve
+            if isinstance(approvers_for_file, bool):
+              if approvers_for_file:
+                # True OR X is True, so nothing changes.
+                pass
+              else:
+                # False OR X is X.
+                approvers_for_file = approve
+            elif isinstance(approve, bool):
+              if approve:
+                # x OR True is True.
+                approvers_for_file = True
+              else:
+                # x OR False is x, so no change.
+                pass
+            else:
+              # Handle the case where both are sets.
+              approvers_for_file |= approve
         assert approvers_for_file, "this should not happen: for file %s no rule matches" % fn
         self.approvers.push(num_approve_this_file, list(approvers_for_file))
     debug("computed list of approvers: %s (override: %s)" % (self.approvers, self.approvers.users_override))
