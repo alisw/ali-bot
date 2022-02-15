@@ -158,7 +158,7 @@ class State(object):
           "this should not happen: for file %s no rule matches" % fn
         self.approvers.push(num_approve_this_file,
                             approvers_for_file if isinstance(approvers_for_file, bool)
-                            else list(approvers_for_file))
+                            else sorted(approvers_for_file))
     debug("computed list of approvers: %s (override: %s)" % (self.approvers, self.approvers.users_override))
     self.approvers_unchanged = Approvers.from_str(str(self.approvers), users_override=self.approvers.users_override)
     self.action_approval_required(git, pr, perms, tests)
