@@ -154,7 +154,8 @@ class State(object):
             else:
               # Handle the case where both are sets.
               approvers_for_file |= approve
-        assert approvers_for_file, "this should not happen: for file %s no rule matches" % fn
+        assert approvers_for_file != set(), \
+          "this should not happen: for file %s no rule matches" % fn
         self.approvers.push(num_approve_this_file,
                             approvers_for_file if isinstance(approvers_for_file, bool)
                             else list(approvers_for_file))
