@@ -138,24 +138,19 @@ class State(object):
             if num_approve > 0 and num_approve_this_file > 0:
               num_approve_this_file = max(num_approve_this_file, num_approve)
             else:
-              # If num_approve is zero, that means approve is True, and we need
-              # a num_approve of zero to go with it.
+              # If num_approve is zero, that means approve is True (not a set),
+              # and we need a num_approve_this_file of zero to go with it.
               num_approve_this_file = 0
-            # approvers_for_file = approvers_for_file OR approve
+            # Now compute approvers_for_file = approvers_for_file OR approve.
             if isinstance(approvers_for_file, bool):
-              if approvers_for_file:
-                # True OR X is True, so nothing changes.
-                pass
-              else:
+              if not approvers_for_file:
                 # False OR X is X.
                 approvers_for_file = approve
+              # Other case (approvers_for_file is True): True OR X is True, so
+              # nothing changes.
             elif isinstance(approve, bool):
-              if approve:
-                # x OR True is True.
-                approvers_for_file = True
-              else:
-                # x OR False is x, so no change.
-                pass
+              # We know approve is truthy; x OR True is True.
+              approvers_for_file = True
             else:
               # Handle the case where both are sets.
               approvers_for_file |= approve
