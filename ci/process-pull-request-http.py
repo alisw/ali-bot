@@ -19,6 +19,11 @@ class Approvers(object):
     return self.approvers
   @staticmethod
   def from_str(s, users_override=[]):
+    if s == "approved":
+      # Special value returned by __str__ when self.approvers is True.
+      a = Approvers(users_override=users_override)
+      a.push(0, True)
+      return a
     match = re.findall("([0-9]+) of ([^;]+)?", s)
     a = Approvers(users_override=users_override)
     for m in match:
