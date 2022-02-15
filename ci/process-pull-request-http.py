@@ -135,7 +135,12 @@ class State(object):
             # same as 2 of {a, b, x, y, z}. If we take num_approve to mean we
             # need this many approvers in general, not necessarily out of the
             # specific set given, then this algorithm is fine.
-            num_approve_this_file = max(num_approve_this_file, num_approve)
+            if num_approve > 0:
+              num_approve_this_file = max(num_approve_this_file, num_approve)
+            else:
+              # If num_approve is zero, that means approve is True, and we need
+              # a num_approve of zero to go with it.
+              num_approve_this_file = 0
             # approvers_for_file = approvers_for_file OR approve
             if isinstance(approvers_for_file, bool):
               if approvers_for_file:
