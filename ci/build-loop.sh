@@ -159,6 +159,14 @@ fi
 build_identifier=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
 : "${build_identifier:=${CHECK_NAME//\//_}}"
 
+# Get a temporary JAliEn token certificate and key, to give anything we build
+# below access.
+if jalien_token=$(alien.py token -v 1); then
+  jalien_token_cert=$(echo "$jalien_token" | sed -n '/^-----BEGIN CERTIFICATE-----$/,/^-----END CERTIFICATE-----$/p')
+  jalien_token_key=$(echo "$jalien_token" | sed -n '/^-----BEGIN RSA PRIVATE KEY-----$/,/^-----END RSA PRIVATE KEY-----$/p')
+fi
+unset jalien_token
+
 # o2checkcode needs the ALIBUILD_{HEAD,BASE}_HASH variables.
 # We need "--no-auto-cleanup" so that build logs for dependencies are kept, too.
 # For instance, when building O2FullCI, we want to keep the o2checkcode log, as
@@ -173,6 +181,8 @@ if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
      ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}         \
      -e "ALIBUILD_O2_TESTS=$ALIBUILD_O2_TESTS"               \
      -e "ALIBUILD_O2PHYSICS_TESTS=$ALIBUILD_O2PHYSICS_TESTS" \
+     ${jalien_token_cert:+-e "JALIEN_TOKEN_CERT=$jalien_token_cert"} \
+     ${jalien_token_key:+-e "JALIEN_TOKEN_KEY=$jalien_token_key"} \
      ${use_docker:+-e GIT_CONFIG_COUNT=1}                    \
      ${use_docker:+-e GIT_CONFIG_KEY_0=credential.helper}    \
      ${use_docker:+-e GIT_CONFIG_VALUE_0='store --file /.git-creds'} \

@@ -49,6 +49,26 @@ if [ "$1" != --skip-setup ]; then
   # On MacOS, the default ulimit for open files is 256. This is too low for git
   # when fetching some large repositories (e.g. O2, Clang).
   [ "$(ulimit -n)" -ge 10240 ] || ulimit -n 10240
+
+  # Set up alien.py, so we can get tokens before each build.
+  # If we don't find certs in any of these dirs, leave X509_USER_{CERT,KEY}
+  # unset, but continue. In that case, granting a token will fail, which just
+  # means that build jobs won't get their JALIEN_TOKEN_{CERT,KEY} variables.
+  for certdir in /etc/httpd /root/.globus /etc/grid-security; do
+    if [ -r "$certdir/hostcert.pem" ] && [ -r "$certdir/hostkey.pem" ]; then
+      export X509_USER_CERT=$certdir/hostcert.pem X509_USER_KEY=$certdir/hostkey.pem
+      break
+    fi
+  done
+  # Find CA certs. On alibuilds, the CERN-CA-certs package installs them under
+  # /etc/pki/tls/certs, but /etc/grid-security is used on other machines.
+  for certdir in /etc/grid-security/certificates /etc/pki/tls/certs; do
+    if [ -d "$certdir" ]; then
+      export X509_CERT_DIR=$certdir
+      break
+    fi
+  done
+  unset certdir
 fi
 
 # Get updates to ali-bot, or clone it if it's the first time.
