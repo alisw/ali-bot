@@ -22,33 +22,44 @@ host_id=$(echo "$MESOS_EXECUTOR_ID" |
 : "${host_id:=$(hostname -f)}"
 
 # Update all PRs in the queue with their number before we start building.
-echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead btype num hash envf; do (
+echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead btype num hash envf; do
   # Run this in a subshell as report_pr_errors uses $PR_REPO but we don't want
   # to overwrite the outer for loop's variables, as they are needed for the
   # subsequent build.
-  cd ..
-  source_env_files "$envf" < /dev/null  # Stop commands from slurping hashes, just in case.
-  if [ "$btype" = untested ]; then
-    # Create status if we've never tested this before.
-    PR_NUMBER=$num PR_HASH=$hash report_pr_errors --pending -m "Queued ($ahead ahead) on $host_id"
-  else
-    # If we've tested this before, there's an existing status. Keep it, just
-    # change the message to say we're rechecking.
-    set-github-status -k -c "$PR_REPO@$hash" -s "$CHECK_NAME/$(build_type_to_status "$btype")" \
-                      -m "Queued for recheck ($ahead ahead) on $host_id"
-  fi < /dev/null  # Stop commands from slurping hashes, just in case.
-); done
+  (
+    cd ..
+    source_env_files "$envf"
+    case "$btype" in
+      # Create status if we've never tested this before.
+      untested)
+        PR_NUMBER=$num PR_HASH=$hash report_pr_errors --pending -m "Queued ($ahead ahead) on $host_id" ;;
 
-if [ "$BUILD_TYPE" = untested ]; then
+      # If we've tested this before and it was red, there's an existing status.
+      # Keep it, just change the message to say we're rechecking.
+      failed)
+        set-github-status -k -c "$PR_REPO@$hash" -s "$CHECK_NAME/$(build_type_to_status "$btype")" \
+                          -m "Queued for recheck ($ahead ahead) on $host_id" ;;
+
+      # If the previous check was green, we probably still have the build
+      # products cached, so the rebuild will be almost instantaneous. Don't
+      # update the status to say we're rechecking as that would eat into our
+      # API request quota too quickly.
+      succeeded) ;;
+    esac
+  ) < /dev/null  # Stop commands from slurping hashes, just in case.
+done
+
+case "$BUILD_TYPE" in
   # Create a status on GitHub showing the build start time, but only if this is
   # the first build of this check!
-  report_pr_errors --pending -m "Started $(TZ=Europe/Zurich date +'%a %H:%M CET') @ $host_id"
-else
-  # Rebuilds only change the existing status's message, keeping the red/green
-  # status and URL intact.
-  set-github-status -k -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/$(build_type_to_status "$BUILD_TYPE")" \
-                    -m "Rechecking since $(TZ=Europe/Zurich date +'%a %H:%M CET') @ $host_id"
-fi
+  untested) report_pr_errors --pending -m "Started $(TZ=Europe/Zurich date +'%a %H:%M CET') @ $host_id" ;;
+  # Rebuilds only change the existing status's message, keeping the red status
+  # and URL intact.
+  failed) set-github-status -k -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/$(build_type_to_status "$BUILD_TYPE")" \
+                            -m "Rechecking since $(TZ=Europe/Zurich date +'%a %H:%M CET') @ $host_id" ;;
+  # See above for why we don't update the status for green checks.
+  succeeded) ;;
+esac
 
 # A few common environment variables when reporting status to analytics.
 # In analytics we use screenviews to indicate different states of the
