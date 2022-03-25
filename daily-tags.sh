@@ -7,15 +7,16 @@ if echo "$ALIDIST_SLUG" | grep -q '!!FLPSUITE_LATEST!!'; then
   yum install -y jq
   case $(date +%u) in
     1)  # Monday (for Sunday night build)
-      # Sort available flp-suite-* branches by version number, then pick the latest one.
-      flpsuite_latest=$(git ls-remote "https://github.com/${ALIDIST_SLUG%@*}" 'refs/heads/flp-suite-*' |
-                          sort -rVt - -k 3 | sed -rn '1s|[0-9a-f]+\trefs/heads/||p') ;;
+      # Sort available tags by version number, then pick the latest one.
+      flpsuite_latest=$(curl -fSsLk https://ali-flp.cern.ch/tags |
+                          jq -r '[.[] | .name] | max') ;;
     *)  # Tuesday-Sunday
-      # Fetch the latest installed FLP suite version, but amend the patch version
-      # number to .0 (as that's how the alidist branches are named).
-      flpsuite_latest=$(curl -Lk http://ali-flp.cern.ch/tags | jq -r '.[0].name' | 
-                        sed -e 's/.*\(v[0-9.][0-9.]*\)\.[0-9].*/flp-suite-\1.0/') ;;
+      # Fetch the currently installed FLP suite version.
+      flpsuite_latest=flp-suite-v$(curl -fSsLk https://ali-flp.cern.ch/suite_version) ;;
   esac
+  # Override the patch version number to .0, as that is how alidist branches
+  # should be named.
+  flpsuite_latest=${flpsuite_latest%.*}.0
   ALIDIST_SLUG=${ALIDIST_SLUG//!!FLPSUITE_LATEST!!/$flpsuite_latest}
   unset flpsuite_latest
 fi
