@@ -19,7 +19,7 @@ from textwrap import dedent
 from typing import Optional, Union, Literal, Final, TypedDict
 
 from gql import Client, gql
-from gql.transport.aiohttp import AIOHTTPTransport
+from gql.transport.requests import RequestsHTTPTransport
 from graphql.language.ast import DocumentNode
 from alibot_helpers.utilities import parse_env_file
 
@@ -220,24 +220,23 @@ def format_empty_table():
 
 def main(args: argparse.Namespace) -> None:
     '''Main entry point.'''
-    client = Client(
-        transport=AIOHTTPTransport(
-            url='https://api.github.com/graphql',
-            headers={'Authorization': 'bearer ' + os.environ['GITHUB_TOKEN']}),
-        fetch_schema_from_transport=True)
-    all_checks, names = \
-        get_all_checks(args.definitions_dir, args.roles,
-                       args.containers, args.repos, args.checks)
-    for (repo, branch), checks in sorted(all_checks.items()):
-        print(format_repo_header(repo, branch))
-        statuses = get_check_statuses(client, repo, branch, checks, names)
-        for check in sorted(checks):
-            print(format_check_header(check))
-            if statuses[check]:
-                output_check_table(statuses[check], args.recent_days)
-            else:
-                print(format_empty_table())
-            print()
+    transport = RequestsHTTPTransport(
+        url='https://api.github.com/graphql',
+        auth=('bearer', os.environ['GITHUB_TOKEN']))
+    with Client(transport=transport) as session:
+        all_checks, names = \
+            get_all_checks(args.definitions_dir, args.roles,
+                           args.containers, args.repos, args.checks)
+        for (repo, branch), checks in sorted(all_checks.items()):
+            print(format_repo_header(repo, branch))
+            statuses = get_check_statuses(session, repo, branch, checks, names)
+            for check in sorted(checks):
+                print(format_check_header(check))
+                if statuses[check]:
+                    output_check_table(statuses[check], args.recent_days)
+                else:
+                    print(format_empty_table())
+                print()
 
 
 def parse_args() -> argparse.Namespace:
