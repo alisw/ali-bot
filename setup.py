@@ -20,7 +20,11 @@ install_requires = ['PyGithub==1.45', 'argparse', 'requests', 'pytz', 's3cmd',
 # Old setuptools versions (which pip2 uses) don't support range comparisons
 # (like :python_version >= "3.6") in extras_require, so do this ourselves here.
 if sys.version_info >= (3, 6):
-    install_requires += ['boto3', 'gql==3.0.0a6']
+    install_requires += [
+        'boto3',
+        'gql',
+        'requests-toolbelt',  # for gql
+    ]
 
 setup(
     name='ali-bot',
