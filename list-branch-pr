@@ -29,7 +29,6 @@ from gql import Client, gql
 from gql.transport.requests import RequestsHTTPTransport
 from alibot_helpers.utilities import parse_env_file
 
-CONFIG_PATH = os.path.join("ali-bot", "ci", "repo-config")
 DEFAULTENV_NAME = "DEFAULTS.env"
 
 
@@ -56,7 +55,8 @@ def query_team_members(session, org, team_slug):
 class RepoConfig:
     """Encapsulates a build configuration of the CI worker."""
 
-    def __init__(self, build_config, mesos_role, container_name, config_suffix,
+    def __init__(self, build_config, definitions_dir,
+                 mesos_role, container_name, config_suffix,
                  worker_index, worker_pool_size):
         self.build_config = build_config
         self.check_name = ""
@@ -72,10 +72,10 @@ class RepoConfig:
         mesos, docker = mesos_role, container_name + config_suffix
         env_file_path = build_config + ".env"
         for envpath in [
-                os.path.join(CONFIG_PATH, DEFAULTENV_NAME),
-                os.path.join(CONFIG_PATH, mesos, DEFAULTENV_NAME),
-                os.path.join(CONFIG_PATH, mesos, docker, DEFAULTENV_NAME),
-                os.path.join(CONFIG_PATH, mesos, docker, env_file_path)]:
+                os.path.join(definitions_dir, DEFAULTENV_NAME),
+                os.path.join(definitions_dir, mesos, DEFAULTENV_NAME),
+                os.path.join(definitions_dir, mesos, docker, DEFAULTENV_NAME),
+                os.path.join(definitions_dir, mesos, docker, env_file_path)]:
             if os.path.exists(envpath):
                 self._parse_env_file(envpath)
 
@@ -213,7 +213,7 @@ def main(args):
         # Find .env files for this worker, parse them and find PRs to process
         # for each build config.
         env_files = glob.glob(os.path.join(
-            CONFIG_PATH, args.mesos_role,
+            args.definitions_dir, args.mesos_role,
             args.container_name + args.config_suffix, "*.env",
         ))
         for env_file in env_files:
@@ -222,7 +222,8 @@ def main(args):
                 continue
 
             try:
-                repo = RepoConfig(env_file_name[:-4], args.mesos_role,
+                repo = RepoConfig(env_file_name[:-4],
+                                  args.definitions_dir, args.mesos_role,
                                   args.container_name, args.config_suffix,
                                   args.worker_index, args.worker_pool_size)
             except ValueError as err:
@@ -295,8 +296,17 @@ def parse_args():
         parser.add_argument(
             short_name, long_name, required=True, type=vtype, **kwargs)
 
-    parser.add_argument("-b", "--show-base-branch", action="store_true",
-                        help="Also show refs for the base branch")
+    parser.add_argument(
+        "--definitions-dir", metavar="DIR",
+        default=os.path.join("ali-bot", "ci", "repo-config"),
+        help=("directory where .env files are located in a hierarchy; expects "
+              "a directory structure of the form DIR/ROLE/CONTAINER/*.env "
+              "(default %(default)s)"))
+
+    parser.add_argument(
+        "-b", "--show-base-branch", action="store_true",
+        help=("Also consider checks on the latest commit of each repo's base "
+              "branch."))
 
     add_env_arg("-i", "--worker-index", "WORKER_INDEX", vtype=int,
                 help="Index for the current worker")
