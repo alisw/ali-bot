@@ -9,6 +9,10 @@ try {
     node {
       AUTOTAG_TAG = sh(script: "LANG=C TZ=Europe/Zurich date '+$AUTOTAG_PATTERN'",
                        returnStdout: true).trim()
+      ALIDIST_OVERRIDE_BRANCH = sh(script: "LANG=C TZ=Europe/Zurich date '+$ALIDIST_OVERRIDE_BRANCH'",
+                                   returnStdout: true).trim()
+      OVERRIDE_TAGS = sh(script: "LANG=C TZ=Europe/Zurich date '+$OVERRIDE_TAGS'",
+                         returnStdout: true).trim()
     }
     currentBuild.displayName = ("#${env.BUILD_NUMBER} - $PACKAGES " +
                                 AUTOTAG_TAG + " $DEFAULTS $ARCHITECTURE")
@@ -98,21 +102,9 @@ try {
     stage "Create daily"
     retry (2) {
       timeout (240) {
-        withEnv(["ALIBUILD_SLUG=${ALIBUILD_SLUG}",
-                 "ALIDIST_SLUG=${ALIDIST_SLUG}",
-                 "ALIBOT_SLUG=${ALIBOT_SLUG}",
-                 "ARCHITECTURE=${ARCHITECTURE}",
-                 "PACKAGES=${PACKAGES}",
-                 "DEFAULTS=${DEFAULTS}",
-                 "TEST_TAG=${TEST_TAG}",
-                 "REMOTE_STORE=${REMOTE_STORE}",
-                 "AUTOTAG_TAG=" + AUTOTAG_TAG,
-                 "AUTOTAG_OVERRIDE_VERSION=${AUTOTAG_OVERRIDE_VERSION}",
-                 "PYTHON_VERSION=${PYTHON_VERSION}",
-                 "MESOS_QUEUE_SIZE=${MESOS_QUEUE_SIZE}",
-                 "REMOVE_RC_BRANCH_FIRST=${REMOVE_RC_BRANCH_FIRST}",
-                 "NODE_NAME=${env.NODE_NAME}",
-                 "JOBS=${JOBS}"]) {
+        withEnv(["AUTOTAG_TAG=" + AUTOTAG_TAG,
+                 "ALIDIST_OVERRIDE_BRANCH=" + ALIDIST_OVERRIDE_BRANCH,
+                 "OVERRIDE_TAGS=" + OVERRIDE_TAGS]) {
           sh '''
               set -ex
               [ -d /etc/profile.d/enable-alice.sh ] && source /etc/profile.d/enable-alice.sh
