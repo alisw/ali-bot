@@ -131,7 +131,7 @@ class RepoConfig:
         return bool(
             # If this PR has any approving reviews, trust it.
             # We only include approving reviews in pull["reviews"].
-            pull["reviews"]["numberOfApprovals"] > 0 or
+            pull["reviews"]["isApproved"] or
 
             # Trust org members" and repo owners" PRs.
             # If requested, trust previous contributors" PRs.
@@ -345,7 +345,7 @@ query statuses(
     }
 
     pullRequests(
-      last: 100
+      last: 75
       baseRefName: $baseBranch
       states: OPEN
       orderBy: { field: UPDATED_AT, direction: DESC }
@@ -360,8 +360,11 @@ query statuses(
         }
         # APPROVED reviews do not include dismissed approvals, so no need to
         # check the commit ID matches.
-        reviews(last: 20, states: APPROVED) {
-          numberOfApprovals: totalCount
+        # We only need to know whether this PR has been approved at all (the
+        # only values that matter for totalCount are 0 and >0), so limit our
+        # query to the latest APPROVED review, if any.
+        reviews(last: 1, states: APPROVED) {
+          isApproved: totalCount
         }
         commits(last: 1) {
           nodes {
