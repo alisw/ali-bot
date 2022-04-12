@@ -125,6 +125,11 @@ AUTOTAG_TAG=$(date -d "@$START_TIMESTAMP" "+$AUTOTAG_PATTERN")
 : "${AUTOTAG_TAG:?}"   # make sure the tag isn't empty
 [ "$TEST_TAG" = true ] && AUTOTAG_TAG=TEST-IGNORE-$AUTOTAG_TAG
 
+if echo "$AUTOTAG_TAG" | grep -Fq '!!'; then
+  echo "Tag $AUTOTAG_TAG contains !!-placeholders! These will not be replaced; use Jinja2 syntax instead. Exiting." >&2
+  exit 1
+fi
+
 # The tag doesn't exist yet, so build using the branch first.
 for package in $PACKAGES; do
   edit_package_tag "$package" "$DEFAULTS" "rc/$AUTOTAG_TAG" "$AUTOTAG_OVERRIDE_VERSION"
