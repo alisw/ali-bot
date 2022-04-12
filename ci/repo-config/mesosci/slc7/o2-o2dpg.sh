@@ -10,5 +10,3 @@ DEVEL_PKGS="$PR_REPO $PR_BRANCH
 AliceO2Group/AliceO2 dev O2
 AliceO2Group/O2Physics master
 alisw/alidist master"
-ALIBUILD_O2_TESTS=1
-ALIBUILD_O2PHYSICS_TESTS=1
