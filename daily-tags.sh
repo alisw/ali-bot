@@ -110,11 +110,16 @@ git config --global user.name 'ALICE Builder'
 git config --global user.email alibuild@cern.ch
 
 : "${ALIDIST_SLUG:=alisw/alidist@master}" "${DEFAULTS:=release}"
-if echo "$ALIDIST_SLUG" "$AUTOTAG_TAG" | grep -q '!!FLPSUITE_[A-Z]*!!'; then
+# Determine branch from slug string: group/repo@ref
+alidist_branch=${ALIDIST_SLUG##*@}
+alidist_repo=${ALIDIST_SLUG%@*}
+
+if echo "$alidist_branch" "$AUTOTAG_TAG" | grep -q '!!FLPSUITE_[A-Z]*!!'; then
   yum install -y jq
 
   # Sort available tags by version number, then pick the latest one.
-  flpsuite_latest=$(curl -fSsLk https://ali-flp.cern.ch/tags | jq -r '[.[] | .name] | max')
+  flpsuite_latest=$(git ls-remote "https://github.com/$alidist_repo" -- 'refs/heads/flp-suite-v*' |
+                      cut -f2 | sort -V | sed -rn '$s,^refs/heads/(.*),\1,p')
   # Get the tag currently installed on the FLPs.
   flpsuite_current=flp-suite-v$(curl -fSsLk https://ali-flp.cern.ch/suite_version)
 
@@ -128,15 +133,12 @@ if echo "$ALIDIST_SLUG" "$AUTOTAG_TAG" | grep -q '!!FLPSUITE_[A-Z]*!!'; then
     flpsuite_current=$flpsuite_latest
   fi
 
-  ALIDIST_SLUG=${ALIDIST_SLUG//!!FLPSUITE_LATEST!!/$flpsuite_latest}
+  alidist_branch=${alidist_branch//!!FLPSUITE_LATEST!!/$flpsuite_latest}
   AUTOTAG_TAG=${AUTOTAG_TAG//!!FLPSUITE_LATEST!!/$flpsuite_latest}
-  ALIDIST_SLUG=${ALIDIST_SLUG//!!FLPSUITE_CURRENT!!/$flpsuite_current}
+  alidist_branch=${alidist_branch//!!FLPSUITE_CURRENT!!/$flpsuite_current}
   AUTOTAG_TAG=${AUTOTAG_TAG//!!FLPSUITE_CURRENT!!/$flpsuite_current}
 fi
 
-# Determine branch from slug string: group/repo@ref
-alidist_branch=${ALIDIST_SLUG##*@}
-alidist_repo=${ALIDIST_SLUG%@*}
 # PACKAGES contains whitespace-separated package names to tag. Only the first is
 # built, but every listed package's tag is edited in the resulting commit. This
 # enables tagging e.g. O2 and O2Physics at the same time, with the same tag, and
