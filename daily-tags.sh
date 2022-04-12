@@ -1,21 +1,21 @@
 #!/bin/bash -ex
 set -ex
 
-edit_tags () {
-  # Patch package definition (e.g. o2.sh)
-  local package tag=$1 version=$AUTOTAG_OVERRIDE_VERSION
-  for package in $PACKAGES; do
-    sed -E -i.old \
-        "s|^tag: .*\$|tag: \"$tag\"|; ${version:+s|^version: .*\$|version: \"$version\"|}" \
-        "alidist/${package,,}.sh"
+edit_package_tag () {
+  # Patch package definition (e.g. o2.sh) with a new tag and version, changing
+  # the defaults as well if necessary.
+  local package=$1 defaults=$2 tag=$3 version=$4
+  sed -E -i.old \
+      "s|^tag: .*\$|tag: \"$tag\"|; ${version:+s|^version: .*\$|version: \"$version\"|}" \
+      "alidist/${package,,}.sh"
 
-    # Patch defaults definition (e.g. defaults-o2.sh)
-    # Process overrides by changing in-place the given defaults. This requires
-    # some YAML processing so we are better off with Python.
-    tag=$tag package=$package DEFAULTS=$DEFAULTS $PYTHON <<\EOF
+  # Patch defaults definition (e.g. defaults-o2.sh)
+  # Process overrides by changing in-place the given defaults. This requires
+  # some YAML processing so we are better off with Python.
+  tag=$tag package=$package defaults=$defaults $PYTHON <<\EOF
 import yaml
 from os import environ
-f = "alidist/defaults-%s.sh" % environ["DEFAULTS"].lower()
+f = "alidist/defaults-%s.sh" % environ["defaults"].lower()
 p = environ["package"]
 meta, rest = open(f).read().split("\n---\n", 1)
 d = yaml.safe_load(meta)
@@ -32,7 +32,6 @@ if v and "version" in overrides:
 if write:
     open(f, "w").write(yaml.dump(d)+"\n---\n"+rest)
 EOF
-  done
 }
 
 # PACKAGES contains whitespace-separated package names to tag. Only the first is
@@ -96,7 +95,7 @@ for tagspec in $OVERRIDE_TAGS; do
   tag=${tagspec#*=}
   tag=${tag//!!FLPSUITE_LATEST!!/$flpsuite_latest}
   tag=${tag//!!FLPSUITE_CURRENT!!/$flpsuite_current}
-  edit_package_tag "$DEFAULTS" "${tagspec%%=*}" "$tag"
+  edit_package_tag "${tagspec%%=*}" "$DEFAULTS" "$tag"
 done
 
 # Select build directory in order to prevent conflicts and allow for cleanups.
@@ -127,7 +126,9 @@ AUTOTAG_TAG=$(date -d "@$START_TIMESTAMP" "+$AUTOTAG_PATTERN")
 [ "$TEST_TAG" = true ] && AUTOTAG_TAG=TEST-IGNORE-$AUTOTAG_TAG
 
 # The tag doesn't exist yet, so build using the branch first.
-edit_tags "rc/$AUTOTAG_TAG"
+for package in $PACKAGES; do
+  edit_package_tag "$package" "$DEFAULTS" "rc/$AUTOTAG_TAG" "$AUTOTAG_OVERRIDE_VERSION"
+done
 
 git -C alidist diff || :
 
@@ -218,7 +219,9 @@ done
 # Also tag the appropriate alidist
 # We normally want to build using the tag, and now it exists.
 (cd alidist && git stash)   # first, undo our temporary changes, which might include changes that shouldn't be committed
-edit_tags "$AUTOTAG_TAG"
+for package in $PACKAGES; do
+  edit_package_tag "$package" "$DEFAULTS" "$AUTOTAG_TAG" "$AUTOTAG_OVERRIDE_VERSION"
+done
 cd alidist
 edited_files=("defaults-${DEFAULTS,,}.sh")
 for edited_pkg in $PACKAGES; do
