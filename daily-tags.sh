@@ -120,7 +120,7 @@ EOF
 )
 
 # Finally, replace strftime formatting (%Y, %m, %d etc) in the pattern.
-AUTOTAG_TAG=$(date -d "@$START_TIMESTAMP" "+$AUTOTAG_PATTERN")
+AUTOTAG_TAG=$(LANG=C TZ=Europe/Zurich date -d "@$START_TIMESTAMP" "+$AUTOTAG_PATTERN")
 
 : "${AUTOTAG_TAG:?}"   # make sure the tag isn't empty
 [ "$TEST_TAG" = true ] && AUTOTAG_TAG=TEST-IGNORE-$AUTOTAG_TAG
