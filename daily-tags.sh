@@ -225,14 +225,15 @@ for package in $PACKAGES; do
 done
 
 # Also tag the appropriate alidist
+: "${PACKAGES_IN_ALIDIST_TAG:=$PACKAGES}"
 # We normally want to build using the tag, and now it exists.
 (cd alidist && git stash)   # first, undo our temporary changes, which might include changes that shouldn't be committed
-for package in $PACKAGES; do
+for package in $PACKAGES_IN_ALIDIST_TAG; do
   edit_package_tag "$package" "$DEFAULTS" "$AUTOTAG_TAG" "$AUTOTAG_OVERRIDE_VERSION"
 done
 cd alidist
 edited_files=("defaults-${DEFAULTS,,}.sh")
-for edited_pkg in $PACKAGES; do
+for edited_pkg in $PACKAGES_IN_ALIDIST_TAG; do
   edited_files+=("${edited_pkg,,}.sh")
 done
 # If the file was modified, the output of git status will be non-empty.
