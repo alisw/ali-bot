@@ -114,6 +114,7 @@ alibuild_args=(
 
 # Process the pattern as a jinja2 template with aliBuild's templating plugin.
 AUTOTAG_PATTERN=$(cat << EOF | aliBuild --debug --plugin templating "${alibuild_args[@]}"
+{%- set alidist_branch = "$ALIDIST_BRANCH" -%}
 {%- set flpsuite_latest = "$flpsuite_latest" -%}
 {%- set flpsuite_current = "$flpsuite_current" -%}
 $AUTOTAG_PATTERN
