@@ -95,6 +95,7 @@ for tagspec in $OVERRIDE_TAGS; do
   tag=${tagspec#*=}
   tag=${tag//!!FLPSUITE_LATEST!!/$flpsuite_latest}
   tag=${tag//!!FLPSUITE_CURRENT!!/$flpsuite_current}
+  tag=${tag//!!ALIDIST_BRANCH!!/$ALIDIST_BRANCH}
   tag=$(LANG=C TZ=Europe/Zurich date -d "@$START_TIMESTAMP" "+$tag")
   edit_package_tag "${tagspec%%=*}" "$DEFAULTS" "$tag"
 done
