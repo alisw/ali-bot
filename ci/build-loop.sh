@@ -170,13 +170,31 @@ fi
 build_identifier=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
 : "${build_identifier:=${CHECK_NAME//\//_}}"
 
+# Set up alien.py.
+# If we don't find certs in any of these dirs, leave X509_USER_{CERT,KEY}
+# unset, but continue. In that case, granting a token will fail, which just
+# means that build jobs won't get their jalien_token_{cert,key} variables.
+for certdir in /etc/httpd /root/.globus /etc/grid-security ~/.globus; do
+  if [ -r "$certdir/hostcert.pem" ] && [ -r "$certdir/hostkey.pem" ]; then
+    export X509_USER_CERT=$certdir/hostcert.pem X509_USER_KEY=$certdir/hostkey.pem
+    break
+  fi
+done
+# Find CA certs. On alibuilds, the CERN-CA-certs package installs them under
+# /etc/pki/tls/certs, but /etc/grid-security is used on other machines.
+for certdir in /etc/grid-security/certificates /etc/pki/tls/certs; do
+  if [ -d "$certdir" ]; then
+    export X509_CERT_DIR=$certdir
+    break
+  fi
+done
 # Get a temporary JAliEn token certificate and key, to give anything we build
 # below access.
 if jalien_token=$(alien.py token -v 1); then
   jalien_token_cert=$(echo "$jalien_token" | sed -n '/^-----BEGIN CERTIFICATE-----$/,/^-----END CERTIFICATE-----$/p')
   jalien_token_key=$(echo "$jalien_token" | sed -n '/^-----BEGIN RSA PRIVATE KEY-----$/,/^-----END RSA PRIVATE KEY-----$/p')
 fi
-unset jalien_token
+unset certdir jalien_token
 
 # o2checkcode needs the ALIBUILD_{HEAD,BASE}_HASH variables.
 # We need "--no-auto-cleanup" so that build logs for dependencies are kept, too.
