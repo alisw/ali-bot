@@ -55,6 +55,7 @@ jobs:
       - name: Build the EL8 RPM and create a yum repo.
         run: |
           set -xe
+          perl -p -i -e 's/mirrorlist.centos.org/vault.centos.org/g' /etc/yum/repos.d/*.repo
           yum install -y rpm-build scl-utils-build createrepo unzip git python3-setuptools python3
           curl https://rclone.org/install.sh | bash
           rpmbuild -ba rpms/o2-prereq-cc8.spec
