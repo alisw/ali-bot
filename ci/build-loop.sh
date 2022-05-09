@@ -182,7 +182,10 @@ for certdir in /etc/httpd /root/.globus /etc/grid-security ~/.globus; do
 done
 # Find CA certs. On alibuilds, the CERN-CA-certs package installs them under
 # /etc/pki/tls/certs, but /etc/grid-security is used on other machines.
-for certdir in /etc/grid-security/certificates /etc/pki/tls/certs; do
+# If we have CVMFS, it should take priority because on those machines,
+# /etc/pki/tls/certs might be an empty directory.
+for certdir in /cvmfs/alice.cern.ch/etc/grid-security/certificates \
+                 /etc/grid-security/certificates /etc/pki/tls/certs; do
   if [ -d "$certdir" ]; then
     export X509_CERT_DIR=$certdir
     break
