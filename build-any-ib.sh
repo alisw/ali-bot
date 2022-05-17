@@ -39,7 +39,7 @@ case "$PYTHON_VERSION" in
   2) PIP=pip2 PYTHON=python2 ;;
   3) PIP=pip3 PYTHON=python3 ;;
 esac
-$PIP install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+"git+https://github.com/${ALIBUILD_SLUG}"}
+$PIP install --user --upgrade "${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}"
 type aliBuild
 
 rm -rf alidist
@@ -115,21 +115,36 @@ else
   rm -rf AliPhysics
 fi
 
-RWOPT='::rw'
-[[ "$PUBLISH_BUILDS" == "false" ]] && RWOPT=
-REMOTE_STORE="${REMOTE_STORE:-rsync://repo.marathon.mesos/store/}$RWOPT"
-[[ "$USE_REMOTE_STORE" == "false" ]] && REMOTE_STORE=
+case "$ARCHITECTURE" in
+  slc8_*|ubuntu*) : "${REMOTE_STORE:=b3://alibuild-repo}" ;;
+  *) : "${REMOTE_STORE:=rsync://repo.marathon.mesos/store/}" ;;
+esac
+[ "$PUBLISH_BUILDS" = true ] && REMOTE_STORE=$REMOTE_STORE::rw
+[ "$USE_REMOTE_STORE" = false ] && REMOTE_STORE=
+case "$REMOTE_STORE" in
+  b3://*)
+    set +x  # avoid leaking secrets
+    . /secrets/aws_bot_secrets
+    export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+    set -x ;;
+esac
+
 FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
 aliBuild --reference-sources $MIRROR                    \
          --debug                                        \
          --work-dir $WORKAREA/$WORKAREA_INDEX           \
          ${FETCH_REPOS:+--fetch-repos}                  \
          --architecture $ARCHITECTURE                   \
-         --jobs ${JOBS:-9}                              \
+         --jobs ${JOBS:-16}                             \
          ${REMOTE_STORE:+--remote-store $REMOTE_STORE}  \
          ${DEFAULTS:+--defaults $DEFAULTS}              \
          ${DISABLE:+--disable $DISABLE}                 \
          build $PACKAGE_NAME || BUILDERR=$?
+
+for logf in "$WORKAREA/$WORKAREA_INDEX/BUILD"/*/*/*.log; do
+  [ -e "$logf" ] || continue
+  s3cmd put "$logf" "s3://alibuild-repo/build-any-ib-logs/$logf" || :
+done
 
 rm -f $WORKAREA/$WORKAREA_INDEX/current_slave
 [[ "$BUILDERR" != '' ]] && exit $BUILDERR

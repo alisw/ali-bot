@@ -2,6 +2,7 @@
 """ Package alibuild using setuptools
 """
 
+import sys
 # Always prefer setuptools over distutils
 from setuptools import setup, find_packages
 # To use a consistent encoding
@@ -13,6 +14,17 @@ here = path.abspath(path.dirname(__file__))
 # Get the long description from the README file
 with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
     long_description = f.read()
+
+install_requires = ['PyGithub==1.45', 'argparse', 'requests', 'pytz', 's3cmd',
+                    'pyyaml']
+# Old setuptools versions (which pip2 uses) don't support range comparisons
+# (like :python_version >= "3.6") in extras_require, so do this ourselves here.
+if sys.version_info >= (3, 6):
+    install_requires += [
+        'boto3',
+        'gql',
+        'requests-toolbelt',  # for gql
+    ]
 
 setup(
     name='ali-bot',
@@ -74,8 +86,7 @@ setup(
     # your project is installed. For an analysis of "install_requires" vs pip's
     # requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
-    install_requires=['PyGithub==1.45', 'argparse', 'requests', 'pytz',
-                      'pytz', 'boto3', 's3cmd', 'pyyaml'],
+    install_requires=install_requires,
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). You can install these using the following syntax,
@@ -111,6 +122,8 @@ setup(
                # GitHub API monitoring
                "monitor-github-api",
                "monitor-github-api-monalisa.sh",
+               # S3 housekeeping
+               "repo-s3-cleanup",
                # Check daily tags
                "check-daily-slack",
                "daily-tags.sh",
@@ -129,5 +142,6 @@ setup(
                # Helpers
                "clean-repo-ci",
                "bulk-change-pr-status",
+               "ci-status-overview",
               ]
 )

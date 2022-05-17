@@ -3,8 +3,6 @@
 from __future__ import print_function
 from argparse import ArgumentParser
 import logging
-import os
-import re
 import sys
 
 from alibot_helpers.github_utilities import setGithubStatus, github_token
@@ -18,7 +16,7 @@ DEFAULT_USER = "alisw"
 
 def parse_args():
     usage = "set-github-status "
-    usage += "-c <commit> -s <status> [-m <status-message>] [-u <target-url>]"
+    usage += "[-d] [-n] -c <commit> -s <status> [-m <status-message>] [-u <target-url> | -k]"
     parser = ArgumentParser(usage=usage)
     parser.add_argument("--commit", "-c",
                         required=True,
@@ -33,9 +31,11 @@ def parse_args():
                         default="",
                         help="Message relative to the status (default='')")
 
-    parser.add_argument("--url", "-u",
-                        default="",
-                        help="Target url for the report (default='')")
+    url = parser.add_mutually_exclusive_group()
+    url.add_argument("--url", "-u", default="",
+                     help="Target URL for the report (default=%(default)s)")
+    url.add_argument("--keep-url", "-k", action="store_true",
+                     help="Copy the target URL from the existing status.")
 
     parser.add_argument("--debug", "-d",
                         action="store_true",

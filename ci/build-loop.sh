@@ -23,22 +23,43 @@ host_id=$(echo "$MESOS_EXECUTOR_ID" |
 
 # Update all PRs in the queue with their number before we start building.
 echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead btype num hash envf; do
-  # Only report progress for a PR if it's never been built before.
-  if [ "$btype" = untested ]; then (
-    # Run this in a subshell as report_pr_errors uses $PR_REPO but we don't want
-    # to overwrite the outer for loop's variables, as they are needed for the
-    # subsequent build.
+  # Run this in a subshell as report_pr_errors uses $PR_REPO but we don't want
+  # to overwrite the outer for loop's variables, as they are needed for the
+  # subsequent build.
+  (
     cd ..
     source_env_files "$envf"
-    PR_NUMBER=$num PR_HASH=$hash report_pr_errors --pending -m "Queued ($ahead ahead) on $host_id"
-  ); fi < /dev/null  # Stop commands from slurping hashes, just in case.
+    case "$btype" in
+      # Create status if we've never tested this before.
+      untested)
+        PR_NUMBER=$num PR_HASH=$hash report_pr_errors --pending -m "Queued ($ahead ahead) on $host_id" ;;
+
+      # If we've tested this before and it was red, there's an existing status.
+      # Keep it, just change the message to say we're rechecking.
+      failed)
+        set-github-status -k -c "$PR_REPO@$hash" -s "$CHECK_NAME/$(build_type_to_status "$btype")" \
+                          -m "Queued for recheck ($ahead ahead) on $host_id" ;;
+
+      # If the previous check was green, we probably still have the build
+      # products cached, so the rebuild will be almost instantaneous. Don't
+      # update the status to say we're rechecking as that would eat into our
+      # API request quota too quickly.
+      succeeded) ;;
+    esac
+  ) < /dev/null  # Stop commands from slurping hashes, just in case.
 done
 
-if [ "$BUILD_TYPE" = untested ]; then
-  # Set a status on GitHub showing the build start time, but only if this is
-  # the first build! Rebuilds should only set the final success/failure.
-  report_pr_errors --pending -m "Started $(TZ=Europe/Zurich date +'%a %H:%M CET') @ $host_id"
-fi
+case "$BUILD_TYPE" in
+  # Create a status on GitHub showing the build start time, but only if this is
+  # the first build of this check!
+  untested) report_pr_errors --pending -m "Started $(TZ=Europe/Zurich date +'%a %H:%M CET') @ $host_id" ;;
+  # Rebuilds only change the existing status's message, keeping the red status
+  # and URL intact.
+  failed) set-github-status -k -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/$(build_type_to_status "$BUILD_TYPE")" \
+                            -m "Rechecking since $(TZ=Europe/Zurich date +'%a %H:%M CET') @ $host_id" ;;
+  # See above for why we don't update the status for green checks.
+  succeeded) ;;
+esac
 
 # A few common environment variables when reporting status to analytics.
 # In analytics we use screenviews to indicate different states of the
@@ -149,6 +170,35 @@ fi
 build_identifier=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
 : "${build_identifier:=${CHECK_NAME//\//_}}"
 
+# Set up alien.py.
+# If we don't find certs in any of these dirs, leave X509_USER_{CERT,KEY}
+# unset, but continue. In that case, granting a token will fail, which just
+# means that build jobs won't get their jalien_token_{cert,key} variables.
+for certdir in /etc/httpd /root/.globus /etc/grid-security ~/.globus; do
+  if [ -r "$certdir/hostcert.pem" ] && [ -r "$certdir/hostkey.pem" ]; then
+    export X509_USER_CERT=$certdir/hostcert.pem X509_USER_KEY=$certdir/hostkey.pem
+    break
+  fi
+done
+# Find CA certs. On alibuilds, the CERN-CA-certs package installs them under
+# /etc/pki/tls/certs, but /etc/grid-security is used on other machines.
+# If we have CVMFS, it should take priority because on those machines,
+# /etc/pki/tls/certs might be an empty directory.
+for certdir in /cvmfs/alice.cern.ch/etc/grid-security/certificates \
+                 /etc/grid-security/certificates /etc/pki/tls/certs; do
+  if [ -d "$certdir" ]; then
+    export X509_CERT_DIR=$certdir
+    break
+  fi
+done
+# Get a temporary JAliEn token certificate and key, to give anything we build
+# below access.
+if jalien_token=$(alien.py token -v 1); then
+  jalien_token_cert=$(echo "$jalien_token" | sed -n '/^-----BEGIN CERTIFICATE-----$/,/^-----END CERTIFICATE-----$/p')
+  jalien_token_key=$(echo "$jalien_token" | sed -n '/^-----BEGIN RSA PRIVATE KEY-----$/,/^-----END RSA PRIVATE KEY-----$/p')
+fi
+unset certdir jalien_token
+
 # o2checkcode needs the ALIBUILD_{HEAD,BASE}_HASH variables.
 # We need "--no-auto-cleanup" so that build logs for dependencies are kept, too.
 # For instance, when building O2FullCI, we want to keep the o2checkcode log, as
@@ -162,6 +212,9 @@ if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
      ${MIRROR:+--reference-sources "$MIRROR"}                \
      ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}         \
      -e "ALIBUILD_O2_TESTS=$ALIBUILD_O2_TESTS"               \
+     -e "ALIBUILD_O2PHYSICS_TESTS=$ALIBUILD_O2PHYSICS_TESTS" \
+     ${jalien_token_cert:+-e "JALIEN_TOKEN_CERT=$jalien_token_cert"} \
+     ${jalien_token_key:+-e "JALIEN_TOKEN_KEY=$jalien_token_key"} \
      ${use_docker:+-e GIT_CONFIG_COUNT=1}                    \
      ${use_docker:+-e GIT_CONFIG_KEY_0=credential.helper}    \
      ${use_docker:+-e GIT_CONFIG_VALUE_0='store --file /.git-creds'} \

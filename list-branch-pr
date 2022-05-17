@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """Get a list of pull requests that need building.
 
@@ -14,65 +14,68 @@ fields separated by tab characters:
    this commit belongs to.
 """
 
-from __future__ import print_function
-
+import functools
 import glob
 import hashlib
+import os
 import os.path
 import random
-import shlex
 import sys
 
 from argparse import ArgumentParser
 from collections import defaultdict
-from alibot_helpers.github_utilities \
-    import GithubCachedClient, PickledCache, github_token
 
-CONFIG_PATH = os.path.join("ali-bot", "ci", "repo-config")
+from gql import Client, gql
+from gql.transport.requests import RequestsHTTPTransport
+from alibot_helpers.utilities import parse_env_file
+
 DEFAULTENV_NAME = "DEFAULTS.env"
 
 
-def get_status_info(cgh, repo_name, ref, check_name):
-    """Return the given ref's tested/success/reviewed statuses."""
-    statuses = cgh.get("/repos/{repo_name}/commits/{ref}/statuses",
-                       repo_name=repo_name, ref=ref)
-    reviewed = tested = success = False
+@functools.lru_cache(maxsize=None)
+def query_repo_info(session, org, repo, base_branch, include_base_branch=False):
+    """Query the given repo to get pull request statuses."""
+    return session.execute(QUERY, {
+        "repoOwner": org,
+        "repoName": repo,
+        "baseBranch": base_branch,
+        "includeBaseBranch": include_base_branch,
+    }, "statuses")["repository"]
 
-    for status in statuses:
-        if check_name and status["context"] == check_name:
-            reviewed = True
-            tested = status["state"] in ["success", "error", "failure"]
-            success = status["state"] == "success"
-            break
-        if status["context"] == "review" and status["state"] == "success":
-            reviewed = True
 
-    return {"tested": tested, "success": success, "reviewed": reviewed}
+@functools.lru_cache(maxsize=None)
+def query_team_members(session, org, team_slug):
+    """Fetch the logins of the members of the given team."""
+    return frozenset(member["login"] for member in session.execute(QUERY, {
+        "repoOwner": org,
+        "teamSlug": team_slug,
+    }, "team")["organization"]["team"]["members"]["nodes"])
 
 
 class RepoConfig:
     """Encapsulates a build configuration of the CI worker."""
 
-    def __init__(self, build_config, cgh, args):
-        self.cgh = cgh
+    def __init__(self, build_config, definitions_dir,
+                 mesos_role, container_name, config_suffix,
+                 worker_index, worker_pool_size):
         self.build_config = build_config
         self.check_name = ""
         self.repo_name = ""
         self.branch_ref = "master"
-        self.trusted_users = []
-        self.trusted_team = None
-        self.trust_contributors = False
-        self.worker_pool_size = args.worker_pool_size
-        self.worker_index = args.worker_index
+        self.trusted_users = frozenset()
+        self.trusted_team_slug = None
+        self.trusted_author_associations = {"OWNER", "MEMBER", "COLLABORATOR"}
+        self.worker_index = worker_index
+        self.worker_pool_size = worker_pool_size
 
         # Parse .env files for this build config to initialise above variables.
-        mesos, docker = args.mesos_role, args.container_name + args.config_suffix
+        mesos, docker = mesos_role, container_name + config_suffix
         env_file_path = build_config + ".env"
         for envpath in [
-                os.path.join(CONFIG_PATH, DEFAULTENV_NAME),
-                os.path.join(CONFIG_PATH, mesos, DEFAULTENV_NAME),
-                os.path.join(CONFIG_PATH, mesos, docker, DEFAULTENV_NAME),
-                os.path.join(CONFIG_PATH, mesos, docker, env_file_path)]:
+                os.path.join(definitions_dir, DEFAULTENV_NAME),
+                os.path.join(definitions_dir, mesos, DEFAULTENV_NAME),
+                os.path.join(definitions_dir, mesos, docker, DEFAULTENV_NAME),
+                os.path.join(definitions_dir, mesos, docker, env_file_path)]:
             if os.path.exists(envpath):
                 self._parse_env_file(envpath)
 
@@ -86,163 +89,114 @@ class RepoConfig:
 
     def _parse_env_file(self, env_file_path):
         """Apply settings from env_file_path to this class."""
-        with open(env_file_path) as envf:
-            try:
-                tokens = shlex.split(envf.read(), comments=False)
-            except ValueError as err:
-                # Some values are multiline, e.g. DEVEL_PKGS. This confuses
-                # shlex. None of the variables we care about are multiline.
-                print("shlex", err, "in file", env_file_path,
-                      sep=": ", file=sys.stderr)
-                return
-
-            # Some variables are used elsewhere in the CI builder, so they
-            # are defined as shell variables. Handle these here (including
-            # multiple assignments on one line). Note that non-assignments
-            # containing "=" (e.g. command arguments), variables valid only
-            # for one command, and the like confuse this simple approach.
-            for token in tokens:
-                var, is_assignment, value = token.partition("=")
-                if not is_assignment:
-                    continue
-                if var == "PR_REPO":
-                    self.repo_name = value
-                elif var == "PR_BRANCH":
-                    self.branch_ref = value
-                elif var == "CHECK_NAME":
-                    self.check_name = value
-                elif var == "TRUST_COLLABORATORS":
-                    # Shell-style boolean: True if non-empty.
-                    self.trust_contributors = bool(value)
-                elif var == "TRUSTED_USERS":
-                    self.trusted_users = value.split(",")
-                elif var == "TRUSTED_TEAM" and value:
-                    teams = self.cgh.get("/orgs/{org}/teams", org=self.org)
-                    for team in teams:
-                        if team["name"] == value:
-                            self.trusted_team = team["id"]
-                            break
-
-    @property
-    def org(self):
-        """GitHub organization name that owns this repository."""
-        return self.repo_name.split("/")[0]
+        # Some variables are used elsewhere in the CI builder, so they
+        # are defined as shell variables. Handle these here (including
+        # multiple assignments on one line). Note that non-assignments
+        # containing "=" (e.g. command arguments), variables valid only
+        # for one command, and the like confuse this simple approach.
+        for var, value in parse_env_file(env_file_path):
+            if var == "PR_REPO":
+                self.repo_name = value
+            elif var == "PR_BRANCH":
+                self.branch_ref = value
+            elif var == "CHECK_NAME":
+                self.check_name = value
+            elif var == "TRUST_COLLABORATORS" and value:
+                # Shell-style boolean: value is True if non-empty.
+                self.trusted_author_associations.add("CONTRIBUTOR")
+            elif var == "TRUSTED_USERS":
+                self.trusted_users = frozenset(value.split(","))
+            elif var == "TRUSTED_TEAM" and value:
+                self.trusted_team_slug = value
 
     def should_process(self, commit_sha):
         """Decide whether this worker should handle the given PR.
 
         This is determined by the commit hash of the PR's HEAD.
         """
-        sha = hashlib.new('sha256')
-        sha.update(self.build_config.encode('utf-8'))
-        sha.update(commit_sha.encode('utf-8'))
+        sha = hashlib.new("sha256")
+        sha.update(self.build_config.encode("utf-8"))
+        sha.update(commit_sha.encode("utf-8"))
         intended_worker = int(sha.hexdigest(), 16) % self.worker_pool_size
         return intended_worker == self.worker_index
 
-    def trust_pr(self, pull):
+    def trust_pr(self, session, pull):
         """Determine whether the PR is trustworthy and can be built.
 
         If we specified a list of trusted users, teams or if we trust
         contributors, we need to check if this is the case for the given PR.
-        Notice that some of these options will actually consume API calls, so
-        you need to be careful about what you enable.
+        Some of these options (notably trusting a team) will actually consume
+        API calls, so you need to be careful about what you enable.
         """
-        author_assoc = pull.get("author_association")
         return bool(
-            # Trust org members' and repo owners' PRs.
-            author_assoc in ("OWNER", "MEMBER", "COLLABORATOR") or
+            # If this PR has any approving reviews, trust it.
+            # We only include approving reviews in pull["reviews"].
+            pull["reviews"]["isApproved"] or
 
-            # If requested, trust previous contributors' PRs.
-            self.trust_contributors and author_assoc == "CONTRIBUTOR" or
+            # Trust org members" and repo owners" PRs.
+            # If requested, trust previous contributors" PRs.
+            pull["authorAssociation"] in self.trusted_author_associations or
 
             # Trust trusted users.
-            pull["user"]["login"] in self.trusted_users or
+            pull["author"]["login"] in self.trusted_users or
 
             # If we trust a team and the user is a member, trust this PR.
-            self.trusted_team and self.cgh.get(
-                url="/teams/{team_id}/memberships/{login}",
-                team_id=self.trusted_team, login=pull["user"]["login"]) or
+            self.trusted_team_slug and
+            pull["author"]["login"] in query_team_members(
+                session, self.repo_name.split("/")[0], self.trusted_team_slug
+            )
+        )
 
-            # If this PR has any approving reviews, trust it.
-            any(review["state"] == "APPROVED"
-                for review in self.cgh.get(
-                        "/repos/{repo_name}/pulls/{pull_number}/reviews",
-                        repo_name=self.repo_name,
-                        pull_number=str(pull["number"]))))
+    def process_single_pr(self, pull_number, last_commit,
+                          is_draft=False, is_trusted=False):
+        """Decide whether to queue this PR (or branch) for testing.
 
-    def process_pulls(self, show_main_branch):
+        If it should be queued, return an object describing the PR, else,
+        return None.
+        """
+        commit_hash = last_commit["oid"]
+        reviewed = tested = success = False
+        if last_commit["status"] is not None:
+            for ctx in last_commit["status"]["contexts"]:
+                context, cstate = ctx["context"], ctx["state"]
+                if context == "review" and cstate == "SUCCESS":
+                    reviewed = True
+                if context == self.check_name and \
+                   cstate in ("SUCCESS", "ERROR", "FAILURE"):
+                    tested = True
+                    success = cstate == "SUCCESS"
+        if self.should_process(commit_hash) and not is_draft and (reviewed or is_trusted):
+            state = "untested" if not tested else \
+                ("succeeded" if success else "failed")
+        else:
+            state = "skip"
+        print("pr: {number:6d}@{sha:.7s}: revd={reviewed:d} trust={trust:d} "
+              "tested={tested:d} success={success:d} => state={state}".format(
+                  number=pull_number, sha=commit_hash, reviewed=reviewed,
+                  trust=is_trusted, tested=tested, success=success, state=state
+              ), file=sys.stderr)
+        return None if state == "skip" else (state, {
+            "number": pull_number,
+            "sha": commit_hash,
+            "build_config": self.build_config,
+            "updated_at": last_commit["pushedDate"],
+        })
+
+    def process_pulls(self, session, repo_info, show_base_branch=False):
         """Return pull requests we can process, with relevant attributes."""
-        pulls = self.cgh.get("/repos/{repo_name}/pulls?base={base}",
-                             repo_name=self.repo_name,
-                             base=self.branch_ref)
-        for pull in pulls:
-            pull_hash, pull_number = pull["head"]["sha"], pull["number"]
-            if not self.should_process(pull_hash):
-                continue
-            print("processing:", pull_number, end="... ", file=sys.stderr)
-            sys.stderr.flush()
-
-            item = {"number": pull_number, "sha": pull_hash, "repo": self,
-                    "reviewed": False, "tested": False, "success": False}
-            try:
-                # If we specified a status to approve changes to tests we need
-                # to retrieve all the statuses. If we specified a check name to
-                # prioritize PR building, we need to retrieve all the statuses.
-                item.update(get_status_info(
-                    self.cgh, self.repo_name, pull_hash, self.check_name))
-
-                if pull.get("draft") or \
-                   pull.get("title", "").startswith("[WIP]"):
-                    # Do not test draft PRs.
-                    item["reviewed"] = False
-                elif not item["reviewed"] and self.trust_pr(pull):
-                    item["reviewed"] = True
-            except RuntimeError as err:
-                print(err, file=sys.stderr)
-            else:
-                print("done:\t%(number)7s@%(sha).7s revd=%(reviewed)d test="
-                      "%(tested)d success=%(success)d" % item, file=sys.stderr)
+        for pull in repo_info["pullRequests"]["nodes"]:
+            item = self.process_single_pr(
+                pull["number"], pull["commits"]["nodes"][0]["commit"],
+                is_draft=pull["isDraft"] or pull["title"].startswith("[WIP]"),
+                is_trusted=self.trust_pr(session, pull),
+            )
+            if item is not None:
                 yield item
 
-        # Also return the head of the main branch, but only if requested...
-        if not show_main_branch:
-            return
-
-        branch = self.cgh.get("/repos/{repo_name}/branches/{branch_ref}",
-                              repo_name=self.repo_name,
-                              branch_ref=self.branch_ref)
-        head_hash = branch["commit"]["sha"]
-        # ...and only if we are the right worker. As the build results of the
-        # master branch are uploaded, we want all commits of a master branch to
-        # be built on the same worker, so the uploads don't conflict.
-        if not self.should_process(self.branch_ref):
-            return
-        print("processing: master", end="... ", file=sys.stderr)
-        sys.stderr.flush()
-        item = {"number": self.branch_ref, "sha": head_hash, "repo": self}
-        try:
-            item.update(get_status_info(
-                self.cgh, self.repo_name, head_hash, self.check_name))
-        except RuntimeError as err:
-            print(err, file=sys.stderr)
-        else:
-            # We consider main branches as always reviewed, since they are
-            # already in the main repository.
-            item["reviewed"] = True
-            print("done:\t%(number)7s@%(sha).7s revd=%(reviewed)d test="
-                  "%(tested)d success=%(success)d" % item, file=sys.stderr)
-            yield item
-
-    def grouped_pull_requests(self, show_main_branch):
-        """Retrieve and group PRs for this build config."""
-        reviewed = [pull for pull in self.process_pulls(show_main_branch)
-                    if pull["reviewed"]]
-        tested = [pull for pull in reviewed if pull["tested"]]
-        return {
-            "untested": [p for p in reviewed if not p["tested"]],
-            "failed": [p for p in tested if not p["success"]],
-            "succeeded": [p for p in tested if p["success"]],
-        }
+        if show_base_branch:
+            item = self.process_single_pr(self.branch_ref, repo_info["object"])
+            if item is not None:
+                yield item
 
     def __repr__(self):
         return "RepoConfig(%s)" % self.build_config
@@ -250,27 +204,39 @@ class RepoConfig:
 
 def main(args):
     """Script entry point."""
-    cache = PickledCache(args.github_cache_file)
-    with GithubCachedClient(token=github_token(), cache=cache) as cgh:
+    grouped = defaultdict(list)
+    transport = RequestsHTTPTransport(
+        url="https://api.github.com/graphql",
+        auth=("bearer", os.environ["GITHUB_TOKEN"]),
+    )
+    with Client(transport=transport) as session:
         # Find .env files for this worker, parse them and find PRs to process
         # for each build config.
-        grouped = defaultdict(list)
-        for env_file in glob.glob(os.path.join(
-                CONFIG_PATH, args.mesos_role,
-                args.container_name + args.config_suffix, "*.env")):
+        env_files = glob.glob(os.path.join(
+            args.definitions_dir, args.mesos_role,
+            args.container_name + args.config_suffix, "*.env",
+        ))
+        for env_file in env_files:
             env_file_name = os.path.basename(env_file)
-            if env_file_name == "DEFAULTS.env":
+            if env_file_name == DEFAULTENV_NAME:
                 continue
 
             try:
-                repo = RepoConfig(env_file_name[:-4], cgh, args)
+                repo = RepoConfig(env_file_name[:-4],
+                                  args.definitions_dir, args.mesos_role,
+                                  args.container_name, args.config_suffix,
+                                  args.worker_index, args.worker_pool_size)
             except ValueError as err:
                 print(env_file_name, err, sep=": ", file=sys.stderr)
             else:
                 # Extend PR groups with PRs from this repo.
-                groups = repo.grouped_pull_requests(args.show_main_branch)
-                for key, prs in groups.items():
-                    grouped[key] += prs
+                org, _, repo_name = repo.repo_name.partition("/")
+                repo_info = query_repo_info(session, org, repo_name,
+                                            repo.branch_ref,
+                                            args.show_base_branch)
+                for state, item in repo.process_pulls(session, repo_info,
+                                                      args.show_base_branch):
+                    grouped[state].append(item)
 
     def print_prs(group, number=None):
         """Print N randomly chosen PRs from group on stdout."""
@@ -280,9 +246,9 @@ def main(args):
         # Sort by PR number so that older PRs are built first. Don't use
         # .sort() here as it modifies the list in-place, and that list might
         # also be used elsewhere.
-        for pull in sorted(prs, key=lambda pr: pr["number"]):
+        for pull in sorted(prs, key=lambda pr: pr["updated_at"]):
             print(group, pull["number"], pull["sha"],
-                  pull["repo"].build_config, sep="\t")
+                  pull["build_config"], sep="\t")
 
     if grouped["untested"]:
         # If there are untested PRs waiting, build all of them first.
@@ -294,6 +260,8 @@ def main(args):
         print_prs("failed", 1)
     elif grouped["succeeded"]:
         print_prs("succeeded", 1)
+    else:
+        print("nothing to test:", grouped, file=sys.stderr)
 
 
 def parse_args():
@@ -328,14 +296,17 @@ def parse_args():
         parser.add_argument(
             short_name, long_name, required=True, type=vtype, **kwargs)
 
-    parser.add_argument("-m", "--show-main-branch", action="store_true",
-                        help="Also show refs for the main branch")
+    parser.add_argument(
+        "--definitions-dir", metavar="DIR",
+        default=os.path.join("ali-bot", "ci", "repo-config"),
+        help=("directory where .env files are located in a hierarchy; expects "
+              "a directory structure of the form DIR/ROLE/CONTAINER/*.env "
+              "(default %(default)s)"))
 
-    parser.add_argument("-f", "--github-cache-file",
-                        default=os.path.expanduser(
-                            "~/.cached_github_client_cache"),
-                        help=("Where to cache GitHub API responses "
-                              "(default %(default)s)"))
+    parser.add_argument(
+        "-b", "--show-base-branch", action="store_true",
+        help=("Also consider checks on the latest commit of each repo's base "
+              "branch."))
 
     add_env_arg("-i", "--worker-index", "WORKER_INDEX", vtype=int,
                 help="Index for the current worker")
@@ -358,6 +329,78 @@ def parse_args():
               " dash, use -s=%(metavar)s instead of -s %(metavar)s."))
 
     return parser.parse_args()
+
+
+QUERY = gql("""\
+query statuses(
+  $repoOwner: String!
+  $repoName: String!
+  $baseBranch: String!
+  $includeBaseBranch: Boolean!
+) {
+  repository(owner: $repoOwner, name: $repoName) {
+    # Fetch status for the latest commit on the base branch too, if requested.
+    object(expression: $baseBranch) @include(if: $includeBaseBranch) {
+      ...commitInfo
+    }
+
+    pullRequests(
+      last: 75
+      baseRefName: $baseBranch
+      states: OPEN
+      orderBy: { field: UPDATED_AT, direction: DESC }
+    ) {
+      nodes {
+        number
+        title
+        isDraft
+        authorAssociation
+        author {
+          login
+        }
+        # APPROVED reviews do not include dismissed approvals, so no need to
+        # check the commit ID matches.
+        # We only need to know whether this PR has been approved at all (the
+        # only values that matter for totalCount are 0 and >0), so limit our
+        # query to the latest APPROVED review, if any.
+        reviews(last: 1, states: APPROVED) {
+          isApproved: totalCount
+        }
+        commits(last: 1) {
+          nodes {
+            commit {
+              ...commitInfo
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fragment commitInfo on Commit {
+  oid
+  pushedDate
+  status {
+    contexts {
+      context
+      state
+    }
+  }
+}
+
+query team($repoOwner: String!, $teamSlug: String!) {
+  organization(login: $repoOwner) {
+    team(slug: $teamSlug) {
+      members {
+        nodes {
+          login
+        }
+      }
+    }
+  }
+}
+""")
 
 
 if __name__ == "__main__":

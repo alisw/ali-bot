@@ -30,6 +30,37 @@ except ImportError:
     pass
 
 
+ERRORS_RE = re.compile(
+    ': (\x1b\\[[0-9;]+m)?(internal compiler |fatal )?error:|^Error(:| in )|'
+    ' !!! \x1b\\[[0-9;]+mError - |'
+    r'ninja: build stopped: |make.*: \*\*\*|\[(ERROR|FATAL)\]')
+WARNINGS_RE = re.compile(
+    ': warning:|^Warning: (?!Unused direct dependencies:$)|'
+    '  !  \x1b\\[[0-9;]+mWarning - ')
+FAILED_UNIT_TEST_RE = re.compile(
+    r'Test *#[0-9]*: .*\*\*\*(Failed|Timeout|Exception)|% tests passed')
+KILLED_RE = re.compile(r'fatal error: Killed signal terminated program')
+CMAKE_ERROR_RE = re.compile(r'^CMake Error')
+O2CHECKCODE_RE = re.compile(r'=== List of errors found ===')
+# Messages from the full system test
+FST_TASK_TIMEOUT_RE = re.compile(r'task timeout reached')
+FST_LOGFILE_RE = re.compile(r'Detected critical problem in logfile')
+FST_FAILED_CMD_RE = re.compile(r'^command .* had nonzero exit code [0-9]+$')
+# For the comment previewing error messages, if any
+ALL_ERROR_MSG_RE = re.compile('|'.join(regex.pattern for regex in (
+    ERRORS_RE,
+    FAILED_UNIT_TEST_RE,
+    KILLED_RE,
+    CMAKE_ERROR_RE,
+    FST_TASK_TIMEOUT_RE,
+    FST_LOGFILE_RE,
+    FST_FAILED_CMD_RE,
+    # Excluding WARNINGS_RE (unwanted in preview comment) and O2CHECKCODE_RE
+    # (not useful without context, and the errors it shows should be found by
+    # other regexes in the o2checkcode log anyway).
+)))
+
+
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--work-dir", "-w", default="sw", dest="workDir")
@@ -153,7 +184,7 @@ class Logs(object):
     def find(self):
         search_path = join(self.work_dir, "BUILD", "*latest*", "log")
         print("Searching all logs matching:", search_path, file=sys.stderr)
-        suffix = ("latest-" + self.develPrefix).rstrip("-")
+        suffix = "latest-" + self.develPrefix if self.develPrefix else "latest"
         self.all_logs = [x for x in glob(search_path)
                          if dirname(x).endswith(suffix)]
         self.all_logs.sort(key=getmtime)
@@ -186,7 +217,7 @@ class Logs(object):
         Matching lines and context lines from all files are returned
         concatenated into a single string.
         '''
-        context_sep = '--\n'
+        context_sep = '--\n' if context_before > 0 or context_after > 0 else ''
         out_lines = []
         for log in self.important_logs if main_packages_only else self.all_logs:
             if any(fnmatch(log, ignore) for ignore in ignore_log_files):
@@ -196,7 +227,7 @@ class Logs(object):
             future_context = 0
             first_match = True
             try:
-                with open(log) as logf:
+                with open(log, encoding='utf-8') as logf:
                     for line in logf:
                         if re.search(regex, line):
                             # If this is the first match in this file, print
@@ -227,52 +258,50 @@ class Logs(object):
         return ''.join(out_lines)
 
     def grep(self):
-        """Grep for errors in the build logs, or, if none are found,
+        '''Grep for errors in the build logs, or, if none are found,
         return the last N lines where N is the limit argument.
 
         Also extract errors from failed unit tests and o2checkcode, and various
         other helpful messages.
-        """
-        error_log_lines = []
-        for log in self.all_logs:
-            err, out = getstatusoutput("grep -he ': error:' -A 3 -B 3 -- %s "
-                                       "|| tail -n %s %s" % (log, self.limit, log))
-            if err:
-                print("Error while parsing logs", out, sep="\n", file=sys.stderr)
-                continue
-            error_log_lines.append(log)
-            error_log_lines.extend(out.split("\n"))
-        self.error_log = "\n".join(error_log_lines[:self.limit]).strip(" \n\t")
+        '''
+        error_log = self.grep_logs(ALL_ERROR_MSG_RE,
+                                   context_before=0, context_after=0)
+        if error_log:
+            # Get the first recognised error messages from the error log.
+            error_log_lines = error_log.split('\n')[:self.limit]
+        else:
+            # Get the last lines from the log for the package built last.
+            try:
+                with open(self.all_logs[-1], encoding="utf-8") as logf:
+                    error_log_lines = logf.read().splitlines()[-self.limit:]
+            except IndexError:
+                error_log_lines = ['No log files found']
+            except OSError as err:
+                error_log_lines = ['Error opening log {}: {!r}'
+                                   .format(self.all_logs[-1], err)]
+        self.preview_error_log = '\n'.join(error_log_lines).strip()
 
         # Messages from the general error/warning logs are reported in
         # o2checkcode_messages as well, so don't report them twice. The general
         # logs also contain false positives, so o2checkcode_messages is better.
         self.errors_log = self.grep_logs(
-            r': (internal compiler |fatal )?error:|^Error(:| in )|^fatal: |'
-            r'ninja: build stopped: |make.*: \*\*\*|\[(ERROR|FATAL)\]',
-            ignore_log_files=['*/o2checkcode-latest*/log'])
+            ERRORS_RE, ignore_log_files=['*/o2checkcode-latest*/log'])
         self.warnings_log = self.grep_logs(
-            r': warning:|^Warning: (?!Unused direct dependencies:$)',
-            main_packages_only=True)
+            WARNINGS_RE, main_packages_only=True)
         self.o2checkcode_messages = self.grep_logs(
-            r'=== List of errors found ===',
-            context_before=0, context_after=float('inf'))
+            O2CHECKCODE_RE, context_before=0, context_after=float('inf'))
         self.failed_unit_tests = self.grep_logs(
-            r'Test *#[0-9]*: .*\*\*\*(Failed|Timeout)|% tests passed',
-            context_before=0, context_after=0)
-        self.compiler_killed = self.grep_logs(
-            r'fatal error: Killed signal terminated program')
+            FAILED_UNIT_TEST_RE, context_before=0, context_after=0)
+        self.compiler_killed = self.grep_logs(KILLED_RE)
         self.cmake_errors = self.grep_logs(
-            r'^CMake Error', context_before=0, context_after=10)
+            CMAKE_ERROR_RE, context_before=0, context_after=10)
         # These two sections are for the O2 full system test.
         self.fst_task_timeout = self.grep_logs(
-            r'task timeout reached', context_before=3, context_after=0)
+            FST_TASK_TIMEOUT_RE, context_before=3, context_after=0)
         self.full_system_test = self.grep_logs(
-            r'Detected critical problem in logfile',
-            context_before=0, context_after=20)
+            FST_LOGFILE_RE, context_before=0, context_after=20)
         self.fst_failed_command = self.grep_logs(
-            r'^command .* had nonzero exit code [0-9]+$',
-            context_before=0, context_after=float('inf'))
+            FST_FAILED_CMD_RE, context_before=0, context_after=float('inf'))
 
     def generate_pretty_log(self):
         '''Extract error messages from logs.
@@ -286,8 +315,8 @@ class Logs(object):
         def display(string):
             return 'block' if string else 'none'
 
-        with open(join('copy-logs', self.pretty_log), 'w') as f:
-            f.write(PRETTY_LOG_TEMPLATE % {
+        with open(join('copy-logs', self.pretty_log), 'w', encoding='utf-8') as out_f:
+            out_f.write(PRETTY_LOG_TEMPLATE % {
                 'status': 'succeeded' if self.build_successful else 'failed',
                 'log_url': self.log_url,
                 'o2checkcode': htmlescape(self.o2checkcode_messages),
@@ -419,12 +448,13 @@ def handle_pr_id(cgh, pr, logs, args):
                      ref=pr.commit)
     sha = commit["sha"]
 
+    message = ""
     if not args.pending:
         message = "Error while checking %s for %s at %s:\n" % (args.status, sha, datetime.datetime.now().strftime("%Y-%m-%d %H:%M"))
         if args.message:
             message += args.message
         else:
-            message += "```\n%s\n```\nFull log [here](%s).\n" % (to_unicode(logs.error_log), to_unicode(logs.url))
+            message += "```\n%s\n```\nFull log [here](%s).\n" % (to_unicode(logs.preview_error_log), to_unicode(logs.url))
 
     if args.dry_run:
         # commit does not exist...

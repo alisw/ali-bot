@@ -19,6 +19,11 @@ class Approvers(object):
     return self.approvers
   @staticmethod
   def from_str(s, users_override=[]):
+    if s == "approved":
+      # Special value returned by __str__ when self.approvers is True.
+      a = Approvers(users_override=users_override)
+      a.push(0, True)
+      return a
     match = re.findall("([0-9]+) of ([^;]+)?", s)
     a = Approvers(users_override=users_override)
     for m in match:
@@ -123,13 +128,45 @@ class State(object):
     else:
       for fn in pull.get_files():
         debug("determining permissions for file %s" % fn)
+        num_approve_this_file = 1   # 0 is treated specially, see below
+        approvers_for_file = set()
         for rule in perms:
           num_approve,approve = rule(fn, pull.who)  # approve can be bool or set (not list)
           if approve:
             debug("file %s matched by rule %s: %s" % (fn, rule.path_regexp, approve))
-            self.approvers.push(num_approve, approve)
-            break
-        assert approve, "this should not happen: for file %s no rule matches" % fn
+            # This isn't quite airtight: we're trying to construct an OR-ed
+            # rule here. 1 of {x, y} OR 1 of {a, b} == 1 of {a, b, x, y}, so
+            # this is fine, but e.g. 2 of {x, y, z} OR 1 of {a, b} is not the
+            # same as 2 of {a, b, x, y, z}. If we take num_approve to mean we
+            # need this many approvers in general, not necessarily out of the
+            # specific set given, then this algorithm is fine.
+            if num_approve > 0 and num_approve_this_file > 0:
+              num_approve_this_file = max(num_approve_this_file, num_approve)
+            else:
+              # If num_approve is zero, that means approve is True (not a set),
+              # and we need a num_approve_this_file of zero to go with it.
+              num_approve_this_file = 0
+            # Now compute approvers_for_file = approvers_for_file OR approve.
+            if isinstance(approvers_for_file, bool):
+              if not approvers_for_file:
+                # False OR X is X.
+                approvers_for_file = approve
+              # Other case (approvers_for_file is True): True OR X is True, so
+              # nothing changes.
+            elif isinstance(approve, bool):
+              # We know approve is truthy; x OR True is True.
+              approvers_for_file = True
+            else:
+              # Handle the case where both are sets.
+              approvers_for_file |= approve
+        assert approvers_for_file != set(), \
+          "this should not happen: for file %s no rule matches" % fn
+        debug("approvers are (n=%d): %r", num_approve_this_file,
+              approvers_for_file if isinstance(approvers_for_file, bool)
+              else sorted(approvers_for_file))
+        self.approvers.push(num_approve_this_file,
+                            approvers_for_file if isinstance(approvers_for_file, bool)
+                            else sorted(approvers_for_file))
     debug("computed list of approvers: %s (override: %s)" % (self.approvers, self.approvers.users_override))
     self.approvers_unchanged = Approvers.from_str(str(self.approvers), users_override=self.approvers.users_override)
     self.action_approval_required(git, pr, perms, tests)

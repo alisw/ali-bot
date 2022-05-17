@@ -1,45 +1,57 @@
 #!/bin/bash -ex
 set -ex
 
-# Check for required variables
-ALIDIST_SLUG=${ALIDIST_SLUG:-alisw/alidist@master}
-if echo "$ALIDIST_SLUG" | grep -q '!!FLPSUITE_LATEST!!'; then
-  case $(date +%u) in
-    1)  # Monday (for Sunday night build)
-      # Sort available flp-suite-* branches by version number, then pick the latest one.
-      flpsuite_latest=$(git ls-remote "https://github.com/${ALIDIST_SLUG%@*}" 'refs/heads/flp-suite-*' |
-                          sort -rVt - -k 3 | sed -rn '1s|[0-9a-f]+\trefs/heads/||p') ;;
-    *)  # Tuesday-Sunday
-      # Fetch the latest installed FLP suite version, but amend the patch version
-      # number to .0 (as that's how the alidist branches are named).
-      flpsuite_latest=$(curl -fSsL http://aliecs.cern.ch/ |
-                          sed -rn 's/.*\(([0-9.]+)\.[0-9]+\) - ALICE Global Commissioning head node.*/flp-suite-v\1.0/p') ;;
-  esac
-  ALIDIST_SLUG=${ALIDIST_SLUG//!!FLPSUITE_LATEST!!/$flpsuite_latest}
-  unset flpsuite_latest
-fi
+edit_package_tag () {
+  # Patch package definition (e.g. o2.sh) with a new tag and version, changing
+  # the defaults as well if necessary.
+  local package=$1 defaults=$2 tag=$3 version=$4
+  sed -E -i.old \
+      "s|^tag: .*\$|tag: \"$tag\"|; ${version:+s|^version: .*\$|version: \"$version\"|}" \
+      "alidist/${package,,}.sh"
+
+  # Patch defaults definition (e.g. defaults-o2.sh)
+  # Process overrides by changing in-place the given defaults. This requires
+  # some YAML processing so we are better off with Python.
+  tag=$tag package=$package defaults=$defaults $PYTHON <<\EOF
+import yaml
+from os import environ
+f = "alidist/defaults-%s.sh" % environ["defaults"].lower()
+p = environ["package"]
+meta, rest = open(f).read().split("\n---\n", 1)
+d = yaml.safe_load(meta)
+open(f+".old", "w").write(yaml.dump(d)+"\n---\n"+rest)
+write = False
+overrides = d.setdefault("overrides", {}).setdefault(p, {})
+if "tag" in overrides:
+    overrides["tag"] = environ["tag"]
+    write = True
+v = environ.get("AUTOTAG_OVERRIDE_VERSION")
+if v and "version" in overrides:
+    overrides["version"] = v
+    write = True
+if write:
+    open(f, "w").write(yaml.dump(d)+"\n---\n"+rest)
+EOF
+}
 
 # PACKAGES contains whitespace-separated package names to tag. Only the first is
 # built, but every listed package's tag is edited in the resulting commit. This
 # enables tagging e.g. O2 and O2Physics at the same time, with the same tag, and
 # building O2Physics (which pulls in O2 as well).
 main_pkg=${PACKAGES%% *}
-[ -n "$PACKAGES" ]
-[ -n "$main_pkg" ]
-[ -n "$AUTOTAG_TAG" ]
-[ -n "$NODE_NAME" ]
-
-# Clean up old stuff
-rm -rf alidist/
+# Check for required variables
+: "${PACKAGES:?}" "${main_pkg:?}" "${NODE_NAME:?}"
+: "${ALIDIST_SLUG:=alisw/alidist@master}" "${DEFAULTS:=release}"
 
 # Determine branch from slug string: group/repo@ref
 ALIDIST_BRANCH="${ALIDIST_SLUG##*@}"
 ALIDIST_REPO="${ALIDIST_SLUG%@*}"
 
+# Clean up old stuff
+rm -rf alidist/
+
 git config --global user.name 'ALICE Builder'
 git config --global user.email alibuild@cern.ch
-
-git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO alidist/
 
 # Set the default python and pip depending on the architecture...
 case $ARCHITECTURE in
@@ -53,10 +65,80 @@ case "$PYTHON_VERSION" in
 esac
 
 # Install the latest release if ALIBUILD_SLUG is not provided
-$PIP install --user --ignore-installed --upgrade ${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}
+$PIP install --user --upgrade "${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}"
+aliBuild analytics off
 
+# The alidist branches are always named with a trailing .0 instead of the
+# "normal" patch release number.
+flpsuite_latest=$(git ls-remote "https://github.com/$ALIDIST_REPO" -- 'refs/heads/flp-suite-v*' |
+                    cut -f2 | sort -V | sed -rn '$s,^refs/heads/(.*)\.[0-9]+$,\1.0,p')
+flpsuite_current=flp-suite-v$(curl -fSsLk https://ali-flp.cern.ch/suite_version)
+flpsuite_current=${flpsuite_current%.*}.0
+if [ "$(date +%u)" = 1 ]; then   # On Mondays (for Sunday night builds)
+  flpsuite_current=$flpsuite_latest
+fi
+
+ALIDIST_BRANCH=${ALIDIST_BRANCH//!!FLPSUITE_LATEST!!/$flpsuite_latest}
+ALIDIST_BRANCH=${ALIDIST_BRANCH//!!FLPSUITE_CURRENT!!/$flpsuite_current}
+git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO alidist/
+
+# Switch the recipes for the packages specified in ALIDIST_OVERRIDE_PKGS
+# to the version found in the alidist branch specified by ALIDIST_OVERRIDE_BRANCH
+if [ -n "$ALIDIST_OVERRIDE_BRANCH" ]; then
+  git -C alidist checkout $ALIDIST_OVERRIDE_BRANCH -- \
+      $(echo $ALIDIST_OVERRIDE_PKGS |tr ",[:upper:]" "\ [:lower:]" | xargs -r -n1 echo | sed -e 's/$/.sh/g')
+fi
+
+# Apply explicit tag overrides after possibly checking out the recipe from
+# ALIDIST_OVERRIDE_BRANCH to allow combining the two effects.
+for tagspec in $OVERRIDE_TAGS; do
+  tag=${tagspec#*=}
+  tag=${tag//!!FLPSUITE_LATEST!!/$flpsuite_latest}
+  tag=${tag//!!FLPSUITE_CURRENT!!/$flpsuite_current}
+  tag=${tag//!!ALIDIST_BRANCH!!/$ALIDIST_BRANCH}
+  tag=$(LANG=C TZ=Europe/Zurich date -d "@$START_TIMESTAMP" "+$tag")
+  edit_package_tag "${tagspec%%=*}" "$DEFAULTS" "$tag"
+done
+
+# Select build directory in order to prevent conflicts and allow for cleanups.
+workarea=$(mktemp -d "$PWD/daily-tags.XXXXXXXXXX")
+
+# Define aliBuild args once, so that we have (mostly) the same args for
+# templating and the real build.
+alibuild_args=(
+  --debug --work-dir "$workarea" --jobs "${JOBS:-8}"
+  --fetch-repos --reference-sources mirror
+  ${ARCHITECTURE:+--architecture "$ARCHITECTURE"}
+  ${DEFAULTS:+--defaults "$DEFAULTS"}
+  build "$main_pkg"
+)
+
+# Process the pattern as a jinja2 template with aliBuild's templating plugin.
+AUTOTAG_PATTERN=$(cat << EOF | aliBuild --debug --plugin templating "${alibuild_args[@]}"
+{%- set alidist_branch = "$ALIDIST_BRANCH" -%}
+{%- set flpsuite_latest = "$flpsuite_latest" -%}
+{%- set flpsuite_current = "$flpsuite_current" -%}
+$AUTOTAG_PATTERN
+EOF
+)
+
+# Finally, replace strftime formatting (%Y, %m, %d etc) in the pattern.
+AUTOTAG_TAG=$(LANG=C TZ=Europe/Zurich date -d "@$START_TIMESTAMP" "+$AUTOTAG_PATTERN")
+
+: "${AUTOTAG_TAG:?}"   # make sure the tag isn't empty
 [ "$TEST_TAG" = true ] && AUTOTAG_TAG=TEST-IGNORE-$AUTOTAG_TAG
-[ -e git-creds ] || git config --global credential.helper "store --file ~/git-creds-autotag"  # backwards compat
+
+if echo "$AUTOTAG_TAG" | grep -Fq '!!'; then
+  echo "Tag $AUTOTAG_TAG contains !!-placeholders! These will not be replaced; use Jinja2 syntax instead. Exiting." >&2
+  exit 1
+fi
+
+# The tag doesn't exist yet, so build using the branch first.
+for package in $PACKAGES; do
+  edit_package_tag "$package" "$DEFAULTS" "rc/$AUTOTAG_TAG" "$AUTOTAG_OVERRIDE_VERSION"
+done
+
+git -C alidist diff || :
 
 for package in $PACKAGES; do (
   rm -rf "${package,,}.git"
@@ -106,70 +188,24 @@ for package in $PACKAGES; do (
   fi
 ); done
 
-: ${DEFAULTS:=release}
-
-edit_tags () {
-  # Patch package definition (e.g. o2.sh)
-  local package tag=$1 version=$AUTOTAG_OVERRIDE_VERSION
-  for package in $PACKAGES; do
-    sed -E -i.old \
-        "s|^tag: .*\$|tag: \"$tag\"|; ${version:+s|^version: .*\$|version: \"$version\"|}" \
-        "alidist/${package,,}.sh"
-
-    # Patch defaults definition (e.g. defaults-o2.sh)
-    # Process overrides by changing in-place the given defaults. This requires
-    # some YAML processing so we are better off with Python.
-    tag=$tag package=$package DEFAULTS=$DEFAULTS $PYTHON <<\EOF
-import yaml
-from os import environ
-f = "alidist/defaults-%s.sh" % environ["DEFAULTS"].lower()
-p = environ["package"]
-meta, rest = open(f).read().split("\n---\n", 1)
-d = yaml.safe_load(meta)
-open(f+".old", "w").write(yaml.dump(d)+"\n---\n"+rest)
-write = False
-overrides = d.setdefault("overrides", {}).setdefault(p, {})
-if "tag" in overrides:
-    overrides["tag"] = environ["tag"]
-    write = True
-v = environ.get("AUTOTAG_OVERRIDE_VERSION")
-if v and "version" in overrides:
-    overrides["version"] = v
-    write = True
-if write:
-    open(f, "w").write(yaml.dump(d)+"\n---\n"+rest)
-EOF
-  done
-}
-
-# Switch the recipes for the packages specified in ALIDIST_OVERRIDE_PKGS
-# to the version found in the alidist branch specified by ALIDIST_OVERRIDE_BRANCH
-if [ ! "X$ALIDIST_OVERRIDE_BRANCH" = X ]; then
-  git -C alidist checkout $ALIDIST_OVERRIDE_BRANCH -- $(echo $ALIDIST_OVERRIDE_PKGS |tr ",[:upper:]" "\ [:lower:]" | xargs -r -n1 echo | sed -e 's/$/.sh/g')
-fi
-
-# The tag doesn't exist yet, so build using the branch first.
-edit_tags "rc/$AUTOTAG_TAG"
-
-git -C alidist diff || :
-
-# Select build directory in order to prevent conflicts and allow for cleanups.
-workarea=$(mktemp -d "$PWD/daily-tags.XXXXXXXXXX")
-
-REMOTE_STORE="${REMOTE_STORE:-rsync://repo.marathon.mesos/store/::rw}"
-aliBuild --reference-sources mirror                    \
-         --debug                                       \
-         --work-dir "$workarea"                        \
-         ${ARCHITECTURE:+--architecture $ARCHITECTURE} \
-         --jobs "${JOBS:-8}"                           \
-         --fetch-repos                                 \
-         --remote-store $REMOTE_STORE                  \
-         ${DEFAULTS:+--defaults $DEFAULTS}             \
-         build "$main_pkg" || {
+# Set default remote store -- S3 on slc8 and Ubuntu, rsync everywhere else.
+case "$ARCHITECTURE" in
+  slc8_*|ubuntu*) : "${REMOTE_STORE:=b3://alibuild-repo::rw}" ;;
+  *) : "${REMOTE_STORE:=rsync://repo.marathon.mesos/store/::rw}" ;;
+esac
+case "$REMOTE_STORE" in
+  b3://*)
+    set +x  # avoid leaking secrets
+    . /secrets/aws_bot_secrets
+    export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+    set -x ;;
+esac
+aliBuild --remote-store "$REMOTE_STORE" "${alibuild_args[@]}" || {
   builderr=$?
   echo "Exiting with an error ($builderr), not tagging"
   exit $builderr
 }
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 
 # Now we tag, in case we should
 for package in $PACKAGES; do
@@ -189,11 +225,15 @@ for package in $PACKAGES; do
 done
 
 # Also tag the appropriate alidist
+: "${PACKAGES_IN_ALIDIST_TAG:=$PACKAGES}"
 # We normally want to build using the tag, and now it exists.
-edit_tags "$AUTOTAG_TAG"
+(cd alidist && git stash)   # first, undo our temporary changes, which might include changes that shouldn't be committed
+for package in $PACKAGES_IN_ALIDIST_TAG; do
+  edit_package_tag "$package" "$DEFAULTS" "$AUTOTAG_TAG" "$AUTOTAG_OVERRIDE_VERSION"
+done
 cd alidist
 edited_files=("defaults-${DEFAULTS,,}.sh")
-for edited_pkg in $PACKAGES; do
+for edited_pkg in $PACKAGES_IN_ALIDIST_TAG; do
   edited_files+=("${edited_pkg,,}.sh")
 done
 # If the file was modified, the output of git status will be non-empty.

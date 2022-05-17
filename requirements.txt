@@ -7,3 +7,5 @@ python-ldap[services]
 boto3
 s3cmd
 pyyaml
+gql; python_version >= '3.6'
+requests-toolbelt; python_version >= '3.6'  # for gql

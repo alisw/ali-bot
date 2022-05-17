@@ -40,7 +40,10 @@ function report_state () {
 
 function clean_env () {
   # This function calls its arguments with access tokens removed from the environment.
-  GITLAB_USER='' GITLAB_PASS='' GITHUB_TOKEN='' INFLUXDB_WRITE_URL='' CODECOV_TOKEN='' "$@"
+  # The X509_USER_* vars might not apply if building inside a container, so
+  # remove them too. They shouldn't be used by the build anyway.
+  GITLAB_USER='' GITLAB_PASS='' GITHUB_TOKEN='' INFLUXDB_WRITE_URL='' CODECOV_TOKEN='' \
+    X509_USER_CERT='' X509_USER_KEY='' "$@"
 }
 
 function pipinst () {
@@ -48,7 +51,7 @@ function pipinst () {
   # that case: time out, skip and try again later.
   case $(uname -s) in
     Darwin) short_timeout pip install -U --install-option=--old-and-unmanageable "git+https://github.com/$1";;
-    *) short_timeout pip3 install --user --upgrade "git+https://github.com/$1";;
+    *) short_timeout python3 -m pip install --user --upgrade --editable "git+https://github.com/$1";;
   esac
 }
 
@@ -104,6 +107,17 @@ function reset_git_repository () {
     # Sometimes the clone gets stuck on large repos, so we need the timeout.
     short_timeout git clone "$@" "$repodir"
   fi
+}
+
+function build_type_to_status () {
+  # Translate a build type from list-branch-pr into a GitHub check status.
+  case "$1" in
+    untested) echo pending;;
+    failed) echo error;;
+    succeeded) echo success;;
+    *) echo "WARNING: unrecognised status $BUILD_TYPE, falling back to pending" >&2
+       echo pending;;
+  esac
 }
 
 function report_pr_errors () {

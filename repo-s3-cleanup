@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+
+'''Delete old tarballs in aliBuild's S3 remote store.
+
+This script only considers the specified packages' tarballs for deletion,
+leaving tarballs they depend on in place (but see the warning about false
+positives below).
+
+Symlinks to deleted tarballs are however cleaned up from
+TARS/<arch>/<package>/<tarball>, and symlinks under the respective
+TARS/<arch>/dist*/<package>/<package>-<version>/ are deleted as well.
+
+If a tarball is considered for deletion, but another tarball depends on it (and
+the latter is not deleted), then the former will be left in place, even if it
+would otherwise be old enough for deletion.
+'''
+
+import logging
+import os
+import sys
+from argparse import ArgumentParser, Namespace
+from datetime import datetime, timezone, timedelta
+from fnmatch import fnmatchcase
+from functools import lru_cache
+from boto3 import client
+
+
+def main(args: Namespace) -> int:
+    '''Script entry point.'''
+    setup_logger(verbose=args.verbose)
+    log = logging.getLogger(__name__)
+
+    try:
+        s3c = client('s3', endpoint_url=args.endpoint_url,
+                     aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+                     aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'])
+    except KeyError as err:
+        log.fatal('the AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment'
+                  ' variables are required', exc_info=err)
+        return 1
+
+    enabled_archs: 'list[str]' = [
+        entry['Prefix']
+        for entry in s3c.list_objects_v2(Bucket=args.bucket, Delimiter='/',
+                                         Prefix='TARS/')['CommonPrefixes']
+        if any(fnmatchcase(entry['Prefix'][4:].strip('/'), pattern)
+               for pattern in args.architecture_patterns or ['*'])
+    ]
+    log.debug('matched architectures: %s',
+              ', '.join(arch[4:].strip('/') for arch in enabled_archs))
+
+    # Scan TARS/<arch>/store/*/*/*.tar.gz to find main tarballs.
+    cutoff = datetime.now(timezone(timedelta(0), 'UTC')) - \
+        timedelta(days=args.max_age)
+    to_delete: 'set[str]' = set()
+    dependencies: 'set[tuple[str, str]]' = set()
+    sizes: 'dict[str, int]' = {}
+    for arch_path in enabled_archs:
+        for key, mtime, size in get_hierarchy(s3c, args.bucket, arch_path):
+            if not key.startswith(arch_path + 'store/'):
+                continue
+            basename = os.path.basename(key)
+            if not any(basename.startswith(package + '-') and
+                       basename.endswith('.tar.gz')
+                       for package in args.packages):
+                continue
+            if mtime >= cutoff:
+                log.debug('tarball mtime %s newer than %d days; skipping: %s',
+                          mtime.strftime('%Y-%m-%d %H:%M:%SZ'),
+                          args.max_age, key)
+                continue
+            log.debug('tarball mtime %s older than %d days (size: %s): %s',
+                      mtime.strftime('%Y-%m-%d %H:%M:%SZ'),
+                      args.max_age, format_byte_size(size), key)
+            sizes[key] = size
+            to_delete.add(key)
+            symlinks, deps = get_keys_for_deletion(s3c, args.bucket, key)
+            to_delete |= symlinks
+            dependencies |= deps
+
+    actually_deleted = delete_all_possible(s3c, args.bucket, to_delete,
+                                           dependencies, do_it=args.do_it)
+    log.info('%s %d objects, saving %s',
+             'deleted' if args.do_it else 'would delete',
+             len(actually_deleted),
+             format_byte_size(sum(sizes.get(k, 0) for k in actually_deleted)))
+    return 0
+
+
+def get_keys_for_deletion(s3c, bucket: str, tarball_key: str) \
+        -> 'tuple[set[str], set[tuple[str, str]]]':
+    '''Return keys which should be deleted for the given tarball.'''
+    log = logging.getLogger(__name__)
+    arch_prefix = '/'.join(tarball_key.split('/')[:2]) + '/'
+    dependencies: set[tuple[str, str]] = set()
+
+    # Find symlinks at TARS/<package>/*.tar.gz that point to the tarball we
+    # just deleted and delete them as well.
+    symlinks = {key for key in get_package_symlinks(s3c, bucket, arch_prefix)
+                if symlink_matches(s3c, bucket, key, tarball_key)}
+
+    # Find directories at TARS/{dist,dist-direct,dist-runtime}/<package>/ for
+    # the tarball we just deleted and clean them up.
+    dist_symlinks = get_dist_symlinks(s3c, bucket, arch_prefix)
+    for symlink_key in dist_symlinks:
+        if not symlink_matches(s3c, bucket, symlink_key, tarball_key):
+            continue
+
+        # Make sure the dirname where the matching symlink is ends with the
+        # tarball basename (minus .<arch>.tar.gz) to make sure we're not
+        # deleting a dependent package's dist dir!
+        # For example, a symlink to O2-nightlyX.tar.gz might appear in
+        # .../dist/O2PDPSuite/O2PDPSuite-nightlyX/, in which case we want to
+        # delete O2-nightlyX only if we're also deleting O2PDPSuite-nightlyX.
+        arch = tarball_key.split('/', 2)[1]
+        package = os.path.basename(os.path.dirname(symlink_key))
+        if os.path.basename(tarball_key) != f'{package}.{arch}.tar.gz':
+            # If we've found a symlink in another package's dist dir, add a
+            # dependency relation.
+            log.debug('\t- dependency found: appears under %s/',
+                      os.path.dirname(symlink_key))
+            this_symlink = \
+                f'{os.path.dirname(symlink_key)}/{package}.{arch}.tar.gz'
+            dependencies.add((get_symlink_target(s3c, bucket, this_symlink),
+                              tarball_key))
+        else:
+            # If we've found a symlink in our own dist dir, add all symlinks in
+            # the same dir to symlinks.
+            symlink_dir = os.path.dirname(symlink_key) + '/'
+            # symlink_key will also be included.
+            symlinks.update(key for key in dist_symlinks
+                            if key.startswith(symlink_dir))
+
+    return symlinks, dependencies | {(tarball_key, s) for s in symlinks}
+
+
+def delete_all_possible(s3c, bucket: str, to_delete: 'set[str]',
+                        dependencies: 'set[tuple[str, str]]',
+                        *, do_it: bool = False) -> 'set[str]':
+    '''Delete old orphan packages and return files deleted and their sizes.'''
+    log = logging.getLogger(__name__)
+
+    # A tarball can be deleted if nothing else depends on it, with dependency
+    # relationships having been calculated earlier from dist/ symlinks.
+    # Resolve transitive dependency relations until to_delete converges.
+    keep: 'set[str]' = set()
+    prev_n_delete = -1
+    while prev_n_delete != len(to_delete):
+        prev_n_delete = len(to_delete)
+        keep = {down for up, down in dependencies
+                if up not in to_delete}
+        to_delete -= keep
+
+    for item in sorted(keep):
+        log.debug('not deleting %s: blocked by %s', item,
+                  ', '.join(up for up, down in dependencies
+                            if down == item and up not in to_delete))
+
+    for item in sorted(to_delete):
+        if do_it:
+            s3c.delete_object(Bucket=bucket, Key=item)
+            log.info('deleted: %s', item)
+        else:
+            log.info('would delete: %s', item)
+
+    return to_delete
+
+
+@lru_cache(maxsize=None)
+def get_hierarchy(s3c, bucket: str, arch_prefix: str) \
+        -> 'list[tuple[str, datetime, int]]':
+    '''Retrieve all objects under the specified prefix, caching the answer.'''
+    return [(item['Key'], item['LastModified'], item['Size'])
+            for page in s3c.get_paginator('list_objects_v2')
+                           .paginate(Bucket=bucket, Prefix=arch_prefix)
+            for item in page.get('Contents', ())]
+
+
+@lru_cache(maxsize=None)
+def get_package_symlinks(s3c, bucket: str, arch_prefix: str) -> 'list[str]':
+    '''Scan the bucket for symlinks to tarballs.'''
+    return [key for key, _, _ in get_hierarchy(s3c, bucket, arch_prefix)
+            if (key.startswith(arch_prefix) and key.endswith('.tar.gz')
+                and key[len(arch_prefix):].count('/') == 1)]
+
+
+@lru_cache(maxsize=None)
+def get_dist_symlinks(s3c, bucket: str, arch_prefix: str) -> 'list[str]':
+    '''Scan the bucket for symlinks to tarballs under dist*/.'''
+    return [key for key, _, _ in get_hierarchy(s3c, bucket, arch_prefix)
+            if (any(key.startswith(arch_prefix + dist + '/')
+                    for dist in ('dist', 'dist-direct', 'dist-runtime'))
+                and key.endswith('.tar.gz')
+                and key[len(arch_prefix):].count('/') == 3)]
+
+
+@lru_cache(maxsize=None)
+def get_symlink_target(s3c, bucket: str, symlink: str) -> str:
+    '''Retrieve the symlink's normalized target, caching the answer.
+
+    "Normalized" means that the returned value will be a valid S3 key for the
+    target tarball.
+    '''
+    raw_target = s3c.get_object(Bucket=bucket, Key=symlink)['Body'] \
+                    .read().decode('utf-8').rstrip('\n')
+    if raw_target.startswith('TARS/'):
+        return raw_target
+    if not raw_target.startswith('../../'):
+        raw_target = '../../' + raw_target
+    return os.path.normpath(os.path.dirname(symlink) + '/' + raw_target)
+
+
+def symlink_matches(s3c, bucket: str, symlink: str, tarball: str) -> bool:
+    '''Return whether symlink points to tarball, checking efficiently.'''
+    return (os.path.basename(tarball) == os.path.basename(symlink) and
+            # This step is expensive, so check for a basename match first.
+            tarball == get_symlink_target(s3c, bucket, symlink))
+
+
+def format_byte_size(size_bytes: int) -> str:
+    '''Make a number of bytes into a human-readable file size.'''
+    if size_bytes < 1024:
+        return f'{size_bytes:d} B'
+    kbytes = size_bytes / 1024
+    prefixes = 'KMGTPEZY'
+    for i, prefix in enumerate(prefixes):
+        prefix_size = kbytes / 1024 ** i
+        if abs(prefix_size) < 1024:
+            return f'{prefix_size:.1f} {prefix}iB'
+    return f'{kbytes / 1024 ** len(prefixes):.1f} {prefixes[-1]}iB'
+
+
+def setup_logger(verbose: bool) -> None:
+    '''Set up the logger for this module, and silence boto3.'''
+    logging.getLogger('boto3').setLevel(logging.WARNING)
+    log = logging.getLogger(__name__)
+    log.setLevel(logging.DEBUG if verbose else logging.INFO)
+    handler = logging.StreamHandler()
+    handler.setLevel(0)  # the level set above still applies
+    log.addHandler(handler)
+
+
+def parse_args() -> Namespace:
+    '''Parse command-line arguments.'''
+    parser = ArgumentParser(description=__doc__, epilog='''\
+    Warning: the way -p/--package is defined, it can cause false positives,
+    e.g. specifying "-p O2" leads to O2-customization tarballs being considered
+    for deletion as well (but not e.g. O2Suite due to the "-" added by this
+    script to the end of specified package names).
+    ''')
+    parser.add_argument(
+        '-v', '--verbose', action='store_true', default=False,
+        help='show debug output')
+    parser.add_argument(
+        '-y', '--do-it', action='store_true', default=False,
+        help='actually delete packages (without this, only print which '
+        'objects would be deleted)')
+    parser.add_argument(
+        '-u', '--endpoint-url', default='https://s3.cern.ch', metavar='URL',
+        help='S3 endpoint base URL (default %(default)s)')
+    parser.add_argument(
+        '-b', '--bucket', default='alibuild-repo',
+        help='S3 bucket to clean up (default %(default)s). '
+        'The script expects a TARS/<arch>/... hierarchy inside the bucket.')
+    parser.add_argument(
+        '-d', '--max-age', type=int, default=7,
+        help='delete packages older than MAX_AGE days (default %(default)s)')
+    parser.add_argument(
+        '-a', '--architecture', metavar='PATTERN', default=[],
+        action='append', dest='architecture_patterns',
+        help='architecture to clean up -- can be specified multiple times; '
+        'the default is to include all architectures; %(metavar)s is matched '
+        'against architectures using fnmatch (i.e. glob-style patterns)')
+    parser.add_argument(
+        '-p', '--package', metavar='PACKAGE', required=True,
+        action='append', dest='packages',
+        help='package name to clean up -- can be specified multiple times; '
+        'tarballs with names beginning with "%(metavar)s-" will be '
+        'considered for deletion')
+    return parser.parse_args()
+
+
+if __name__ == '__main__':
+    sys.exit(main(parse_args()))
