@@ -1,5 +1,5 @@
 ---
-name: Formatting
+name: C++ code formatting reusable workflow
 
 'on':
   workflow_call:
