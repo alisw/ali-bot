@@ -293,6 +293,7 @@ jobs:
           - Replace tabs with spaces and remove trailing whitespaces when a file
             is saved.
           EOF
+            exit 1
           fi
 
   pragma-once:
