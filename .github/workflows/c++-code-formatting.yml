@@ -290,8 +290,7 @@ jobs:
 
           - Emit spaces when the Tab key is pressed.
           - Display whitespace characters.
-          - Replace tabs with spaces and remove trailing whitespaces when a file
-            is saved.
+          - Replace tabs with spaces and remove trailing whitespaces when a file is saved.
           EOF
             exit 1
           fi
@@ -318,7 +317,7 @@ jobs:
               while IFS=: read -r file line column _; do
                 echo -n "::error file=$file,line=$line,column=$column,"
                 echo 'title=#pragma once::Do not use #pragma once.'
-                echo "$file" >> "$GITHUB_STEP_SUMMARY"
+                echo "- \`$file\`" >> "$GITHUB_STEP_SUMMARY"
               done
             exit 1
           else
