@@ -175,7 +175,9 @@ build_identifier=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
 # unset, but continue. In that case, granting a token will fail, which just
 # means that build jobs won't get their jalien_token_{cert,key} variables.
 for certdir in /etc/httpd /root/.globus /etc/grid-security ~/.globus; do
-  if [ -r "$certdir/hostcert.pem" ] && [ -r "$certdir/hostkey.pem" ]; then
+  if [ -f "$certdir/hostcert.pem" ] && [ -r "$certdir/hostcert.pem" ] &&
+     [ -f "$certdir/hostkey.pem"  ] && [ -r "$certdir/hostkey.pem"  ]
+  then
     export X509_USER_CERT=$certdir/hostcert.pem X509_USER_KEY=$certdir/hostkey.pem
     break
   fi
