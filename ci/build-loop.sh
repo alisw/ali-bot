@@ -4,7 +4,7 @@
 # variables passed to this script; they are set in continuous-builder.sh from
 # environment definitions in repo-config/.
 #
-# Some functions used here are defined in continuous-builder.sh.
+# Some functions used here are defined in build-helpers.sh.
 
 . build-helpers.sh
 get_config
@@ -241,8 +241,54 @@ else
   PR_OK=0
 fi
 
-# Run post-build cleanup command
-aliBuild clean --debug
+# Clean up old builds and installation data. Only touch the installation data of
+# development packages, as those are likely to take up lots of disk space over
+# time. The others are dependencies, which should be reused in the future.
+cleanup_start=$(date +%s)
+expiry_cutoff=$((cleanup_start - 2 * 24 * 60 * 60))  # 2 days ago
+symlinks_deleted=0
+kib_avail_before=$(df -kP . | awk 'END { print $4 }')
+arch=${use_docker:+$ARCHITECTURE}
+: "${arch:=$(aliBuild architecture)}"
+for symlink in sw/BUILD/* "sw/$arch"/*/*; do
+  # Ignore the directories that the symlinks point to.
+  [ -L "$symlink" ] || continue
+  if [[ "$symlink" = "sw/$arch"/*/* ]]; then
+    package_name=${symlink#sw/*/}
+    package_name=${package_name%/*}
+    if echo "$DEVEL_PKGS" | awk -v "pkg=$package_name" '
+      # If the package name matches any dev package, exit with an error so we
+      # skip to the deletion check.
+      (pkg == $3 || (!$3 && sub(/^.*\//, "", $1) && pkg == $1)) { exit 1 }
+    '; then
+      # This is NOT a symlink to a development package. Ignore it.
+      continue
+    fi
+  fi
+  if [ "$(modtime "$symlink")" -lt "$expiry_cutoff" ]; then
+    # This symlink hasn't been updated in a while. This means the build it
+    # belongs to hasn't run in the meantime. Just delete the symlink; later
+    # `aliBuild clean` will clean up the directory it points to.
+    rm -vf "$symlink"
+    ((symlinks_deleted++))
+  fi
+done
+
+# Run post-build cleanup command. This deletes the corresponding directories to
+# the symlinks we just deleted, assuming no other symlinks still point to them.
+# Also delete downloaded and locally-produced tarballs (these should all have
+# been extracted into the installation directory) and sources (these can be
+# easily reproduced from the mirror repos, which are kept).
+aliBuild clean --debug --aggressive-cleanup
+
+# Monitor how long cleanup takes, in case it slows builds down too much.
+kib_avail_after=$(df -kP . | awk 'END { print $4 }')
+influxdb_push cleanup "host=$(hostname -s)" \
+              "os=$(uname -s | tr '[:upper:]' '[:lower:]')" \
+              -- "duration_sec=$(("$(date +%s)" - cleanup_start))" \
+              "num_symlinks_deleted=$symlinks_deleted" \
+              "kib_freed=$((kib_avail_before - kib_avail_after))" \
+              "kib_avail=$kib_avail_after"
 
 (
   # Look for any code coverage file for the given commit and push it to

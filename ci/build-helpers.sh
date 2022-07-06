@@ -3,6 +3,28 @@
 # It is sourced on every iteration, so functions defined here can be overridden
 # while the builder is running.
 
+function influxdb_push () {
+  # Usage: influxdb_push TABLE TAG=V TAG=V -- FIELD=V FIELD=V
+  # Turn args into an InfluxDB string like "table,tag=v,tag=v field=v,field=v time".
+  local data=$1; shift
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --) data="$data $2"; shift 2;;
+      *)  data="$data,$1"; shift;;
+    esac
+  done
+  data="$data $(date +%s)000000000"
+  case "$INFLUXDB_WRITE_URL" in
+    '') ;;
+    # If INFLUXDB_WRITE_URL starts with insecure_https://, then strip
+    # "insecure_" and send the --insecure/-k option to curl.
+    insecure_*)
+      curl -fSs --max-time 20 -XPOST --data-raw "$data" -k "${INFLUXDB_WRITE_URL#insecure_}" || :;;
+    *)
+      curl -fSs --max-time 20 -XPOST --data-raw "$data" "$INFLUXDB_WRITE_URL" || :;;
+  esac
+}
+
 function report_state () {
   local current_state=$1
   # Push some metric about being up and running to Monalisa
@@ -18,19 +40,10 @@ function report_state () {
   esac
 
   # Push to InfluxDB if configured
-  if [ -n "$INFLUXDB_WRITE_URL" ]; then
-    printf 'prcheck,checkname=%s host="%s",state="%s",prid="%s"%s %s'                 \
-           "$CHECK_NAME/$WORKER_INDEX" "$(hostname -s)" "$current_state" "$PR_NUMBER" \
-           "${prtime:+,prtime=$prtime}${PR_OK:+,prok=$PR_OK}" $((time_now * 10**9))   |
-      case "$INFLUXDB_WRITE_URL" in
-        # If INFLUXDB_WRITE_URL starts with insecure_https://, then strip
-        # "insecure_" and send the --insecure/-k option to curl.
-        insecure_*)
-          curl --max-time 20 -XPOST "${INFLUXDB_WRITE_URL#insecure_}" -k --data-binary @- || true;;
-        *)
-          curl --max-time 20 -XPOST "$INFLUXDB_WRITE_URL" --data-binary @- || true;;
-      esac
-  fi
+  influxdb_push prcheck "host=$(hostname -s)" "checkname=$CHECK_NAME" \
+                "worker=$CHECK_NAME/$WORKER_INDEX/$WORKERS_POOL_SIZE" \
+                "state=$current_state" "repo=$PR_REPO" \
+                -- "prid=$PR_NUMBER" ${prtime:+prtime=$prtime} ${PR_OK:+prok=$PR_OK}
 
   # Push to Google Analytics if configured
   if [ -n "$ALIBOT_ANALYTICS_ID" ] && [ -n "$prtime" ]; then
@@ -158,6 +171,15 @@ function source_env_files () {
 
 function is_numeric () {
   [ $(($1 + 0)) = "$1" ]
+}
+
+function modtime () {
+  # Get the file modification time, as a UNIX timestamp, in an OS-agnostic way.
+  case $(uname -s) in
+    Darwin) stat -t '%s' -f '%m' "$@";;
+    Linux)  stat -c '%Y' "$@";;
+    *) echo "unknown platform: $(uname -s)" >&2; return 1;;
+  esac
 }
 
 function ensure_vars () {
