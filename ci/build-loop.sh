@@ -282,11 +282,12 @@ done
 aliBuild clean --debug --aggressive-cleanup
 
 # Monitor how long cleanup takes, in case it slows builds down too much.
+cleanup_end=$(date +%s)
 kib_avail_after=$(df -kP . | awk 'END { print $4 }')
 influxdb_push cleanup "host=$(hostname -s)" \
               "os=$(uname -s | tr '[:upper:]' '[:lower:]')" \
               "checkname=$CHECK_NAME" "repo=$PR_REPO" \
-              -- "duration_sec=$(("$(date +%s)" - cleanup_start))" \
+              -- "duration_sec=$((cleanup_end - cleanup_start))" \
               "num_symlinks_deleted=$symlinks_deleted" \
               "kib_freed=$((kib_avail_before - kib_avail_after))" \
               "kib_avail=$kib_avail_after"
