@@ -19,9 +19,9 @@ function influxdb_push () {
     # If INFLUXDB_WRITE_URL starts with insecure_https://, then strip
     # "insecure_" and send the --insecure/-k option to curl.
     insecure_*)
-      curl -fSs --max-time 20 -XPOST --data-raw "$data" -k "${INFLUXDB_WRITE_URL#insecure_}" || :;;
+      curl -fSs --max-time 20 -XPOST --data-binary "$data" -k "${INFLUXDB_WRITE_URL#insecure_}" || :;;
     *)
-      curl -fSs --max-time 20 -XPOST --data-raw "$data" "$INFLUXDB_WRITE_URL" || :;;
+      curl -fSs --max-time 20 -XPOST --data-binary "$data" "$INFLUXDB_WRITE_URL" || :;;
   esac
 }
 
