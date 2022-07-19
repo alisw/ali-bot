@@ -119,6 +119,7 @@ setup(
                "ci/continuous-builder.sh",
                "ci/build-helpers.sh",
                "ci/build-loop.sh",
+               "ci/cleanup.py",
                # GitHub API monitoring
                "monitor-github-api",
                "monitor-github-api-monalisa.sh",
