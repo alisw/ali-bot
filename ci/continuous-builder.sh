@@ -100,7 +100,27 @@ if [ -n "$HASHES" ]; then
     pipinst "$(get_config_value install-alibuild "$INSTALL_ALIBUILD")" || exit 1
 
     # Run the build
-    . build-loop.sh
+    . build-loop.sh || :
+
+    cd ..
+    # Delete builds older than 2 days, then keep deleting until we've got at
+    # least 100 GiB of free disk space.
+    cleanup.py -o - -t 2 -f 100 "$MESOS_ROLE" "$CUR_CONTAINER" |
+      while read -r env_name duration_sec num_deleted_symlinks \
+                    bytes_freed bytes_free_before
+      do (
+        . "$MESOS_ROLE/$CUR_CONTAINER/$env_name.env"
+        # Push available space before cleanup as kib_avail (so we see how badly
+        # the disk space ran out before cleanup). Available space after cleanup
+        # can be calculated as kib_avail + kib_freed_approx.
+        influxdb_push cleanup "host=$(hostname -s)" \
+                      "os=$(uname -s | tr '[:upper:]' '[:lower:]')" \
+                      "checkname=$CHECK_NAME" "repo=$PR_REPO" \
+                      -- "duration_sec=$duration_sec" \
+                      "num_symlinks_deleted=$num_deleted_symlinks" \
+                      "kib_freed_approx=$((bytes_freed / 1024))" \
+                      "kib_avail=$((bytes_free_before / 1024))"
+      ); done
 
     # Something inside this subshell is reading stdin, which causes some hashes
     # from above to be ignored. It shouldn't, so redirect from /dev/null.
