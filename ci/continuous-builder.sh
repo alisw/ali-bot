@@ -22,10 +22,6 @@ if [ "$1" != --skip-setup ]; then
   mkdir -p ~/.config/alibuild
   touch ~/.config/alibuild/disable-analytics
 
-  # Set up common global environment
-  # Mesos DNSes
-  : "${MESOS_DNS:=alimesos01.cern.ch,alimesos02.cern.ch,alimesos03.cern.ch}"
-  export MESOS_DNS
   # Explicitly set UTF-8 support (Python needs it!)
   export {LANG{,UAGE},LC_{CTYPE,NUMERIC,TIME,COLLATE,MONETARY,PAPER,MESSAGES,NAME,ADDRESS,TELEPHONE,MEASUREMENT,IDENTIFICATION,ALL}}=en_US.UTF-8
 
