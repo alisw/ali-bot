@@ -17,9 +17,7 @@ ensure_vars CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS
 # default to, e.g., build/AliRoot/release (build/<Package>/<Defaults>)
 : "${CHECK_NAME:=build/$PACKAGE/$ALIBUILD_DEFAULTS}"
 
-host_id=$(echo "$MESOS_EXECUTOR_ID" |
-            sed -ne 's#^\(thermos-\)\?\([a-z]*\)-\([a-z]*\)-\([a-z0-9_-]*\)-\([0-9]*\)\(-[0-9a-f]*\)\{5\}$#\2/\4/\5#p')
-: "${host_id:=$(hostname -f)}"
+host_id=${NOMAD_SHORT_ALLOC_ID:-$(hostname -f)}
 
 # Update all PRs in the queue with their number before we start building.
 echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead btype num hash envf; do
