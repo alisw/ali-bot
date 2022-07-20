@@ -97,7 +97,7 @@ class CIEnvironment:
         # string.Template uses $var/${var} syntax, like the shell.
         devel_pkgs = Template(env_vars["DEVEL_PKGS"])
         self.packages = parse_devel_pkg_spec(devel_pkgs.substitute(env_vars))
-        LOGGER.debug("%s: development packges are %s",
+        LOGGER.debug("%s: development packages are %s",
                      env_file_path.name, ", ".join(self.packages))
 
     def __repr__(self: 'CIEnvironment') -> 'str':
