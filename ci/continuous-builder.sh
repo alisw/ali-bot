@@ -111,15 +111,18 @@ if [ -n "$HASHES" ]; then
     while read -r env_name duration_sec num_deleted_symlinks \
                bytes_freed bytes_free_before
     do (
+      # Avoid inheriting variables from the previous build, in case sourcing
+      # fails. These will be set by the CI environments we source below.
+      unset CHECK_NAME PR_REPO
       . "ali-bot/ci/repo-config/$MESOS_ROLE/$CUR_CONTAINER/$env_name.env"
       # Push available space before cleanup as kib_avail (so we see how badly
       # the disk space ran out before cleanup). Available space after cleanup
       # can be calculated as kib_avail + kib_freed_approx.
       influxdb_push cleanup "host=$(hostname -s)" \
                     "os=$(uname -s | tr '[:upper:]' '[:lower:]')" \
-                    "checkname=$CHECK_NAME" "repo=$PR_REPO" \
-                    -- "duration_sec=$duration_sec" \
-                    "num_symlinks_deleted=$num_deleted_symlinks" \
+                    "checkname=${CHECK_NAME:?}" "repo=${PR_REPO:?}" \
+                    -- "duration_sec=${duration_sec:?}" \
+                    "num_symlinks_deleted=${num_deleted_symlinks:?}" \
                     "kib_freed_approx=$((bytes_freed / 1024))" \
                     "kib_avail=$((bytes_free_before / 1024))"
     ); done < cleanup-metrics.txt
