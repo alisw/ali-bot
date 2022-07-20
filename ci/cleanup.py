@@ -100,6 +100,10 @@ class CIEnvironment:
         LOGGER.debug("%s: development packges are %s",
                      env_file_path.name, ", ".join(self.packages))
 
+    def __repr__(self: 'CIEnvironment') -> 'str':
+        return (f"CIEnvironment({self.name}, exists={self.work_dir.exists()}, "
+                f"packages={list(self.packages)!r})")
+
     def gather_symlinks(self: 'CIEnvironment') -> 'Iterable[SymlinkWithInfo]':
         """Find candidates for cleanup among build and installation symlinks.
 
@@ -131,8 +135,9 @@ class CIEnvironment:
         environment's working directory. If not, a ValueError is raised.
         """
         # Path.is_relative_to() would be better, but that's Python 3.9+ only.
-        if self.work_dir not in symlink.resolve().parents:
-            raise ValueError("symlink not in this environment", self, symlink)
+        if self.work_dir.resolve() not in symlink.resolve().parents:
+            raise ValueError("symlink not in this environment", self,
+                             self.work_dir.resolve(), symlink.resolve())
         if dry_run:
             LOGGER.info("would delete %s (%s)", symlink, reason)
         else:
