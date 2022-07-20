@@ -111,7 +111,7 @@ if [ -n "$HASHES" ]; then
     while read -r env_name duration_sec num_deleted_symlinks \
                bytes_freed bytes_free_before
     do (
-      . "$MESOS_ROLE/$CUR_CONTAINER/$env_name.env"
+      . "ali-bot/ci/repo-config/$MESOS_ROLE/$CUR_CONTAINER/$env_name.env"
       # Push available space before cleanup as kib_avail (so we see how badly
       # the disk space ran out before cleanup). Available space after cleanup
       # can be calculated as kib_avail + kib_freed_approx.
