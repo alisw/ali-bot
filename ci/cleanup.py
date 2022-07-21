@@ -33,6 +33,9 @@ LOGGER = logging.getLogger(__name__)
 def main(args: 'Namespace') -> 'None':
     """Script entry point."""
     initial_free = disk_usage(args.ci_root).free
+    LOGGER.debug("at cleanup start, have %.2f GiB free space on disk",
+                 initial_free / 1024**3)
+
     builder_defs_dir = \
         args.definitions_dir / args.mesos_role / args.container_name
     ci_envs = [CIEnvironment(envf, args.ci_root, args.work_dir, initial_free)
@@ -43,8 +46,10 @@ def main(args: 'Namespace') -> 'None':
     symlinks: 'list[SymlinkWithInfo]' = \
         sorted(chain(*(ci_env.gather_symlinks() for ci_env in ci_envs)),
                key=itemgetter(0), reverse=True)
-    LOGGER.debug("found %d symlinks in %d environments to consider",
-                 len(symlinks), len(ci_envs))
+    LOGGER.debug("found %d symlinks in %d of %d environments to consider",
+                 len(symlinks), sum(1 for ci_env in ci_envs
+                                    if ci_env.work_dir.exists()),
+                 len(ci_envs))
 
     if args.maximum_age is not None:
         symlinks = delete_old_builds(symlinks, args.maximum_age,
@@ -64,6 +69,9 @@ def main(args: 'Namespace') -> 'None':
     # We're done cleaning up. Just print metrics, if requested.
     for ci_env in ci_envs:
         ci_env.print_metrics(args.metrics_file)
+
+    if args.dry_run:
+        LOGGER.info("-n/--dry-run was specified; nothing was deleted")
 
 
 class CIEnvironment:
@@ -163,16 +171,29 @@ class CIEnvironment:
                 # Annoyingly, doClean calls sys.exit.
                 if exc.code != 0:
                     LOGGER.error("doClean exited with error %d", exc.code)
-        self.cleanup_duration += monotonic() - cleanup_start
-        self.freed_bytes += disk_usage(self.work_dir).free - free_before_start
+        duration = monotonic() - cleanup_start
+        freed = disk_usage(self.work_dir).free - free_before_start
+        LOGGER.debug("cleaned up %s in %.3f sec; freed ~%.2f MiB",
+                     self.name, duration, freed / 1024**2)
+        self.cleanup_duration += duration
+        self.freed_bytes += freed
 
     def print_metrics(self: 'CIEnvironment',
                       metrics_file: 'StringIO | None') -> 'None':
         """Write out a line with the metrics for this environment.
 
-        If this environment was not found on disk, don't write anything.
+        If this environment was not found on disk, or no metrics file was
+        specified, then don't write anything to the metrics file.
         """
-        if metrics_file is not None and self.work_dir.exists():
+        write_metrics = metrics_file is not None and self.work_dir.exists()
+        LOGGER.debug(
+            "statistics for %s: spent %.3f sec; deleted %d symlinks; "
+            "freed ~%.2f GiB; %.2f GiB free at start; %s metrics",
+            self.name, self.cleanup_duration, self.num_deleted_symlinks,
+            self.freed_bytes / 1024**3, self.initial_disk_free_bytes / 1024**3,
+            "writing" if write_metrics else "skipping",
+        )
+        if write_metrics:
             print(self.name, self.cleanup_duration, self.num_deleted_symlinks,
                   self.freed_bytes, self.initial_disk_free_bytes,
                   file=metrics_file)
