@@ -74,33 +74,55 @@ fi
 
 if [ -n "$HASHES" ]; then
   # Loop through PRs we can build if there are any.
-  echo "$HASHES" | cat -n | while read -r BUILD_SEQ BUILD_TYPE PR_NUMBER PR_HASH env_name; do (
-    # Run iterations in a subshell so environment variables are not kept
-    # across potentially different repos. This is an issue as env files are
-    # allowed to define arbitrary variables that other files (or the defaults
-    # file) might not override. Note that we are in a subshell here due to the
-    # "list-branch-pr | while read" pipeline.
+  echo "$HASHES" | cat -n | while read -r BUILD_SEQ BUILD_TYPE PR_NUMBER PR_HASH env_name; do
+    # Run iterations in a subshell so environment variables are not kept across
+    # potentially different repos. This is an issue as env files are allowed to
+    # define arbitrary variables that other files (or the defaults file) might
+    # not override. Note that we are in an additional subshell here due to the
+    # "cat | while read" pipeline, though that one is shared across iterations.
+    (
+      # Setup environment. Skip build if the .env file doesn't exist any more.
+      source_env_files "$env_name" || exit
 
-    # Setup environment
-    # Skip this build if the .env file doesn't exist any more.
-    source_env_files "$env_name" || exit
+      # Make a directory for this repo's dependencies so they don't conflict
+      # with other repos'
+      mkdir -p "$env_name"
+      cd "$env_name" || exit 10
 
-    # Make a directory for this repo's dependencies so they don't conflict
-    # with other repos'
-    mkdir -p "$env_name"
-    cd "$env_name" || exit 10
+      # Allow overriding the ali-bot/alibuild version to install -- this is useful
+      # for testing changes to those with a few workers before deploying widely.
+      pipinst "$(get_config_value install-alibot   "$INSTALL_ALIBOT")"   || exit 1
+      pipinst "$(get_config_value install-alibuild "$INSTALL_ALIBUILD")" || exit 1
 
-    # Allow overriding the ali-bot/alibuild version to install -- this is useful
-    # for testing changes to those with a few workers before deploying widely.
-    pipinst "$(get_config_value install-alibot   "$INSTALL_ALIBOT")"   || exit 1
-    pipinst "$(get_config_value install-alibuild "$INSTALL_ALIBUILD")" || exit 1
+      # Run the build
+      . build-loop.sh
 
-    # Run the build
-    . build-loop.sh
+      # Something inside this subshell is reading stdin, which causes some hashes
+      # from above to be ignored. It shouldn't, so redirect from /dev/null.
+    ) < /dev/null
 
-    # Something inside this subshell is reading stdin, which causes some hashes
-    # from above to be ignored. It shouldn't, so redirect from /dev/null.
-  ) < /dev/null; done
+    # Outside subshell; we're back in the parent directory.
+    # Delete builds older than 2 days, then keep deleting until we've got at
+    # least 100 GiB of free disk space.
+    # We can't write metrics to stdout and pipe, as aliBuild's doClean also
+    # writes to stdout.
+    cleanup.py -o cleanup-metrics.txt -t 2 -f 100 "$MESOS_ROLE" "$CUR_CONTAINER"
+    while read -r env_name duration_sec num_deleted_symlinks \
+                  bytes_freed bytes_free_before
+    do (
+      source_env_files "$env_name" || exit   # exit subshell = continue
+      # Push available space before cleanup as kib_avail (so we see how badly
+      # the disk space ran out before cleanup). Available space after cleanup
+      # can be calculated as kib_avail + kib_freed_approx.
+      influxdb_push cleanup "host=$(hostname -s)" \
+                    "os=$(uname -s | tr '[:upper:]' '[:lower:]')" \
+                    "checkname=${CHECK_NAME:?}" "repo=${PR_REPO:?}" \
+                    -- "duration_sec=${duration_sec:?}" \
+                    "num_symlinks_deleted=${num_deleted_symlinks:?}" \
+                    "kib_freed_approx=$((bytes_freed / 1024))" \
+                    "kib_avail=$((bytes_free_before / 1024))"
+    ); done < cleanup-metrics.txt
+  done
 else
   # If we're idling, wait a while to conserve GitHub API requests.
   sleep "$(get_config_value timeout "${TIMEOUT:-600}")"
