@@ -31,7 +31,7 @@ export PATH=$PYTHONUSERBASE/bin:$PATH
 export LD_LIBRARY_PATH=$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH
 # Set the default python and pip depending on the architecture...
 case $ARCHITECTURE in
-  slc8*) PIP=pip3 PYTHON=python3 ;;
+  slc7*|slc8*) PIP=pip3 PYTHON=python3 ;;
   *) PIP=pip PYTHON=python ;;
 esac
 # ...and override it if PYTHON_VERSION is specified.
