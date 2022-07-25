@@ -91,8 +91,13 @@ if [ -n "$HASHES" ]; then
 
       # Allow overriding the ali-bot/alibuild version to install -- this is useful
       # for testing changes to those with a few workers before deploying widely.
-      pipinst "$(get_config_value install-alibot   "$INSTALL_ALIBOT")"   || exit 1
-      pipinst "$(get_config_value install-alibuild "$INSTALL_ALIBUILD")" || exit 1
+      # Building a wheel for alibuild and/or ali-bot will fail, as they have an
+      # invalid version string ("LAST_TAG"). This messes up shebang mangling on
+      # some platforms, so use --no-binary for those packages.
+      short_timeout python3 -m pip install --upgrade --no-binary=alibuild,ali-bot \
+          "git+https://github.com/$(get_config_value install-alibot   "$INSTALL_ALIBOT")" \
+          "git+https://github.com/$(get_config_value install-alibuild "$INSTALL_ALIBUILD")" ||
+        exit 1
 
       # Run the build
       . build-loop.sh

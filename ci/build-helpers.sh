@@ -59,15 +59,6 @@ function clean_env () {
     X509_USER_CERT='' X509_USER_KEY='' "$@"
 }
 
-function pipinst () {
-  # Sometimes pip gets stuck when cloning the ali-bot or alibuild repos. In
-  # that case: time out, skip and try again later.
-  case $(uname -s) in
-    Darwin) short_timeout pip install -U --install-option=--old-and-unmanageable "git+https://github.com/$1";;
-    *) short_timeout python3 -m pip install --user --upgrade --editable "git+https://github.com/$1";;
-  esac
-}
-
 # Allow overriding a number of variables by fly, so that we can change the
 # behavior of the job without restarting it.
 # This comes handy when scaling up / down a job, so that we do not quit the
