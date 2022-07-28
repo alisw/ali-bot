@@ -117,7 +117,8 @@ if [ -n "$HASHES" ]; then
     while read -r env_name duration_sec num_deleted_symlinks \
                   bytes_freed bytes_free_before
     do (
-      source_env_files "$env_name" || exit   # exit subshell = continue
+      set -e   # exit subshell = continue
+      source_env_files "$env_name"
       # Push available space before cleanup as kib_avail (so we see how badly
       # the disk space ran out before cleanup). Available space after cleanup
       # can be calculated as kib_avail + kib_freed_approx.
@@ -129,6 +130,24 @@ if [ -n "$HASHES" ]; then
                     "kib_freed_approx=$((bytes_freed / 1024))" \
                     "kib_avail=$((bytes_free_before / 1024))"
     ); done < cleanup-metrics.txt
+
+    # Additional metrics: track how many GitHub API requests we have left. The
+    # number of requests we use is O(num_builds), so checking after every build
+    # should be OK.
+    (
+      set -eo pipefail   # For these metrics, abort uploading if anything fails.
+      query() { echo "$limit" | jq -r "$1"; }
+      limit=$(curl -fSsH 'Accept: application/vnd.github+json' \
+                   -u "token:$GITHUB_TOKEN" 'https://api.github.com/rate_limit' |
+                jq .resources)   # trim wrapping object
+      for res in core graphql; do
+        # We need at least one tag to ingest metrics into InfluxDB properly.
+        influxdb_push github_api_rate_limit "resource=$res" -- \
+                      "secs_left=$(query ".$res.reset - now")" \
+                      "remaining=$(query ".$res.remaining")"   \
+                      "remaining_pct=$(query "100 * .$res.remaining / .$res.limit")"
+      done
+    )
   done
 else
   # If we're idling, wait a while to conserve GitHub API requests.
