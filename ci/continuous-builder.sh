@@ -93,10 +93,12 @@ if [ -n "$HASHES" ]; then
       # for testing changes to those with a few workers before deploying widely.
       # Building a wheel for alibuild and/or ali-bot will fail, as they have an
       # invalid version string ("LAST_TAG"). This messes up shebang mangling on
-      # some platforms, so use --no-binary for those packages.
+      # some platforms, so use --no-binary for those packages. Also, we need to
+      # install ali-bot and alibuild as editable, else pip doesn't update them
+      # properly (perhaps because the version string is always "LAST_TAG").
       short_timeout python3 -m pip install --upgrade --no-binary=alibuild,ali-bot \
-          "git+https://github.com/$(get_config_value install-alibot   "$INSTALL_ALIBOT")" \
-          "git+https://github.com/$(get_config_value install-alibuild "$INSTALL_ALIBUILD")" ||
+          -e "git+https://github.com/$(get_config_value install-alibot   "$INSTALL_ALIBOT")" \
+          -e "git+https://github.com/$(get_config_value install-alibuild "$INSTALL_ALIBUILD")" ||
         exit 1
 
       # Run the build
