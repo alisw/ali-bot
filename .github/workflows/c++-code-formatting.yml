@@ -211,6 +211,61 @@ jobs:
             echo 'Copyright check passed.' >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  line-endings:
+    name: line endings
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+
+      - name: Check for incorrect line endings
+        run: |
+          if find . \( -path ./.git -prune -false \) -o -type f \( \
+               -name '*.c' -o -name '*.C' -o -name '*.cpp' -o -name '*.cxx' -o \
+               -name '*.cl' -o -name '*.h' -o -name '*.hpp' -o -name '*.py' -o \
+               -name '*.sh' -o -name '*.xml' -o -name '*.yml' \) -print0 |
+             xargs -0 dos2unix -i |
+             awk '
+               function error(title, message) {
+                 printf "::error file=%s,title=%s::%s\n", $6, title, message
+                 exit_code = 1
+               }
+               BEGIN { exit_code = 0 }
+               END { exit exit_code }
+               ($5 != "text") { next }
+               ($4 != "no_bom") {
+                 error("BOM or wrong encoding",
+                       "All files must be UTF-8 without a byte order mark. " \
+                       "Found a byte order mark for the " $4 " encoding.")
+               }
+               ($1 > 0) {
+                 error("DOS line endings",
+                       "Files must have UNIX-style (LF only) line endings. " \
+                       "Found " $1 " DOS-style (CR+LF) line endings.")
+               }
+               ($3 > 0) {
+                 error("Mac line endings",
+                       "Files must have UNIX-style (LF only) line endings. " \
+                       "Found " $3 " Mac-style (CR only) line endings.")
+               }
+             '
+          then
+            echo 'Line endings check passed.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            cat << EOF >> "$GITHUB_STEP_SUMMARY"
+          # Line ending and/or encoding errors found.
+
+          To avoid these errors, configure your editor to:
+
+          - Write files with UNIX-style line endings (linefeed-only).
+          - Write files as UTF-8 without a byte order mark (BOM).
+          EOF
+            exit 1
+          fi
+
   whitespace:
     name: whitespace
     runs-on: ubuntu-latest
