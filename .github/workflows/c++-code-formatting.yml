@@ -229,12 +229,10 @@ jobs:
 
       - name: Check for incorrect line endings
         run: |
-          set -exo pipefail
           if find . \( -path ./.git -prune -false \) -o -type f \( \
                -name '*.c' -o -name '*.C' -o -name '*.cpp' -o -name '*.cxx' -o \
                -name '*.cl' -o -name '*.h' -o -name '*.hpp' -o -name '*.py' -o \
                -name '*.sh' -o -name '*.xml' -o -name '*.yml' \) -print0 |
-             tee /dev/stderr |
              xargs -0 dos2unix -i |
              awk '
                function error(title, message) {
@@ -264,11 +262,11 @@ jobs:
             echo 'Line endings check passed.' >> "$GITHUB_STEP_SUMMARY"
           else
             cat << EOF >> "$GITHUB_STEP_SUMMARY"
-          # Line ending and/or encoding errors found.
+          # Line ending and/or encoding errors found
 
           To avoid these errors, configure your editor to:
 
-          - Write files with UNIX-style line endings (linefeed-only).
+          - Write files with UNIX-style line endings (linefeeds only).
           - Write files as UTF-8 without a byte order mark (BOM).
           EOF
             exit 1
