@@ -228,6 +228,7 @@ jobs:
 
       - name: Check for incorrect line endings
         run: |
+          set -exo pipefail
           if find . \( -path ./.git -prune -false \) -o -type f \( \
                -name '*.c' -o -name '*.C' -o -name '*.cpp' -o -name '*.cxx' -o \
                -name '*.cl' -o -name '*.h' -o -name '*.hpp' -o -name '*.py' -o \
