@@ -216,6 +216,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Install prerequisites
+        run: |
+          sudo -n apt update
+          sudo -n apt install dos2unix
+
       - name: Checkout code
         uses: actions/checkout@v3
         with:
