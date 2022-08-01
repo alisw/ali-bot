@@ -233,6 +233,7 @@ jobs:
                -name '*.c' -o -name '*.C' -o -name '*.cpp' -o -name '*.cxx' -o \
                -name '*.cl' -o -name '*.h' -o -name '*.hpp' -o -name '*.py' -o \
                -name '*.sh' -o -name '*.xml' -o -name '*.yml' \) -print0 |
+             tee /dev/stderr |
              xargs -0 dos2unix -i |
              awk '
                function error(title, message) {
