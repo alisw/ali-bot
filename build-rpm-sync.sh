@@ -61,7 +61,7 @@ function check_rpms() {
 }
 
 # What remote store to use. Variable is consistent with build-any-ib.sh
-REMOTE_STORE_LIST="${REMOTE_STORE:-rsync://repo.marathon.mesos/store/}"
+REMOTE_STORE_LIST="${REMOTE_STORE:-rsync://alibuild03.cern.ch/store/}"
 
 # Is package name set?
 if [[ ! $PACKAGE_NAME ]]; then
