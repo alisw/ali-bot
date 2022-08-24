@@ -14,6 +14,8 @@ ensure_vars CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS
 # Needed so that we can run different kind of tests based on the context
 export ALIBOT_CI_NAME=$CI_NAME
 export ALIBOT_CHECK_NAME=$CHECK_NAME
+export ALIBOT_PR_REPO=$PR_REPO
+export ALIBOT_PR_BRANCH=$PR_BRANCH
 
 : "${WORKERS_POOL_SIZE:=1}" "${WORKER_INDEX:=0}" "${PR_REPO_CHECKOUT:=$(basename "$PR_REPO")}"
 [ -d /build/mirror ] && : "${MIRROR:=/build/mirror}"
