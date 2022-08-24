@@ -11,12 +11,6 @@ get_config
 
 ensure_vars CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS
 
-# Needed so that we can run different kind of tests based on the context
-export ALIBOT_CI_NAME=$CI_NAME
-export ALIBOT_CHECK_NAME=$CHECK_NAME
-export ALIBOT_PR_REPO=$PR_REPO
-export ALIBOT_PR_BRANCH=$PR_BRANCH
-
 : "${WORKERS_POOL_SIZE:=1}" "${WORKER_INDEX:=0}" "${PR_REPO_CHECKOUT:=$(basename "$PR_REPO")}"
 [ -d /build/mirror ] && : "${MIRROR:=/build/mirror}"
 
@@ -218,6 +212,10 @@ if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
      --defaults "$ALIBUILD_DEFAULTS"                         \
      ${MIRROR:+--reference-sources "$MIRROR"}                \
      ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}         \
+     -e ALIBOT_CI_NAME="$CI_NAME"                            \
+     -e ALIBOT_CHECK_NAME="$CHECK_NAME"                      \
+     -e ALIBOT_PR_REPO="$PR_REPO"                            \
+     -e ALIBOT_PR_BRANCH="$PR_BRANCH"                        \
      -e "ALIBUILD_O2_TESTS=$ALIBUILD_O2_TESTS"               \
      -e "ALIBUILD_O2PHYSICS_TESTS=$ALIBUILD_O2PHYSICS_TESTS" \
      ${jalien_token_cert:+-e "JALIEN_TOKEN_CERT=$jalien_token_cert"} \
