@@ -260,5 +260,4 @@ fi
   fi
 )
 
-export HAVE_JALIEN_TOKEN
 report_state pr_processing_done
