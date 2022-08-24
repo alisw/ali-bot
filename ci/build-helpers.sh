@@ -43,7 +43,8 @@ function report_state () {
   influxdb_push prcheck "repo=$PR_REPO" "checkname=$CHECK_NAME" \
                 "worker=$CHECK_NAME/$WORKER_INDEX/$WORKERS_POOL_SIZE" \
                 -- "host=\"$(hostname -s)\"" "state=\"$current_state\"" \
-                "prid=\"$PR_NUMBER\"" ${prtime:+prtime=$prtime} ${PR_OK:+prok=$PR_OK}
+                "prid=\"$PR_NUMBER\"" ${prtime:+prtime=$prtime} ${PR_OK:+prok=$PR_OK} \
+                ${HAVE_JALIEN_TOKEN:+have_jalien_token=$HAVE_JALIEN_TOKEN}
 
   # Push to Google Analytics if configured
   if [ -n "$ALIBOT_ANALYTICS_ID" ] && [ -n "$prtime" ]; then
