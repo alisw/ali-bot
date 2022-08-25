@@ -108,3 +108,35 @@ jobs:
           EOF
           ls -la
           rclone --config /tmp/rclone.conf --transfers=10 --progress --delete-before sync local:./ rpms3:alibuild-repo/RPMS/o2-full-deps_fedora.x86-64/
+
+  build-ubuntu:
+    runs-on: ubuntu-latest
+    container: ubuntu:20.04
+    env:
+      ALIBUILD_TAG: v1.11.6
+      ALIBUILD_DISTRO: focal
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build a DEB for Ubuntu and push it to the PPA
+        run: |
+          set -x
+          apt update
+          apt install -y vim git devscripts build-essential lintian debhelper dh-python python3-all python3-setuptools
+          alibuild_release_date=$(date -R -u)
+          git clone -b "v$ALIBUILD_VERSION" https://github.com/alisw/alibuild
+          perl -p -i -e "s/LAST_TAG/v$ALIBUILD_VERSION/" alibuild/alibuild_helpers/__init__.py
+          cat <<EOF > alibuild/debian/changelog
+          python3-alibuild ($ALIBUILD_TAG~$ALIBUILD_DISTRO) $ALIBUILD_DISTRO; urgency=medium
+
+            * Bump to $ALIBUILD_TAG
+
+           -- Giulio Eulisse <giulio.eulisse@cern.ch>  $alibuild_release_date
+          EOF
+          cat <<\EOF | gpg --import -
+          ${{ secrets.LAUNCHPAD_PPA_GPG_KEY }}
+          EOF
+          cd alibuild
+          debuild --no-lintian -k48F330BAFFA564EF2383E2B472E9262B5C0D9DE5 -S
+          dput ppa:alisw/ppa ../python3-alibuild_*"~$ALIBUILD_DISTRO"_source.changes
