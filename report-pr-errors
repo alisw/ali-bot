@@ -120,7 +120,7 @@ def parse_args():
 
     parser.add_argument("--logs-dest",
                         dest="logsDest",
-                        default="rsync://repo.marathon.mesos/store/logs",
+                        default="s3://alice-build-logs.s3.cern.ch",
                         help="Destination store for logs. Either rsync://<rsync server enpoint> or s3://<bucket>.<server>")
 
     parser.add_argument("--log-url",
