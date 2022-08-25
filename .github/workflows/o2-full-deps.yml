@@ -126,8 +126,8 @@ jobs:
           apt update
           apt install -y vim git devscripts build-essential lintian debhelper dh-python python3-all python3-setuptools
           alibuild_release_date=$(date -R -u)
-          git clone -b "v$ALIBUILD_VERSION" https://github.com/alisw/alibuild
-          perl -p -i -e "s/LAST_TAG/v$ALIBUILD_VERSION/" alibuild/alibuild_helpers/__init__.py
+          git clone -b "$ALIBUILD_TAG" https://github.com/alisw/alibuild
+          perl -p -i -e "s/LAST_TAG/$ALIBUILD_TAG/" alibuild/alibuild_helpers/__init__.py
           cat <<EOF > alibuild/debian/changelog
           python3-alibuild ($ALIBUILD_TAG~$ALIBUILD_DISTRO) $ALIBUILD_DISTRO; urgency=medium
 
