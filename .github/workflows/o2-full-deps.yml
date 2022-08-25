@@ -115,6 +115,7 @@ jobs:
     env:
       ALIBUILD_TAG: v1.11.6
       ALIBUILD_DISTRO: focal
+      DEBIAN_FRONTEND: noninteractive
 
     steps:
       - uses: actions/checkout@v2
