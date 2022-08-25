@@ -15,6 +15,9 @@ jobs:
       ALIBUILD_TAG: v1.11.2
 
     steps:
+      # For rpms/*.spec
+      - uses: actions/checkout@v3
+
       - name: Install prerequisites
         run: |
           set -x
@@ -46,6 +49,9 @@ jobs:
       ALIBUILD_TAG: v1.11.2
 
     steps:
+      # For rpms/*.spec
+      - uses: actions/checkout@v3
+
       - name: Install prerequisites
         run: |
           set -x
@@ -83,6 +89,9 @@ jobs:
       ALIBUILD_TAG: v1.11.2
 
     steps:
+      # For rpms/*.spec
+      - uses: actions/checkout@v3
+
       - name: Install prerequisites
         run: |
           set -x
