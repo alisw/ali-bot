@@ -111,10 +111,18 @@ jobs:
 
   build-ubuntu:
     runs-on: ubuntu-latest
-    container: ubuntu:20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        ubuntu_codename:
+          - bionic  # 18.04
+          - focal   # 20.04
+          - jammy   # 22.04
+
+    container: ubuntu:${{ matrix.ubuntu_codename }}
     env:
       ALIBUILD_TAG: v1.11.6
-      ALIBUILD_DISTRO: focal
+      ALIBUILD_DISTRO: ${{ matrix.ubuntu_codename }}
       DEBIAN_FRONTEND: noninteractive
 
     steps:
@@ -143,4 +151,4 @@ jobs:
           EOF
           cd alibuild
           debuild --no-lintian -k48F330BAFFA564EF2383E2B472E9262B5C0D9DE5 -S
-          dput ppa:alisw/ppa ../python3-alibuild_*"~$ALIBUILD_DISTRO"_source.changes
+          dput ppa:alisw/ppa "/python3-alibuild_${ALIBUILD_TAG#v}~${ALIBUILD_DISTRO}_source.changes"
