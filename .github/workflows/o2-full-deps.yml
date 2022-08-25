@@ -151,4 +151,4 @@ jobs:
           EOF
           cd alibuild
           debuild --no-lintian -k48F330BAFFA564EF2383E2B472E9262B5C0D9DE5 -S
-          dput ppa:alisw/ppa "/python3-alibuild_${ALIBUILD_TAG#v}~${ALIBUILD_DISTRO}_source.changes"
+          dput ppa:alisw/ppa "../python3-alibuild_${ALIBUILD_TAG#v}~${ALIBUILD_DISTRO}_source.changes"
