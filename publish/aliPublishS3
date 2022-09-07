@@ -749,6 +749,8 @@ def main():
   parser.add_argument("--pkgname", dest="pkgName")
   parser.add_argument("--pkgver", dest="pkgVer")
   parser.add_argument("--pkgarch", dest="pkgArch")
+  # Backward compatibility
+  parser.add_argument("--cache-deps-dir", dest="ignoredOption1", default="ignored")
   parser.add_argument("--test-conf", dest="testConf")
   parser.add_argument("--config", "-c", dest="configFile", default="aliPublish.conf",
                       help="Configuration file")
