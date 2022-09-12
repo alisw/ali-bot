@@ -63,7 +63,8 @@ def execute(command):
 def grabOutput(command):
   debug("Executing command: %s", " ".join(command))
   popen = Popen(command, shell=False, stdout=PIPE, stderr=STDOUT)
-  return popen.returncode, popen.communicate()[0]
+  out = popen.communicate()[0]
+  return (popen.returncode, out.decode("utf-8"))
 
 class PublishException(Exception):
   pass
