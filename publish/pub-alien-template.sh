@@ -20,7 +20,7 @@ tar czf "$TAR" "%(version)s/"
 rm -rf "%(version)s/"
 DEPS="%(dependencies)s"
 BEST_SES=$(curl -sL 'http://alimonitor.cern.ch/services/getBestSE.jsp?count=4&op=0' | \
-           grep -E '^[^: ]+::[^: ]+::[^: ]+$' | sort -R)
+           grep -E '^[^: ]+::[^: ]+::[^: ]+$')
 [[ "$BEST_SES" != '' ]] || BEST_SES="ALICE::CERN::EOS"
 echo "Best storage elements found: $BEST_SES"
 ERR=1
