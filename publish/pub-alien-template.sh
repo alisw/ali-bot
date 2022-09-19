@@ -10,14 +10,12 @@ TORDIR=/var/packages/download
 TORNOTIFY=/var/packages/NEWFILE
 mkdir -p "$TMPDIR"
 cd "$TMPDIR"
+TAR="$(echo "%(package)s"|tr '[:upper:]' '[:lower:]')_%(version)s.%(arch)s.tar.gz"
 curl -Lsf $SSLVERIFY                \
      --connect-timeout $CONNTIMEOUT \
      --retry-delay $CONNRETRYDELAY  \
-     --retry $CONNRETRY "%(url)s"   | tar --strip-components=3 -xzf -
-TAR="$(echo "%(package)s"|tr '[:upper:]' '[:lower:]')_%(version)s.%(arch)s.tar.gz"
-[[ -e "%(version)s/etc/modulefiles/%(package)s" ]]
-tar czf "$TAR" "%(version)s/"
-rm -rf "%(version)s/"
+     --retry $CONNRETRY "%(url)s" -o "$TAR"
+
 DEPS="%(dependencies)s"
 BEST_SES=$(curl -sL 'http://alimonitor.cern.ch/services/getBestSE.jsp?count=4&op=0' | \
            grep -E '^[^: ]+::[^: ]+::[^: ]+$')
