@@ -22,11 +22,8 @@ def rmrf(path):
 
 def searchMany(name, exprs):
   if isinstance(exprs, list):
-    for e in exprs:
-      if search(e, name): return True
-  elif exprs == True:
-    return True
-  return False
+    return any(search(e, name) for e in exprs)
+  return exprs == True
 
 def applyFilter(name, includeRules, excludeRules, includeFirst):
   if includeFirst:
@@ -85,8 +82,8 @@ class PlainFilesystem(object):
   def _kw(self, url, arch, pkgName, pkgVer):
     kw =  { "url": url, "package": pkgName, "version": pkgVer, "repo": self._repository or "filesystem",
             "arch": arch }
-    kw.update({ "pkgdir": format(self._pkgdirTpl, **kw) })
-    kw.update({ "modulefile": format(self._modulefileTpl, **kw) })
+    kw.update({ "pkgdir": self._pkgdirTpl % kw })
+    kw.update({ "modulefile": self._modulefileTpl % kw })
     kw.update(self._connParams)
     kw["http_ssl_verify"] = 1 if kw["http_ssl_verify"] else 0
     return kw
@@ -114,7 +111,7 @@ class PlainFilesystem(object):
   def transaction(self):
     return True
 
-  def abort(self):
+  def abort(self, force=False):
     return True
 
   def publish(self):
@@ -419,7 +416,7 @@ class RPM(object):
 
 def nameVerFromTar(tar, arch, validPacks):
   for pkgName in validPacks:
-    vre = format("^(%(pack)s)-(.*?)(\.%(arch)s\.tar\.gz)?$", pack=escape(pkgName), arch=arch)
+    vre = format(r"^(%(pack)s)-(.*?)(\.%(arch)s\.tar\.gz)?$", pack=escape(pkgName), arch=arch)
     vm = search(vre, tar)
     if vm:
       return { "name": vm.group(1), "ver": vm.group(2) }
@@ -735,14 +732,6 @@ def notify(conf, archs, pack, dryRun):
       debug("Sent email notification for %s %s (%s)",
             p["name"], p["ver"], archs[arch])
 
-def hostport(s, defaultPort):
-  host = s.split(":", 1)
-  try:
-    port = len(host) == 2 and int(host[1]) or defaultPort
-  except ValueError:
-    port = defaultPort
-  host = host[0]
-  return host,port
 
 def main():
   parser = ArgumentParser()
@@ -880,7 +869,7 @@ def main():
           error("aliPublish with PID %d in overtime (%ds): killed", otherPid, runningFor)
           otherPid = 0
       except (IOError, OSError, ValueError):
-        otherPid = 0
+        otherPid = runningFor = 0
       if otherPid:
         error("aliPublish already running with PID %d for %ds", otherPid, runningFor)
         return 1
@@ -972,7 +961,7 @@ def main():
 
       # Do we need to use a default test file?
       if not args.testConf:
-        m = search("^aliPublish(|.*)\.conf$", args.configFile)
+        m = search(r"^aliPublish(|.*)\.conf$", args.configFile)
         if m:
           args.testConf = "test%s.yaml" % m.group(1)
           debug("Using %s as default configuration file for tests", args.testConf)
