@@ -426,63 +426,6 @@ def prettyPrintPkg(pkg):
   """Return a human-readable representation of the package."""
   return pkg["name"] + " " + pkg["ver"]
 
-def getS3PackageLister(s3, bucket, basePrefix, architectures):
-  """Return a function that gets a directory's contents from S3.
-
-  Cache the directory tree from S3 in advance, because we tend to use this
-  function to get first the contents of a directory, then one of its
-  subdirectories. S3 can only return the items with a prefix, so when getting
-  the parent dir, we get everything already, so we better use it when getting
-  the subdirectory's contents later.
-  """
-  # This will be a dictionary where file-/dirnames are keys and dir contents
-  # are values. Files will be an entry with value None.
-  filesystemTree = {}
-  for arch in architectures:
-    # Build the filesystem tree on the server.
-    debug("Getting directory contents for %s/%s/", basePrefix, arch)
-    pages = s3.get_paginator("list_objects_v2") \
-              .paginate(Bucket=bucket, Prefix='%s/%s/' % (basePrefix, arch))
-    for i, page in enumerate(pages):
-      debug("Page %d: got %d items", i, len(page.get("Contents", ())))
-      for item in page.get("Contents", ()):
-        filename = item["Key"]
-        # The server returns file names with a prefix, which we want to ignore.
-        # We keep the arch prefix, though.
-        if filename.startswith(basePrefix + "/"):
-          filename = filename[len(basePrefix)+1:]
-        components = filename.split("/")
-        # Start at the root. We kept the arch prefix above in components, so
-        # we'll enter/create the arch directory in the loop below.
-        curDir = filesystemTree
-        # Leading directories: create empty dictionaries for directories we
-        # traverse for the first time.
-        for component in components[:-1]:
-          # If we have a file at this location, overwrite it with a directory
-          # entry. S3 can have files and directories with the same name in the
-          # same directory, but we don't care about the files in that case.
-          if curDir.get(component, {}) is None:
-            curDir[component] = {}
-          # Follow the path down into the next directory.
-          curDir = curDir.setdefault(component, {})
-        # File basename: add an entry to its parent directory's dictionary, but
-        # don't overwrite an existing directory entry here.
-        curDir.setdefault(components[-1], None)
-
-  def listDir(path):
-    """Look up the contents of path in the cached FS tree."""
-    curDir = filesystemTree
-    try:
-      if path:
-        for component in path.split("/"):
-          curDir = curDir[component]
-    except KeyError as err:
-      warning("listDir(%r) => NOT FOUND: %s, returning empty list", path, err)
-      return []
-    # Create a list of directory entries in the format expected below.
-    return [{"name": name, "type": "file" if value is None else "directory"}
-            for name, value in curDir.items()]
-  return listDir
 
 def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
          includeFirst, autoIncludeDeps, notifEmail, dryRun, connParams):
@@ -493,19 +436,39 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
   verPathTpl       = "%(arch)s/dist-direct/%(pack)s"
   getPackUrlTpl    = ("%(baseUrl)s/%(basePrefix)s/%(arch)s/dist-direct/%(pack)s"
                       "/%(pack)s-%(ver)s/%(pack)s-%(ver)s.%(arch)s.tar.gz")
-  listDir = getS3PackageLister(s3Client, bucket, basePrefix, architectures)
   newPackages = {}
+
+  def listDir(path):
+    """Look up the contents of path on S3."""
+    debug("Getting directory contents for %s/%s/", basePrefix, path)
+    pages = s3Client.get_paginator("list_objects_v2") \
+                    .paginate(Bucket=bucket, Delimiter="/",
+                              Prefix="%s/%s/" % (basePrefix, path.rstrip("/")))
+    for i, page in enumerate(pages):
+      debug("Page %d: got %d subdirs and %d files", i,
+            len(page.get("CommonPrefixes", ())), len(page.get("Contents", ())))
+      # Create a list of directory entries in the format expected below.
+      for ditem in page.get("CommonPrefixes", ()):
+        yield {"name": basename(ditem["Prefix"].rstrip("/")),
+               "type": "directory"}
+      for fitem in page.get("Contents", ()):
+        yield {"name": basename(fitem["Key"]), "type": "file"}
 
   # Prepare the list of packages to install
   for arch in architectures:
     newPackages[arch] = []
-    tarballs = [
-      tarball["name"]
-      for short_hash_dir in listDir("%s/store" % arch)
-      for hash_dir in listDir("%s/store/%s" % (arch, short_hash_dir["name"]))
-      for tarball in listDir("%s/store/%s/%s" % (arch, short_hash_dir["name"],
-                                                 hash_dir["name"]))
-    ]
+    debug("Listing all available tarballs for architecture %s", arch)
+    tarballs = frozenset(
+      basename(item["Key"])
+      # Omit Delimiter="/" to get all keys recursively under TARS/$arch/store/.
+      # This is much quicker than walking the directory tree, as we want to get
+      # all filenames anyway.
+      for page in s3Client.get_paginator("list_objects_v2").paginate(
+          Bucket=bucket, Prefix="%s/%s/store/" % (basePrefix, arch),
+      )
+      for item in page.get("Contents", ())
+    )
+    debug("Found %d tarballs in total for architecture", len(tarballs))
 
     # Get valid package names for this architecture
     debug("Getting packages for architecture %s", arch)
@@ -554,7 +517,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
         # Note that a package always depends on itself (list cannot be empty).
         distPath = format(distPathTpl, dist="dist-runtime",
                           arch=arch, pack=pkgName, ver=pkgVer)
-        runtimeDeps = listDir(distPath)
+        runtimeDeps = list(listDir(distPath))
         if not runtimeDeps:
           error("%s / %s / %s: cannot list dependencies from %s: skipping",
                 arch, pkgName, pkgVer, distPath)
@@ -591,8 +554,8 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
       deps = {}
       depFail = False
       for key in ("dist", "dist-direct", "dist-runtime"):
-        jdeps = listDir(format(distPathTpl, dist=key, arch=arch,
-                               pack=pack["name"], ver=pack["ver"]))
+        jdeps = list(listDir(format(distPathTpl, dist=key, arch=arch,
+                                    pack=pack["name"], ver=pack["ver"])))
         if not jdeps:
           error("%s / %s / %s: cannot get %s dependencies: skipping",
                 arch, pack["name"], pack["ver"], key)
