@@ -245,4 +245,4 @@ git push origin -f "HEAD:refs/tags/$main_pkg-$AUTOTAG_TAG"
 # If ALIDIST_BRANCH doesn't exist or we can push to it, do it.
 git push origin "HEAD:${ALIDIST_BRANCH:?}" ||
   # Else, make a PR by pushing an rc/ branch. (An action in the repo handles this.)
-  git push origin -f "HEAD:rc/${ALIDIST_BRANCH:?}"
+  git push origin -f "HEAD:refs/heads/rc/${ALIDIST_BRANCH:?}"
