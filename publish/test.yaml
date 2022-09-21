@@ -12,16 +12,17 @@ slc5_x86-64:
   AliGenerators:
     v20160829-1            : True
     v20180203_PWGMMTEST-1  : False
+  # AliDPG is handled by aliPublish-noarch.conf.
   AliDPG:
-    v5-08-XX-12            : True
-    v5-08-XX-Titan-2       : True
-    v5-07-XX-6             : True
-    v5-09-XX-1             : True
+    v5-08-XX-12            : False
+    v5-08-XX-Titan-2       : False
+    v5-07-XX-6             : False
+    v5-09-XX-1             : False
     rc20180521-1           : False
     v9-99-XX-rc20180524-1  : False
-    prod-201808-01-2       : True
+    prod-201808-01-2       : False
     prod-201899-02-1       : False
-    prod-201912-04-1       : True
+    prod-201912-04-1       : False
   AliPhysics:
     v5-09-02-devel-itsgeom1-1 : False
     v5-09-02-devel-itsgeom1-01-1 : True
@@ -253,10 +254,11 @@ slc6_x86-64:
     v5.1.0-1 : True
     5.1.0-1 : False
     3.6.0-1 : False
+  # AliDPG is handled by aliPublish-noarch.conf.
   AliDPG:
-    prod-201808-01-2       : True
+    prod-201808-01-2       : False
     prod-201899-02-1       : False
-    prod-201912-04-1       : True
+    prod-201912-04-1       : False
   cctools:
     v5.4.1-2               : True
   AliEn-WorkQueue:
