@@ -2,11 +2,15 @@ PyGithub==1.45
 argparse
 requests
 pytz
-klein[services]
-python-ldap[services]
-boto3==1.23.10
 s3cmd
 pyyaml
-typing-extensions==4.1.1; python_version == '3.6'  # for gql; by default it pulls in a version that isn't compatible with python3.6
-gql; python_version >= '3.6'
-requests-toolbelt; python_version >= '3.6'  # for gql
+# This is the last boto3 version to support python3.6.
+boto3==1.23.10; python_version >= '3.6'
+Twisted==18.9.0[services]
+klein[services]
+python-ldap[services]
+# For gql; by default it pulls in a typing-extensions version that isn't
+# compatible with python3.6.
+typing-extensions==4.1.1[ci]; python_version == '3.6'
+gql[ci]; python_version >= '3.6'
+requests-toolbelt[ci]; python_version >= '3.6'  # for gql
