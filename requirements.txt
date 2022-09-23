@@ -9,3 +9,4 @@ s3cmd
 pyyaml
 gql; python_version >= '3.6'
 requests-toolbelt; python_version >= '3.6'  # for gql
+typing-extensions==4.1.1; python_version == '3.6'  # for gql; by default it pulls in a version that isn't compatible with python3.6

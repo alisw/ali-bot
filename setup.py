@@ -25,6 +25,11 @@ if sys.version_info >= (3, 6):
         'gql',
         'requests-toolbelt',  # for gql
     ]
+if sys.version_info.major == 3 and sys.version_info.minor == 6:
+    install_requires += [
+        # for gql; by default it pulls in a version that isn't compatible with python3.6
+        'typing-extensions==4.1.1',
+    ]
 
 setup(
     name='ali-bot',
