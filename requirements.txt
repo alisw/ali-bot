@@ -4,7 +4,7 @@ requests
 pytz
 klein[services]
 python-ldap[services]
-boto3
+boto3==1.23.10
 s3cmd
 pyyaml
 gql; python_version >= '3.6'
