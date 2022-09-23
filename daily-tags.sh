@@ -107,14 +107,15 @@ workarea=$(mktemp -d "$PWD/daily-tags.XXXXXXXXXX")
 # templating and the real build.
 alibuild_args=(
   --debug --work-dir "$workarea" --jobs "${JOBS:-8}"
-  --fetch-repos --reference-sources mirror
+  --reference-sources mirror
   ${ARCHITECTURE:+--architecture "$ARCHITECTURE"}
   ${DEFAULTS:+--defaults "$DEFAULTS"}
   build "$main_pkg"
 )
 
 # Process the pattern as a jinja2 template with aliBuild's templating plugin.
-AUTOTAG_PATTERN=$(cat << EOF | aliBuild --debug --plugin templating "${alibuild_args[@]}"
+# Fetch the source repos now, so they're available for the "real" build later.
+AUTOTAG_PATTERN=$(aliBuild --debug --plugin templating --fetch-repos "${alibuild_args[@]}" << EOF
 {%- set alidist_branch = "$ALIDIST_BRANCH" -%}
 {%- set flpsuite_latest = "$flpsuite_latest" -%}
 {%- set flpsuite_current = "$flpsuite_current" -%}
