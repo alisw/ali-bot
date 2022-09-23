@@ -297,6 +297,17 @@ slc7_x86-64:
     v4.9.3-2               : False
     v4.9.3-alice3-1        : True
     v7.3.0-alice1-1        : True
+  AliPhysics:
+    v5-09-59c-01_O2-1      : True
+    vAN-20220919_O2-1      : True
+  O2:
+    nightly-20220923-1     : True
+  O2Physics:
+    nightly-20220923-1     : True
+
+slc8_x86-64:
+  O2PDPSuite:
+    async-20220923-1       : True
 
 ubt14_x86-64:
   GCC-Toolchain:
