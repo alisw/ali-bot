@@ -17,6 +17,11 @@ with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
 
 install_requires = ['PyGithub==1.45', 'argparse', 'requests', 'pytz', 's3cmd',
                     'pyyaml']
+if sys.version_info.major == 3 and sys.version_info.minor == 6:
+    install_requires += [
+        # for gql; by default it pulls in a version that isn't compatible with python3.6
+        'typing-extensions==4.1.1',
+    ]
 # Old setuptools versions (which pip2 uses) don't support range comparisons
 # (like :python_version >= "3.6") in extras_require, so do this ourselves here.
 if sys.version_info >= (3, 6):
@@ -24,11 +29,6 @@ if sys.version_info >= (3, 6):
         'boto3==1.23.10',
         'gql',
         'requests-toolbelt',  # for gql
-    ]
-if sys.version_info.major == 3 and sys.version_info.minor == 6:
-    install_requires += [
-        # for gql; by default it pulls in a version that isn't compatible with python3.6
-        'typing-extensions==4.1.1',
     ]
 
 setup(
