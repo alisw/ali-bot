@@ -72,6 +72,7 @@ if [ -z "$HASHES" ]; then
   HASHES=$(list-branch-pr)
 fi
 
+run_start_time=$(date +%s)
 if [ -n "$HASHES" ]; then
   # Loop through PRs we can build if there are any.
   echo "$HASHES" | cat -n | while read -r BUILD_SEQ BUILD_TYPE PR_NUMBER PR_HASH env_name; do
@@ -149,9 +150,14 @@ if [ -n "$HASHES" ]; then
       done
     )
   done
-else
-  # If we're idling, wait a while to conserve GitHub API requests.
-  sleep "$(get_config_value timeout "${TIMEOUT:-600}")"
+fi
+
+# If we're idling or builds are completing very quickly, wait a while
+# to conserve GitHub API requests.
+run_duration=$(("$(date +%s)" - run_start_time))
+timeout=$(get_config_value timeout "${TIMEOUT:-120}")
+if [ "$run_duration" -lt "$timeout" ]; then
+  sleep $((timeout - run_duration)) || :
 fi
 
 # Re-exec ourselves. This lets us update pick up updates to this script, e.g.
