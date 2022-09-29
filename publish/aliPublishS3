@@ -210,9 +210,7 @@ class AliEnPackMan(object):
         if not m: continue
         pkg = m.group(1)
         ver = m.group(2)
-        if not pkg in self._packs:
-          self._packs[pkg] = {}
-        self._packs[pkg].update({ver: []})
+        self._packs.setdefault(pkg, {}).update({ver: []})
 
     if not self._packs:
       raise PublishException("PackMan: could not get list of packages from AliEn this time")
@@ -223,8 +221,8 @@ class AliEnPackMan(object):
         if not m: continue
         pkg = m.group(1)
         ver = m.group(2)
-        if not pkg in self._packs: continue
-        self._packs[pkg].get(ver, []).append(arch)
+        if pkg in self._packs:
+          self._packs[pkg].setdefault(ver, []).append(arch)
       self._cachedArchs.append(arch)
 
     return arch in self._packs.get(pkgName, {}).get(pkgVer, [])
