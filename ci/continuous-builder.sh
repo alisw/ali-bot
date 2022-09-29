@@ -145,6 +145,7 @@ if [ -n "$HASHES" ]; then
         # We need at least one tag to ingest metrics into InfluxDB properly.
         influxdb_push github_api_rate_limit "resource=$res" -- \
                       "secs_left=$(query ".$res.reset - now")" \
+                      "used=$(query ".$res.used")"             \
                       "remaining=$(query ".$res.remaining")"   \
                       "remaining_pct=$(query "100 * .$res.remaining / .$res.limit")"
       done
