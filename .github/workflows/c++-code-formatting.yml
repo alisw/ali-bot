@@ -160,28 +160,39 @@ jobs:
 
       - name: Check copyright headers
         env:
-          # The expected copyright notice.
+          # The expected copyright notice. Comment markers ("//" or "#") are
+          # added automatically and should NOT appear in this variable.
           COPYRIGHT: |-
-            // Copyright 2019-2020 CERN and copyright holders of ALICE O2.
-            // See https://alice-o2.web.cern.ch/copyright for details of the copyright holders.
-            // All rights not expressly granted are reserved.
-            //
-            // This software is distributed under the terms of the GNU General Public
-            // License v3 (GPL Version 3), copied verbatim in the file "COPYING".
-            //
-            // In applying this license CERN does not waive the privileges and immunities
-            // granted to it by virtue of its status as an Intergovernmental Organization
-            // or submit itself to any jurisdiction.
+            Copyright 2019-2020 CERN and copyright holders of ALICE O2.
+            See https://alice-o2.web.cern.ch/copyright for details of the copyright holders.
+            All rights not expressly granted are reserved.
+
+            This software is distributed under the terms of the GNU General Public
+            License v3 (GPL Version 3), copied verbatim in the file "COPYING".
+
+            In applying this license CERN does not waive the privileges and immunities
+            granted to it by virtue of its status as an Intergovernmental Organization
+            or submit itself to any jurisdiction.
         run: |
-          # Find changed C++ files.
+          # Find changed C++ and CMake files. Keep the file extensions in sync
+          # with the ones in the "case" statement below!
           readarray -d '' files < \
-            <(git diff -z --diff-filter d --name-only --merge-base \
-                  "$BASE_SHA" -- '*.cxx' '*.h')
-          # Run copyright notice check
+            <(git diff -z --diff-filter d --name-only --merge-base "$BASE_SHA" \
+                       -- '*.cxx' '*.h' '*.C' '*.cmake' CMakeLists.txt)
+          # Run copyright notice check. Comment lines start with "//" for C++
+          # files and "#" for CMake files.
+          cpp_copyright=$(echo "$COPYRIGHT" | sed -r 's,^.+,// \0,; s,^$,//,')
+          hash_copyright=$(echo "$COPYRIGHT" | sed -r 's,^.+,# \0,; s,^$,#,')
           copyright_lines=$(echo "$COPYRIGHT" | wc -l)
           incorrect_files=()
           for file in "${files[@]}"; do
-            if [ "$(head -n "$copyright_lines" "$file")" != "$COPYRIGHT" ]; then
+            case $file in
+              *.cxx|*.h|*.C) correct_notice=$cpp_copyright ;;
+              *.cmake|CMakeLists.txt) correct_notice=$hash_copyright ;;
+              *) echo "error: unknown file type for $file" >&2; exit 1 ;;
+            esac
+            actual_notice=$(head -n "$copyright_lines" "$file")
+            if [ "$actual_notice" != "$correct_notice" ]; then
               incorrect_files+=("$file")
               echo -n "::error file=$file,line=1,endLine=$copyright_lines,"
               echo -n "title=Missing or malformed copyright notice::"
@@ -200,10 +211,12 @@ jobs:
             done
             cat << EOF >> "$GITHUB_STEP_SUMMARY"
 
-          Make sure all your source files begin with the following exact lines:
+          Make sure all of your C++ and CMake source files begin with the
+          following exact lines (but replace the \`//\` at the beginning of each
+          line with a \`#\` for CMake files):
 
           \`\`\`
-          $COPYRIGHT
+          $cpp_copyright
           \`\`\`
           EOF
             exit 1
