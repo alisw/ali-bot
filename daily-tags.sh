@@ -243,7 +243,10 @@ if [ -n "$(git status --porcelain "${edited_files[@]}")" ]; then
   git commit -m "Auto-update: ${edited_files[*]}"
 fi
 git push origin -f "HEAD:refs/tags/$main_pkg-$AUTOTAG_TAG"
-# If ALIDIST_BRANCH doesn't exist or we can push to it, do it.
-git push origin "HEAD:${ALIDIST_BRANCH:?}" ||
-  # Else, make a PR by pushing an rc/ branch. (An action in the repo handles this.)
-  git push origin -f "HEAD:refs/heads/rc/${ALIDIST_BRANCH:?}"
+
+if [ "$CREATE_ALIDIST_PULL_REQUEST" = true ]; then
+  # If ALIDIST_BRANCH doesn't exist or we can push to it, do it.
+  git push origin "HEAD:${ALIDIST_BRANCH:?}" ||
+    # Else, make a PR by pushing an rc/ branch. (An action in the repo handles this.)
+    git push origin -f "HEAD:refs/heads/rc/${ALIDIST_BRANCH:?}"
+fi
