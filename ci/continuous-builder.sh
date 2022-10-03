@@ -155,7 +155,7 @@ fi
 
 # If we're idling or builds are completing very quickly, wait a while
 # to conserve GitHub API requests.
-run_duration=$(("$(date +%s)" - run_start_time))
+run_duration=$(($(date +%s) - run_start_time))
 timeout=$(get_config_value timeout "${TIMEOUT:-120}")
 if [ "$run_duration" -lt "$timeout" ]; then
   sleep $((timeout - run_duration)) || :
