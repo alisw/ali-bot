@@ -51,11 +51,13 @@ done
 case "$BUILD_TYPE" in
   # Create a status on GitHub showing the build start time, but only if this is
   # the first build of this check!
-  untested) report_pr_errors --pending -m "Started $(TZ=Europe/Zurich date +'%a %H:%M CET') @ $host_id" ;;
+  # If we are running in Nomad, add a link to the this allocation.
+  untested) report_pr_errors --pending -m "Started $(TZ=Europe/Zurich date +'%a %H:%M CET') on $host_id" \
+                             ${NOMAD_ALLOC_ID:+-u "https://alinomad.cern.ch/ui/allocations/$NOMAD_ALLOC_ID"} ;;
   # Rebuilds only change the existing status's message, keeping the red status
   # and URL intact.
   failed) set-github-status -k -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/$(build_type_to_status "$BUILD_TYPE")" \
-                            -m "Rechecking since $(TZ=Europe/Zurich date +'%a %H:%M CET') @ $host_id" ;;
+                            -m "Rechecking since $(TZ=Europe/Zurich date +'%a %H:%M CET') on $host_id" ;;
   # See above for why we don't update the status for green checks.
   succeeded) ;;
 esac
