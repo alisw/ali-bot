@@ -13,16 +13,16 @@ except ImportError:
 CI_ALLOC_REQUIREMENT = 300 * 1024**3  # 300 GiB
 """This is how much space a single CI allocation needs."""
 BUFFER = 100 * 1024**2   # 100 MiB
-"""This should avoid false positive warnings where almost all the space is free."""
+"""This should avoid false positive warnings where almost all space is free."""
 
 
-def to_iec(bytes: int | float) -> str:
+def to_iec(n_bytes: int | float) -> str:
     """Format bytes as a human-readable number."""
     suffixes = ' KMGTPEZY'
-    while bytes > 1024:
-        bytes /= 1024
+    while n_bytes > 1024:
+        n_bytes /= 1024
         suffixes = suffixes[1:]
-    return f'{bytes:.1f}{suffixes[0].strip()}'
+    return f'{n_bytes:.1f}{suffixes[0].strip()}'
 
 
 def main() -> None:
@@ -40,6 +40,8 @@ def main() -> None:
           'We need at least', to_iec(CI_ALLOC_REQUIREMENT),
           'available on each of them. If no hosts appear, all is well.')
 
+    need_intervention = set()
+
     for node in (client.node.get_node(node['ID'])
                  for node in client.nodes.get_nodes()):
         hostname = node['Name'].removesuffix('.cern.ch') + '.cern.ch'
@@ -52,6 +54,16 @@ def main() -> None:
             for alloc in allocs[node['ID']]:
                 print('\t-> alloc on this host:', alloc['ID'][:8],
                       alloc['Name'], f'({alloc["ClientStatus"]})')
+            if not any(alloc['ClientStatus'] == 'running'
+                       for alloc in allocs[node['ID']]):
+                need_intervention.add(hostname)
+
+    if need_intervention:
+        print('\nThe following hosts need manual cleanup now:',
+              *need_intervention, sep='\n\t- ')
+        print('\nFor each of the hosts mentioned specially above, run:\n'
+              "\tssh -C $hostname 'rm -rfv /build/nomad/alloc/*/ci/local/*/sw "
+              "&& systemctl restart nomad'")
 
 
 if __name__ == '__main__':
