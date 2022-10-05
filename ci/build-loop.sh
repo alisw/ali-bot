@@ -53,7 +53,7 @@ case "$BUILD_TYPE" in
   # the first build of this check!
   # If we are running in Nomad, add a link to the this allocation.
   untested) report_pr_errors --pending -m "Started $(TZ=Europe/Zurich date +'%a %H:%M CET') on $host_id" \
-                             ${NOMAD_ALLOC_ID:+-u "https://alinomad.cern.ch/ui/allocations/$NOMAD_ALLOC_ID"} ;;
+                             ${NOMAD_ALLOC_ID:+--log-url "https://alinomad.cern.ch/ui/allocations/$NOMAD_ALLOC_ID"} ;;
   # Rebuilds only change the existing status's message, keeping the red status
   # and URL intact.
   failed) set-github-status -k -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/$(build_type_to_status "$BUILD_TYPE")" \
