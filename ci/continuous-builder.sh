@@ -69,7 +69,7 @@ fi
 HASHES=$(grep -Eve '^[[:blank:]]*(#|$)' force-hashes || true)
 if [ -z "$HASHES" ]; then
   get_config
-  HASHES=$(list-branch-pr)
+  HASHES=$(TIMEOUT=120 short_timeout list-branch-pr)
 fi
 
 run_start_time=$(date +%s)
