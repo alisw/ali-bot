@@ -57,13 +57,21 @@ def main() -> None:
             if not any(alloc['ClientStatus'] == 'running'
                        for alloc in allocs[node['ID']]):
                 need_intervention.add(hostname)
+                print('\t-> needs intervention now! See below.')
+            else:
+                print('\t-> no intervention needed right now '
+                      '(have a running alloc)')
 
     if need_intervention:
+        commands = [
+            f"ssh -C {hostname} 'rm -rfv /build/nomad/alloc/*/ci/local/*/sw "
+            "&& systemctl restart nomad'"
+            for hostname in sorted(need_intervention)
+        ]
         print('\nThe following hosts need manual cleanup now:',
               *need_intervention, sep='\n\t- ')
-        print('\nFor each of the hosts mentioned specially above, run:\n'
-              "\tssh -C $hostname 'rm -rfv /build/nomad/alloc/*/ci/local/*/sw "
-              "&& systemctl restart nomad'")
+        print('\nTo clean up, run the following commands:\n',
+              *commands, sep='\n\t')
 
 
 if __name__ == '__main__':
