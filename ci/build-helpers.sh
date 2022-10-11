@@ -189,5 +189,24 @@ function ensure_vars () {
 # timeout vs. gtimeout (macOS with Homebrew)
 timeout_exec=timeout
 type $timeout_exec > /dev/null 2>&1 || timeout_exec=gtimeout
-function short_timeout () { $timeout_exec -s9 "$TIMEOUT" "$@"; }
-function long_timeout () { $timeout_exec -s9 "$LONG_TIMEOUT" "$@"; }
+function short_timeout () { general_timeout "$TIMEOUT" "$@"; }
+function long_timeout () { general_timeout "$LONG_TIMEOUT" "$@"; }
+function general_timeout () {
+  local ret=0 short_cmd
+  $timeout_exec -s9 "$@" || ret=$?
+  # 124 if command times out; 137 if command is killed (including by timeout itself)
+  if [ $ret -eq 124 ] || [ $ret -eq 137 ]; then
+    # BASH_{SOURCE,LINENO}[0] is where we're being called from, which is inside
+    # short_timeout or long_timeout (and thus not interesting).
+    # BASH_{SOURCE,LINENO}[1] is where *those* functions are being called from.
+    case $3 in
+      -*|'') short_cmd=$2 ;;
+      *) short_cmd="$2 $3" ;;
+    esac
+    influxdb_push ci_timeout_overrun \
+                  "host=$(hostname -s)" "cmd=$short_cmd" "timeout_retcode=$ret" \
+                  "called_from=$(basename "${BASH_SOURCE[1]}"):${BASH_LINENO[1]}" \
+                  -- "timeout=$1"
+  fi
+  return $ret
+}
