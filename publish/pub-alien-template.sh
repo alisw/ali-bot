@@ -6,8 +6,6 @@ CONNRETRY=%(conn_retries)d
 CONNRETRYDELAY=%(conn_dethrottle_s)d
 [[ $SSLVERIFY == 0 ]] && SSLVERIFY=-k || SSLVERIFY=
 TMPDIR=$(mktemp -d /tmp/aliPublish.XXXXX)
-TORDIR=/var/packages/download
-TORNOTIFY=/var/packages/NEWFILE
 mkdir -p "$TMPDIR"
 trap -- 'rm -rf "$TMPDIR"' EXIT TERM
 cd "$TMPDIR"
@@ -32,12 +30,3 @@ for SE in $BEST_SES; do
   ERR=0
 done
 [[ $ERR == 1 ]] && { echo "All storage elements failed"; exit 1; } || true
-
-# Only publish torrent if we can copy to $TORDIR.
-if cp -f "$TMPDIR/$TAR" "$TORDIR/$TAR"; then
-  chmod a=rw "$TORDIR/$TAR"
-  touch "$TORNOTIFY"
-  alien -exec addMirror \
-              "/alice/packages/%(package)s/%(version)s/%(arch)s" \
-              no_se "torrent://alitorrent.cern.ch/torrents/$TAR.torrent"
-fi
