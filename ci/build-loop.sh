@@ -131,6 +131,8 @@ fi
 unset certdir jalien_token
 
 report_state pr_processing
+PR_OK=0   # If we exit before the end of the script, we didn't succeed.
+trap -- 'report_state pr_processing_done' EXIT
 
 # Fetch the PR's changes to the git repository.
 if pushd "$PR_REPO_CHECKOUT"; then
@@ -167,6 +169,13 @@ if pushd "$PR_REPO_CHECKOUT"; then
   fi
 
   popd || exit 1
+fi
+
+# Nomad runs this script inside a cgroup managed by it, so it can clean up
+# properly when we exit (or are killed), and it can track CPU/RAM usage.
+# Run our Docker builds inside the same cgroup so they're included too.
+if cgroup=$(sed -rn '/:freezer:/{s/.*:freezer:(.*)/\1/p;q}' "/proc/$$/cgroup"); then
+  DOCKER_EXTRA_ARGS="$DOCKER_EXTRA_ARGS ${cgroup:+--cgroup-parent=$cgroup}"
 fi
 
 if ! clean_env short_timeout aliDoctor --defaults "$ALIBUILD_DEFAULTS" "$PACKAGE" \
@@ -243,7 +252,6 @@ then
 else
   report_pr_errors ${DONT_USE_COMMENTS:+--no-comments} ||
     short_timeout report-analytics exception --desc 'report-pr-errors fail on build error'
-  PR_OK=0
 fi
 
 (
@@ -262,5 +270,3 @@ fi
       true
   fi
 )
-
-report_state pr_processing_done
