@@ -229,6 +229,7 @@ jobs:
 
       - name: Check for incorrect line endings
         run: |
+          # shellcheck disable=SC1004
           if find . \( -path ./.git -prune -false \) -o -type f \( \
                -name '*.c' -o -name '*.C' -o -name '*.cpp' -o -name '*.cxx' -o \
                -name '*.cl' -o -name '*.h' -o -name '*.hpp' -o -name '*.py' -o \

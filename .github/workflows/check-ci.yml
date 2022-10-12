@@ -1,0 +1,57 @@
+---
+# Check commits and incoming PRs that change anything under ci/.
+name: Check CI
+
+'on':
+  push:
+    paths:
+      - 'ci/**'
+  pull_request:
+    paths:
+      - 'ci/**'
+    types:
+      - opened
+      - reopened
+      - edited
+      - ready_for_review
+      - synchronize
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install prerequisites
+        run: |
+          sudo apt update -y
+          sudo apt install -y shellcheck jq
+          mkdir ~/bin
+          cat <<\EOF > ~/bin/sc2github
+          #!/usr/bin/jq -rf
+          .comments[] |
+          .gh_level = {"error": "error", "warning": "warning",
+                       "info": "notice", "style": "notice"}[.level] |
+          "::\(.gh_level) title=SC\(.code),file=\(.file),line=\(.line)," +
+          "col=\(.column),endLine=\(.endLine),endColumn=\(.endColumn)::\(.message)"
+          EOF
+          chmod +x ~/bin/sc2github
+          echo ~/bin >> "$GITHUB_PATH"
+
+      - name: Check CI shell scripts
+        run: |
+          find ci -type f -name '*.sh' -print0 |
+            xargs -r0 shellcheck -f json1 |
+            sc2github
+
+      - name: Check .env files
+        # Run even if the previous step failed. A failure in the previous step
+        # will still fail the job as a whole.
+        if: ${{ success() || failure() }}
+        run: |
+          find ci/repo-config -type f -name '*.env' -print0 |
+            # SC2034 is the "$VAR appears unused" warning.
+            xargs -r0 shellcheck -f json1 -s bash --exclude=SC2034 |
+            sc2github
