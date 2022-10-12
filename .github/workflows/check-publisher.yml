@@ -1,0 +1,46 @@
+---
+# Check commits and incoming PRs that change anything under publish/.
+name: Check publisher
+
+'on':
+  push:
+    paths:
+      - 'publish/**'
+  pull_request:
+    paths:
+      - 'publish/**'
+    types:
+      - opened
+      - reopened
+      - edited
+      - ready_for_review
+      - synchronize
+
+jobs:
+  rules:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install prerequisites
+        run: |
+          sudo apt update -y
+          sudo apt install -y python3-dev python3-pip python3-setuptools python3-wheel
+          python3 -m pip install -r requirements.txt
+
+      - name: Test publishing rules
+        run: |
+          cd publish
+          err=0
+          for conf in aliPublish*.conf; do
+            test=test${conf#aliPublish}
+            test=${test%.conf}.yaml
+            [ -r "$test" ] || continue
+            if ! ./aliPublish test-rules --conf "$conf" --test-conf "$test" --debug; then
+              echo -n "::error file=publish/$conf,line=1,title=Rules validation failed"
+              echo "::Testing $conf against $test failed."
+              err=1
+            fi
+          done
+          exit $err
