@@ -162,8 +162,10 @@ jobs:
         env:
           # The expected copyright notice. Comment markers ("//" or "#") are
           # added automatically and should NOT appear in this variable.
-          COPYRIGHT: |-
-            Copyright 2019-2020 CERN and copyright holders of ALICE O2.
+          # We want to ignore the year, so treat the first line as a regex.
+          COPYRIGHT_FIRST_LINE: |-
+            Copyright [0-9]{4}-[0-9]{4} CERN and copyright holders of ALICE O2\.
+          COPYRIGHT_REST: |-
             See https://alice-o2.web.cern.ch/copyright for details of the copyright holders.
             All rights not expressly granted are reserved.
 
@@ -181,20 +183,23 @@ jobs:
                        -- '*.cxx' '*.h' '*.C' '*.cmake' CMakeLists.txt)
           # Run copyright notice check. Comment lines start with "//" for C++
           # files and "#" for CMake files.
-          cpp_copyright=$(echo "$COPYRIGHT" | sed -r 's,^.+,// \0,; s,^$,//,')
-          hash_copyright=$(echo "$COPYRIGHT" | sed -r 's,^.+,# \0,; s,^$,#,')
-          copyright_lines=$(echo "$COPYRIGHT" | wc -l)
+          cpp_first="// $COPYRIGHT_FIRST_LINE"
+          hash_first="# $COPYRIGHT_FIRST_LINE"
+          cpp_rest=$(echo "$COPYRIGHT_REST" | sed -r 's,^.+,// \0,; s,^$,//,')
+          hash_rest=$(echo "$COPYRIGHT_REST" | sed -r 's,^.+,# \0,; s,^$,#,')
+          total_lines=$(($(echo "$COPYRIGHT_REST" | wc -l) + 1))
           incorrect_files=()
           for file in "${files[@]}"; do
             case $file in
-              *.cxx|*.h|*.C) correct_notice=$cpp_copyright ;;
-              *.cmake|CMakeLists.txt) correct_notice=$hash_copyright ;;
+              *.cxx|*.h|*.C) first=$cpp_first rest=$cpp_rest ;;
+              *.cmake|CMakeLists.txt) first=$hash_first rest=$hash_rest ;;
               *) echo "error: unknown file type for $file" >&2; exit 1 ;;
             esac
-            actual_notice=$(head -n "$copyright_lines" "$file")
-            if [ "$actual_notice" != "$correct_notice" ]; then
+            if head -1 "$file" | grep -qvEx "$first" ||
+               [ "$(head -n "$total_lines" "$file" | tail -n +2)" != "$rest" ]
+            then
               incorrect_files+=("$file")
-              echo -n "::error file=$file,line=1,endLine=$copyright_lines,"
+              echo -n "::error file=$file,line=1,endLine=$total_lines,"
               echo -n "title=Missing or malformed copyright notice::"
               echo "This source file is missing the correct copyright notice."
             fi
@@ -216,8 +221,12 @@ jobs:
           line with a \`#\` for CMake files):
 
           \`\`\`
-          $cpp_copyright
+          $(echo "$cpp_first" |
+              sed -r 's/\[0-9\]\{4\}/2020/; s/\[0-9\]\{4\}/2022/; s/\\\././')
+          $cpp_rest
           \`\`\`
+
+          (The year numbers on the first line aren't checked.)
           EOF
             exit 1
           else
