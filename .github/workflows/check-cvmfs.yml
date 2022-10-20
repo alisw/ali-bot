@@ -26,8 +26,10 @@ jobs:
       - name: Install prerequisites
         run: |
           sudo apt update -y
-          sudo apt install -y build-essential libldap2-dev libsasl2-dev environment-modules \
-                              python3-dev python3-pip python3-setuptools python3-wheel
+          # python-ldap needs lib{ldap,sasl}2-dev
+          sudo apt install -y libldap2-dev libsasl2-dev \
+            build-essential bison texinfo environment-modules \
+            python3-dev python3-pip python3-setuptools python3-wheel
           python3 -m pip install -r requirements.txt
 
       - name: Install an old bash
@@ -44,7 +46,7 @@ jobs:
           popd
           # Patch alienv and make it use our own, old, bash
           sed -i "1s|^#\!/bin/bash|#\!$HOME/cached/bin/bash|" cvmfs/alienv
-          git diff
+          git --no-pager diff
 
       - name: Install CVMFS
         run: |
@@ -57,8 +59,8 @@ jobs:
           unset url
           sudo dpkg -i cvmfs-release-latest_all.deb
           rm -f cvmfs-release-latest_all.deb
-          sudo apt-get update
-          sudo apt-get install cvmfs-dev cvmfs libtcl8.5 libx11-6
+          sudo apt update -y
+          sudo apt install -y cvmfs-dev cvmfs libtcl8.6 libx11-6
           sudo mkdir -p /cvmfs/alice.cern.ch
           sudo chown -R cvmfs:cvmfs /cvmfs
           echo CVMFS_HTTP_PROXY=DIRECT | sudo tee /etc/cvmfs/default.local
@@ -97,6 +99,7 @@ jobs:
             pt "run alienv from a non-standard path ($np) with full symlink"
             ( mkdir -p "$np"
               ln -nfs "$ALIENV" "$np/alienv"
+              # shellcheck disable=SC2030
               export PATH=$np:$PATH
               ALIENV_DEBUG=1 alienv q | grep AliPhysics | tail -n1
             )
@@ -106,12 +109,15 @@ jobs:
           pt "run alienv from a non-standard path ($np) with relative symlink"
           ( mkdir -p "$np"
             ln -nfs "$(dn=$(dirname "$ALIENV"); while [ "$dn" != / ]; do dn=$(dirname "$dn"); printf ../; done)$ALIENV" "$np/alienv"
+            # shellcheck disable=SC2030,SC2031
             export PATH=$np:$PATH
             ALIENV_DEBUG=1 alienv q | grep AliPhysics | tail -n1
           )
           unset np
-          export PATH=$(dirname "$ALIENV"):$PATH
-          [ "$(which alienv)" = "$ALIENV" ]
+          # shellcheck disable=SC2031
+          PATH=$(dirname "$ALIENV"):$PATH
+          export PATH
+          [ "$(command -v alienv)" = "$ALIENV" ]
 
           pt "test package reordering"
           ALIENV_DEBUG=1 alienv setenv VO_ALICE@AliEn-Runtime::v2-19-le-21,VO_ALICE@ROOT::v5-34-30-alice7-2,VO_ALICE@AliPhysics::vAN-20170301-1 -c true 2>&1 |
