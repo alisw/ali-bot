@@ -158,6 +158,7 @@ fi
 # If we're idling or builds are completing very quickly, wait a while
 # to conserve GitHub API requests.
 run_duration=$(($(date +%s) - run_start_time))
+# shellcheck disable=SC2031  # TIMEOUT was modified in a subshell; that's fine.
 timeout=$(get_config_value timeout "${TIMEOUT:-120}")
 if [ "$run_duration" -lt "$timeout" ]; then
   sleep $((timeout - run_duration)) || :
