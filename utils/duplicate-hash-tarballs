@@ -1,0 +1,31 @@
+#!/bin/sh -e
+repo=${1%/} arch=$2
+if [ -z "$repo" ] || [ -z "$arch" ]; then
+  cat << EOF >&2
+Usage: $(basename "$0") REPO ARCH
+
+Find tarballs in the given repository that have the same hash as another package.
+
+  REPO   aliBuild remote store; rsync://, b3://, s3:// or https://
+  ARCH   aliBuild architecture, e.g. slc8_x86-64
+EOF
+  exit 1
+fi
+
+case "$repo" in
+  rsync://*)
+    ssh -n alibuild01.cern.ch "rsync --list-only -R '$repo/TARS/$arch/store/??/*/*.tar.gz' | grep '\\.tar\\.gz\$'" |
+      uniq -Dw 40 -s $((61 + ${#arch})) ;;
+
+  b3://*|s3://*)
+    s3cmd ls -r "s3://${repo#?3://}/TARS/$arch/store/" |
+      uniq -Dw 40 -s $((47 + ${#arch} + ${#repo})) ;;
+
+  https://s3.cern.ch/*)
+    curl -fsSL "$repo/?prefix=TARS/$arch/store/" |
+      uniq -Dw 40 -s $((15 + ${#arch})) ;;
+
+  *)
+    echo "$(basename "$0"): unknown repo URL: $repo" >&2
+    exit 1
+esac

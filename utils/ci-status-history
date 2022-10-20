@@ -1,0 +1,23 @@
+#!/bin/sh -e
+api_url=$(echo "$1" | sed -rn '
+  s,^https://github.com/(.+/.+)/pull/[0-9]+/commits/([0-9a-fA-F]+)$,https://api.github.com/repos/\1/statuses/\2,p
+')
+check=$2
+
+if [ -z "$api_url" ]; then
+  cat << EOF >&2
+Usage: $(basename "$0") COMMIT_URL [CHECK_NAME]
+  COMMIT_URL  e.g. https://github.com/alisw/alidist/pull/3658/commits/629dacd20649a08a94260a62736dabf1e994a017
+  CHECK_NAME  e.g. build/O2/fullCI
+EOF
+  exit 1
+fi
+
+[ -z "$check" ] && show_check=true
+
+curl -fsS "$api_url" | jq -r "[.[]
+   ${check:+| select(.context == \"$check\")}
+   | [(.created_at | sub(\"T\"; \"\\t\")), .creator.login, .state, ${show_check+.context,} .description]
+   | join(\"\\t\")
+] | sort | .[]" |
+  column -tN "DATE,TIME,USER,STATUS,${show_check+CHECK,}DESCRIPTION" -s '	'  # literal tab char!

@@ -1,0 +1,41 @@
+#!/bin/sh -ex
+
+arch=${1:?you must provide an architecture as the first arg}
+pkgname=${2:?you must provide a package name as the second arg}
+version=${3:?you must provide a version string as the third arg}
+
+tarname="$pkgname-$version.$arch.tar.gz"
+symlink="TARS/$arch/$pkgname/$tarname"
+tarball="TARS/$(s3cmd get -q "s3://alibuild-repo/$symlink" - | sed -r 's|^(\.\./)*(TARS/)*(\.\./)*||')"
+case $tarball in
+  *000000000000000000000000000000*)
+    tarball=$(grep -Fm 1 "$tarname" to-move.txt)
+    [ -n "$tarball" ]
+    echo "using remembered tarball $tarball instead" >&2 ;;
+esac
+
+if [ -z "$(s3cmd ls "s3://alibuild-repo/$tarball" )" ]; then
+  echo "ERROR: trying to move nonexistent $tarball" >&2
+  exit 1
+fi
+
+i=0
+while true; do
+  hash=$(printf '%040d' $i)
+  quarantined_tarball="TARS/$arch/store/$(echo "$hash" | head -c 2)/$hash/$tarname"
+  if [ -z "$(s3cmd ls "s3://alibuild-repo/$quarantined_tarball")" ]; then
+    # If this key doesn't already exist, we're OK to move our tarball here.
+    break
+  fi
+  i=$((i + 1))
+done
+
+echo "moving $pkgname $version (new hash $hash)" >&2
+
+if s3cmd get -q "s3://alibuild-repo/TARS/$arch/$pkgname.manifest" - | grep -qF "$tarball"; then
+  echo "WARNING: entry in TARS/$arch/$pkgname.manifest must be replaced manually" >&2
+fi
+
+s3cmd mv "s3://alibuild-repo/$tarball" "s3://alibuild-repo/$quarantined_tarball"
+printf '%s' "${quarantined_tarball#TARS/}" | s3cmd put - "s3://alibuild-repo/$symlink"
+echo "Previous location: $tarball" | s3cmd put - "s3://alibuild-repo/${quarantined_tarball%.tar.gz}.README"
