@@ -41,17 +41,21 @@ jobs:
           echo ~/bin >> "$GITHUB_PATH"
 
       - name: Check CI shell scripts
+        # Run the "bash" with -o pipefail, not the default one without.
+        shell: bash
         run: |
           find ci -type f -name '*.sh' -print0 |
-            xargs -r0 shellcheck -f json1 |
+            xargs -tr0 shellcheck -f json1 |
             sc2github
 
       - name: Check .env files
         # Run even if the previous step failed. A failure in the previous step
         # will still fail the job as a whole.
         if: ${{ success() || failure() }}
+        # Run the "bash" with -o pipefail, not the default one without.
+        shell: bash
         run: |
           find ci/repo-config -type f -name '*.env' -print0 |
             # SC2034 is the "$VAR appears unused" warning.
-            xargs -r0 shellcheck -f json1 -s bash --exclude=SC2034 |
+            xargs -tr0 shellcheck -f json1 -s bash --exclude=SC2034 |
             sc2github
