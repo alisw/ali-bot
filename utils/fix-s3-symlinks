@@ -1,0 +1,8 @@
+#!/bin/sh -ex
+while read -r pkgname version; do
+  symlink="s3://alibuild-repo/TARS/slc8_x86-64/$pkgname/$pkgname-$version.slc8_x86-64.tar.gz"
+  target=$(s3cmd get -q "$symlink" -)
+  case $target in
+    TARS/*) echo "${target#TARS/}" | s3cmd put - "$symlink" ;;
+  esac
+done < depend-on-broken-root.txt

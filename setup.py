@@ -96,6 +96,7 @@ setup(
             # for gql; by default it pulls in a version that isn't compatible with python3.6
             "typing-extensions==4.1.1; python_version == '3.6'",
         ],
+        "utils": ["python-nomad"],
     },
 
     # If there are data files included in your packages that need to be
@@ -109,42 +110,50 @@ setup(
     # "scripts" keyword. Entry points provide cross-platform support and allow
     # pip to create the appropriate form of executable for the target platform.
     scripts = [
-               # Continuous Integration
-               "set-github-status",
-               "report-pr-errors",
-               "list-branch-pr",
-               "alidist-override-tags",
-               # Analytics
-               "analytics/report-analytics",
-               "analytics/report-metric-monalisa",
-               # Continuous Builders
-               "ci/continuous-builder.sh",
-               "ci/build-helpers.sh",
-               "ci/build-loop.sh",
-               "ci/cleanup.py",
-               # GitHub API monitoring
-               "monitor-github-api",
-               "monitor-github-api-monalisa.sh",
-               # S3 housekeeping
-               "repo-s3-cleanup",
-               # Check daily tags
-               "check-daily-slack",
-               "daily-tags.sh",
-               "build-any-ib.sh",
-               "build-package",
-               # Wait for open Pull Requests before daily tags
-               "ci/check-open-pr",
-               # Process PR permissions
-               "ci/process-pull-request-http.py",
-               "ci/sync-egroups.py",
-               "ci/sync-mapusers.py",
-               # Get PR information
-               "ci/prinfo",
-               # Resolve Mesos DNS
-               "mesos-dns-lookup",
-               # Helpers
-               "clean-repo-ci",
-               "bulk-change-pr-status",
-               "ci-status-overview",
-              ]
+        # Continuous Integration
+        "set-github-status",
+        "report-pr-errors",
+        "list-branch-pr",
+        "alidist-override-tags",
+        # Analytics
+        "analytics/report-analytics",
+        "analytics/report-metric-monalisa",
+        # Continuous Builders
+        "ci/continuous-builder.sh",
+        "ci/build-helpers.sh",
+        "ci/build-loop.sh",
+        "ci/cleanup.py",
+        # GitHub API monitoring
+        "monitor-github-api",
+        "monitor-github-api-monalisa.sh",
+        # S3 housekeeping
+        "repo-s3-cleanup",
+        # Check daily tags
+        "check-daily-slack",
+        "daily-tags.sh",
+        "build-any-ib.sh",
+        "build-package",
+        # Wait for open Pull Requests before daily tags
+        "ci/check-open-pr",
+        # Process PR permissions
+        "ci/process-pull-request-http.py",
+        "ci/sync-egroups.py",
+        "ci/sync-mapusers.py",
+        # Get PR information
+        "ci/prinfo",
+        # Resolve Mesos DNS
+        "mesos-dns-lookup",
+        # Helpers
+        "clean-repo-ci",
+        "ci-status-overview",
+        "utils/bulk-change-pr-status",
+        "utils/bulk-change-pr-status-by-checker",
+        "utils/ciqueues",
+        "utils/ci-status-history",
+        "utils/duplicate-hash-tarballs",
+        "utils/logspecs",
+        "utils/logtimes",
+        "utils/nomad-diskfree",
+        "utils/pdci",
+    ]
 )

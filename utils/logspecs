@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+
+'''Extract specs from aliBuild logs and work out why the hashes differ.
+
+This script expects each log file to contain a single build, such that package
+names do not repeat within a log file.
+'''
+
+import argparse
+import collections
+import re
+import sys
+from collections.abc import Sequence
+from typing import Any
+
+Spec = dict[str, Any]
+
+SPEC_RE: re.Pattern[str] = re.compile(r' spec = (.*)$')
+IGNORE_KEYS: frozenset[str] = frozenset((
+    'git_heads',
+    'git_refs',
+))
+KEYS_USED_FOR_HASH_CALCULATION: frozenset[str] = frozenset((
+    'force_rebuild',
+    'recipe',
+    'version',
+    'package',
+    'commit_hash',
+    'tag',
+    'env',
+    'append_path',
+    'prepend_path',
+    'source',
+    'requires',
+    'hash',        # for dependent packages
+    'devel_hash',  # for dependent packages
+    'incremental_recipe',
+    'relocate_paths',
+    'deps_hash',
+))
+
+
+def parse_spec(string: str) -> Spec:
+    '''Parse the spec extracted from a log.'''
+    # pylint: disable=eval-used
+    return eval(string, {'__builtins__': {'set': set},
+                         'OrderedDict': collections.OrderedDict})
+
+
+def different_keys(specs: Sequence[Spec],
+                   ignore: frozenset[str] = IGNORE_KEYS) -> set[str]:
+    '''Return keys whose values differ between specs.'''
+    if len(specs) < 2:
+        return set()
+    first, *other = specs
+    return {key for key in set().union(*specs) - ignore
+            if not all(s.get(key) == first.get(key) for s in other)}
+
+
+def format_recipe_diff(package_name: str, specs: Sequence[Spec],
+                       diff_keys: set[str]) -> None:
+    '''Output the differences between all the given specs.'''
+    if len(specs) < 2 or not diff_keys:
+        return
+    important_keys = diff_keys & KEYS_USED_FOR_HASH_CALCULATION
+    # First, show keys that are used for calculating the package's hash.
+    # Then, show less important keys such as the hashes themselves, or keys
+    # that depend on the hash rather than vice versa.
+    for prefix, keys in (('! ', important_keys),
+                         ('  ', diff_keys - important_keys)):
+        for key in sorted(keys):
+            Logger.log(package_name, prefix + key)
+            for spec in specs:
+                Logger.log(package_name, prefix + 4*' ' + repr(spec.get(key)))
+
+
+def output_full_diff(package: str, log_specs: dict[str, Spec | None],
+                     diff_keys: set[str], log_order: Sequence[str]):
+    '''Assemble the list of specs and output any differences.'''
+    compare = []
+    for log_fname in log_order:
+        spec_this_log = log_specs[log_fname]
+        if spec_this_log is None:
+            Logger.log(package, f'not found in {log_fname}')
+        else:
+            compare.append(spec_this_log)
+    format_recipe_diff(package, compare, diff_keys)
+    Logger.separator()
+
+
+def main(args: argparse.Namespace) -> None:
+    '''Script entry point.'''
+    if len(args.log_files) < 2:
+        print('warning: you must give at least input two files to this command '
+              'for it to do something useful', file=sys.stderr)
+    log_order = [fd.name for fd in args.log_files]
+    log_specs: dict[str, dict[str, Spec]] = {fd.name: {
+        (spec := parse_spec(match.group(1)))['package']: spec
+        for line in fd
+        # Only use the pre-hash-assignment spec if selected by the user.
+        if not (args.pre_hash_specs and '_revision_hash' in line)
+        and (match := re.search(SPEC_RE, line))
+    } for fd in args.log_files}
+    all_pkg_names: set[str] = set().union(*log_specs.values())
+    Logger.package_name_length = min(16, max(map(len, all_pkg_names)))
+    specs_for_package = {package: {log_fname: specs.get(package)
+                                   for log_fname, specs in log_specs.items()}
+                         for package in all_pkg_names}
+    diffs = {package: different_keys([
+        spec for spec in specs_for_package[package].values()
+        if spec is not None
+    ]) for package in specs_for_package}
+
+    # Defaults always come first, as everything else depends on them.
+    Logger.header('defaults')
+    output_full_diff('defaults-release', specs_for_package['defaults-release'],
+                     diffs['defaults-release'], log_order)
+    # Remove from later consideration.
+    del diffs['defaults-release']
+
+    # Show packages who have don't have a different deps_hash first, as they
+    # must have more substantial or causally more important differences.
+    Logger.header('packages with only non-dependency differences')
+    for package in sorted(package for package, diff_keys in diffs.items()
+                          if 'deps_hash' not in diff_keys):
+        output_full_diff(package, specs_for_package[package],
+                         diffs[package], log_order)
+
+    # Last, show all the rest, which have differences in their dependencies
+    # (and are less useful when trying to find out why things were rebuilt).
+    Logger.header('packages with dependency hash differences')
+    for package in sorted(package for package, diff_keys in diffs.items()
+                          if 'deps_hash' in diff_keys):
+        output_full_diff(package, specs_for_package[package],
+                         diffs[package], log_order)
+
+
+def parse_args() -> argparse.Namespace:
+    '''Parse and return command-line arguments.'''
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('-H', '--pre-hash-specs', action='store_true',
+                        help='use specs from before hashes are assigned')
+    parser.add_argument('log_files', metavar='LOG', nargs='+',
+                        type=argparse.FileType('r'),
+                        help='log files to analyse and compare')
+    return parser.parse_args()
+
+
+class Logger:
+    '''Utility class to remember package name lengths.'''
+    package_name_length: int = 0
+
+    @classmethod
+    def log(cls, package_name: str, message: str) -> None:
+        '''Write out a log message for the given package.'''
+        if len(package_name) > cls.package_name_length:
+            package_name = package_name[:cls.package_name_length - 1] + '…'
+        print(format(package_name, f'>{cls.package_name_length}'),
+              message, sep=': ')
+
+    @classmethod
+    def header(cls, message: str) -> None:
+        '''Write out a header line.'''
+        print(format(' ' + message + ' ', '-^80'))
+        cls.separator()
+
+    @staticmethod
+    def separator() -> None:
+        '''Write out a blank line separating other blocks of output.'''
+        print()
+
+
+if __name__ == '__main__':
+    main(parse_args())

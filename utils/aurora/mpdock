@@ -1,0 +1,75 @@
+#!/bin/bash
+
+help () {
+  cat <<EOF >&2
+usage: $(basename "$0") [-ml] COMMAND [ARGS...]
+
+Run a command inside all CI docker containers simultaneously.
+
+  -m       run on MacOS machines
+  -l       run on Linux machines (inside docker containers)
+  COMMAND  command to run; will not be quoted
+  ARGS...  optional arguments to COMMAND; will be quoted
+
+If neither of -m, -l is given, -ml is assumed.
+EOF
+  exit "$1"
+}
+
+die () {
+  echo "$(basename "$0"): error: $*" >&2
+  help 1 >&2
+}
+
+quote () {
+  # Replace ' by '\'' in $1.
+  echo "${1//\'/\'\\\'\'}"
+}
+
+while getopts ':hml' opt; do
+  case "$opt" in
+    h) help 0;;
+    m) run_mac=1;;
+    l) run_linux=1;;
+    :) die "-$OPTARG requires an argument";;
+    *) die "unknown option: -$opt";;
+  esac
+done
+shift $((OPTIND - 1))
+
+real_command=$(quote "$1")
+shift
+for word in "$@"; do
+  real_command="$real_command $(quote "'$(quote "$word")'")"
+done
+[ -n "$real_command" ] || die no command given
+
+if [ -n "$run_linux" ] && [ -z "$run_mac" ]; then
+  group=alibuildlinux
+elif [ -n "$run_mac" ] && [ -z "$run_linux" ]; then
+  group=alibuildmac
+else
+  # If none or both of -m and -l given, run everywhere.
+  group=alibuildall
+fi
+
+exec pdsh -Ng "$group" -t 60 -f 32 "$(cat << EOF
+# If sed understands -u, use it to avoid output being overly buffered.
+if echo | sed -u d 2>/dev/null; then sed () { command sed -u "\$@"; }; fi
+case \$(uname -s) in
+  Linux)
+    docker ps | awk '(/(slc[78](-gpu)?|ubuntu[0-9]{4})-builder:latest/ && !/java/){print \$1}' | while read c; do
+      docker exec \$c sh -c 'cd /mnt/mesos/sandbox/sandbox || exit 1; $real_command' 2>&1 |
+        sed "s/^/\$(hostname -s):\$c: /" &
+    done;;
+  Darwin)
+    for d in /build/ci_checks/alice_ci_*; do
+      sh -c 'cd '"\$d"' || exit 1; $real_command' 2>&1 |
+        sed "s|^|\$(hostname -s):\${d#/build/ci_checks/}: |" &
+    done;;
+  *)
+    echo "error: unknown architecture: \$(uname -s)" >&2
+    exit 1;;
+esac; wait
+EOF
+)"

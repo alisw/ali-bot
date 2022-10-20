@@ -14,3 +14,5 @@ python-ldap[services]
 typing-extensions[ci]==4.1.1; python_version == '3.6'
 gql[ci]; python_version >= '3.6'
 requests-toolbelt[ci]; python_version >= '3.6'  # for gql
+# For nomad-diskfree
+python-nomad[utils]
