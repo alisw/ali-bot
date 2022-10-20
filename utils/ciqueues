@@ -39,7 +39,7 @@ export GITHUB_TOKEN
 cd
 declare -i i=0
 for instance_id in "${instances[@]}"; do
-  queue=$(ali-bot/list-branch-pr -i "$i" -n "${#instances[@]}" -r "$role" -c "$container" -s "$suffix" 2>/dev/null |
+  queue=$(ali-bot/list-branch-pr -i "$i" -n "${#instances[@]}" -r "$role" -c "$container" -s="$suffix" 2>/dev/null |
             cut -f 1,2,4 | tr '\t' ' ' | sed 's/^untested\b/U/; s/^failed\b/F/; s/^succeeded\b/S/; s/^/\t/')
   if [ -z "$queue" ]; then
     echo "worker $i/${#instances[@]} ($instance_id): (nothing to do)"
