@@ -14,10 +14,6 @@ ensure_vars CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS
 : "${WORKERS_POOL_SIZE:=1}" "${WORKER_INDEX:=0}" "${PR_REPO_CHECKOUT:=$(basename "$PR_REPO")}"
 [ -d /build/mirror ] && : "${MIRROR:=/build/mirror}"
 
-# This is the check name. If CHECK_NAME is in the environment, use it. Otherwise
-# default to, e.g., build/AliRoot/release (build/<Package>/<Defaults>)
-: "${CHECK_NAME:=build/$PACKAGE/$ALIBUILD_DEFAULTS}"
-
 host_id=${NOMAD_SHORT_ALLOC_ID:-$(hostname -f)}
 
 # Update all PRs in the queue with their number before we start building.
@@ -170,7 +166,7 @@ if pushd "$PR_REPO_CHECKOUT"; then
     exit 1
   fi
 
-  popd
+  popd || exit 1
 fi
 
 if ! clean_env short_timeout aliDoctor --defaults "$ALIBUILD_DEFAULTS" "$PACKAGE" \
