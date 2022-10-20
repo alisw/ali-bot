@@ -154,7 +154,7 @@ class Logger:
     def log(cls, package_name: str, message: str) -> None:
         '''Write out a log message for the given package.'''
         if len(package_name) > cls.package_name_length:
-            package_name = package_name[:cls.package_name_length - 1] + '…'
+            package_name = package_name[:cls.package_name_length - 3] + '...'
         print(format(package_name, f'>{cls.package_name_length}'),
               message, sep=': ')
 
