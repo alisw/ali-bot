@@ -157,6 +157,8 @@ function source_env_files () {
                  "$base/$MESOS_ROLE/$CUR_CONTAINER$ALIBOT_CONFIG_SUFFIX/DEFAULTS.env" \
                  "$base/$MESOS_ROLE/$CUR_CONTAINER$ALIBOT_CONFIG_SUFFIX/$env_name.env"
   do
+    # Don't check the sourced file here. The .env files are checked separately.
+    # shellcheck source=/dev/null
     [ -e "$_envf" ] && . "$_envf"
   done
 }

@@ -8,6 +8,8 @@
 
 if [ "$1" != --skip-setup ]; then
   if [ -r ~/.continuous-builder ]; then
+    # Tell ShellCheck not to check the sourced file here. Assume the .env files are fine.
+    # shellcheck source=/dev/null
     . ~/.continuous-builder
   fi
 
@@ -51,7 +53,7 @@ fi
 # This is for *.env files. These should always be taken from ali-bot@master,
 # irrespective of the *installed* ali-bot version required by each repo.
 TIMEOUT=$(get_config_value timeout "${TIMEOUT:-600}") \
-       reset_git_repository ali-bot https://github.com/alisw/ali-bot
+  reset_git_repository ali-bot https://github.com/alisw/ali-bot
 
 # Generate example of force-hashes file. This is used to override what to check for testing
 if ! [ -e force-hashes ]; then
