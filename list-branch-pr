@@ -71,13 +71,12 @@ class RepoConfig:
         # Parse .env files for this build config to initialise above variables.
         mesos, docker = mesos_role, container_name + config_suffix
         env_file_path = build_config + ".env"
-        for envpath in [
-                os.path.join(definitions_dir, DEFAULTENV_NAME),
-                os.path.join(definitions_dir, mesos, DEFAULTENV_NAME),
-                os.path.join(definitions_dir, mesos, docker, DEFAULTENV_NAME),
-                os.path.join(definitions_dir, mesos, docker, env_file_path)]:
-            if os.path.exists(envpath):
-                self._parse_env_file(envpath)
+        self._parse_env_files(
+            os.path.join(definitions_dir, DEFAULTENV_NAME),
+            os.path.join(definitions_dir, mesos, DEFAULTENV_NAME),
+            os.path.join(definitions_dir, mesos, docker, DEFAULTENV_NAME),
+            os.path.join(definitions_dir, mesos, docker, env_file_path),
+        )
 
         if not self.check_name or not self.repo_name:
             raise ValueError("CHECK_NAME and PR_REPO are required")
@@ -87,27 +86,37 @@ class RepoConfig:
                   self.check_name, self.repo_name, self.branch_ref),
               sep=": ", file=sys.stderr)
 
-    def _parse_env_file(self, env_file_path):
-        """Apply settings from env_file_path to this class."""
+    def _parse_env_files(self, *env_file_paths):
+        """Apply settings from env_file_paths to this class."""
+        # This variable might be overridden, so only modify trusted_author_*
+        # once we've loaded the whole chain of .env files.
+        trust_collaborators = False
+
         # Some variables are used elsewhere in the CI builder, so they
         # are defined as shell variables. Handle these here (including
         # multiple assignments on one line). Note that non-assignments
         # containing "=" (e.g. command arguments), variables valid only
         # for one command, and the like confuse this simple approach.
-        for var, value in parse_env_file(env_file_path):
-            if var == "PR_REPO":
-                self.repo_name = value
-            elif var == "PR_BRANCH":
-                self.branch_ref = value
-            elif var == "CHECK_NAME":
-                self.check_name = value
-            elif var == "TRUST_COLLABORATORS" and value:
-                # Shell-style boolean: value is True if non-empty.
-                self.trusted_author_associations.add("CONTRIBUTOR")
-            elif var == "TRUSTED_USERS":
-                self.trusted_users = frozenset(value.split(","))
-            elif var == "TRUSTED_TEAM" and value:
-                self.trusted_team_slug = value
+        for env_file_path in env_file_paths:
+            if not os.path.exists(env_file_path):
+                continue
+            for var, value in parse_env_file(env_file_path):
+                if var == "PR_REPO":
+                    self.repo_name = value
+                elif var == "PR_BRANCH":
+                    self.branch_ref = value
+                elif var == "CHECK_NAME":
+                    self.check_name = value
+                elif var == "TRUST_COLLABORATORS":
+                    # Shell-style boolean: value is True if non-empty.
+                    trust_collaborators = bool(value)
+                elif var == "TRUSTED_USERS":
+                    self.trusted_users = frozenset(value.split(","))
+                elif var == "TRUSTED_TEAM":
+                    self.trusted_team_slug = value or None
+
+        if trust_collaborators:
+            self.trusted_author_associations.add("CONTRIBUTOR")
 
     def should_process(self, commit_sha):
         """Decide whether this worker should handle the given PR.
