@@ -35,7 +35,7 @@ jobs:
           ACTIONLINT_URL: |-
             https://github.com/rhysd/actionlint/releases/download/v1.6.21/actionlint_1.6.21_linux_amd64.tar.gz
 
-      - name: Check CI shell scripts
+      - name: Check GitHub workflows
         run: |
           actionlint -pyflakes="$(command -v pyflakes3)" \
                      -format "$GITHUB_FORMAT" .github/workflows/*.yml
