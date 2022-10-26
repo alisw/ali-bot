@@ -116,7 +116,8 @@ if [ -n "$HASHES" ]; then
     # least 100 GiB of free disk space.
     # We can't write metrics to stdout and pipe, as aliBuild's doClean also
     # writes to stdout.
-    cleanup.py -o cleanup-metrics.txt -t 2 -f 100 "$MESOS_ROLE" "$CUR_CONTAINER"
+    cleanup.py -o cleanup-metrics.txt -t 2 -f 100 \
+               "$MESOS_ROLE" "$CUR_CONTAINER$ALIBOT_CONFIG_SUFFIX"
     while read -r env_name duration_sec num_deleted_symlinks \
                   bytes_freed bytes_free_before
     do (
