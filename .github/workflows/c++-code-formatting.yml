@@ -82,10 +82,7 @@ jobs:
              [ "$patch" = 'clang-format did not modify any files' ]
           then
             echo 'clang-format passed.' >> "$GITHUB_STEP_SUMMARY"
-            cat << EOF
-          ::set-output name=cleanup_commit::
-          ::set-output name=clean::true
-          EOF
+            printf '%s\n' cleanup_commit= clean=true >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -105,8 +102,7 @@ jobs:
 
           Opening a PR to your branch with the fixes.
           EOF
-          echo '::set-output name=cleanup_commit::HEAD'
-          echo '::set-output name=clean::false'
+          printf '%s\n' cleanup_commit=HEAD clean=false >> "$GITHUB_OUTPUT"
 
       - name: Update cleanup branch
         if: ${{ github.event.repository.owner.login == 'AliceO2Group' }}
