@@ -131,8 +131,6 @@ fi
 unset certdir jalien_token
 
 report_state pr_processing
-PR_OK=0   # If we exit before the end of the script, we didn't succeed.
-trap -- 'report_state pr_processing_done' EXIT
 
 # Fetch the PR's changes to the git repository.
 if pushd "$PR_REPO_CHECKOUT"; then
@@ -252,6 +250,7 @@ then
 else
   report_pr_errors ${DONT_USE_COMMENTS:+--no-comments} ||
     short_timeout report-analytics exception --desc 'report-pr-errors fail on build error'
+  PR_OK=0
 fi
 
 (
@@ -270,3 +269,5 @@ fi
       true
   fi
 )
+
+report_state pr_processing_done
