@@ -18,17 +18,22 @@ publish_both () {
   fi
 }
 
+get_secrets () {
+  # This contains MATTERMOST_O2_RELEASE_INTEGRATION_URL, which we need.
+  . /secrets/ci_secrets
+  # aliPublish needs these S3 secrets.
+  # rclone gets them from /secrets/alibuild_rclone_config.
+  . /secrets/aws_bot_secrets
+  export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+}
+
 # The architecture should correspond to the architecture built using the
 # requested config files -- only these architectures' repos will be synced.
 arch=$1
 shift   # $@ now contains only the config files to read.
 
-# This contains MATTERMOST_O2_RELEASE_INTEGRATION_URL, which we need.
-. /secrets/ci_secrets
-# aliPublish needs these S3 secrets.
-# rclone gets them from /secrets/alibuild_rclone_config.
-. /secrets/aws_bot_secrets
-export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+get_secrets
+trap get_secrets USR1
 
 # This script is in the same directory as aliPublish{,S3} in the ali-bot repo.
 cd "$(dirname "$0")"
