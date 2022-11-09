@@ -3,6 +3,28 @@
 # It is sourced on every iteration, so functions defined here can be overridden
 # while the builder is running.
 
+function influxdb_push () {
+  # Usage: influxdb_push TABLE TAG=V TAG=V -- FIELD=V FIELD=V
+  # Turn args into an InfluxDB string like "table,tag=v,tag=v field=v,field=v time".
+  local data=$1; shift
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --) data="$data $2"; shift 2;;
+      *)  data="$data,$1"; shift;;
+    esac
+  done
+  data="$data $(date +%s)000000000"
+  case "$INFLUXDB_WRITE_URL" in
+    '') ;;
+    # If INFLUXDB_WRITE_URL starts with insecure_https://, then strip
+    # "insecure_" and send the --insecure/-k option to curl.
+    insecure_*)
+      curl -fSs --max-time 20 -XPOST --data-binary "$data" -k "${INFLUXDB_WRITE_URL#insecure_}" || :;;
+    *)
+      curl -fSs --max-time 20 -XPOST --data-binary "$data" "$INFLUXDB_WRITE_URL" || :;;
+  esac
+}
+
 function report_state () {
   local current_state=$1
   # Push some metric about being up and running to Monalisa
@@ -18,19 +40,11 @@ function report_state () {
   esac
 
   # Push to InfluxDB if configured
-  if [ -n "$INFLUXDB_WRITE_URL" ]; then
-    printf 'prcheck,checkname=%s host="%s",state="%s",prid="%s"%s %s'                 \
-           "$CHECK_NAME/$WORKER_INDEX" "$(hostname -s)" "$current_state" "$PR_NUMBER" \
-           "${prtime:+,prtime=$prtime}${PR_OK:+,prok=$PR_OK}" $((time_now * 10**9))   |
-      case "$INFLUXDB_WRITE_URL" in
-        # If INFLUXDB_WRITE_URL starts with insecure_https://, then strip
-        # "insecure_" and send the --insecure/-k option to curl.
-        insecure_*)
-          curl --max-time 20 -XPOST "${INFLUXDB_WRITE_URL#insecure_}" -k --data-binary @- || true;;
-        *)
-          curl --max-time 20 -XPOST "$INFLUXDB_WRITE_URL" --data-binary @- || true;;
-      esac
-  fi
+  influxdb_push prcheck "repo=$PR_REPO" "checkname=$CHECK_NAME" \
+                "worker=$CHECK_NAME/$WORKER_INDEX/$WORKERS_POOL_SIZE" \
+                -- "host=\"$(hostname -s)\"" "state=\"$current_state\"" \
+                "prid=\"$PR_NUMBER\"" ${prtime:+prtime=$prtime} ${PR_OK:+prok=$PR_OK} \
+                ${HAVE_JALIEN_TOKEN:+have_jalien_token=$HAVE_JALIEN_TOKEN}
 
   # Push to Google Analytics if configured
   if [ -n "$ALIBOT_ANALYTICS_ID" ] && [ -n "$prtime" ]; then
@@ -44,15 +58,6 @@ function clean_env () {
   # remove them too. They shouldn't be used by the build anyway.
   GITLAB_USER='' GITLAB_PASS='' GITHUB_TOKEN='' INFLUXDB_WRITE_URL='' CODECOV_TOKEN='' \
     X509_USER_CERT='' X509_USER_KEY='' "$@"
-}
-
-function pipinst () {
-  # Sometimes pip gets stuck when cloning the ali-bot or alibuild repos. In
-  # that case: time out, skip and try again later.
-  case $(uname -s) in
-    Darwin) short_timeout pip install -U --install-option=--old-and-unmanageable "git+https://github.com/$1";;
-    *) short_timeout python3 -m pip install --user --upgrade --editable "git+https://github.com/$1";;
-  esac
 }
 
 # Allow overriding a number of variables by fly, so that we can change the
@@ -152,12 +157,23 @@ function source_env_files () {
                  "$base/$MESOS_ROLE/$CUR_CONTAINER$ALIBOT_CONFIG_SUFFIX/DEFAULTS.env" \
                  "$base/$MESOS_ROLE/$CUR_CONTAINER$ALIBOT_CONFIG_SUFFIX/$env_name.env"
   do
+    # Don't check the sourced file here. The .env files are checked separately.
+    # shellcheck source=/dev/null
     [ -e "$_envf" ] && . "$_envf"
   done
 }
 
 function is_numeric () {
   [ $(($1 + 0)) = "$1" ]
+}
+
+function modtime () {
+  # Get the file modification time, as a UNIX timestamp, in an OS-agnostic way.
+  case $(uname -s) in
+    Darwin) stat -t '%s' -f '%m' "$@";;
+    Linux)  stat -c '%Y' "$@";;
+    *) echo "unknown platform: $(uname -s)" >&2; return 1;;
+  esac
 }
 
 function ensure_vars () {
@@ -175,5 +191,24 @@ function ensure_vars () {
 # timeout vs. gtimeout (macOS with Homebrew)
 timeout_exec=timeout
 type $timeout_exec > /dev/null 2>&1 || timeout_exec=gtimeout
-function short_timeout () { $timeout_exec -s9 "$TIMEOUT" "$@"; }
-function long_timeout () { $timeout_exec -s9 "$LONG_TIMEOUT" "$@"; }
+function short_timeout () { general_timeout "$TIMEOUT" "$@"; }
+function long_timeout () { general_timeout "$LONG_TIMEOUT" "$@"; }
+function general_timeout () {
+  local ret=0 short_cmd
+  $timeout_exec -s9 "$@" || ret=$?
+  # 124 if command times out; 137 if command is killed (including by timeout itself)
+  if [ $ret -eq 124 ] || [ $ret -eq 137 ]; then
+    # BASH_{SOURCE,LINENO}[0] is where we're being called from, which is inside
+    # short_timeout or long_timeout (and thus not interesting).
+    # BASH_{SOURCE,LINENO}[1] is where *those* functions are being called from.
+    case $3 in
+      -*|'') short_cmd=$2 ;;
+      *) short_cmd="$2 $3" ;;
+    esac
+    influxdb_push ci_timeout_overrun \
+                  "host=$(hostname -s)" "cmd=$short_cmd" "timeout_retcode=$ret" \
+                  "called_from=$(basename "${BASH_SOURCE[1]}"):${BASH_LINENO[1]}" \
+                  -- "timeout=$1"
+  fi
+  return $ret
+}

@@ -1,0 +1,117 @@
+#!/bin/sh -e
+
+help () {
+  cat <<EOF >&2
+usage: $(basename "$0") [-ml] COMMAND [ARGS...]
+
+Run a command inside all CI Nomad task directories simultaneously.
+
+  -a       Aurora mode
+  -n       Nomad mode (default)
+  -m       run on MacOS machines
+  -l       run on Linux machines (inside docker containers)
+  COMMAND  command to run
+  ARGS...  optional arguments to COMMAND
+
+COMMAND and ARGS will be quoted. If neither of -m, -l is given, -ml is assumed.
+EOF
+  exit "$1"
+}
+
+die () {
+  echo "$(basename "$0"): error: $*" >&2
+  help 1 >&2
+}
+
+quote () {
+  # Quote $1 and replace ' by '\'' inside it.
+  printf \'%s\' "$(printf %s "$1" | sed "s/'/'\\\\''/g")"
+}
+
+mode=nomad
+while getopts ':hanml' opt; do
+  case "$opt" in
+    h) help 0 ;;
+    a) mode=aurora ;;
+    n) mode=nomad ;;
+    m) run_mac=1 ;;
+    l) run_linux=1 ;;
+    :) die "option requires an argument: -$OPTARG" ;;
+    *) die "unknown option: -$OPTARG" ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+# If neither of -m -l is given, enable both.
+if [ -z "$run_linux$run_mac" ]; then
+  run_linux=1 run_mac=1
+fi
+
+# Don't quote the first arg, so we can do e.g. `pdci 'ls *'`
+real_command=${1:?COMMAND is required$(die 'COMMAND is required')}
+shift
+for word in "$@"; do
+  real_command="$real_command $(quote "$word")"
+done
+
+case $mode in
+  aurora)
+    #docker container ls --format='{{.ID}}' --filter=volume=/build/mirror | while read c; do
+    #  docker exec \$c sh -c 'cd /mnt/mesos/sandbox/sandbox 2>/dev/null || exit 1; $real_command' 2>&1 |
+    #    sed "s/^/\$(hostname -s):\$c: /" &
+    #done
+
+    embedded_quoted_command=$(quote "$real_command")
+    embedded_quoted_command=${embedded_quoted_command#\'}
+    embedded_quoted_command=${embedded_quoted_command%\'}
+    exec pdsh -Ng alibuildall -t 60 -f 32 "$(cat << EOF
+case \$(uname -s) in
+  Linux)
+    [ -n "$run_linux" ] || exit 0
+    # If sed understands -u, use it to avoid output being overly buffered.
+    if echo | sed -u d 2>/dev/null; then sed () { command sed -u "\$@"; }; fi
+    for d in /build/mesos/slaves/*/frameworks/*/executors/thermos-*-ci_*/runs/latest/sandbox/; do
+      [ -d "\$d" ] || continue
+      short=\${d#/build/mesos/slaves/*/frameworks/*/executors/thermos-}
+      short=\${short%-????????-????-????-????-????????????/runs/latest/sandbox/}
+      sh -c 'cd '"\$d"' || exit 1; '$embedded_quoted_command 2>&1 |
+        sed "s|^|\$(hostname -s):\$short: |" &
+    done;;
+  Darwin)
+    [ -n "$run_mac" ] || exit 0
+    exec zsh -c '
+      if echo | sed -u d 2>/dev/null; then sed () { command sed -u "\$@"; }; fi
+      for d in /build/ci_checks/alice_ci_*(N); do
+        sh -c '\''cd '\''"\$d"'\'' || exit 1; $embedded_quoted_command'\'' 2>&1 |
+          sed "s|^|\$(hostname -s):\${d#/build/ci_checks/}: |" &
+      done
+    ';;
+  *) echo "error: unknown architecture: \$(uname -s)" >&2; exit 1;;
+esac; wait
+EOF
+)" ;;
+
+  nomad)
+    NOMAD_TOKEN=$(pass cern/ci/nomad-bootstrap-token | head -1)
+    export NOMAD_TOKEN
+    # List all CI jobs.
+    nomad job status |
+      awk '/^ci-/ { print $1 }' |
+      # Get running job allocations.
+      xargs -rI '{}' -d '\n' nomad job status '{}' |
+      awk '($6 == "running" && $3 == "ci") { print $1 }' |
+      # Run command on each allocation, in parallel.
+      xargs -rI '{}' -d '\n' -P 64 nomad alloc exec '{}' bash -c "$(cat << EOF
+case \$(uname -s) in
+  Linux)  [ -n "$run_linux" ] || exit 0 ;;
+  Darwin) [ -n "$run_mac" ]   || exit 0 ;;
+esac
+# If sed understands -u, use it to avoid output being overly buffered.
+if sed -u d /dev/null 2>/dev/null; then sed () { command sed -u "\$@"; }; fi
+cd "\$NOMAD_TASK_DIR"
+$real_command 2>&1 | sed "s|^|\$(printf '%15s' "\$(hostname -s)"): {}: |"
+EOF
+)" ;;
+
+  *) die "unknown mode: $mode" ;;
+esac

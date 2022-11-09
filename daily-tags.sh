@@ -107,14 +107,15 @@ workarea=$(mktemp -d "$PWD/daily-tags.XXXXXXXXXX")
 # templating and the real build.
 alibuild_args=(
   --debug --work-dir "$workarea" --jobs "${JOBS:-8}"
-  --fetch-repos --reference-sources mirror
+  --reference-sources mirror
   ${ARCHITECTURE:+--architecture "$ARCHITECTURE"}
   ${DEFAULTS:+--defaults "$DEFAULTS"}
   build "$main_pkg"
 )
 
 # Process the pattern as a jinja2 template with aliBuild's templating plugin.
-AUTOTAG_PATTERN=$(cat << EOF | aliBuild --debug --plugin templating "${alibuild_args[@]}"
+# Fetch the source repos now, so they're available for the "real" build later.
+AUTOTAG_PATTERN=$(aliBuild --debug --plugin templating --fetch-repos "${alibuild_args[@]}" << EOF
 {%- set alidist_branch = "$ALIDIST_BRANCH" -%}
 {%- set flpsuite_latest = "$flpsuite_latest" -%}
 {%- set flpsuite_current = "$flpsuite_current" -%}
@@ -191,7 +192,7 @@ for package in $PACKAGES; do (
 # Set default remote store -- S3 on slc8 and Ubuntu, rsync everywhere else.
 case "$ARCHITECTURE" in
   slc8_*|ubuntu*) : "${REMOTE_STORE:=b3://alibuild-repo::rw}" ;;
-  *) : "${REMOTE_STORE:=rsync://repo.marathon.mesos/store/::rw}" ;;
+  *) : "${REMOTE_STORE:=rsync://alibuild03.cern.ch/store/::rw}" ;;
 esac
 case "$REMOTE_STORE" in
   b3://*)
@@ -242,7 +243,10 @@ if [ -n "$(git status --porcelain "${edited_files[@]}")" ]; then
   git commit -m "Auto-update: ${edited_files[*]}"
 fi
 git push origin -f "HEAD:refs/tags/$main_pkg-$AUTOTAG_TAG"
-# If ALIDIST_BRANCH doesn't exist or we can push to it, do it.
-git push origin "HEAD:${ALIDIST_BRANCH:?}" ||
-  # Else, make a PR by pushing an rc/ branch. (An action in the repo handles this.)
-  git push origin -f "HEAD:rc/${ALIDIST_BRANCH:?}"
+
+if [ "$CREATE_ALIDIST_PULL_REQUEST" = true ]; then
+  # If ALIDIST_BRANCH doesn't exist or we can push to it, do it.
+  git push origin "HEAD:${ALIDIST_BRANCH:?}" ||
+    # Else, make a PR by pushing an rc/ branch. (An action in the repo handles this.)
+    git push origin -f "HEAD:refs/heads/rc/${ALIDIST_BRANCH:?}"
+fi

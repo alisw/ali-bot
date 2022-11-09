@@ -299,9 +299,7 @@ class AliEnPackMan(object):
         if not m: continue
         pkg = m.group(1)
         ver = m.group(2)
-        if not pkg in self._packs:
-          self._packs[pkg] = {}
-        self._packs[pkg].update({ver: []})
+        self._packs.setdefault(pkg, {}).update({ver: []})
 
     if not self._packs:
       raise PublishException("PackMan: could not get list of packages from AliEn this time")
@@ -312,8 +310,8 @@ class AliEnPackMan(object):
         if not m: continue
         pkg = m.group(1)
         ver = m.group(2)
-        if not pkg in self._packs: continue
-        self._packs[pkg].get(ver, []).append(arch)
+        if pkg in self._packs:
+          self._packs[pkg].setdefault(ver, []).append(arch)
       self._cachedArchs.append(arch)
 
     return arch in self._packs.get(pkgName, {}).get(pkgVer, [])
@@ -764,22 +762,6 @@ def notify(conf, archs, pack, dryRun):
           error(format("Cannot send email notification for %(package)s %(version)s (%(arch)s)",
                        package=p["name"], version=p["ver"], arch=archs[arch]))
 
-def hostport(s, defaultPort):
-  host = s.split(":", 1)
-  try:
-    port = len(host) == 2 and int(host[1]) or defaultPort
-  except ValueError:
-    port = defaultPort
-  host = host[0]
-  return host,port
-
-def mesos_resolve(host, dns, jget):
-  for d in sorted(dns, key=lambda k: random()):
-    ips = [ x["ip"] for x in jget(format("http://%(dns)s/v1/hosts/%(host)s", dns=d, host=host))
-                    if x.get("ip", None) ]
-    if ips:
-      return ips
-  return [host]  # fallback to input on error
 
 def main():
   parser = ArgumentParser()
@@ -851,9 +833,6 @@ def main():
 
   doExit = False
 
-  conf["mesos_dns"] = [ ":".join(map(str, hostport(x, 8123))) for x in conf.get("mesos_dns", []) ]
-  shuffle(conf["mesos_dns"])
-
   # Connection handler
   connParams = dict((k, conf[k]) for k in [ "http_ssl_verify", "conn_timeout_s",
                                             "conn_retries", "conn_dethrottle_s" ])
@@ -882,12 +861,6 @@ def main():
     doExit = True
 
   if doExit: exit(1)
-
-  # Resolve base_url name via Mesos
-  us = urlsplit(conf["base_url"])
-  if us.netloc.endswith(".mesos") and conf["mesos_dns"] and args.action != "test-rules":
-    us = us._replace( netloc=choice(mesos_resolve(us.netloc, conf["mesos_dns"], jget)) )
-    conf["base_url"] = urlunsplit(us)
 
   debug("Configuration: " + json.dumps(conf, indent=2))
   incexc = conf.get("filter_order", "include,exclude")

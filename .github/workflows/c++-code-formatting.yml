@@ -82,10 +82,7 @@ jobs:
              [ "$patch" = 'clang-format did not modify any files' ]
           then
             echo 'clang-format passed.' >> "$GITHUB_STEP_SUMMARY"
-            cat << EOF
-          ::set-output name=cleanup_commit::
-          ::set-output name=clean::true
-          EOF
+            printf '%s\n' cleanup_commit= clean=true >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -105,8 +102,7 @@ jobs:
 
           Opening a PR to your branch with the fixes.
           EOF
-          echo '::set-output name=cleanup_commit::HEAD'
-          echo '::set-output name=clean::false'
+          printf '%s\n' cleanup_commit=HEAD clean=false >> "$GITHUB_OUTPUT"
 
       - name: Update cleanup branch
         if: ${{ github.event.repository.owner.login == 'AliceO2Group' }}
@@ -160,30 +156,46 @@ jobs:
 
       - name: Check copyright headers
         env:
-          # The expected copyright notice.
-          COPYRIGHT: |-
-            // Copyright 2019-2020 CERN and copyright holders of ALICE O2.
-            // See https://alice-o2.web.cern.ch/copyright for details of the copyright holders.
-            // All rights not expressly granted are reserved.
-            //
-            // This software is distributed under the terms of the GNU General Public
-            // License v3 (GPL Version 3), copied verbatim in the file "COPYING".
-            //
-            // In applying this license CERN does not waive the privileges and immunities
-            // granted to it by virtue of its status as an Intergovernmental Organization
-            // or submit itself to any jurisdiction.
+          # The expected copyright notice. Comment markers ("//" or "#") are
+          # added automatically and should NOT appear in this variable.
+          # We want to ignore the year, so treat the first line as a regex.
+          COPYRIGHT_FIRST_LINE: |-
+            Copyright [0-9]{4}-[0-9]{4} CERN and copyright holders of ALICE O2\.
+          COPYRIGHT_REST: |-
+            See https://alice-o2.web.cern.ch/copyright for details of the copyright holders.
+            All rights not expressly granted are reserved.
+
+            This software is distributed under the terms of the GNU General Public
+            License v3 (GPL Version 3), copied verbatim in the file "COPYING".
+
+            In applying this license CERN does not waive the privileges and immunities
+            granted to it by virtue of its status as an Intergovernmental Organization
+            or submit itself to any jurisdiction.
         run: |
-          # Find changed C++ files.
+          # Find changed C++ and CMake files. Keep the file extensions in sync
+          # with the ones in the "case" statement below!
           readarray -d '' files < \
-            <(git diff -z --diff-filter d --name-only --merge-base \
-                  "$BASE_SHA" -- '*.cxx' '*.h')
-          # Run copyright notice check
-          copyright_lines=$(echo "$COPYRIGHT" | wc -l)
+            <(git diff -z --diff-filter d --name-only --merge-base "$BASE_SHA" \
+                       -- '*.cxx' '*.h' '*.C' '*.cmake' CMakeLists.txt)
+          # Run copyright notice check. Comment lines start with "//" for C++
+          # files and "#" for CMake files.
+          cpp_first="// $COPYRIGHT_FIRST_LINE"
+          hash_first="# $COPYRIGHT_FIRST_LINE"
+          cpp_rest=$(echo "$COPYRIGHT_REST" | sed -r 's,^.+,// \0,; s,^$,//,')
+          hash_rest=$(echo "$COPYRIGHT_REST" | sed -r 's,^.+,# \0,; s,^$,#,')
+          total_lines=$(($(echo "$COPYRIGHT_REST" | wc -l) + 1))
           incorrect_files=()
           for file in "${files[@]}"; do
-            if [ "$(head -n "$copyright_lines" "$file")" != "$COPYRIGHT" ]; then
+            case $file in
+              *.cxx|*.h|*.C) first=$cpp_first rest=$cpp_rest ;;
+              *.cmake|CMakeLists.txt) first=$hash_first rest=$hash_rest ;;
+              *) echo "error: unknown file type for $file" >&2; exit 1 ;;
+            esac
+            if head -1 "$file" | grep -qvEx "$first" ||
+               [ "$(head -n "$total_lines" "$file" | tail -n +2)" != "$rest" ]
+            then
               incorrect_files+=("$file")
-              echo -n "::error file=$file,line=1,endLine=$copyright_lines,"
+              echo -n "::error file=$file,line=1,endLine=$total_lines,"
               echo -n "title=Missing or malformed copyright notice::"
               echo "This source file is missing the correct copyright notice."
             fi
@@ -200,15 +212,83 @@ jobs:
             done
             cat << EOF >> "$GITHUB_STEP_SUMMARY"
 
-          Make sure all your source files begin with the following exact lines:
+          Make sure all of your C++ and CMake source files begin with the
+          following exact lines (but replace the \`//\` at the beginning of each
+          line with a \`#\` for CMake files):
 
           \`\`\`
-          $COPYRIGHT
+          $(echo "$cpp_first" |
+              sed -r 's/\[0-9\]\{4\}/2020/; s/\[0-9\]\{4\}/2022/; s/\\\././')
+          $cpp_rest
           \`\`\`
+
+          (The year numbers on the first line aren't checked.)
           EOF
             exit 1
           else
             echo 'Copyright check passed.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  line-endings:
+    name: line endings
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install prerequisites
+        run: |
+          sudo -n apt update
+          sudo -n apt install dos2unix
+
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Check for incorrect line endings
+        run: |
+          # shellcheck disable=SC1004
+          if find . \( -path ./.git -prune -false \) -o -type f \( \
+               -name '*.c' -o -name '*.C' -o -name '*.cpp' -o -name '*.cxx' -o \
+               -name '*.cl' -o -name '*.h' -o -name '*.hpp' -o -name '*.py' -o \
+               -name '*.sh' -o -name '*.xml' -o -name '*.yml' \) -print0 |
+             xargs -0 dos2unix -i |
+             awk '
+               function error(title, message) {
+                 printf "::error file=%s,title=%s::%s\n", $6, title, message
+                 exit_code = 1
+               }
+               BEGIN { exit_code = 0 }
+               END { exit exit_code }
+               ($5 != "text") { next }
+               ($4 != "no_bom") {
+                 error("BOM or wrong encoding",
+                       "All files must be UTF-8 without a byte order mark. " \
+                       "Found a byte order mark for the " $4 " encoding.")
+               }
+               ($1 > 0) {
+                 error("DOS line endings",
+                       "Files must have UNIX-style (LF only) line endings. " \
+                       "Found " $1 " DOS-style (CR+LF) line endings.")
+               }
+               ($3 > 0) {
+                 error("Mac line endings",
+                       "Files must have UNIX-style (LF only) line endings. " \
+                       "Found " $3 " Mac-style (CR only) line endings.")
+               }
+             '
+          then
+            echo 'Line endings check passed.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            cat << EOF >> "$GITHUB_STEP_SUMMARY"
+          # Line ending and/or encoding errors found
+
+          To avoid these errors, configure your editor to:
+
+          - Write files with UNIX-style line endings (linefeeds only).
+          - Write files as UTF-8 without a byte order mark (BOM).
+          EOF
+            exit 1
           fi
 
   whitespace:

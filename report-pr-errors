@@ -120,7 +120,7 @@ def parse_args():
 
     parser.add_argument("--logs-dest",
                         dest="logsDest",
-                        default="rsync://repo.marathon.mesos/store/logs",
+                        default="s3://alice-build-logs.s3.cern.ch",
                         help="Destination store for logs. Either rsync://<rsync server enpoint> or s3://<bucket>.<server>")
 
     parser.add_argument("--log-url",
@@ -345,10 +345,9 @@ class Logs(object):
                 'repo': self.pr_built.repo_name,
                 'pr_id': self.pr_built.id,
                 'commit': self.pr_built.commit,
-                'login_cmd': re.sub(
-                    '^(?:thermos-)?([a-z]*)-([a-z]*)-([a-z0-9_-]*)-([0-9]*)(?:-[0-9a-f]*){5}$',
-                    r'aurora task ssh -l root build/\1/\2/\3/\4',
-                    os.getenv('MESOS_EXECUTOR_ID', '(no Mesos ID)')),
+                'nomad_alloc_id': os.getenv('NOMAD_ALLOC_ID', ''),
+                'nomad_short_alloc_id': os.getenv('NOMAD_SHORT_ALLOC_ID',
+                                                  os.getenv('NOMAD_ALLOC_ID', '(no Nomad ID)')),
             })
 
     def cat(self, target_file, no_delete=False):
@@ -373,13 +372,16 @@ class Logs(object):
                   "https://github.com/%s/pull/%s" % (self.pr_built.repo_name,
                                                      self.pr_built.id),
                   file=logf)
-            if "MESOS_EXECUTOR_ID" in os.environ:
-                mesos_id = os.environ["MESOS_EXECUTOR_ID"]
-                print("To log into the build machine, use:\n",
-                      "   aurora task ssh -l root",
-                      re.sub("^(?:thermos-)?([a-z]*)-([a-z]*)-([a-z0-9_-]*)-([0-9]*)(?:-[0-9a-f]*){5}$",
-                             r"build/\1/\2/\3/\4", mesos_id),
-                      file=logf)
+            if "NOMAD_ALLOC_ID" in os.environ:
+                print("Nomad allocation:",
+                      "    https://alinomad.cern.ch/ui/allocations/" + os.environ["NOMAD_ALLOC_ID"],
+                      "To log into the build machine, use:",
+                      "    nomad alloc exec %s bash" %
+                      os.getenv("NOMAD_SHORT_ALLOC_ID", os.environ["NOMAD_ALLOC_ID"]),
+                      "To stream logs from the CI process, use:",
+                      "    nomad alloc logs -stderr -tail -f %s" %
+                      os.getenv("NOMAD_SHORT_ALLOC_ID", os.environ["NOMAD_ALLOC_ID"]),
+                      sep="\n", file=logf)
             if self.all_logs:
                 print("The following files (oldest first) are present in the log:", file=logf)
                 for log in self.all_logs:
@@ -558,11 +560,12 @@ PRETTY_LOG_TEMPLATE = '''\
         <td><a href="https://github.com/%(repo)s/pull/%(pr_id)s">%(repo)s#%(pr_id)s</a></td></tr>
     <tr><th>Built commit</th>
         <td><a href="https://github.com/%(repo)s/pull/%(pr_id)s/commits/%(commit)s"><code>%(commit)s</code></a></td></tr>
-    <tr><th rowspan="2">SSH command</th>
-        <td><code>%(login_cmd)s</code></td></tr>
-    <tr><td><small>Note that you cannot use this command to log in to some machines
-                   (<code>alientest*</code>; see <em>build host</em> above).
-                   Ask Costin to add your SSH key if you need access.</small></td></tr>
+    <tr><th>Nomad allocation</th>
+        <td><a href="https://alinomad.cern.ch/ui/allocations/%(nomad_alloc_id)s">Nomad allocation information</a></td></tr>
+    <tr><th>SSH command</th>
+        <td><code>nomad alloc exec %(nomad_short_alloc_id)s bash</code></td></tr>
+    <tr><th>Stream logs</th>
+        <td><code>nomad alloc logs -stderr -tail -f %(nomad_short_alloc_id)s</code></td></tr>
   </table>
   <p>The code that finds and extracts error messages may have missed some.
      Check the <a href="%(log_url)s">full build log</a> if you suspect the build failed for reasons not listed below.</p>

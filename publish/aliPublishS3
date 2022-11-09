@@ -22,11 +22,8 @@ def rmrf(path):
 
 def searchMany(name, exprs):
   if isinstance(exprs, list):
-    for e in exprs:
-      if search(e, name): return True
-  elif exprs == True:
-    return True
-  return False
+    return any(search(e, name) for e in exprs)
+  return exprs == True
 
 def applyFilter(name, includeRules, excludeRules, includeFirst):
   if includeFirst:
@@ -63,7 +60,8 @@ def execute(command):
 def grabOutput(command):
   debug("Executing command: %s", " ".join(command))
   popen = Popen(command, shell=False, stdout=PIPE, stderr=STDOUT)
-  return popen.returncode, popen.communicate()[0]
+  out = popen.communicate()[0]
+  return (popen.returncode, out.decode("utf-8"))
 
 class PublishException(Exception):
   pass
@@ -84,8 +82,8 @@ class PlainFilesystem(object):
   def _kw(self, url, arch, pkgName, pkgVer):
     kw =  { "url": url, "package": pkgName, "version": pkgVer, "repo": self._repository or "filesystem",
             "arch": arch }
-    kw.update({ "pkgdir": format(self._pkgdirTpl, **kw) })
-    kw.update({ "modulefile": format(self._modulefileTpl, **kw) })
+    kw.update({ "pkgdir": self._pkgdirTpl % kw })
+    kw.update({ "modulefile": self._modulefileTpl % kw })
     kw.update(self._connParams)
     kw["http_ssl_verify"] = 1 if kw["http_ssl_verify"] else 0
     return kw
@@ -113,7 +111,7 @@ class PlainFilesystem(object):
   def transaction(self):
     return True
 
-  def abort(self):
+  def abort(self, force=False):
     return True
 
   def publish(self):
@@ -212,9 +210,7 @@ class AliEnPackMan(object):
         if not m: continue
         pkg = m.group(1)
         ver = m.group(2)
-        if not pkg in self._packs:
-          self._packs[pkg] = {}
-        self._packs[pkg].update({ver: []})
+        self._packs.setdefault(pkg, {}).update({ver: []})
 
     if not self._packs:
       raise PublishException("PackMan: could not get list of packages from AliEn this time")
@@ -225,8 +221,8 @@ class AliEnPackMan(object):
         if not m: continue
         pkg = m.group(1)
         ver = m.group(2)
-        if not pkg in self._packs: continue
-        self._packs[pkg].get(ver, []).append(arch)
+        if pkg in self._packs:
+          self._packs[pkg].setdefault(ver, []).append(arch)
       self._cachedArchs.append(arch)
 
     return arch in self._packs.get(pkgName, {}).get(pkgVer, [])
@@ -418,7 +414,7 @@ class RPM(object):
 
 def nameVerFromTar(tar, arch, validPacks):
   for pkgName in validPacks:
-    vre = format("^(%(pack)s)-(.*?)(\.%(arch)s\.tar\.gz)?$", pack=escape(pkgName), arch=arch)
+    vre = format(r"^(%(pack)s)-(.*?)(\.%(arch)s\.tar\.gz)?$", pack=escape(pkgName), arch=arch)
     vm = search(vre, tar)
     if vm:
       return { "name": vm.group(1), "ver": vm.group(2) }
@@ -428,63 +424,6 @@ def prettyPrintPkg(pkg):
   """Return a human-readable representation of the package."""
   return pkg["name"] + " " + pkg["ver"]
 
-def getS3PackageLister(s3, bucket, basePrefix, architectures):
-  """Return a function that gets a directory's contents from S3.
-
-  Cache the directory tree from S3 in advance, because we tend to use this
-  function to get first the contents of a directory, then one of its
-  subdirectories. S3 can only return the items with a prefix, so when getting
-  the parent dir, we get everything already, so we better use it when getting
-  the subdirectory's contents later.
-  """
-  # This will be a dictionary where file-/dirnames are keys and dir contents
-  # are values. Files will be an entry with value None.
-  filesystemTree = {}
-  for arch in architectures:
-    # Build the filesystem tree on the server.
-    debug("Getting directory contents for %s/%s/", basePrefix, arch)
-    pages = s3.get_paginator("list_objects_v2") \
-              .paginate(Bucket=bucket, Prefix='%s/%s/' % (basePrefix, arch))
-    for i, page in enumerate(pages):
-      debug("Page %d: got %d items", i, len(page.get("Contents", ())))
-      for item in page.get("Contents", ()):
-        filename = item["Key"]
-        # The server returns file names with a prefix, which we want to ignore.
-        # We keep the arch prefix, though.
-        if filename.startswith(basePrefix + "/"):
-          filename = filename[len(basePrefix)+1:]
-        components = filename.split("/")
-        # Start at the root. We kept the arch prefix above in components, so
-        # we'll enter/create the arch directory in the loop below.
-        curDir = filesystemTree
-        # Leading directories: create empty dictionaries for directories we
-        # traverse for the first time.
-        for component in components[:-1]:
-          # If we have a file at this location, overwrite it with a directory
-          # entry. S3 can have files and directories with the same name in the
-          # same directory, but we don't care about the files in that case.
-          if curDir.get(component, {}) is None:
-            curDir[component] = {}
-          # Follow the path down into the next directory.
-          curDir = curDir.setdefault(component, {})
-        # File basename: add an entry to its parent directory's dictionary, but
-        # don't overwrite an existing directory entry here.
-        curDir.setdefault(components[-1], None)
-
-  def listDir(path):
-    """Look up the contents of path in the cached FS tree."""
-    curDir = filesystemTree
-    try:
-      if path:
-        for component in path.split("/"):
-          curDir = curDir[component]
-    except KeyError as err:
-      warning("listDir(%r) => NOT FOUND: %s, returning empty list", path, err)
-      return []
-    # Create a list of directory entries in the format expected below.
-    return [{"name": name, "type": "file" if value is None else "directory"}
-            for name, value in curDir.items()]
-  return listDir
 
 def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
          includeFirst, autoIncludeDeps, notifEmail, dryRun, connParams):
@@ -495,19 +434,39 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
   verPathTpl       = "%(arch)s/dist-direct/%(pack)s"
   getPackUrlTpl    = ("%(baseUrl)s/%(basePrefix)s/%(arch)s/dist-direct/%(pack)s"
                       "/%(pack)s-%(ver)s/%(pack)s-%(ver)s.%(arch)s.tar.gz")
-  listDir = getS3PackageLister(s3Client, bucket, basePrefix, architectures)
   newPackages = {}
+
+  def listDir(path):
+    """Look up the contents of path on S3."""
+    debug("Getting directory contents for %s/%s/", basePrefix, path)
+    pages = s3Client.get_paginator("list_objects_v2") \
+                    .paginate(Bucket=bucket, Delimiter="/",
+                              Prefix="%s/%s/" % (basePrefix, path.rstrip("/")))
+    for i, page in enumerate(pages):
+      debug("Page %d: got %d subdirs and %d files", i,
+            len(page.get("CommonPrefixes", ())), len(page.get("Contents", ())))
+      # Create a list of directory entries in the format expected below.
+      for ditem in page.get("CommonPrefixes", ()):
+        yield {"name": basename(ditem["Prefix"].rstrip("/")),
+               "type": "directory"}
+      for fitem in page.get("Contents", ()):
+        yield {"name": basename(fitem["Key"]), "type": "file"}
 
   # Prepare the list of packages to install
   for arch in architectures:
     newPackages[arch] = []
-    tarballs = [
-      tarball["name"]
-      for short_hash_dir in listDir("%s/store" % arch)
-      for hash_dir in listDir("%s/store/%s" % (arch, short_hash_dir["name"]))
-      for tarball in listDir("%s/store/%s/%s" % (arch, short_hash_dir["name"],
-                                                 hash_dir["name"]))
-    ]
+    debug("Listing all available tarballs for architecture %s", arch)
+    tarballs = frozenset(
+      basename(item["Key"])
+      # Omit Delimiter="/" to get all keys recursively under TARS/$arch/store/.
+      # This is much quicker than walking the directory tree, as we want to get
+      # all filenames anyway.
+      for page in s3Client.get_paginator("list_objects_v2").paginate(
+          Bucket=bucket, Prefix="%s/%s/store/" % (basePrefix, arch),
+      )
+      for item in page.get("Contents", ())
+    )
+    debug("Found %d tarballs in total for architecture", len(tarballs))
 
     # Get valid package names for this architecture
     debug("Getting packages for architecture %s", arch)
@@ -556,7 +515,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
         # Note that a package always depends on itself (list cannot be empty).
         distPath = format(distPathTpl, dist="dist-runtime",
                           arch=arch, pack=pkgName, ver=pkgVer)
-        runtimeDeps = listDir(distPath)
+        runtimeDeps = list(listDir(distPath))
         if not runtimeDeps:
           error("%s / %s / %s: cannot list dependencies from %s: skipping",
                 arch, pkgName, pkgVer, distPath)
@@ -593,8 +552,8 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
       deps = {}
       depFail = False
       for key in ("dist", "dist-direct", "dist-runtime"):
-        jdeps = listDir(format(distPathTpl, dist=key, arch=arch,
-                               pack=pack["name"], ver=pack["ver"]))
+        jdeps = list(listDir(format(distPathTpl, dist=key, arch=arch,
+                                    pack=pack["name"], ver=pack["ver"])))
         if not jdeps:
           error("%s / %s / %s: cannot get %s dependencies: skipping",
                 arch, pack["name"], pack["ver"], key)
@@ -734,14 +693,6 @@ def notify(conf, archs, pack, dryRun):
       debug("Sent email notification for %s %s (%s)",
             p["name"], p["ver"], archs[arch])
 
-def hostport(s, defaultPort):
-  host = s.split(":", 1)
-  try:
-    port = len(host) == 2 and int(host[1]) or defaultPort
-  except ValueError:
-    port = defaultPort
-  host = host[0]
-  return host,port
 
 def main():
   parser = ArgumentParser()
@@ -749,6 +700,8 @@ def main():
   parser.add_argument("--pkgname", dest="pkgName")
   parser.add_argument("--pkgver", dest="pkgVer")
   parser.add_argument("--pkgarch", dest="pkgArch")
+  # Backward compatibility
+  parser.add_argument("--cache-deps-dir", dest="ignoredOption1", default="ignored")
   parser.add_argument("--test-conf", dest="testConf")
   parser.add_argument("--config", "-c", dest="configFile", default="aliPublish.conf",
                       help="Configuration file")
@@ -877,7 +830,7 @@ def main():
           error("aliPublish with PID %d in overtime (%ds): killed", otherPid, runningFor)
           otherPid = 0
       except (IOError, OSError, ValueError):
-        otherPid = 0
+        otherPid = runningFor = 0
       if otherPid:
         error("aliPublish already running with PID %d for %ds", otherPid, runningFor)
         return 1
@@ -969,7 +922,7 @@ def main():
 
       # Do we need to use a default test file?
       if not args.testConf:
-        m = search("^aliPublish(|.*)\.conf$", args.configFile)
+        m = search(r"^aliPublish(|.*)\.conf$", args.configFile)
         if m:
           args.testConf = "test%s.yaml" % m.group(1)
           debug("Using %s as default configuration file for tests", args.testConf)

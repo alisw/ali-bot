@@ -1,33 +1,37 @@
-# Create a repository with all O2 prerequisites and push it to S3.
+---
+# Create repositories with all O2 prerequisites plus aliBuild and push them
+# upstream (e.g. to S3).
 name: o2-full-deps release
 
-# Controls when the action will run. Triggers the workflow on push or pull request
-# events but only for the master branch
-on:
+# Controls when the action will run. This workflow is triggered manually.
+"on":
   workflow_dispatch:
-    branches: [ master ]
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
+  rpm-el7:
     runs-on: ubuntu-latest
     container: centos:7
     env:
-      ALIBUILD_TAG: v1.11.2
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      ALIBUILD_TAG: v1.12.0
 
-      # Runs a set of commands using the runners shell
-      - name: Build the EL7 RPM and create a yum repo.
+    steps:
+      # For rpms/*.spec
+      - uses: actions/checkout@v3
+
+      - name: Install prerequisites
         run: |
+          set -x
           yum install -y rpm-build scl-utils-build createrepo unzip git python3-setuptools
           curl https://rclone.org/install.sh | bash
+          cat << EOF > /tmp/rclone.conf
+          ${{ secrets.S3_RCLONE_CONFIG }}
+          EOF
+
+      - name: Build the EL7 RPM and create a yum repo
+        run: |
+          set -x
           rpmbuild -ba rpms/o2-prereq.spec
-          git clone -b $ALIBUILD_TAG https://github.com/alisw/alibuild
+          git clone -b "$ALIBUILD_TAG" https://github.com/alisw/alibuild
           pushd alibuild
             perl -p -i -e "s/LAST_TAG/$ALIBUILD_TAG/g" alibuild_helpers/__init__.py
             python3 setup.py bdist_rpm --requires python3,python3-requests,git,python3-PyYAML
@@ -35,26 +39,22 @@ jobs:
           popd
           cd ~/rpmbuild/RPMS/x86_64/
           createrepo .
-          cat << EOF > /tmp/rclone.conf
-          ${{ secrets.S3_RCLONE_CONFIG }}
-          EOF
-          rclone --config /tmp/rclone.conf --transfers=10 --progress --delete-before sync local:./ rpms3:alibuild-repo/RPMS/o2-full-deps_x86-64/
-  build-el8:
-    # The type of runner that the job will run on
+          rclone --config /tmp/rclone.conf --transfers=10 --progress --delete-before \
+                 sync local:./ rpms3:alibuild-repo/RPMS/o2-full-deps_x86-64/
+
+  rpm-el8:
     runs-on: ubuntu-latest
     container: centos:8
     env:
-      ALIBUILD_TAG: v1.11.2
+      ALIBUILD_TAG: v1.12.0
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      # For rpms/*.spec
+      - uses: actions/checkout@v3
 
-      # Runs a set of commands using the runners shell
-      - name: Build the EL8 RPM and create a yum repo.
+      - name: Install prerequisites
         run: |
-          set -xe
+          set -x
           sed -i.bak -e 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
           sed -i.bak -e 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
           find /etc/yum.repos.d -name "*.bak" -delete
@@ -62,8 +62,15 @@ jobs:
           yum update -y
           yum install -y rpm-build scl-utils-build createrepo unzip git python3-setuptools python3
           curl https://rclone.org/install.sh | bash
+          cat << EOF > /tmp/rclone.conf
+          ${{ secrets.S3_RCLONE_CONFIG }}
+          EOF
+
+      - name: Build the EL8 RPM and create a yum repo
+        run: |
+          set -x
           rpmbuild -ba rpms/o2-prereq-cc8.spec
-          git clone -b $ALIBUILD_TAG https://github.com/alisw/alibuild
+          git clone -b "$ALIBUILD_TAG" https://github.com/alisw/alibuild
           pushd alibuild
             perl -p -i -e "s/LAST_TAG/$ALIBUILD_TAG/g" alibuild_helpers/__init__.py
             python3 setup.py bdist_rpm --requires python3,git,python3-pyyaml
@@ -71,31 +78,34 @@ jobs:
           popd
           cd  ~/rpmbuild/RPMS/x86_64/
           createrepo .
-          cat << EOF > /tmp/rclone.conf
-          ${{ secrets.S3_RCLONE_CONFIG }}
-          EOF
           ls -la
-          rclone --config /tmp/rclone.conf --transfers=10 --progress --delete-before sync local:./ rpms3:alibuild-repo/RPMS/o2-full-deps_el8.x86-64/
-  build-fedora:
-    # The type of runner that the job will run on
+          rclone --config /tmp/rclone.conf --transfers=10 --progress --delete-before \
+                 sync local:./ rpms3:alibuild-repo/RPMS/o2-full-deps_el8.x86-64/
+
+  rpm-fedora:
     runs-on: ubuntu-latest
     container: fedora:33
     env:
-      ALIBUILD_TAG: v1.11.2
+      ALIBUILD_TAG: v1.12.0
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      # For rpms/*.spec
+      - uses: actions/checkout@v3
 
-      # Runs a set of commands using the runners shell
-      - name: Build the Fedora RPM and create a yum repo.
+      - name: Install prerequisites
         run: |
-          set -xe
+          set -x
           yum install -y rpm-build scl-utils-build createrepo unzip git python3-setuptools python3
           curl https://rclone.org/install.sh | bash
+          cat << EOF > /tmp/rclone.conf
+          ${{ secrets.S3_RCLONE_CONFIG }}
+          EOF
+
+      - name: Build the Fedora RPM and create a yum repo.
+        run: |
+          set -x
           rpmbuild -ba --define '__python %__python3' rpms/o2-prereq-fedora.spec
-          git clone -b $ALIBUILD_TAG https://github.com/alisw/alibuild
+          git clone -b "$ALIBUILD_TAG" https://github.com/alisw/alibuild
           pushd alibuild
             perl -p -i -e "s/LAST_TAG/$ALIBUILD_TAG/g" alibuild_helpers/__init__.py
             python3 setup.py bdist_rpm --requires python3,git,python3-pyyaml,python3-requests
@@ -103,8 +113,48 @@ jobs:
           popd
           cd  ~/rpmbuild/RPMS/x86_64/
           createrepo .
-          cat << EOF > /tmp/rclone.conf
-          ${{ secrets.S3_RCLONE_CONFIG }}
-          EOF
           ls -la
-          rclone --config /tmp/rclone.conf --transfers=10 --progress --delete-before sync local:./ rpms3:alibuild-repo/RPMS/o2-full-deps_fedora.x86-64/
+          rclone --config /tmp/rclone.conf --transfers=10 --progress --delete-before \
+                 sync local:./ rpms3:alibuild-repo/RPMS/o2-full-deps_fedora.x86-64/
+
+  deb-ubuntu:
+    runs-on: ubuntu-latest
+    strategy:
+      # Keep running jobs for other Ubuntu versions, even if one fails.
+      fail-fast: false
+      matrix:
+        ubuntu_codename:
+          - bionic  # 18.04
+          - focal   # 20.04
+          - jammy   # 22.04
+
+    container: ubuntu:${{ matrix.ubuntu_codename }}
+    env:
+      ALIBUILD_TAG: v1.12.0
+      ALIBUILD_DISTRO: ${{ matrix.ubuntu_codename }}
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - name: Install prerequisites
+        run: |
+          apt update
+          apt install -y vim git devscripts build-essential lintian debhelper dh-python python3-all python3-setuptools
+          cat <<\EOF | gpg --import -
+          ${{ secrets.LAUNCHPAD_PPA_GPG_KEY }}
+          EOF
+
+      - name: Build a DEB for Ubuntu and push it to the PPA
+        run: |
+          set -x
+          git clone -b "$ALIBUILD_TAG" https://github.com/alisw/alibuild
+          cd alibuild
+          perl -p -i -e "s/LAST_TAG/$ALIBUILD_TAG/" alibuild_helpers/__init__.py
+          cat <<EOF > debian/changelog
+          python3-alibuild (${ALIBUILD_TAG#v}~$ALIBUILD_DISTRO) $ALIBUILD_DISTRO; urgency=medium
+
+            * Bump to $ALIBUILD_TAG
+
+           -- Giulio Eulisse <giulio.eulisse@cern.ch>  $(date -R -u)
+          EOF
+          debuild --no-lintian -k48F330BAFFA564EF2383E2B472E9262B5C0D9DE5 -S
+          dput ppa:alisw/ppa "../python3-alibuild_${ALIBUILD_TAG#v}~${ALIBUILD_DISTRO}_source.changes"

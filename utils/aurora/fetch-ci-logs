@@ -1,0 +1,54 @@
+#!/bin/sh -e
+
+help () {
+  echo "Usage: $(basename "$0") [OUTPUT_DIR=.]"
+}
+
+log () {
+  echo "$(basename "$0"): $*" >&2
+}
+
+fetchlog () {
+  if [ -e "$2" ]; then
+    log "already have $2"
+  else
+    log "fetching $2"
+    scp "$1" "$2"
+  fi
+  log analysing "$2"
+  logtimes "$2" -o "${2%.log}.times" &
+}
+
+case $1 in
+  -h|--help) help; exit ;;
+esac
+
+outdir=${1:-.}
+
+if ! [ -d "$outdir" ]; then
+  log "error: directory $outdir does not exist"
+  help >&2
+  exit 1
+fi
+
+log fetching Mac logs
+pdsh -bg alibuildmac 'set -o NO_NOMATCH; ls -1 /build/*.log 2>/dev/null | tail -1 || :' |
+  sed 's/: /.cern.ch:/' |
+  while read -r remotelog; do
+    hostspec=${remotelog%%.cern.ch:*}
+    fetchlog "$(echo "$remotelog" | sed 's/ /\\ /g')" "$outdir/${hostspec#*@}.cern.ch.log"
+  done
+
+log fetching Linux logs
+REQUESTS_CA_BUNDLE=${XDG_CONFIG_HOME-$HOME/.config}/cern-ca-bundle.crt \
+  aurora_admin query --force -l '%slaveHost%	%slaveHost%-%taskId%.log	/build/mesos/slaves/%slaveId%/frameworks/*/executors/thermos-%taskId%/runs/latest/sandbox/.logs/01-continuous_integration/0/stderr' build |
+    grep ci_ |
+    while IFS='	' read -r host outfile remotefile; do
+      fetchlog "root@$host:$remotefile" "$outfile"
+    done
+
+log waiting for log analysis to complete
+wait
+
+log cleaning up summaries
+sed -i '/^0:0[0-2]:/d' ./*.times

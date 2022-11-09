@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+
+import collections
+import os
+import sys
+
+try:
+    import nomad
+except ImportError:
+    print('\nError: please install python-nomad!\n', file=sys.stderr)
+    raise
+
+CI_ALLOC_REQUIREMENT = 300 * 1024**3  # 300 GiB
+"""This is how much space a single CI allocation needs."""
+BUFFER = 100 * 1024**2   # 100 MiB
+"""This should avoid false positive warnings where almost all space is free."""
+
+
+def to_iec(n_bytes: int | float) -> str:
+    """Format bytes as a human-readable number."""
+    suffixes = ' KMGTPEZY'
+    while n_bytes > 1024:
+        n_bytes /= 1024
+        suffixes = suffixes[1:]
+    return f'{n_bytes:.1f}{suffixes[0].strip()}'
+
+
+def main() -> None:
+    """Script entry point."""
+    assert 'NOMAD_TOKEN' in os.environ, 'you must set the NOMAD_TOKEN variable'
+    # If no arguments are given to nomad.Nomad, the client is configured from
+    # the environment (NOMAD_ADDR, NOMAD_TOKEN, etc).
+    client = nomad.Nomad()
+
+    allocs = collections.defaultdict(list)
+    for alloc in client.allocations.get_allocations():
+        allocs[alloc['NodeID']].append(alloc)
+
+    print('Not enough space to reschedule CI allocs on the following hosts.',
+          'We need at least', to_iec(CI_ALLOC_REQUIREMENT),
+          'available on each of them. If no hosts appear, all is well.')
+
+    need_intervention = set()
+
+    for node in (client.node.get_node(node['ID'])
+                 for node in client.nodes.get_nodes()):
+        hostname = node['Name'].removesuffix('.cern.ch') + '.cern.ch'
+        free = int(node['Attributes']['unique.storage.bytesfree'])
+        total = int(node['Attributes']['unique.storage.bytestotal'])
+
+        if free < CI_ALLOC_REQUIREMENT <= total and free < total - BUFFER:
+            print('Nomad thinks we have', to_iec(free), 'available space of',
+                  to_iec(total), 'on', hostname, f'({node["ID"][:8]})')
+            for alloc in allocs[node['ID']]:
+                print('\t-> alloc on this host:', alloc['ID'][:8],
+                      alloc['Name'], f'({alloc["ClientStatus"]})')
+            if not any(alloc['ClientStatus'] == 'running'
+                       for alloc in allocs[node['ID']]):
+                need_intervention.add(hostname)
+                print('\t-> needs intervention now! See below.')
+            else:
+                print('\t-> no intervention needed right now '
+                      '(have a running alloc)')
+
+    if need_intervention:
+        commands = [
+            f"ssh -C {hostname} 'rm -rfv /build/nomad/alloc/*/ci/local/*/sw "
+            "&& systemctl restart nomad'"
+            for hostname in sorted(need_intervention)
+        ]
+        print('\nThe following hosts need manual cleanup now:',
+              *need_intervention, sep='\n\t- ')
+        print('\nTo clean up, run the following commands:\n',
+              *commands, sep='\n\t')
+
+
+if __name__ == '__main__':
+    main()

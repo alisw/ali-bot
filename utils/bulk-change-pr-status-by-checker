@@ -1,0 +1,27 @@
+#!/usr/bin/awk -f
+BEGIN {
+    # Only awk's executable name and input filenames appear in ARGV. The "-f
+    # filename" from the shebang and any awk options given to this script do
+    # *not* appear in ARGV.
+    if (ARGC < 2) {
+        ORS = "\n"
+        print "warning: no input files given; this command expects .env files as arguments"
+        print "warning: reading from stdin instead"
+    }
+    FS = "="
+    ORS = "\0"
+    option_mapping["PR_REPO"] = "-r"
+    option_mapping["CHECK_NAME"] = "-c"
+    bulk_change_cmd = "xargs -0r ~/ali-bot/bulk-change-pr-status " EXTRA_ARGS
+}
+
+{
+    for (var in option_mapping) {
+        # Make sure we only print each repo once, to avoid bulk-change-pr-status
+        # making unnecessary API requests.
+        if ($1 == var && !had_value[var, $2]) {
+            had_value[var, $2] = 1
+            print option_mapping[var] ORS $2 | bulk_change_cmd
+        }
+    }
+}

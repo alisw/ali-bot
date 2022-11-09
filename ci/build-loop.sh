@@ -4,22 +4,17 @@
 # variables passed to this script; they are set in continuous-builder.sh from
 # environment definitions in repo-config/.
 #
-# Some functions used here are defined in continuous-builder.sh.
+# Some functions used here are defined in build-helpers.sh.
 
 . build-helpers.sh
 get_config
 
 ensure_vars CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS
+
 : "${WORKERS_POOL_SIZE:=1}" "${WORKER_INDEX:=0}" "${PR_REPO_CHECKOUT:=$(basename "$PR_REPO")}"
 [ -d /build/mirror ] && : "${MIRROR:=/build/mirror}"
 
-# This is the check name. If CHECK_NAME is in the environment, use it. Otherwise
-# default to, e.g., build/AliRoot/release (build/<Package>/<Defaults>)
-: "${CHECK_NAME:=build/$PACKAGE/$ALIBUILD_DEFAULTS}"
-
-host_id=$(echo "$MESOS_EXECUTOR_ID" |
-            sed -ne 's#^\(thermos-\)\?\([a-z]*\)-\([a-z]*\)-\([a-z0-9_-]*\)-\([0-9]*\)\(-[0-9a-f]*\)\{5\}$#\2/\4/\5#p')
-: "${host_id:=$(hostname -f)}"
+host_id=${NOMAD_SHORT_ALLOC_ID:-$(hostname -f)}
 
 # Update all PRs in the queue with their number before we start building.
 echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead btype num hash envf; do
@@ -52,11 +47,13 @@ done
 case "$BUILD_TYPE" in
   # Create a status on GitHub showing the build start time, but only if this is
   # the first build of this check!
-  untested) report_pr_errors --pending -m "Started $(TZ=Europe/Zurich date +'%a %H:%M CET') @ $host_id" ;;
+  # If we are running in Nomad, add a link to the this allocation.
+  untested) report_pr_errors --pending -m "Started $(TZ=Europe/Zurich date +'%a %H:%M CET') on $host_id" \
+                             ${NOMAD_ALLOC_ID:+--log-url "https://alinomad.cern.ch/ui/allocations/$NOMAD_ALLOC_ID"} ;;
   # Rebuilds only change the existing status's message, keeping the red status
   # and URL intact.
   failed) set-github-status -k -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/$(build_type_to_status "$BUILD_TYPE")" \
-                            -m "Rechecking since $(TZ=Europe/Zurich date +'%a %H:%M CET') @ $host_id" ;;
+                            -m "Rechecking since $(TZ=Europe/Zurich date +'%a %H:%M CET') on $host_id" ;;
   # See above for why we don't update the status for green checks.
   succeeded) ;;
 esac
@@ -98,6 +95,41 @@ aliBuild clean --debug
 # We are looping over several build hashes here. We will have one log per build.
 mkdir -p "separate_logs/$(date -u +%Y%m%d-%H%M%S)-$PR_NUMBER-$PR_HASH"
 
+# Set up alien.py.
+# If we don't find certs in any of these dirs, leave X509_USER_{CERT,KEY}
+# unset, but continue. In that case, granting a token will fail, which just
+# means that build jobs won't get their jalien_token_{cert,key} variables.
+for certdir in /etc/httpd /root/.globus /etc/grid-security ~/.globus; do
+  if [ -f "$certdir/hostcert.pem" ] && [ -r "$certdir/hostcert.pem" ] &&
+     [ -f "$certdir/hostkey.pem"  ] && [ -r "$certdir/hostkey.pem"  ]
+  then
+    export X509_USER_CERT=$certdir/hostcert.pem X509_USER_KEY=$certdir/hostkey.pem
+    break
+  fi
+done
+# Find CA certs. On alibuilds, the CERN-CA-certs package installs them under
+# /etc/pki/tls/certs, but /etc/grid-security is used on other machines.
+# If we have CVMFS, it should take priority because on those machines,
+# /etc/pki/tls/certs might be an empty directory.
+for certdir in /cvmfs/alice.cern.ch/etc/grid-security/certificates \
+                 /etc/grid-security/certificates /etc/pki/tls/certs; do
+  if [ -d "$certdir" ]; then
+    export X509_CERT_DIR=$certdir
+    break
+  fi
+done
+# Get a temporary JAliEn token certificate and key, to give anything we build
+# below access. Do this before the `report_state pr_processing` line so we have
+# instant feedback in monitoring of whether a token is available for the build.
+if jalien_token=$(alien.py token -v 1); then
+  jalien_token_cert=$(echo "$jalien_token" | sed -n '/^-----BEGIN CERTIFICATE-----$/,/^-----END CERTIFICATE-----$/p')
+  jalien_token_key=$(echo "$jalien_token" | sed -n '/^-----BEGIN RSA PRIVATE KEY-----$/,/^-----END RSA PRIVATE KEY-----$/p')
+  HAVE_JALIEN_TOKEN=1
+else
+  HAVE_JALIEN_TOKEN=0
+fi
+unset certdir jalien_token
+
 report_state pr_processing
 
 # Fetch the PR's changes to the git repository.
@@ -134,7 +166,14 @@ if pushd "$PR_REPO_CHECKOUT"; then
     exit 1
   fi
 
-  popd
+  popd || exit 1
+fi
+
+# Nomad runs this script inside a cgroup managed by it, so it can clean up
+# properly when we exit (or are killed), and it can track CPU/RAM usage.
+# Run our Docker builds inside the same cgroup so they're included too.
+if cgroup=$(sed -rn '/:freezer:/{s/.*:freezer:(.*)/\1/p;q}' "/proc/$$/cgroup"); then
+  DOCKER_EXTRA_ARGS="$DOCKER_EXTRA_ARGS ${cgroup:+--cgroup-parent=$cgroup}"
 fi
 
 if ! clean_env short_timeout aliDoctor --defaults "$ALIBUILD_DEFAULTS" "$PACKAGE" \
@@ -170,37 +209,6 @@ fi
 build_identifier=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
 : "${build_identifier:=${CHECK_NAME//\//_}}"
 
-# Set up alien.py.
-# If we don't find certs in any of these dirs, leave X509_USER_{CERT,KEY}
-# unset, but continue. In that case, granting a token will fail, which just
-# means that build jobs won't get their jalien_token_{cert,key} variables.
-for certdir in /etc/httpd /root/.globus /etc/grid-security ~/.globus; do
-  if [ -f "$certdir/hostcert.pem" ] && [ -r "$certdir/hostcert.pem" ] &&
-     [ -f "$certdir/hostkey.pem"  ] && [ -r "$certdir/hostkey.pem"  ]
-  then
-    export X509_USER_CERT=$certdir/hostcert.pem X509_USER_KEY=$certdir/hostkey.pem
-    break
-  fi
-done
-# Find CA certs. On alibuilds, the CERN-CA-certs package installs them under
-# /etc/pki/tls/certs, but /etc/grid-security is used on other machines.
-# If we have CVMFS, it should take priority because on those machines,
-# /etc/pki/tls/certs might be an empty directory.
-for certdir in /cvmfs/alice.cern.ch/etc/grid-security/certificates \
-                 /etc/grid-security/certificates /etc/pki/tls/certs; do
-  if [ -d "$certdir" ]; then
-    export X509_CERT_DIR=$certdir
-    break
-  fi
-done
-# Get a temporary JAliEn token certificate and key, to give anything we build
-# below access.
-if jalien_token=$(alien.py token -v 1); then
-  jalien_token_cert=$(echo "$jalien_token" | sed -n '/^-----BEGIN CERTIFICATE-----$/,/^-----END CERTIFICATE-----$/p')
-  jalien_token_key=$(echo "$jalien_token" | sed -n '/^-----BEGIN RSA PRIVATE KEY-----$/,/^-----END RSA PRIVATE KEY-----$/p')
-fi
-unset certdir jalien_token
-
 # o2checkcode needs the ALIBUILD_{HEAD,BASE}_HASH variables.
 # We need "--no-auto-cleanup" so that build logs for dependencies are kept, too.
 # For instance, when building O2FullCI, we want to keep the o2checkcode log, as
@@ -213,6 +221,10 @@ if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
      --defaults "$ALIBUILD_DEFAULTS"                         \
      ${MIRROR:+--reference-sources "$MIRROR"}                \
      ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}         \
+     -e ALIBOT_CI_NAME="$CI_NAME"                            \
+     -e ALIBOT_CHECK_NAME="$CHECK_NAME"                      \
+     -e ALIBOT_PR_REPO="$PR_REPO"                            \
+     -e ALIBOT_PR_BRANCH="$PR_BRANCH"                        \
      -e "ALIBUILD_O2_TESTS=$ALIBUILD_O2_TESTS"               \
      -e "ALIBUILD_O2PHYSICS_TESTS=$ALIBUILD_O2PHYSICS_TESTS" \
      ${jalien_token_cert:+-e "JALIEN_TOKEN_CERT=$jalien_token_cert"} \
@@ -240,9 +252,6 @@ else
     short_timeout report-analytics exception --desc 'report-pr-errors fail on build error'
   PR_OK=0
 fi
-
-# Run post-build cleanup command
-aliBuild clean --debug
 
 (
   # Look for any code coverage file for the given commit and push it to
