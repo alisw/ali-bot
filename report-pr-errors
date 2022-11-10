@@ -202,6 +202,7 @@ class Logs(object):
             self.important_logs.extend(x for x in glob(important_search_path)
                                        if dirname(x).endswith(suffix))
         self.important_logs.sort(key=getmtime)
+        self.fetch_log = join(self.work_dir, "MIRROR", "fetch-log.txt")
         print("Important:", *self.important_logs, sep="\n", file=sys.stderr)
 
     def grep_logs(self, regex, context_before=3, context_after=3,
@@ -315,10 +316,18 @@ class Logs(object):
         def display(string):
             return 'block' if string else 'none'
 
+        try:
+            with open(self.fetch_log, encoding='utf-8') as fetch_logf:
+                fetch_log = fetch_logf.read()
+        except OSError:
+            fetch_log = ''
+
         with open(join('copy-logs', self.pretty_log), 'w', encoding='utf-8') as out_f:
             out_f.write(PRETTY_LOG_TEMPLATE % {
                 'status': 'succeeded' if self.build_successful else 'failed',
                 'log_url': self.log_url,
+                'fetch': htmlescape(fetch_log),
+                'fetch_display': display(fetch_log),
                 'o2checkcode': htmlescape(self.o2checkcode_messages),
                 'o2c_display': display(self.o2checkcode_messages),
                 'unittests': htmlescape(self.failed_unit_tests),
@@ -333,7 +342,8 @@ class Logs(object):
                 'noerrors_display': display(not any((
                     self.o2checkcode_messages, self.failed_unit_tests,
                     self.errors_log, self.warnings_log, self.compiler_killed,
-                    self.cmake_errors))),
+                    self.cmake_errors, fetch_log,
+                ))),
                 'fst_logfile': htmlescape(self.full_system_test),
                 'fst_timeout': htmlescape(self.fst_task_timeout),
                 'fst_failedcmd': htmlescape(self.fst_failed_command),
@@ -542,6 +552,7 @@ PRETTY_LOG_TEMPLATE = '''\
    .failed { border-color: #b71c1c; }
    .failed h1 { color: #b71c1c; }
    #noerrors, #noerrors-toc { display: %(noerrors_display)s; }
+   #fetch, #fetch-toc { display: %(fetch_display)s; }
    #compiler-killed, #compiler-killed-toc { display: %(killed_display)s; }
    #o2checkcode, #o2checkcode-toc { display: %(o2c_display)s; }
    #tests, #tests-toc { display: %(unit_display)s; }
@@ -572,6 +583,7 @@ PRETTY_LOG_TEMPLATE = '''\
   <h3>Table of contents</h3>
   <p><nav><ol>
     <li id="noerrors-toc"><a href="#noerrors">No errors found</a></li>
+    <li id="fetch-toc"><a href="#fetch">Git fetch failed</a></li>
     <li id="compiler-killed-toc"><a href="#compiler-killed">Error: the compiler process was killed</a></li>
     <li id="cmake-toc"><a href="#cmake">CMake errors and warnings</a></li>
     <li id="o2checkcode-toc"><a href="#o2checkcode"><code>o2checkcode</code> results</a></li>
@@ -583,6 +595,14 @@ PRETTY_LOG_TEMPLATE = '''\
   <section id="noerrors">
     <h2>No errors found</h2>
     <p>Check the <a href="%(log_url)s">full build log</a> to see all compilation messages.</p>
+  </section>
+  <section id="fetch">
+    <h2>Git fetch failed</h2>
+    <p>This error may indicate an outage of a git host, such as GitHub or CERN GitLab.</p>
+    <p>This build will be retried automatically;
+       this error will be resolved once the git host comes back.</p>
+    <p><pre><code>%(fetch)s</code></pre></p>
+    <p>As the output from git may contain secrets, it is not shown here.</p>
   </section>
   <section id="compiler-killed">
     <h2>Error: the compiler process was killed</h2>

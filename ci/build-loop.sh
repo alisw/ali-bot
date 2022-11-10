@@ -196,6 +196,9 @@ find sw/BUILD/ -maxdepth 1 -name '*latest*' -delete
 # Delete coverage files from one run to the next to avoid
 # reporting them twice under erroneous circumstances
 find sw/BUILD/ -maxdepth 4 -name coverage.info -delete
+# aliBuild should also delete this file, but make *really* sure there are no
+# leftovers from previous invocations.
+rm -f sw/MIRROR/fetch-log.txt
 
 # Only publish packages to remote store when we build the master branch. For
 # PRs, PR_NUMBER will be numeric; in that case, only write to the regular
