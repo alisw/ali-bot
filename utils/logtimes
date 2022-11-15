@@ -4,6 +4,7 @@
 
 import argparse
 from datetime import datetime, timedelta
+import io
 import re
 import sys
 
@@ -35,12 +36,26 @@ def build_duration(package: str | None,
     return [(duration, package)]
 
 
+def output(durations: list[tuple[timedelta, str]],
+           output_file: io.TextIOBase) -> None:
+    '''Print durations and package names from the given list, in order.'''
+    for duration, package in durations:
+        print(duration, package, sep='\t', file=output_file)
+
+
 def main(args: argparse.Namespace) -> None:
     '''Script entry point.'''
     durations: list[tuple[timedelta, str]] = []
     cur_pkg_name: str | None = None
     cur_start_time: str | None = None
     cur_end_time: str | None = None
+
+    def new_package(name, start, end, durations):
+        new_durations = build_duration(name, start, end)
+        if args.ordering == 'chrono':
+            output(new_durations, args.output_file)
+        else:
+            durations += new_durations
 
     for line in args.logfile:
         if not (match := re.match(LOG_RE, line)):
@@ -52,21 +67,18 @@ def main(args: argparse.Namespace) -> None:
             continue
         # This log line now comes from a new package!
         # Register the last package's build duration and reset our variables.
-        durations += build_duration(cur_pkg_name, cur_start_time, cur_end_time)
+        new_package(cur_pkg_name, cur_start_time, cur_end_time, durations)
         cur_pkg_name = package
         cur_start_time = cur_end_time = timestr
     # Make sure the last build in the file is registered, too.
-    durations += build_duration(cur_pkg_name, cur_start_time, cur_end_time)
+    new_package(cur_pkg_name, cur_start_time, cur_end_time, durations)
 
-    # Now sort and output the registered build durations.
-    if args.ordering == 'chrono':
-        ordered = durations
-    elif args.ordering == 'duration':
-        ordered = sorted(durations, key=lambda pair: pair[1], reverse=True)
-    else:
+    # Now sort and output the registered build durations, if necessary.
+    if args.ordering == 'duration':
+        output(sorted(durations, key=lambda pair: pair[1], reverse=True),
+               args.output_file)
+    elif args.ordering != 'chrono':
         raise ValueError('unknown ordering:', args.ordering)
-    for duration, package in ordered:
-        print(duration, package, sep='\t', file=args.output_file)
 
 
 def parse_args() -> argparse.Namespace:
