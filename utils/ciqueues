@@ -27,7 +27,7 @@ mapfile -t instances < <(
         sed -rn '/^Inactive tasks/,$d; s/.*instance: ([0-9]+).*/\1/p' ;;
     nomad)
       NOMAD_TOKEN=$(pass cern/ci/nomad-bootstrap-token | head -1) \
-        nomad job allocs -t '{{range .}}{{println .ID}}{{end}}' "ci-$role-$container$suffix" |
+        nomad job allocs -t '{{range .}}{{if eq .ClientStatus "running"}}{{println .ID}}{{end}}{{end}}' "ci-$role-$container$suffix" |
         sed '/^$/d' ;;
     *) echo "unknown mode: $mode" >&2; exit 1 ;;
   esac
