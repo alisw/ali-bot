@@ -27,13 +27,9 @@ export MODULES_USE_COMPAT_VERSION=1
 
 Eval(){
    cmd=$*
-   ret=`$cmd`
-   if [ "x$ret" != x ]
-   then
-      eval $ret
-   else
-      return 1
-   fi
+   ret=`$cmd` || return 1
+   [ -z "$ret" ] && return 0
+   eval $ret
 }
 
 os_release=/etc/os-release
@@ -52,7 +48,7 @@ fi
 [ x$ALIENV_DEBUG == x1 ] && printf "distro_name=$distro_name\ndistro_release=$distro_release\n" >&2
 
 case $distro_name in
-     Scientific*|CentOS*|RedHatEnterprise*)
+     Scientific*|CentOS*|Rocky*|Alma*|RedHatEnterprise*)
         distro_dir="Scientific"
         uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
@@ -69,6 +65,15 @@ case $distro_name in
               distro_xrelease=6.x
               platform=el7
               ;;
+           8*)
+              distro_xrelease=8.x
+              platform=el7
+              ;;
+           9*)
+              distro_xrelease=8.x
+              platform=el7
+              ;;
+
         esac
         ;;
      Fedora*)
@@ -300,7 +305,7 @@ alien="AliEn"
 # pick all packages consistently from a certain platform tree. When listing
 # packages we show them all, when we load a package e define a priority list and
 # we always have a fallback for backward compatibility.
-PLATFORM_PRIORITY="el7-x86_64 el6-x86_64 el5-x86_64"
+PLATFORM_PRIORITY="el7-x86_64 el6-x86_64 el5-x86_64 el8-x86_64"
 ARGS=("$@")
 PACKAGES=
 EXPECT_PACKAGES=
@@ -342,7 +347,8 @@ else
                      $cvmfsdir/x86_64-2.6-gnu-4.8.3
                      $cvmfsdir/x86_64-2.6-gnu-4.8.4
                      $cvmfsdir/el6-x86_64
-                     $cvmfsdir/el7-x86_64"`"
+                     $cvmfsdir/el7-x86_64
+                     $cvmfsdir/el8-x86_64"`"
   export MODULEPATH=$(modulepath modulefiles $moduledirs)
   [ x$platform != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
 fi
