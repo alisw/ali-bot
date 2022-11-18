@@ -305,7 +305,7 @@ alien="AliEn"
 # pick all packages consistently from a certain platform tree. When listing
 # packages we show them all, when we load a package e define a priority list and
 # we always have a fallback for backward compatibility.
-PLATFORM_PRIORITY="el7-x86_64 el6-x86_64 el5-x86_64 el8-x86_64"
+PLATFORM_PRIORITY="el7-$uname_m el6-$uname_m el5-$uname_m el8-$uname_m"
 ARGS=("$@")
 PACKAGES=
 EXPECT_PACKAGES=
@@ -321,10 +321,10 @@ for ARG in "$@"; do
 done
 if [[ $PACKAGES ]]; then
   for P in $PLATFORM_PRIORITY; do
-    [[ "${P:0:3}" == el5 ]] && P="$cvmfsdir/x86_64-2.6-gnu-4.1.2
-                                  $cvmfsdir/x86_64-2.6-gnu-4.7.2
-                                  $cvmfsdir/x86_64-2.6-gnu-4.8.3
-                                  $cvmfsdir/x86_64-2.6-gnu-4.8.4" \
+    [[ "${P:0:3}" == el5 ]] && P="$cvmfsdir/$uname_m-2.6-gnu-4.1.2
+                                  $cvmfsdir/$uname_m-2.6-gnu-4.7.2
+                                  $cvmfsdir/$uname_m-2.6-gnu-4.8.3
+                                  $cvmfsdir/$uname_m-2.6-gnu-4.8.4" \
                             || P="$cvmfsdir/$P"
     moduledirs="`echo $modulepath $P`"
     export MODULEPATH=$(modulepath modulefiles $moduledirs)
@@ -342,13 +342,13 @@ else
   # PACKAGES is empty, meaning we are executing list operations. Use all paths
   # in MODULEPATH because we want to list packages for all platforms.
   moduledirs="`echo "$modulepath
-                     $cvmfsdir/x86_64-2.6-gnu-4.1.2
-                     $cvmfsdir/x86_64-2.6-gnu-4.7.2
-                     $cvmfsdir/x86_64-2.6-gnu-4.8.3
-                     $cvmfsdir/x86_64-2.6-gnu-4.8.4
-                     $cvmfsdir/el6-x86_64
-                     $cvmfsdir/el7-x86_64
-                     $cvmfsdir/el8-x86_64"`"
+                     $cvmfsdir/$uname_m-2.6-gnu-4.1.2
+                     $cvmfsdir/$uname_m-2.6-gnu-4.7.2
+                     $cvmfsdir/$uname_m-2.6-gnu-4.8.3
+                     $cvmfsdir/$uname_m-2.6-gnu-4.8.4
+                     $cvmfsdir/el6-$uname_m
+                     $cvmfsdir/el7-$uname_m
+                     $cvmfsdir/el8-$uname_m"`"
   export MODULEPATH=$(modulepath modulefiles $moduledirs)
   [ x$platform != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
 fi
