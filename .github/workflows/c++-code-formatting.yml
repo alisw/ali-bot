@@ -20,8 +20,8 @@ env:
 jobs:
   clang-format:
     name: clang-format
-    # We need at least 20.04 to install clang-format-11.
-    runs-on: ubuntu-latest
+    # We need at least 20.04 to have clang-format-14 preinstalled.
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout code
@@ -39,9 +39,9 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo update-alternatives --install /usr/bin/clang-format \
-            clang-format /usr/bin/clang-format-11 100
+            clang-format /usr/bin/clang-format-14 100
           sudo update-alternatives --install /usr/bin/git-clang-format \
-            git-clang-format /usr/bin/git-clang-format-11 100
+            git-clang-format /usr/bin/git-clang-format-14 100
 
       # We need to fetch the PR's head commit to base our cleanup commit on.
       - name: Fetch PR branch
