@@ -106,13 +106,13 @@ def main(args: Namespace) -> int:
     # Fetch symlinks pointing to the tarball to be deleted.
     to_delete, dependencies = get_keys_for_deletion(to_delete, dist_symlinks,
                                                     symlink_mapping)
-    actually_deleted = delete_all_possible(s3c, args.bucket, to_delete,
-                                           dependencies, do_it=args.do_it)
+    deletable = find_deletable(to_delete, dependencies)
+    delete_objects(s3c, args.bucket, to_delete, do_it=args.do_it)
     log.info('%s %d objects, freeing %s',
              'deleted' if args.do_it else 'would delete',
-             len(actually_deleted),
-             format_byte_size(sum(sizes.get(k, 0) for k in actually_deleted)))
-    blocked = to_delete - actually_deleted
+             len(deletable),
+             format_byte_size(sum(sizes.get(k, 0) for k in deletable)))
+    blocked = to_delete - deletable
     log.info('blocked from deletion: %d objects, totalling %s', len(blocked),
              format_byte_size(sum(sizes.get(k, 0) for k in blocked)))
     return 0
@@ -182,9 +182,8 @@ def get_keys_for_deletion(tarball_keys_to_delete: 'Set[str]',
     return symlinks | tarball_keys_to_delete, dependencies
 
 
-def delete_all_possible(s3c, bucket: str, to_delete: 'set[str]',
-                        dependencies: 'list[tuple[str, str]]',
-                        *, do_it: bool = False) -> 'set[str]':
+def find_deletable(to_delete: 'set[str]',
+                   dependencies: 'list[tuple[str, str]]') -> 'set[str]':
     '''Delete old orphan packages and return files deleted and their sizes.'''
     log = logging.getLogger(__name__)
 
@@ -215,16 +214,39 @@ def delete_all_possible(s3c, bucket: str, to_delete: 'set[str]',
         if reverse_deps and item in to_delete:
             log.debug('not deleting %s: blocked by %r', item, reverse_deps)
 
-    to_delete = to_delete.copy()
-    to_delete -= {down for down, ups in blockers.items() if ups}
-    for item in sorted(to_delete):
-        if do_it:
-            s3c.delete_object(Bucket=bucket, Key=item)
-            log.info('deleted: %s', item)
-        else:
-            log.info('would delete: %s', item)
+    return to_delete - {down for down, ups in blockers.items() if ups}
 
-    return to_delete
+
+def delete_objects(s3c, bucket: str, to_delete: 'Iterable[str]',
+                   *, do_it: bool = False) -> None:
+    '''Perform the "real" deletion for the given objects, if requested.'''
+    log = logging.getLogger(__name__)
+    delete_batch: 'list[dict[typing.Literal["Key"], str]]' = []
+
+    def delete_current_batch() -> None:
+        '''Delete all objects in the currently-accumulated batch.'''
+        response = s3c.delete_objects(Bucket=bucket, Delete={
+            'Quiet': False, 'Objects': delete_batch,
+        })
+        for deleted in response.get('Deleted', ()):
+            log.info('deleted: %s', deleted['Key'])
+        for error in response.get('Errors', ()):
+            log.error('error %s for %s: %s', error['Code'], error['Key'],
+                      error['Message'])
+        delete_batch.clear()
+
+    for item in sorted(to_delete):
+        if not do_it:
+            log.info('would delete: %s', item)
+        elif len(delete_batch) == 1000:
+            # We can only delete batches of 1000 keys at a time.
+            delete_current_batch()
+        else:
+            delete_batch.append({'Key': item})
+
+    # Delete the last batch of keys as well.
+    if do_it and delete_batch:
+        delete_current_batch()
 
 
 def load_all_symlinks(s3c, bucket: str, enabled_archs: 'Sequence[str]') \
