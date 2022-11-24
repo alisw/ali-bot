@@ -47,8 +47,8 @@ def main(args: Namespace) -> int:
         if any(fnmatchcase(entry['Prefix'][4:].strip('/'), pattern)
                for pattern in args.architecture_patterns or ['*'])
     ]
-    log.debug('matched architectures: %s',
-              ', '.join(arch[4:].strip('/') for arch in enabled_archs))
+    log.info('matched architectures: %s',
+             ', '.join(arch[4:].strip('/') for arch in enabled_archs))
 
     # Scan TARS/<arch>/store/*/*/*.tar.gz to find main tarballs.
     cutoff = datetime.now(timezone(timedelta(0), 'UTC')) - \
@@ -75,16 +75,28 @@ def main(args: Namespace) -> int:
                       args.max_age, format_byte_size(size), key)
             sizes[key] = size
             to_delete.add(key)
-            symlinks, deps = get_keys_for_deletion(s3c, args.bucket, key)
-            to_delete |= symlinks
-            dependencies |= deps
+
+    log.debug('found %d candidate tarballs for deletion; total size: %s',
+              len(to_delete), format_byte_size(sum(sizes.values())))
+
+    # Fetch symlinks pointing to the tarball to be deleted.
+    for key in to_delete.copy():
+        log.debug('fetching symlinks for tarball %s', key)
+        symlinks, deps = get_keys_for_deletion(s3c, args.bucket, key)
+        to_delete |= symlinks
+        dependencies |= deps
+        if not symlinks:
+            log.warning('no symlinks found for tarball %s', key)
 
     actually_deleted = delete_all_possible(s3c, args.bucket, to_delete,
                                            dependencies, do_it=args.do_it)
-    log.info('%s %d objects, saving %s',
+    log.info('%s %d objects, freeing %s',
              'deleted' if args.do_it else 'would delete',
              len(actually_deleted),
              format_byte_size(sum(sizes.get(k, 0) for k in actually_deleted)))
+    blocked = to_delete - actually_deleted
+    log.info('blocked from deletion: %d objects, totalling %s', len(blocked),
+             format_byte_size(sum(sizes.get(k, 0) for k in blocked)))
     return 0
 
 
@@ -95,13 +107,13 @@ def get_keys_for_deletion(s3c, bucket: str, tarball_key: str) \
     arch_prefix = '/'.join(tarball_key.split('/')[:2]) + '/'
     dependencies: set[tuple[str, str]] = set()
 
-    # Find symlinks at TARS/<package>/*.tar.gz that point to the tarball we
-    # just deleted and delete them as well.
+    # Find symlinks at TARS/<package>/*.tar.gz that point to the given tarball,
+    # so we can delete them together with the tarball.
     symlinks = {key for key in get_package_symlinks(s3c, bucket, arch_prefix)
                 if symlink_matches(s3c, bucket, key, tarball_key)}
 
-    # Find directories at TARS/{dist,dist-direct,dist-runtime}/<package>/ for
-    # the tarball we just deleted and clean them up.
+    # Find directories at TARS/dist*/<package>/ for the given tarball to
+    # determine dependency relationships.
     dist_symlinks = get_dist_symlinks(s3c, bucket, arch_prefix)
     for symlink_key in dist_symlinks:
         if not symlink_matches(s3c, bucket, symlink_key, tarball_key):
@@ -114,23 +126,24 @@ def get_keys_for_deletion(s3c, bucket: str, tarball_key: str) \
         # .../dist/O2PDPSuite/O2PDPSuite-nightlyX/, in which case we want to
         # delete O2-nightlyX only if we're also deleting O2PDPSuite-nightlyX.
         arch = tarball_key.split('/', 2)[1]
+        symlink_dir = os.path.dirname(symlink_key) + '/'
         package = os.path.basename(os.path.dirname(symlink_key))
         if os.path.basename(tarball_key) != f'{package}.{arch}.tar.gz':
-            # If we've found a symlink in another package's dist dir, add a
+            # We've found a symlink in another package's dist dir; add a
             # dependency relation.
-            log.debug('\t- dependency found: appears under %s/',
-                      os.path.dirname(symlink_key))
-            this_symlink = \
-                f'{os.path.dirname(symlink_key)}/{package}.{arch}.tar.gz'
-            dependencies.add((get_symlink_target(s3c, bucket, this_symlink),
-                              tarball_key))
+            dep_symlink = f'{symlink_dir}{package}.{arch}.tar.gz'
+            dep_tarball = get_symlink_target(s3c, bucket, dep_symlink)
+            log.debug('\t- %s depends on this tarball', dep_tarball)
+            dependencies.add((dep_tarball, tarball_key))
         else:
             # If we've found a symlink in our own dist dir, add all symlinks in
             # the same dir to symlinks.
-            symlink_dir = os.path.dirname(symlink_key) + '/'
             # symlink_key will also be included.
-            symlinks.update(key for key in dist_symlinks
-                            if key.startswith(symlink_dir))
+            new_symlinks = {key for key in dist_symlinks
+                            if key.startswith(symlink_dir)}
+            symlinks.update(new_symlinks)
+            log.debug('\t- found own dependencies (total %d) at %s',
+                      len(new_symlinks), symlink_dir)
 
     return symlinks, dependencies | {(tarball_key, s) for s in symlinks}
 
@@ -296,4 +309,7 @@ def parse_args() -> Namespace:
 
 
 if __name__ == '__main__':
-    sys.exit(main(parse_args()))
+    try:
+        sys.exit(main(parse_args()))
+    except (KeyboardInterrupt, BrokenPipeError):
+        pass
