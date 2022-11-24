@@ -300,8 +300,7 @@ def parse_args() -> Namespace:
         'the default is to include all architectures; %(metavar)s is matched '
         'against architectures using fnmatch (i.e. glob-style patterns)')
     parser.add_argument(
-        '-p', '--package', metavar='PACKAGE', required=True,
-        action='append', dest='packages',
+        'packages', metavar='PACKAGE', nargs='+',
         help='package name to clean up -- can be specified multiple times; '
         'tarballs with names beginning with "%(metavar)s-" will be '
         'considered for deletion')
