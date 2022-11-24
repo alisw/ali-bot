@@ -19,6 +19,7 @@ import logging
 import os
 import sys
 from argparse import ArgumentParser, Namespace
+from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from fnmatch import fnmatchcase
 from functools import lru_cache
@@ -140,22 +141,36 @@ def delete_all_possible(s3c, bucket: str, to_delete: 'set[str]',
     '''Delete old orphan packages and return files deleted and their sizes.'''
     log = logging.getLogger(__name__)
 
+    # Sort dependency pairs so that we process tarballs in store/ first. This
+    # ought to speed up resolving transitive dependencies slightly, as the
+    # store/ tarballs have the "real" dependency and the ones in dist*/ just
+    # depend on their respective store/ tarball.
+    sorted_dependencies = \
+        sorted(dependencies, key=lambda dep: dep[1], reverse=True)
+
     # A tarball can be deleted if nothing else depends on it, with dependency
-    # relationships having been calculated earlier from dist/ symlinks.
-    # Resolve transitive dependency relations until to_delete converges.
-    keep: 'set[str]' = set()
-    prev_n_delete = -1
-    while prev_n_delete != len(to_delete):
-        prev_n_delete = len(to_delete)
-        keep = {down for up, down in dependencies
-                if up not in to_delete}
-        to_delete -= keep
+    # relationships having been calculated earlier from dist*/ symlinks.
+    blockers: 'defaultdict[str, set[str]]' = defaultdict(set)
+    converged = False
+    while not converged:
+        converged = True
+        for up, down in sorted_dependencies:
+            if up not in to_delete and up not in blockers[down]:
+                # This dependency relationship blocks deletion of `down`.
+                blockers[down].add(up)
+                converged = False
+            elif blockers[up] - blockers[down]:
+                # There is a transitive dependency here. `up` is blocked from
+                # deletion, so block `down` as well.
+                blockers[down] |= blockers[up]
+                converged = False
 
-    for item in sorted(keep):
-        log.debug('not deleting %s: blocked by %s', item,
-                  ', '.join(up for up, down in dependencies
-                            if down == item and up not in to_delete))
+    for item, reverse_deps in blockers.items():
+        if reverse_deps:
+            log.debug('not deleting %s: blocked by %r', item, reverse_deps)
 
+    to_delete = to_delete.copy()
+    to_delete -= {down for down, ups in blockers.items() if ups}
     for item in sorted(to_delete):
         if do_it:
             s3c.delete_object(Bucket=bucket, Key=item)
