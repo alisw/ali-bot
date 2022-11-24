@@ -12,18 +12,29 @@ TARS/<arch>/dist*/<package>/<package>-<version>/ are deleted as well.
 
 If a tarball is considered for deletion, but another tarball depends on it (and
 the latter is not deleted), then the former will be left in place, even if it
-would otherwise be old enough for deletion.
+would otherwise be old enough for deletion. This prevents breaking existing
+packages' dependency trees.
 '''
 
 import logging
 import os
 import sys
+import typing
 from argparse import ArgumentParser, Namespace
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from fnmatch import fnmatchcase
-from functools import lru_cache
 from boto3 import client
+from botocore.exceptions import ClientError
+
+if typing.TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence, Set
+    SymlinkMapping = dict[str, str]
+    '''Map symlink basenames to associated data.
+
+    The data is either their target in the store or their associated package
+    name.
+    '''
 
 
 def main(args: Namespace) -> int:
@@ -41,29 +52,33 @@ def main(args: Namespace) -> int:
         return 1
 
     enabled_archs: 'list[str]' = [
-        entry['Prefix']
-        for entry in s3c.list_objects_v2(Bucket=args.bucket, Delimiter='/',
-                                         Prefix='TARS/')['CommonPrefixes']
-        if any(fnmatchcase(entry['Prefix'][4:].strip('/'), pattern)
+        prefix for prefix, _, _
+        in get_hierarchy(s3c, args.bucket, 'TARS/', recursive=False)
+        if prefix.endswith('/') and
+           any(fnmatchcase(prefix[4:].strip('/'), pattern)
                for pattern in args.architecture_patterns or ['*'])
     ]
     log.info('matched architectures: %s',
              ', '.join(arch[4:].strip('/') for arch in enabled_archs))
 
+    symlink_mapping, package_mapping = \
+        load_all_symlinks(s3c, args.bucket, enabled_archs)
+    consider_tarballs = frozenset(
+        target for basename, target in symlink_mapping.items()
+        if package_mapping[basename] in args.packages
+    )
+    del package_mapping
+
     # Scan TARS/<arch>/store/*/*/*.tar.gz to find main tarballs.
     cutoff = datetime.now(timezone(timedelta(0), 'UTC')) - \
         timedelta(days=args.max_age)
     to_delete: 'set[str]' = set()
-    dependencies: 'set[tuple[str, str]]' = set()
     sizes: 'dict[str, int]' = {}
     for arch_path in enabled_archs:
-        for key, mtime, size in get_hierarchy(s3c, args.bucket, arch_path):
-            if not key.startswith(arch_path + 'store/'):
-                continue
-            basename = os.path.basename(key)
-            if not any(basename.startswith(package + '-') and
-                       basename.endswith('.tar.gz')
-                       for package in args.packages):
+        for key, mtime, size in get_hierarchy(s3c, args.bucket,
+                                              arch_path + 'store/'):
+            assert mtime is not None, 'we should have keys here, not prefixes'
+            if key not in consider_tarballs:
                 continue
             if mtime >= cutoff:
                 log.debug('tarball mtime %s newer than %d days; skipping: %s',
@@ -79,15 +94,18 @@ def main(args: Namespace) -> int:
     log.debug('found %d candidate tarballs for deletion; total size: %s',
               len(to_delete), format_byte_size(sum(sizes.values())))
 
-    # Fetch symlinks pointing to the tarball to be deleted.
-    for key in to_delete.copy():
-        log.debug('fetching symlinks for tarball %s', key)
-        symlinks, deps = get_keys_for_deletion(s3c, args.bucket, key)
-        to_delete |= symlinks
-        dependencies |= deps
-        if not symlinks:
-            log.warning('no symlinks found for tarball %s', key)
+    log.debug('fetching dist symlink names; this may take a while')
+    dist_symlinks = sorted(
+        key
+        for arch_prefix in enabled_archs
+        for dist in ('dist/', 'dist-direct/', 'dist-runtime/')
+        for key, _, _ in get_hierarchy(s3c, args.bucket, arch_prefix + dist)
+        if key.endswith('.tar.gz') and key[len(arch_prefix):].count('/') == 3
+    )
 
+    # Fetch symlinks pointing to the tarball to be deleted.
+    to_delete, dependencies = get_keys_for_deletion(to_delete, dist_symlinks,
+                                                    symlink_mapping)
     actually_deleted = delete_all_possible(s3c, args.bucket, to_delete,
                                            dependencies, do_it=args.do_it)
     log.info('%s %d objects, freeing %s',
@@ -100,56 +118,72 @@ def main(args: Namespace) -> int:
     return 0
 
 
-def get_keys_for_deletion(s3c, bucket: str, tarball_key: str) \
-        -> 'tuple[set[str], set[tuple[str, str]]]':
+def get_keys_for_deletion(tarball_keys_to_delete: 'Set[str]',
+                          dist_symlinks: 'list[str]',
+                          symlink_mapping: 'SymlinkMapping') \
+        -> 'tuple[set[str], list[tuple[str, str]]]':
     '''Return keys which should be deleted for the given tarball.'''
     log = logging.getLogger(__name__)
-    arch_prefix = '/'.join(tarball_key.split('/')[:2]) + '/'
-    dependencies: set[tuple[str, str]] = set()
 
-    # Find symlinks at TARS/<package>/*.tar.gz that point to the given tarball,
-    # so we can delete them together with the tarball.
-    symlinks = {key for key in get_package_symlinks(s3c, bucket, arch_prefix)
-                if symlink_matches(s3c, bucket, key, tarball_key)}
+    symlinks: 'set[str]' = set()
+    dependencies: 'list[tuple[str, str]]' = []
 
-    # Find directories at TARS/dist*/<package>/ for the given tarball to
-    # determine dependency relationships.
-    dist_symlinks = get_dist_symlinks(s3c, bucket, arch_prefix)
+    # We assume dist_symlinks is sorted, so that all symlinks in the same
+    # directory are consecutive elements in the list.
+    this_dir: 'str | None' = None
+    this_dir_consider_deletion: bool = False
+    this_dir_contents: 'list[str]' = []
+
+    def delete_symlink_dir():
+        '''If necessary, register this directory's symlinks for deletion.'''
+        if not this_dir_consider_deletion or this_dir is None:
+            return
+        # This dist directory belongs to a tarball that we want to delete.
+        # Delete all the symlinks inside this directory if and only if we're
+        # deleting the associated tarball.
+        symlinks.update(this_dir_contents)
+        dependencies.extend((symlink_mapping[main_package], symlink)
+                            for symlink in this_dir_contents)
+        log.debug('found %d dependencies of tarball to delete under %s/',
+                  len(this_dir_contents), this_dir)
+
     for symlink_key in dist_symlinks:
-        if not symlink_matches(s3c, bucket, symlink_key, tarball_key):
-            continue
+        symlink_dir, valid, symlink_basename = symlink_key.rpartition('/')
+        assert valid, 'expected slash in symlink key; got %r' + symlink_key
 
-        # Make sure the dirname where the matching symlink is ends with the
-        # tarball basename (minus .<arch>.tar.gz) to make sure we're not
-        # deleting a dependent package's dist dir!
-        # For example, a symlink to O2-nightlyX.tar.gz might appear in
-        # .../dist/O2PDPSuite/O2PDPSuite-nightlyX/, in which case we want to
-        # delete O2-nightlyX only if we're also deleting O2PDPSuite-nightlyX.
-        arch = tarball_key.split('/', 2)[1]
-        symlink_dir = os.path.dirname(symlink_key) + '/'
-        package = os.path.basename(os.path.dirname(symlink_key))
-        if os.path.basename(tarball_key) != f'{package}.{arch}.tar.gz':
-            # We've found a symlink in another package's dist dir; add a
+        # Save the contents of this dist subdirectory, in case we need to do
+        # something with its contents later.
+        if this_dir != symlink_dir:
+            log.debug('listing dependencies under %s', symlink_dir)
+            delete_symlink_dir()
+            this_dir = symlink_dir
+            this_dir_consider_deletion = False
+            this_dir_contents.clear()
+        this_dir_contents.append(symlink_key)
+
+        arch = symlink_dir.split('/', 2)[1]
+        package_and_version = os.path.basename(symlink_dir)
+        main_package = f'{package_and_version}.{arch}.tar.gz'
+
+        if symlink_basename != main_package:
+            # We've found a symlink inside another package's dist dir; add a
             # dependency relation.
-            dep_symlink = f'{symlink_dir}{package}.{arch}.tar.gz'
-            dep_tarball = get_symlink_target(s3c, bucket, dep_symlink)
-            log.debug('\t- %s depends on this tarball', dep_tarball)
-            dependencies.add((dep_tarball, tarball_key))
-        else:
-            # If we've found a symlink in our own dist dir, add all symlinks in
-            # the same dir to symlinks.
-            # symlink_key will also be included.
-            new_symlinks = {key for key in dist_symlinks
-                            if key.startswith(symlink_dir)}
-            symlinks.update(new_symlinks)
-            log.debug('\t- found own dependencies (total %d) at %s',
-                      len(new_symlinks), symlink_dir)
+            dependencies.append((symlink_mapping[main_package],
+                                 symlink_mapping[symlink_basename]))
+        elif symlink_mapping[symlink_basename] in tarball_keys_to_delete:
+            # If we've found the dist dir belonging to a tarball that we want
+            # to delete. Add all symlinks in the same dir to the list of
+            # symlinks to consider for deletion.
+            this_dir_consider_deletion = True
 
-    return symlinks, dependencies | {(tarball_key, s) for s in symlinks}
+    # Make sure the very last symlink directory isn't forgotten.
+    delete_symlink_dir()
+
+    return symlinks | tarball_keys_to_delete, dependencies
 
 
 def delete_all_possible(s3c, bucket: str, to_delete: 'set[str]',
-                        dependencies: 'set[tuple[str, str]]',
+                        dependencies: 'list[tuple[str, str]]',
                         *, do_it: bool = False) -> 'set[str]':
     '''Delete old orphan packages and return files deleted and their sizes.'''
     log = logging.getLogger(__name__)
@@ -158,8 +192,7 @@ def delete_all_possible(s3c, bucket: str, to_delete: 'set[str]',
     # ought to speed up resolving transitive dependencies slightly, as the
     # store/ tarballs have the "real" dependency and the ones in dist*/ just
     # depend on their respective store/ tarball.
-    sorted_dependencies = \
-        sorted(dependencies, key=lambda dep: dep[1], reverse=True)
+    dependencies.sort(key=lambda dep: dep[1], reverse=True)
 
     # A tarball can be deleted if nothing else depends on it, with dependency
     # relationships having been calculated earlier from dist*/ symlinks.
@@ -167,7 +200,7 @@ def delete_all_possible(s3c, bucket: str, to_delete: 'set[str]',
     converged = False
     while not converged:
         converged = True
-        for up, down in sorted_dependencies:
+        for up, down in dependencies:
             if up not in to_delete and up not in blockers[down]:
                 # This dependency relationship blocks deletion of `down`.
                 blockers[down].add(up)
@@ -179,7 +212,7 @@ def delete_all_possible(s3c, bucket: str, to_delete: 'set[str]',
                 converged = False
 
     for item, reverse_deps in blockers.items():
-        if reverse_deps:
+        if reverse_deps and item in to_delete:
             log.debug('not deleting %s: blocked by %r', item, reverse_deps)
 
     to_delete = to_delete.copy()
@@ -194,55 +227,99 @@ def delete_all_possible(s3c, bucket: str, to_delete: 'set[str]',
     return to_delete
 
 
-@lru_cache(maxsize=None)
-def get_hierarchy(s3c, bucket: str, arch_prefix: str) \
-        -> 'list[tuple[str, datetime, int]]':
-    '''Retrieve all objects under the specified prefix, caching the answer.'''
-    return [(item['Key'], item['LastModified'], item['Size'])
-            for page in s3c.get_paginator('list_objects_v2')
-                           .paginate(Bucket=bucket, Prefix=arch_prefix)
-            for item in page.get('Contents', ())]
+def load_all_symlinks(s3c, bucket: str, enabled_archs: 'Sequence[str]') \
+        -> 'tuple[SymlinkMapping, SymlinkMapping]':
+    '''Load the symlink mapping for all discovered packages.'''
+    symlinks: 'SymlinkMapping' = {}
+    packages: 'SymlinkMapping' = {}
+    for arch_path in enabled_archs:
+        for package in list_packages(s3c, bucket, arch_path):
+            mapping = load_symlink_mapping(s3c, bucket, arch_path, package)
+            for basename, target in mapping.items():
+                # The basename includes the architecture (as .$arch.tar.gz
+                # suffix), so it's safe to merge these dicts for multiple
+                # architectures.
+                symlinks[basename] = target
+                packages[basename] = package
+    return symlinks, packages
 
 
-@lru_cache(maxsize=None)
-def get_package_symlinks(s3c, bucket: str, arch_prefix: str) -> 'list[str]':
-    '''Scan the bucket for symlinks to tarballs.'''
-    return [key for key, _, _ in get_hierarchy(s3c, bucket, arch_prefix)
-            if (key.startswith(arch_prefix) and key.endswith('.tar.gz')
-                and key[len(arch_prefix):].count('/') == 1)]
+def list_packages(s3c, bucket: str, arch_path: str) -> 'Iterable[str]':
+    '''Generate package names found under the given architecture prefix.'''
+    for prefix, _, _ in get_hierarchy(s3c, bucket, arch_path, recursive=False):
+        if prefix.endswith('/'):
+            package = os.path.basename(prefix.rstrip('/'))
+            if package not in {'store', 'dist', 'dist-direct', 'dist-runtime'}:
+                yield package
 
 
-@lru_cache(maxsize=None)
-def get_dist_symlinks(s3c, bucket: str, arch_prefix: str) -> 'list[str]':
-    '''Scan the bucket for symlinks to tarballs under dist*/.'''
-    return [key for key, _, _ in get_hierarchy(s3c, bucket, arch_prefix)
-            if (any(key.startswith(arch_prefix + dist + '/')
-                    for dist in ('dist', 'dist-direct', 'dist-runtime'))
-                and key.endswith('.tar.gz')
-                and key[len(arch_prefix):].count('/') == 3)]
+def load_symlink_mapping(s3c, bucket: str, arch_path: str, package: str) \
+        -> 'SymlinkMapping':
+    '''Create a mapping from symlink basenames to tarballs in the store.'''
+    log = logging.getLogger(__name__)
+    mapping: 'SymlinkMapping' = {}
+    manifest_key = f'{arch_path}{package}.manifest'
+    try:
+        log.debug('fetching object s3://%s/%s', bucket, manifest_key)
+        manifest = s3c.get_object(Bucket=bucket, Key=manifest_key)['Body'] \
+                      .read().decode('utf-8')
+    except ClientError as exc:
+        # If the manifest doesn't exist, ignore the error and fetch symlinks
+        # individually below.
+        if exc.response['Error']['Code'] != 'NoSuchKey':
+            log.fatal('got unknown error response from S3: %r', exc.response)
+            raise ValueError('could not fetch %s' % manifest_key) from exc
+    else:
+        for line in manifest.splitlines():
+            basename, valid, target = line.partition('\t')
+            if not valid:
+                continue
+            mapping[basename] = \
+                normalize_symlink_target(f'{arch_path}{package}/_', target)
 
 
-@lru_cache(maxsize=None)
-def get_symlink_target(s3c, bucket: str, symlink: str) -> str:
-    '''Retrieve the symlink's normalized target, caching the answer.
-
-    "Normalized" means that the returned value will be a valid S3 key for the
-    target tarball.
-    '''
-    raw_target = s3c.get_object(Bucket=bucket, Key=symlink)['Body'] \
+    # Fetch any leftover symlinks not listed in the manifest.
+    for key, _, _ in get_hierarchy(s3c, bucket, f'{arch_path}{package}/',
+                                   recursive=False):
+        if key.endswith('/'):
+            continue
+        basename = os.path.basename(key)
+        if basename in mapping or not basename.endswith('.tar.gz'):
+            continue
+        log.debug('fetching object s3://%s/%s', bucket, key)
+        target = s3c.get_object(Bucket=bucket, Key=key)['Body'] \
                     .read().decode('utf-8').rstrip('\n')
-    if raw_target.startswith('TARS/'):
-        return raw_target
-    if not raw_target.startswith('../../'):
-        raw_target = '../../' + raw_target
-    return os.path.normpath(os.path.dirname(symlink) + '/' + raw_target)
+        mapping[basename] = normalize_symlink_target(key, target)
+
+    return mapping
 
 
-def symlink_matches(s3c, bucket: str, symlink: str, tarball: str) -> bool:
-    '''Return whether symlink points to tarball, checking efficiently.'''
-    return (os.path.basename(tarball) == os.path.basename(symlink) and
-            # This step is expensive, so check for a basename match first.
-            tarball == get_symlink_target(s3c, bucket, symlink))
+def get_hierarchy(s3c, bucket: str, prefix: str, recursive: bool = True) \
+        -> 'Iterable[tuple[str, datetime | None, int]]':
+    '''Retrieve all objects under the specified prefix, caching the answer.
+
+    If recursive=False is given, include common subprefixes in the output.
+    These can be identified by their trailing slash.
+    '''
+    log = logging.getLogger(__name__)
+    log.debug('listing keys under s3://%s/%s (recursive=%r)',
+              bucket, prefix, recursive)
+    kwargs = {} if recursive else {'Delimiter': '/'}
+    for page in s3c.get_paginator('list_objects_v2') \
+                   .paginate(Bucket=bucket, Prefix=prefix, **kwargs):
+        for item in page.get('Contents', ()):
+            yield (item['Key'], item['LastModified'], item['Size'])
+        for subprefix in page.get('CommonPrefixes', ()):
+            yield (subprefix['Prefix'], None, 0)
+
+
+def normalize_symlink_target(symlink_key: str, target: str) -> str:
+    '''Turn the target of a symlink pointing into the store into an S3 key.'''
+    if target.startswith('TARS/'):
+        return target
+    if not target.startswith('../../'):
+        target = '../../' + target
+    return os.path.normpath(os.path.dirname(symlink_key) + '/' + target)
 
 
 def format_byte_size(size_bytes: int) -> str:
