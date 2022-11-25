@@ -304,10 +304,14 @@ slc7_x86-64:
     nightly-20220923-1     : True
   O2Physics:
     nightly-20220923-1     : True
+  O2PDPSuite:
+    nightly-20221125-3     : True
+    daily-20221125-1515-1  : True
 
 slc8_x86-64:
   O2PDPSuite:
     async-20220923-1       : True
+    async-nightly-20221125-alidist-master-QC-daily-20221125-1515: True
 
 ubt14_x86-64:
   GCC-Toolchain:
