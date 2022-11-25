@@ -134,13 +134,6 @@ if echo "$AUTOTAG_TAG" | grep -Fq '!!'; then
   exit 1
 fi
 
-# The tag doesn't exist yet, so build using the branch first.
-for package in $PACKAGES; do
-  edit_package_tag "$package" "$DEFAULTS" "rc/$AUTOTAG_TAG" "$AUTOTAG_OVERRIDE_VERSION"
-done
-
-git -C alidist diff || :
-
 for package in $PACKAGES; do (
   rm -rf "${package,,}.git"
   AUTOTAG_REMOTE=$(grep -E '^(source:|write_repo:)' "alidist/${package,,}.sh" | sort -r | head -n1 | cut -d: -f2- | xargs echo)
@@ -151,7 +144,7 @@ for package in $PACKAGES; do (
 
     [[ -d $AUTOTAG_MIRROR ]] || AUTOTAG_MIRROR=
     mkdir "${package,,}.git"
-    cd "${package,,}.git"
+    pushd "${package,,}.git"
     git clone --bare ${AUTOTAG_MIRROR:+--reference=$AUTOTAG_MIRROR} "$AUTOTAG_REMOTE" .
     AUTOTAG_HASH=$(git ls-remote origin "refs/tags/$AUTOTAG_TAG" | tail -1 | cut -f1)
     if [ -n "$AUTOTAG_HASH" ]; then
@@ -186,8 +179,13 @@ for package in $PACKAGES; do (
     # At this point, we have $AUTOTAG_HASH for sure. It might come from HEAD, an existing rc/* branch,
     # or an existing tag. We always create a new branch out of it
     git push origin "+$AUTOTAG_HASH:refs/heads/rc/$AUTOTAG_TAG"
+
+    popd
+    edit_package_tag "$package" "$DEFAULTS" "$AUTOTAG_HASH" "$AUTOTAG_OVERRIDE_VERSION"
   fi
 ); done
+
+git -C alidist diff || :
 
 # Set default remote store -- S3 on slc8 and Ubuntu, rsync everywhere else.
 case "$ARCHITECTURE" in
