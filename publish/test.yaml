@@ -312,6 +312,7 @@ slc8_x86-64:
   O2PDPSuite:
     async-20220923-1       : True
     async-nightly-20221125-alidist-master-QC-daily-20221125-1515: True
+    nightly-20221114-gpu-1 : True
 
 ubt14_x86-64:
   GCC-Toolchain:
