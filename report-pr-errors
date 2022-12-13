@@ -182,6 +182,7 @@ class Logs(object):
                     "pretty.html" if pretty else "fullLog.txt")
 
     def find(self):
+        self.fetch_log = join(self.work_dir, "MIRROR", "fetch-log.txt")
         search_path = join(self.work_dir, "BUILD", "*latest*", "log")
         print("Searching all logs matching:", search_path, file=sys.stderr)
         suffix = "latest-" + self.develPrefix if self.develPrefix else "latest"
@@ -202,7 +203,6 @@ class Logs(object):
             self.important_logs.extend(x for x in glob(important_search_path)
                                        if dirname(x).endswith(suffix))
         self.important_logs.sort(key=getmtime)
-        self.fetch_log = join(self.work_dir, "MIRROR", "fetch-log.txt")
         print("Important:", *self.important_logs, sep="\n", file=sys.stderr)
 
     def grep_logs(self, regex, context_before=3, context_after=3,
