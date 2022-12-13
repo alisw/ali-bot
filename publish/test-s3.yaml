@@ -3,5 +3,8 @@ slc8_x86-64:
   O2PDPSuite:
     async-20220923-1: true
     async-nightly-20221125-alidist-master-QC-daily-20221125-1515: true
+    nightly-20221210-gpu-1: false
     nightly-20221212-gpu-1: true
-    nightly-20230131-gpu-1: true
+    nightly-20230131-gpu-1: false
+    gpu-nightly-20221214-1: true
+    gpu-nightly-20230131-1: true
