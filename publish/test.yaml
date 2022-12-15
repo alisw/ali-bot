@@ -310,7 +310,7 @@ slc7_x86-64:
 
 slc7_aarch64:
   O2sim:
-    O2sim@v20221215-1      : True
+    v20221215-1      : True
 
 ubt14_x86-64:
   GCC-Toolchain:
