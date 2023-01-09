@@ -1,4 +1,12 @@
 ---
+slc7_aarch64:
+  O2sim:
+    v20221215-1: true
+  O2:
+    nightly-20221107-1: true
+  O2Physics:
+    nightly-20221107-1: true
+
 slc8_x86-64:
   O2PDPSuite:
     async-20220923-1: true
