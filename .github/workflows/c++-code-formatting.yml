@@ -69,7 +69,7 @@ jobs:
           for file in "${commit_files[@]}"; do
             case $file in
               *.hxx|*.cc|*.hpp)
-                echo "::error file=$x::$x uses non-allowed extension"
+                echo "::error file=$file::$file uses non-allowed extension"
                 have_invalid_extension=true ;;
             esac
           done
