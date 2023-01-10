@@ -33,7 +33,7 @@ jobs:
           echo ~/bin >> "$GITHUB_PATH"
         env:
           ACTIONLINT_URL: |-
-            https://github.com/rhysd/actionlint/releases/download/v1.6.21/actionlint_1.6.21_linux_amd64.tar.gz
+            https://github.com/rhysd/actionlint/releases/download/v1.6.22/actionlint_1.6.22_linux_amd64.tar.gz
 
       - name: Check GitHub workflows
         run: |
