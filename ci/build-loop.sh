@@ -121,7 +121,7 @@ done
 # Get a temporary JAliEn token certificate and key, to give anything we build
 # below access. Do this before the `report_state pr_processing` line so we have
 # instant feedback in monitoring of whether a token is available for the build.
-if jalien_token=$(alien.py token -v 1); then
+if jalien_token=$(short_timeout alien.py token -v 1); then
   jalien_token_cert=$(echo "$jalien_token" | sed -n '/^-----BEGIN CERTIFICATE-----$/,/^-----END CERTIFICATE-----$/p')
   jalien_token_key=$(echo "$jalien_token" | sed -n '/^-----BEGIN RSA PRIVATE KEY-----$/,/^-----END RSA PRIVATE KEY-----$/p')
   HAVE_JALIEN_TOKEN=1
