@@ -25,38 +25,9 @@ if [[ $RPM_IS_UPDATABLE ]]; then
   esac
 fi
 
-# Create aliswmod RPM
-ALISWMOD_VERSION=4
-ALISWMOD_RPM="alisw-aliswmod-$ALISWMOD_VERSION-1.%(arch)s.rpm"
-if [[ ! -e "%(repodir)s/$ALISWMOD_RPM" ]]; then
-  mkdir -p aliswmod/bin
-  mkdir -p aliswmod/etc/profile.d
-  cat > aliswmod/etc/profile.d/99-aliswmod.sh << EOF
-export LD_LIBRARY_PATH=/opt/alisw/el7/lib:/opt/alisw/el7/lib64:\$LD_LIBRARY_PATH
-export PATH=/opt/alisw/el7/bin:\$PATH
-export MODULEPATH=$INSTALLPREFIX/$FLAVOUR/modulefiles:$INSTALLPREFIX/$FLAVOUR/etc/Modules/modulefiles:\$MODULEPATH
-EOF
-  pushd aliswmod
-    fpm -s dir                                 \
-        -t rpm                                 \
-        --force                                \
-        --depends 'environment-modules >= 4.0' \
-        --prefix /                             \
-        --architecture $ARCHITECTURE           \
-        --version $ALISWMOD_VERSION            \
-        --iteration 1.$FLAVOUR                 \
-        --name alisw-aliswmod                  \
-        .
-  popd
-  mv aliswmod/$ALISWMOD_RPM .
-  rm -rf aliswmod/
-else
-  echo No need to create the package, skipping
-  ALISWMOD_RPM=
-fi
-
 DEPS=()
-DEPS+=("--depends" "alisw-aliswmod >= $ALISWMOD_VERSION")
+# Use env modules v4 instead of aliswmod
+DEPS+=("--depends" "environment-modules >= 4.0")
 
 # Updatable RPMs don't have the version number hardcoded in the package name
 if [[ $RPM_IS_UPDATABLE ]]; then
@@ -176,4 +147,4 @@ pushd unpack_rpm
   mkdir -vp %(repodir)s
   mv -v $RPM ../
 popd
-mv -v $RPM $ALISWMOD_RPM %(stagedir)s
+mv -v $RPM %(stagedir)s
