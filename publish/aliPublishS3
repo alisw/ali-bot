@@ -883,7 +883,9 @@ def main():
     else:
       conf["rpm_updatable"] = conf.get("rpm_updatable", False)
       archKey = "RPM"
-      pub = RPM(publishScriptTpl=open(progDir+"/pub-rpms-template.sh").read(),
+      template = "pub-updatable-rpms-template.sh" if conf["rpm_updatable"] \
+        else "pub-rpms-template.sh"
+      pub = RPM(publishScriptTpl=open(progDir + "/" + template).read(),
                 connParams=connParams,
                 genUpdatableRpms=conf["rpm_updatable"],
                 baseUrl=conf["base_url"],
