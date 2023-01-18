@@ -4,16 +4,25 @@ set +e
 # enable-alice.sh doesn't work with set -e, so only enable it now.
 set -exo pipefail
 
+s3_path () {
+  if grep -qEix 'rpm_updatable:[[:space:]]+true' "$1"; then
+    echo UpdRPMS
+  else
+    echo RPMS
+  fi
+}
+
 publish_s3 () {
   ./aliPublishS3 --config "$1" --debug sync-rpms
 }
 
 publish_both () {
-  if ./aliPublish --config "$1" --debug sync-rpms; then
+  local config=$1 path=$2
+  if ./aliPublish --config "$config" --debug sync-rpms; then
     timeout 300 rclone sync --config /secrets/alibuild_rclone_config --transfers=10 --verbose \
-            "local:/repo/RPMS/$arch/" "rpms3:alibuild-repo/RPMS/$arch/" || true
+            "local:/repo/$path/$arch/" "rpms3:alibuild-repo/$path/$arch/" || true
   else
-    echo "ERROR: aliPublish ($1) failed with $?; not syncing to S3" >&2
+    echo "ERROR: aliPublish ($config) failed with $?; not syncing to S3" >&2
     return 1
   fi
 }
@@ -61,14 +70,16 @@ while true; do
 
   pip3 install -Ur ../requirements.txt
   for conf in "$@"; do
+    path=$(s3_path "$conf")
+
     # Save current list of RPMs so we can see which ones are new later.
     # Sort it so comm is happy.
-    s3cmd ls "s3://alibuild-repo/RPMS/$arch/" | sed 's|.*/||' | sort > before.pkgs
+    s3cmd ls "s3://alibuild-repo/$path/$arch/" | sed 's|.*/||' | sort > before.pkgs
 
-    "$publish" "$conf"
+    "$publish" "$conf" "$path"
 
     # Compare the file list to the dir now, to see which RPMs were published.
-    s3cmd ls "s3://alibuild-repo/RPMS/$arch/" | sed 's|.*/||' | sort |
+    s3cmd ls "s3://alibuild-repo/$path/$arch/" | sed 's|.*/||' | sort |
       comm -13 before.pkgs - > new.pkgs
     # Post in the Release Integration channel if we have new RPMs.
     if [ -s new.pkgs ]; then
