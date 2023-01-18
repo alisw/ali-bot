@@ -106,11 +106,12 @@ pushd unpack_rpm
     IFS="$OLD_IFS"
   fi
   # Remove useless files conflicting between packages
-  if [ ! "X$RPM_IS_UPDATABLE" = X ]; then
-    mv $RPM_ROOT/.build-hash $RPM_ROOT/.build-hash.%(package)s 
-    mv $RPM_ROOT/.rpm-extra-deps $RPM_ROOT/.rpm-extra-deps.%(package)s
-    mv $RPM_ROOT/.original-unrelocated $RPM_ROOT/.original-unrelocated.%(package)s 
-    mv $RPM_ROOT/etc/profile.d/init.sh $RPM_ROOT/etc/profile.d/init.sh.%(package)s  
+  if [ -n "$RPM_IS_UPDATABLE" ]; then
+    for conflict in .build-hash .rpm-extra-deps .original-unrelocated etc/profile.d/init.sh; do
+      if [ -e "$RPM_ROOT/$conflict" ]; then
+        mv "$RPM_ROOT/$conflict" "$RPM_ROOT/$conflict.%(package)s"
+      fi
+    done
   fi
 popd
 
