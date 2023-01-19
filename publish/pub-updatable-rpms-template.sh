@@ -76,14 +76,6 @@ pushd unpack_rpm
     done
     IFS="$OLD_IFS"
   fi
-  # Remove useless files conflicting between packages
-  if [ -n "$RPM_IS_UPDATABLE" ]; then
-    for conflict in .build-hash .rpm-extra-deps .original-unrelocated etc/profile.d/init.sh; do
-      if [ -e "$RPM_ROOT/$conflict" ]; then
-        mv "$RPM_ROOT/$conflict" "$RPM_ROOT/$conflict.%(package)s"
-      fi
-    done
-  fi
 popd
 
 AFTER_INSTALL=$TMPDIR/after_install.sh
@@ -102,7 +94,9 @@ cat >> $AFTER_INSTALL <<EOF
 MODULE_DEST_DIR=$INSTALLPREFIX/$FLAVOUR/\${RPM_IS_UPDATABLE:+etc/Modules/}modulefiles
 mkdir -p \$MODULE_DEST_DIR/%(package)s
 if [[ \$RPM_IS_UPDATABLE ]]; then
-  sed -e 's|%(package)s/\$version||g; s|%(package)s/%(version)s||g' $INSTALLPREFIX/$FLAVOUR/etc/modulefiles/%(package)s > \$MODULE_DEST_DIR/%(package)s/%(version)s
+  sed 's|%(package)s/\$version||g; s|%(package)s/%(version)s||g' \\
+      "$INSTALLPREFIX/$FLAVOUR/%(package)s/etc/modulefiles/%(package)s" \\
+      > "\$MODULE_DEST_DIR/%(package)s/%(version)s"
 else
   ln -nfs ../../%(package)s/%(version)s/etc/modulefiles/%(package)s \$MODULE_DEST_DIR/%(package)s/%(version)s
 fi
@@ -125,26 +119,22 @@ cat > $AFTER_REMOVE <<EOF
 true
 EOF
 
-# We must put the full version in the package name to allow multiple versions
-# to be installed at the same time, see [1]
-# [1] http://www.rpm.org/wiki/PackagerDocs/MultipleVersions
+# For non-updatable RPMs, we must put the full version in the package name to
+# allow multiple versions to be installed at the same time:
+# https://rpm.org/user_doc/multiple_versions.html
+
+# We want updatable RPMs to be installed under /opt/alisw/el8/GenTopo, not
+# directly under /opt/alisw/el8. However, modulefiles should still go in
+# /opt/alisw/el8/Modules/modulefiles. (These are installed in $AFTER_INSTALL).
 pushd unpack_rpm
-  fpm -s dir                           \
-      -t rpm                           \
-      --force                          \
-      "${DEPS[@]}"                     \
-      --prefix $INSTALLPREFIX/$FLAVOUR \
-      --architecture $ARCHITECTURE     \
-      --version "$RPM_VERSION"         \
-      --iteration 1.$FLAVOUR           \
-      --name "$RPM_PACKAGE"            \
-      --exclude compile_commands.json  \
-      --after-install $AFTER_INSTALL   \
-      --after-remove $AFTER_REMOVE     \
-      "$RPM_UNPACK_DIR"
+  fpm -s dir -t rpm --force "${DEPS[@]}" --architecture "$ARCHITECTURE"       \
+      --name "$RPM_PACKAGE" --version "$RPM_VERSION" --iteration "1.$FLAVOUR" \
+      --prefix "$INSTALLPREFIX/$FLAVOUR${RPM_IS_UPDATABLE:+/%(package)s}"     \
+      --after-install "$AFTER_INSTALL" --after-remove "$AFTER_REMOVE"         \
+      --exclude compile_commands.json "$RPM_UNPACK_DIR"
   RPM="${RPM_PACKAGE}-${RPM_VERSION}-1.%(arch)s.rpm"
   [[ -e $RPM ]]
-  mkdir -vp %(repodir)s
-  mv -v $RPM ../
+  mkdir -vp "%(repodir)s"
+  mv -v "$RPM" ../
 popd
-mv -v $RPM %(stagedir)s
+mv -v "$RPM" "%(stagedir)s"
