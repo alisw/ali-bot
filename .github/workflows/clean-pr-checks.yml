@@ -1,0 +1,98 @@
+---
+# This reusable workflow is designed to be called by different workflows in each
+# repo that wants to have this functionality.
+name: Clean PR checks
+
+'on':
+  workflow_call:
+    inputs:
+      owner:
+        type: string
+        required: true
+        description: Repository owner or organization
+      repo:
+        type: string
+        required: true
+        description: Repository name (without owner)
+      pr:
+        # Ideally, this should be a number, but workflow_dispatch doesn't
+        # support that, so we can't have numbers passed through from calling
+        # workflows that get this from the user on workflow_dispatch.
+        type: string
+        required: true
+        description: Pull request number in the specified repository
+      message:
+        type: string
+        required: false
+        default: ''
+        description: Optional message to show on the new pending statuses
+      checks:
+        type: string
+        required: true
+        description: |
+          A JSON object (passed as a string) containing check_* keys mapped to
+          booleans. For any check_* keys with a true value, the check_ is
+          stripped and the rest of the key is used as a check name to reset.
+
+          The intention is for calling workflows to define their inputs like so:
+
+          inputs:
+            'check_build/foo/bar':
+              description: Clear check build/foo/bar
+              type: boolean
+
+          ... and then pass their toJSON(github.event.inputs) as the checks
+          parameter to this workflow. To this end, all keys in this object not
+          beginning with check_* are ignored.
+
+    secrets:
+      status_github_token:
+        required: true
+        description: The GitHub token to use to update commit statuses.
+
+jobs:
+  clean-checks:
+    name: Clean PR checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python 3
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.x
+
+      - name: Install ali-bot
+        run: python3 -m pip install git+https://github.com/alisw/ali-bot@master
+
+      - name: Fetch latest commit of pull request
+        uses: octokit/graphql-action@v2.x
+        id: last_commit
+        with:
+          query: |
+            query last_commit($owner: String!, $name: String!, $pr: Int!) {
+              repository(owner: $owner, name: $name) {
+                pullRequest(number: $pr) {
+                  commits(last: 1) { nodes { commit { oid }}}
+                }
+              }
+            }
+          owner: ${{ inputs.owner }}
+          name: ${{ inputs.repo }}
+          pr: ${{ inputs.pr }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.status_github_token }}
+
+      - name: Cleanup tests
+        run: |
+          # For some reason, boolean values in inputs.checks are encoded as the
+          # strings "true" and "false" instead...
+          jq -r 'to_entries[] | select((.key | startswith("check_")) and .value == "true") | .key | ltrimstr("check_")' <<\EOF |
+          ${{ inputs.checks }}
+          EOF
+            xargs -trI '{}' set-github-status \
+                  -c "$REPO@$COMMIT" -s '{}/pending' ${MESSAGE:+-m "$MESSAGE"}
+        env:
+          REPO: ${{ inputs.owner }}/${{ inputs.repo }}
+          COMMIT: ${{ fromJSON(steps.last_commit.outputs.data)
+                      .repository.pullRequest.commits.nodes[0].commit.oid }}
+          MESSAGE: ${{ inputs.message }}
+          GITHUB_TOKEN: ${{ secrets.status_github_token }}
