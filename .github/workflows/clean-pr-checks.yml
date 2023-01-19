@@ -45,15 +45,16 @@ name: Clean PR checks
           parameter to this workflow. To this end, all keys in this object not
           beginning with check_* are ignored.
 
-    secrets:
-      status_github_token:
-        required: true
-        description: The GitHub token to use to update commit statuses.
+permissions: {}
 
 jobs:
   clean-checks:
     name: Clean PR checks
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read  # to get last commit for pr (octokit/graphql-action)
+      statuses: write      # for set-github-status
+
     steps:
       - name: Set up Python 3
         uses: actions/setup-python@v4
@@ -79,7 +80,7 @@ jobs:
           name: ${{ inputs.repo }}
           pr: ${{ inputs.pr }}
         env:
-          GITHUB_TOKEN: ${{ secrets.status_github_token }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Cleanup tests
         run: |
@@ -95,4 +96,4 @@ jobs:
           COMMIT: ${{ fromJSON(steps.last_commit.outputs.data)
                       .repository.pullRequest.commits.nodes[0].commit.oid }}
           MESSAGE: ${{ inputs.message }}
-          GITHUB_TOKEN: ${{ secrets.status_github_token }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
