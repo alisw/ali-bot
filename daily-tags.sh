@@ -72,8 +72,11 @@ aliBuild analytics off
 # "normal" patch release number.
 flpsuite_latest=$(git ls-remote "https://github.com/$ALIDIST_REPO" -- 'refs/heads/flp-suite-v*' |
                     cut -f2 | sort -V | sed -rn '$s,^refs/heads/(.*)\.[0-9]+$,\1.0,p')
-flpsuite_current=flp-suite-v$(curl -fSsLk https://ali-flp.cern.ch/suite_version)
-flpsuite_current=${flpsuite_current%.*}.0
+# In case ali-flp is offline, don't fail if we don't need its info.
+if echo "$ALIDIST_BRANCH $AUTOTAG_PATTERN $OVERRIDE_TAGS" | grep -qi 'flpsuite_current'; then
+  flpsuite_current=flp-suite-v$(curl -fSsLk https://ali-flp.cern.ch/suite_version)
+  flpsuite_current=${flpsuite_current%.*}.0
+fi
 if [ "$(date +%u)" = 1 ]; then   # On Mondays (for Sunday night builds)
   flpsuite_current=$flpsuite_latest
 fi
