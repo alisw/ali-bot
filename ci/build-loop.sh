@@ -169,6 +169,20 @@ if pushd "$PR_REPO_CHECKOUT"; then
   popd || exit 1
 fi
 
+# shellcheck disable=SC2086  # $ONLY_RUN_WHEN_CHANGED must be split by the shell
+# We cannot use an array for $ONLY_RUN_WHEN_CHANGED as *.env files are parsed by
+# Python's shlex, which doesn't parse bash array syntax properly.
+if (cd "$PR_REPO_CHECKOUT" &&
+      git diff --quiet "$base_hash" "$PR_HASH" -- $ONLY_RUN_WHEN_CHANGED)
+then
+  # Exit code 0 from git diff means that nothing has changed and we should skip
+  # the build; exit code 1 means files have changed and we need to run it.
+  short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" \
+                -s "$CHECK_NAME/success" -m 'skipped; no relevant changes' ||
+    short_timeout report-analytics exception --desc 'set-github-status failed on skip'
+  exit 0
+fi
+
 # Nomad runs this script inside a cgroup managed by it, so it can clean up
 # properly when we exit (or are killed), and it can track CPU/RAM usage.
 # Run our Docker builds inside the same cgroup so they're included too.
