@@ -255,7 +255,9 @@ def main(args):
         # Sort by PR number so that older PRs are built first. Don't use
         # .sort() here as it modifies the list in-place, and that list might
         # also be used elsewhere.
-        for pull in sorted(prs, key=lambda pr: pr["updated_at"]):
+        # pr["updated_at"] can apparently be None sometimes, which breaks
+        # sorting, so default to the empty string if so.
+        for pull in sorted(prs, key=lambda pr: pr["updated_at"] or ""):
             print(group, pull["number"], pull["sha"],
                   pull["build_config"], sep="\t")
 
