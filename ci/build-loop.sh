@@ -132,6 +132,7 @@ unset certdir jalien_token
 
 report_state pr_processing
 
+NUM_BASE_COMMITS=-1
 # Fetch the PR's changes to the git repository.
 if pushd "$PR_REPO_CHECKOUT"; then
   git config --add remote.origin.fetch '+refs/pull/*/head:refs/remotes/origin/pr/*'
@@ -144,6 +145,7 @@ if pushd "$PR_REPO_CHECKOUT"; then
   git clean -fxd
   old_size=$(du -sm . | cut -f1)
   base_hash=$(git rev-parse --verify HEAD)  # reference upstream hash
+  NUM_BASE_COMMITS=$(git rev-list --count HEAD)
 
   if ! git merge --no-edit "$PR_HASH"; then
     # clean up in case the merge fails
