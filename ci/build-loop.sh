@@ -173,7 +173,7 @@ fi
 # We cannot use an array for $ONLY_RUN_WHEN_CHANGED as *.env files are parsed by
 # Python's shlex, which doesn't parse bash array syntax properly.
 if (cd "$PR_REPO_CHECKOUT" &&
-      git diff --quiet "$base_hash" "$PR_HASH" -- $ONLY_RUN_WHEN_CHANGED)
+      git diff --quiet "$base_hash...$PR_HASH" -- $ONLY_RUN_WHEN_CHANGED)
 then
   # Exit code 0 from git diff means that nothing has changed and we should skip
   # the build; exit code 1 means files have changed and we need to run it.
