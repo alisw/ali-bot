@@ -42,7 +42,7 @@ function report_state () {
   # Push to InfluxDB if configured
   influxdb_push prcheck "repo=$PR_REPO" "checkname=$CHECK_NAME" \
                 "worker=$CHECK_NAME/$WORKER_INDEX/$WORKERS_POOL_SIZE" \
-                "num_base_commits=$NUM_BASE_COMMITS" \
+                ${NUM_BASE_COMMITS:+"num_base_commits=$NUM_BASE_COMMITS"} \
                 -- "host=\"$(hostname -s)\"" "state=\"$current_state\"" \
                 "prid=\"$PR_NUMBER\"" ${prtime:+prtime=$prtime} ${PR_OK:+prok=$PR_OK} \
                 ${HAVE_JALIEN_TOKEN:+have_jalien_token=$HAVE_JALIEN_TOKEN}
