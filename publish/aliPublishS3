@@ -378,7 +378,8 @@ class RPM(object):
         error("RPM: error creating repository for %s", arch)
         return False
 
-      mergerepo = ["mergerepo", "--nogroups", "--noupdateinfo",
+      mergerepo = ["mergerepo", "--verbose", "--all",
+                   "--nogroups", "--noupdateinfo",
                    "--repo", baseUrl,
                    "--repo", "file://" + abspath(stagedir),
                    "--outputdir", mergedir]
