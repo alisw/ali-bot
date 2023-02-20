@@ -202,8 +202,8 @@ for package in $PACKAGES; do (
 
 # Set default remote store -- S3 on slc8 and Ubuntu, rsync everywhere else.
 case "$ARCHITECTURE" in
-  slc8_*|ubuntu*) : "${REMOTE_STORE:=b3://alibuild-repo::rw}" ;;
-  *) : "${REMOTE_STORE:=rsync://alibuild03.cern.ch/store/::rw}" ;;
+  slc[567]_x86-64) : "${REMOTE_STORE:=rsync://alibuild03.cern.ch/store/::rw}" ;;
+  *) : "${REMOTE_STORE:=b3://alibuild-repo::rw}" ;;
 esac
 case "$REMOTE_STORE" in
   b3://*)
