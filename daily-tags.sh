@@ -87,15 +87,18 @@ if ! git clone -b "$ALIDIST_BRANCH" "https://github.com/$ALIDIST_REPO" alidist/;
   # We may have been given a commit hash as $ALIDIST_BRANCH, and we can't pass
   # hashes to -b. Clone and checkout instead.
   git clone "https://github.com/$ALIDIST_REPO" alidist/
-  git -C alidist checkout -f "$ALIDIST_BRANCH"
+  (cd alidist && git checkout -f "$ALIDIST_BRANCH")
 fi
 
 # Switch the recipes for the packages specified in ALIDIST_OVERRIDE_PKGS
 # to the version found in the alidist branch specified by ALIDIST_OVERRIDE_BRANCH
-if [ -n "$ALIDIST_OVERRIDE_BRANCH" ]; then
-  git -C alidist checkout $ALIDIST_OVERRIDE_BRANCH -- \
-      $(echo $ALIDIST_OVERRIDE_PKGS |tr ",[:upper:]" "\ [:lower:]" | xargs -r -n1 echo | sed -e 's/$/.sh/g')
-fi
+if [ -n "$ALIDIST_OVERRIDE_BRANCH" ]; then (
+  cd alidist
+  git checkout "$ALIDIST_OVERRIDE_BRANCH" -- \
+      $(echo "$ALIDIST_OVERRIDE_PKGS" |
+          tr ',[:upper:]' ' [:lower:]' |
+          xargs -rn1 echo | sed 's/$/.sh/')
+); fi
 
 # Apply explicit tag overrides after possibly checking out the recipe from
 # ALIDIST_OVERRIDE_BRANCH to allow combining the two effects.
@@ -147,7 +150,7 @@ for package in $PACKAGES; do
   edit_package_tag "$package" "$DEFAULTS" "rc/$AUTOTAG_TAG" "$AUTOTAG_OVERRIDE_VERSION"
 done
 
-git -C alidist diff || :
+(cd alidist && git diff) || :
 
 for package in $PACKAGES; do (
   rm -rf "${package,,}.git"
@@ -168,7 +171,7 @@ for package in $PACKAGES; do (
       # Tag does not exist, but we have requested this job to forcibly use an existing one.
       # Will abort the job.
       echo "Tag $AUTOTAG_TAG was not found, however we have been requested to not create a new one" \
-          "(DO_NOT_CREATE_NEW_TAG is true). Aborting with error"
+           "(DO_NOT_CREATE_NEW_TAG is true). Aborting with error"
       exit 1
     else
       # Tag does not exist. Create release candidate branch, if not existing.
