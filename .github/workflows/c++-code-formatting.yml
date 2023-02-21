@@ -178,7 +178,7 @@ jobs:
           # with the ones in the "case" statement below!
           readarray -d '' files < \
             <(git diff -z --diff-filter d --name-only --merge-base "$BASE_SHA" \
-                       -- '*.cxx' '*.h' '*.C' '*.cmake' CMakeLists.txt)
+                       -- '*.cxx' '*.h' '*.C' '*.cmake' '*/CMakeLists.txt')
           # Run copyright notice check. Comment lines start with "//" for C++
           # files and "#" for CMake files.
           cpp_first="// $COPYRIGHT_FIRST_LINE"
@@ -190,7 +190,7 @@ jobs:
           for file in "${files[@]}"; do
             case $file in
               *.cxx|*.h|*.C) first=$cpp_first rest=$cpp_rest ;;
-              *.cmake|CMakeLists.txt) first=$hash_first rest=$hash_rest ;;
+              *.cmake|*CMakeLists.txt) first=$hash_first rest=$hash_rest ;;
               *) echo "error: unknown file type for $file" >&2; exit 1 ;;
             esac
             if head -1 "$file" | grep -qvEx "$first" ||
