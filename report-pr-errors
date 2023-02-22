@@ -56,8 +56,7 @@ ALL_ERROR_MSG_RE = re.compile('|'.join(regex.pattern for regex in (
     FST_LOGFILE_RE,
     FST_FAILED_CMD_RE,
     # Excluding WARNINGS_RE (unwanted in preview comment) and O2CHECKCODE_RE
-    # (not useful without context, and the errors it shows should be found by
-    # other regexes in the o2checkcode log anyway).
+    # (not useful without context, so it's handled specially).
 )))
 
 
@@ -265,23 +264,6 @@ class Logs(object):
         Also extract errors from failed unit tests and o2checkcode, and various
         other helpful messages.
         '''
-        error_log = self.grep_logs(ALL_ERROR_MSG_RE,
-                                   context_before=0, context_after=0)
-        if error_log:
-            # Get the first recognised error messages from the error log.
-            error_log_lines = error_log.split('\n')[:self.limit]
-        else:
-            # Get the last lines from the log for the package built last.
-            try:
-                with open(self.all_logs[-1], encoding="utf-8") as logf:
-                    error_log_lines = logf.read().splitlines()[-self.limit:]
-            except IndexError:
-                error_log_lines = ['No log files found']
-            except OSError as err:
-                error_log_lines = ['Error opening log {}: {!r}'
-                                   .format(self.all_logs[-1], err)]
-        self.preview_error_log = '\n'.join(error_log_lines).strip()
-
         # Messages from the general error/warning logs are reported in
         # o2checkcode_messages as well, so don't report them twice. The general
         # logs also contain false positives, so o2checkcode_messages is better.
@@ -303,6 +285,33 @@ class Logs(object):
             FST_LOGFILE_RE, context_before=0, context_after=20)
         self.fst_failed_command = self.grep_logs(
             FST_FAILED_CMD_RE, context_before=0, context_after=float('inf'))
+
+        # The o2checkcode log can contain spurious errors before the
+        # "=== List of errors found ===" line, so treat it specially.
+        error_log = self.grep_logs(
+            ALL_ERROR_MSG_RE, context_before=0, context_after=0,
+            ignore_log_files=['*/o2checkcode-latest*/log'])
+        error_log += self.o2checkcode_messages
+        if error_log:
+            # Get the first recognised error messages from the error log.
+            error_log_lines = error_log.split('\n')
+            if len(error_log_lines) > self.limit:
+                # If there are more errors than we can display, show a hint.
+                error_log_lines = error_log_lines[:self.limit - 1]
+                error_log_lines.append('[{} more errors; see full log]'.format(
+                    len(error_log_lines) - self.limit + 1
+                ))
+        else:
+            # Get the last lines from the log for the package built last.
+            try:
+                with open(self.all_logs[-1], encoding="utf-8") as logf:
+                    error_log_lines = logf.read().splitlines()[-self.limit:]
+            except IndexError:
+                error_log_lines = ['No log files found']
+            except OSError as err:
+                error_log_lines = ['Error opening log {}: {!r}'
+                                   .format(self.all_logs[-1], err)]
+        self.preview_error_log = '\n'.join(error_log_lines).strip()
 
     def generate_pretty_log(self):
         '''Extract error messages from logs.
