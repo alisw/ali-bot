@@ -70,6 +70,7 @@ jobs:
           have_invalid_extension=
           for file in "${commit_files[@]}"; do
             case $file in
+              */3rdparty/*) ;;   # ignore vendored files
               *.hxx|*.cc|*.hpp)
                 echo "::error file=$file::$file uses non-allowed extension"
                 have_invalid_extension=true ;;
