@@ -24,6 +24,7 @@ import sys
 
 from argparse import ArgumentParser
 from collections import defaultdict
+from datetime import datetime, timezone
 
 from gql import Client, gql
 from gql.transport.requests import RequestsHTTPTransport
@@ -156,7 +157,7 @@ class RepoConfig:
             )
         )
 
-    def process_single_pr(self, pull_number, last_commit,
+    def process_single_pr(self, pull_number, last_commit, pr_created,
                           is_draft=False, is_trusted=False):
         """Decide whether to queue this PR (or branch) for testing.
 
@@ -179,16 +180,22 @@ class RepoConfig:
                 ("succeeded" if success else "failed")
         else:
             state = "skip"
-        print("pr: {number:6d}@{sha:.7s}: revd={reviewed:d} trust={trust:d} "
-              "tested={tested:d} success={success:d} => state={state}".format(
-                  number=pull_number, sha=commit_hash, reviewed=reviewed,
-                  trust=is_trusted, tested=tested, success=success, state=state
-              ), file=sys.stderr)
+
+        # The PR has been waiting for checks either since it was created or
+        # since its latest commit was pushed. commit["pushedDate"] was
+        # unfortunately deprecated and removed by GitHub, so committedDate
+        # will have to do. Eliminate a common source for errors by falling
+        # back to the PR creation time, in case the commit was created well
+        # before the PR.
+        waiting_since = max(pr_created, last_commit["committedDate"])
+        print(f"pr: {pull_number:6d}@{commit_hash:.7s}: wait={waiting_since} "
+              f"revd={reviewed:d} trust={is_trusted:d} tested={tested:d} "
+              f"success={success:d} => state={state}", file=sys.stderr)
         return None if state == "skip" else (state, {
             "number": pull_number,
             "sha": commit_hash,
             "build_config": self.build_config,
-            "updated_at": last_commit["pushedDate"],
+            "waiting_since": waiting_since,
         })
 
     def process_pulls(self, session, repo_info, show_base_branch=False):
@@ -196,6 +203,7 @@ class RepoConfig:
         for pull in repo_info["pullRequests"]["nodes"]:
             item = self.process_single_pr(
                 pull["number"], pull["commits"]["nodes"][0]["commit"],
+                pull["createdAt"],
                 is_draft=pull["isDraft"] or pull["title"].startswith("[WIP]"),
                 is_trusted=self.trust_pr(session, pull),
             )
@@ -203,7 +211,8 @@ class RepoConfig:
                 yield item
 
         if show_base_branch:
-            item = self.process_single_pr(self.branch_ref, repo_info["object"])
+            item = self.process_single_pr(self.branch_ref, repo_info["object"],
+                                          pull["createdAt"])
             if item is not None:
                 yield item
 
@@ -255,11 +264,21 @@ def main(args):
         # Sort by PR number so that older PRs are built first. Don't use
         # .sort() here as it modifies the list in-place, and that list might
         # also be used elsewhere.
-        # pr["updated_at"] can apparently be None sometimes, which breaks
+        # pr["waiting_since"] can apparently be None sometimes, which breaks
         # sorting, so default to the empty string if so.
-        for pull in sorted(prs, key=lambda pr: pr["updated_at"] or ""):
-            print(group, pull["number"], pull["sha"],
-                  pull["build_config"], sep="\t")
+        for pull in sorted(prs, key=lambda pr: pr["waiting_since"] or ""):
+            if group == "untested":
+                commit_timestr = pull["waiting_since"]
+                commit_time = datetime.fromisoformat(commit_timestr.replace("Z", "+00:00")) \
+                    if commit_timestr else datetime.now(timezone.utc)
+                waiting_since = str(int(commit_time.timestamp()))
+            else:
+                # If this PR has been built before, the commit time is a bit
+                # meaningless -- the PR hasn't actually been waiting since
+                # then for this check.
+                waiting_since = ""
+            print(group, pull["number"], pull["sha"], pull["build_config"],
+                  waiting_since, sep="\t")
 
     if grouped["untested"]:
         # If there are untested PRs waiting, build all of them first.
@@ -365,6 +384,7 @@ query statuses(
         number
         title
         isDraft
+        createdAt
         authorAssociation
         author {
           login
@@ -391,7 +411,7 @@ query statuses(
 
 fragment commitInfo on Commit {
   oid
-  pushedDate
+  committedDate
   status {
     contexts {
       context
