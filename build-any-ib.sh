@@ -45,14 +45,15 @@ type aliBuild
 rm -rf alidist
 if [[ $ALIDIST_PRNUM ]]; then
   ALIDIST_BRANCH=pull/${ALIDIST_PRNUM}/head
-  git clone https://github.com/${ALIDIST_REPO}
+  git clone "https://github.com/$ALIDIST_REPO" alidist
   pushd alidist
-    ALIDIST_LOCAL_BRANCH=$(echo $ALIDIST_BRANCH|sed -e 's|/|_|g')
-    git fetch origin $ALIDIST_BRANCH:$ALIDIST_LOCAL_BRANCH
-    git checkout $ALIDIST_LOCAL_BRANCH
+    alidist_local_branch=${ALIDIST_BRANCH//\//_}
+    git fetch origin "$ALIDIST_BRANCH:$alidist_local_branch"
+    git checkout "$alidist_local_branch"
   popd
 else
-  git clone ${ALIDIST_BRANCH:+-b $ALIDIST_BRANCH} https://github.com/${ALIDIST_REPO}
+  git clone ${ALIDIST_BRANCH:+-b "$ALIDIST_BRANCH"} \
+      "https://github.com/$ALIDIST_REPO" alidist
 fi
 
 CURRENT_SLAVE=unknown
