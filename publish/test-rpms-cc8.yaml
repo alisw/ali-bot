@@ -1,0 +1,4 @@
+---
+slc8_x86-64:
+  bookkeeping-api:
+    bookkeeping@0.49.1-1: false
