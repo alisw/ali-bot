@@ -272,7 +272,7 @@ class CvmfsServer(PlainFilesystem):
       return False
 
 
-class AliEnPackMan(object):
+class AliEn:
 
   def __init__(self, publishScriptTpl, connParams, dryRun=False):
     self._dryRun = dryRun
@@ -288,32 +288,17 @@ class AliEnPackMan(object):
     return kw
 
   def installed(self, arch, pkgName, pkgVer):
-    kw = self._kw(None, arch, pkgName, pkgVer, None)
-    debug(format("PackMan: checking if %(package)s %(version)s is installed for %(arch)s", **kw))
+    debug("AliEn: checking if %s %s is installed for %s", pkgName, pkgVer, arch)
 
     if self._packs is None:
-      self._packs = {}
-      for line in grabOutput([ "alien", "-exec",
-                               "packman", "list", "-all", "-force" ])[1].split("\n"):
-        m = search(r"VO_ALICE@(.+?)::([^\s]+)", line)
-        if not m: continue
-        pkg = m.group(1)
-        ver = m.group(2)
-        self._packs.setdefault(pkg, {}).update({ver: []})
+      debug("AliEn: fetching list of packages from alimonitor")
+      self._packs = json.loads(requests.get(
+        "http://alimonitor.cern.ch/export/packages.jsp",
+        timeout=self._connParams["conn_timeout_s"],
+      ).text)
 
-    if not self._packs:
-      raise PublishException("PackMan: could not get list of packages from AliEn this time")
-
-    if not arch in self._cachedArchs:
-      for line in grabOutput([ "alien", "-exec", "find", "/alice/packages", arch ])[1].split("\n"):
-        m = search(r"^/alice/packages/([^/]+)/([^/]+)/", line)
-        if not m: continue
-        pkg = m.group(1)
-        ver = m.group(2)
-        self._packs.setdefault(pkg, {}).setdefault(ver, []).append(arch)
-      self._cachedArchs.append(arch)
-
-    return arch in self._packs.get(pkgName, {}).get(pkgVer, [])
+    return any(pkg["name"] == pkgName and pkg["version"] == pkgVer and
+               arch in pkg["platforms"] for pkg in self._packs)
 
   def install(self, url, arch, pkgName, pkgVer, deps, allDeps):
     kw = self._kw(url, arch, pkgName, pkgVer,
@@ -326,9 +311,9 @@ class AliEnPackMan(object):
     # publish *every* package, and failing...
     _,out = grabOutput([ "alien", "-exec", "ls", "/alice/packages" ])
     if "AliRoot" in out.split("\n"):
-      debug("PackMan: AliEn connection and APIs appear to work")
+      debug("AliEn: AliEn connection and APIs appear to work")
       return True
-    error("PackMan: API response incorrect, assuming AliEn is not working at the moment")
+    error("AliEn: API response incorrect, assuming AliEn is not working at the moment")
     return False
 
   def abort(self, force=False):
@@ -946,20 +931,20 @@ def main():
                             dryRun=args.dryRun)
     elif args.action == "sync-alien":
       archKey = "AliEn"
-      pub = AliEnPackMan(publishScriptTpl=open(progDir+"/pub-alien-template.sh").read(),
-                         connParams=connParams,
-                         dryRun=args.dryRun)
+      pub = AliEn(publishScriptTpl=open(progDir+"/pub-alien-template.sh").read(),
+                  connParams=connParams,
+                  dryRun=args.dryRun)
     else:
       if not isinstance(conf.get("rpm_repo_dir", None), str):
         error("rpm_repo_dir must be a string")
         sys.exit(1)
-      conf["rpm_updatable"] = conf.get("rpm_updatable", False)
-      archKey = "RPM"
-      pub = RPM(repoDir=conf["rpm_repo_dir"],
-                publishScriptTpl=open(progDir+"/pub-rpms-template.sh").read(),
-                connParams=connParams,
-                genUpdatableRpms=conf["rpm_updatable"],
-                dryRun=args.dryRun)
+        conf["rpm_updatable"] = conf.get("rpm_updatable", False)
+        archKey = "RPM"
+        pub = RPM(repoDir=conf["rpm_repo_dir"],
+                  publishScriptTpl=open(progDir+"/pub-rpms-template.sh").read(),
+                  connParams=connParams,
+                  genUpdatableRpms=conf["rpm_updatable"],
+                  dryRun=args.dryRun)
     if args.abort:
       pub.abort(force=True)
 
