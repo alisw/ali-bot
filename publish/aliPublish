@@ -310,8 +310,7 @@ class AliEnPackMan(object):
         if not m: continue
         pkg = m.group(1)
         ver = m.group(2)
-        if pkg in self._packs:
-          self._packs[pkg].setdefault(ver, []).append(arch)
+        self._packs.setdefault(pkg, {}).setdefault(ver, []).append(arch)
       self._cachedArchs.append(arch)
 
     return arch in self._packs.get(pkgName, {}).get(pkgVer, [])
