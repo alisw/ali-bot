@@ -36,9 +36,9 @@ if [ "$1" != --skip-setup ]; then
   git config --global user.name alibuild
   git config --global user.email alibuild@cern.ch
 
-  # This turns a container image (e.g. alisw/slc8-gpu-builder:latest) into a
-  # short, simple name like slc8-gpu that we use for the .env directories.
-  CUR_CONTAINER=${CONTAINER_IMAGE#*/}
+  # This turns a container image (e.g. registry.cern.ch/alisw/slc8-gpu-builder:latest)
+  # into a short, simple name like slc8-gpu that we use for the .env directories.
+  CUR_CONTAINER=${CONTAINER_IMAGE##*/}
   CUR_CONTAINER=${CUR_CONTAINER%-builder:*}
   ARCHITECTURE=${CUR_CONTAINER%%-*}_$(uname -m | tr _ -)
   ARCHITECTURE=${ARCHITECTURE/#cs/slc}
