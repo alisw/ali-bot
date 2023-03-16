@@ -138,8 +138,8 @@ jobs:
       - name: Install prerequisites
         run: |
           apt update
-          apt install -y vim git devscripts build-essential lintian debhelper dh-python python3-all python3-setuptools
-          cat <<\EOF | gpg --import -
+          apt install -y vim git devscripts build-essential lintian debhelper dh-python python3-all python3-setuptools python3-setuptools-scm
+          gpg --import - <<\EOF
           ${{ secrets.LAUNCHPAD_PPA_GPG_KEY }}
           EOF
 
