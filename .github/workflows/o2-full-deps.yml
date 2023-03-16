@@ -130,7 +130,7 @@ jobs:
 
     container: ubuntu:${{ matrix.ubuntu_codename }}
     env:
-      ALIBUILD_TAG: v1.14.4
+      ALIBUILD_TAG: v1.14.4.1
       ALIBUILD_DISTRO: ${{ matrix.ubuntu_codename }}
       DEBIAN_FRONTEND: noninteractive
 
