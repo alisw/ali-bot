@@ -130,7 +130,7 @@ jobs:
 
     container: ubuntu:${{ matrix.ubuntu_codename }}
     env:
-      ALIBUILD_TAG: v1.12.0
+      ALIBUILD_TAG: v1.14.4
       ALIBUILD_DISTRO: ${{ matrix.ubuntu_codename }}
       DEBIAN_FRONTEND: noninteractive
 
@@ -148,7 +148,6 @@ jobs:
           set -x
           git clone -b "$ALIBUILD_TAG" https://github.com/alisw/alibuild
           cd alibuild
-          perl -p -i -e "s/LAST_TAG/$ALIBUILD_TAG/" alibuild_helpers/__init__.py
           cat <<EOF > debian/changelog
           python3-alibuild (${ALIBUILD_TAG#v}~$ALIBUILD_DISTRO) $ALIBUILD_DISTRO; urgency=medium
 
