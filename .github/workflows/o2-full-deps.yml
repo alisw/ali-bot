@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     container: centos:7
     env:
-      ALIBUILD_TAG: v1.12.0
+      ALIBUILD_TAG: v1.14.4
 
     steps:
       # For rpms/*.spec
@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     container: centos:8
     env:
-      ALIBUILD_TAG: v1.12.0
+      ALIBUILD_TAG: v1.14.4
 
     steps:
       # For rpms/*.spec
