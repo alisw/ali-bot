@@ -100,7 +100,7 @@ if [ -n "$HASHES" ]; then
       # install ali-bot and alibuild as editable, else pip doesn't update them
       # properly (perhaps because the version string is always "LAST_TAG").
       short_timeout python3 -m pip install --upgrade --no-binary=alibuild,ali-bot \
-          -e "ali-bot[ci] @ git+https://github.com/$(get_config_value install-alibot "$INSTALL_ALIBOT")" \
+          -e "git+https://github.com/$(get_config_value install-alibot   "$INSTALL_ALIBOT")[ci]" \
           -e "git+https://github.com/$(get_config_value install-alibuild "$INSTALL_ALIBUILD")" ||
         exit 1
 
