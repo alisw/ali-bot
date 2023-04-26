@@ -106,6 +106,7 @@ jobs:
           Opening a PR to your branch with the fixes.
           EOF
           echo cleanup_commit=HEAD >> "$GITHUB_OUTPUT"
+          exit 1
 
       - name: Update cleanup branch
         # Run this even if clang-format fails (i.e. finds formatting issues).
