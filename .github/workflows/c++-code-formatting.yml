@@ -85,7 +85,7 @@ jobs:
              [ "$patch" = 'clang-format did not modify any files' ]
           then
             echo 'clang-format passed.' >> "$GITHUB_STEP_SUMMARY"
-            printf '%s\n' cleanup_commit= clean=true >> "$GITHUB_OUTPUT"
+            echo cleanup_commit= >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -105,10 +105,11 @@ jobs:
 
           Opening a PR to your branch with the fixes.
           EOF
-          printf '%s\n' cleanup_commit=HEAD clean=false >> "$GITHUB_OUTPUT"
+          echo cleanup_commit=HEAD >> "$GITHUB_OUTPUT"
 
       - name: Update cleanup branch
-        if: ${{ github.event.repository.owner.login == 'AliceO2Group' }}
+        # Run this even if clang-format fails (i.e. finds formatting issues).
+        if: ${{ (success() || failure()) && github.event.repository.owner.login == 'AliceO2Group' }}
         env:
           REMOTE_URL: "https://alibuild:${{ secrets.alibuild_github_token }}@\
             github.com/alibuild/${{ github.event.repository.name }}"
@@ -119,7 +120,8 @@ jobs:
 
       - name: Create pull request with formatting changes
         uses: alisw/pull-request@v2
-        if: ${{ github.event.repository.owner.login == 'AliceO2Group' }}
+        # Run this even if clang-format fails (i.e. finds formatting issues).
+        if: ${{ (success() || failure()) && github.event.repository.owner.login == 'AliceO2Group' }}
         with:
           source_branch: 'alibuild:alibot-cleanup-${{ github.event.pull_request.number }}'
           destination_branch: '${{ github.event.pull_request.head.label }}'
@@ -134,13 +136,6 @@ jobs:
             You can find the AliceO2 coding conventions at
             <https://github.com/AliceO2Group/CodingGuidelines>.
         continue-on-error: true  # We do not create PRs if the branch is not there.
-
-      - name: Exit with error if the PR is not clean
-        run: |
-          case "${{ steps.clang_format.outputs.clean }}" in
-            true) echo 'PR clean' ; exit 0 ;;
-            false) echo 'PR not clean' ; exit 1 ;;
-          esac
 
   copyright:
     name: copyright headers
