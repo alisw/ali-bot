@@ -580,8 +580,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
                     requests.get(symlinkUrl,
                                  verify=connParams["http_ssl_verify"],
                                  timeout=connParams["conn_timeout_s"])
-                            .text.rstrip())
-
+                            .text.rstrip().lstrip("./"))  # strip leading "../"
 
       # Here we can attempt the installation
       def prettyPrintPkgs(key):
