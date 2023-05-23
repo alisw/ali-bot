@@ -124,6 +124,10 @@ alibuild_args=(
   build "$main_pkg"
 )
 
+for var in $BUILD_ENV_VARS; do
+  alibuild_args+=(-e "$var")
+done
+
 # Process the pattern as a jinja2 template with aliBuild's templating plugin.
 # Fetch the source repos now, so they're available for the "real" build later.
 AUTOTAG_PATTERN=$(aliBuild --debug --plugin templating --fetch-repos "${alibuild_args[@]}" << EOF
