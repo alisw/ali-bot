@@ -14,20 +14,6 @@ if [[ -x /home/monalisa/bin/alien ]]; then
   export PATH="/home/monalisa/bin:$PATH"
   CMD=sync-alien
   OVERRIDE='{"notification_email":{}}'
-elif [[ -d /lustre/atlas/proj-shared/csc108 && -d /lustre/atlas/proj-shared/csc108 ]]; then
-  # Titan needs some magic.
-  source /usr/share/Modules/init/bash
-  eval $(modulecmd bash load git/2.2.0)
-  git --help > /dev/null 2>&1
-  FAKECVMFS=/lustre/atlas/proj-shared/csc108/psvirin/publisher/.fakecvmfs
-  mkdir -p $FAKECVMFS
-  ln -nfs $(which true) $FAKECVMFS/cvmfs_server
-  export PATH="$FAKECVMFS:$PATH"
-  [[ ! -e alibuild/.git ]] && git clone https://github.com/alisw/alibuild
-  [[ ! -e requests/.git ]] && git clone https://github.com/kennethreitz/requests -b v2.6.0
-  export PYTHONPATH="$PWD/alibuild:$PWD/requests:$PYTHONPATH"
-  CONF=aliPublish-titan.conf
-  CMD=sync-cvmfs
 elif [[ -d /cvmfs/alice-test.cern.ch ]]; then
   CONF=aliPublish-test.conf
   CMD=sync-cvmfs
