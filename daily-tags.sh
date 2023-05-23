@@ -124,9 +124,12 @@ alibuild_args=(
   build "$main_pkg"
 )
 
-for var in $BUILD_ENV_VARS; do
-  alibuild_args+=(-e "$var")
-done
+# Assignments are specified as a multi-line string with one VAR=value pair per line.
+while read -r assignment; do
+  if [ -n "$assignment" ]; then
+    alibuild_args+=(-e "$assignment")
+  fi
+done <<< "$BUILD_ENV_VARS"
 
 # Process the pattern as a jinja2 template with aliBuild's templating plugin.
 # Fetch the source repos now, so they're available for the "real" build later.
