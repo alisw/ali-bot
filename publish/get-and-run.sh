@@ -64,7 +64,7 @@ pushd $DEST/publish
   ERR=
 
   # Packages publisher
-  ./${ALIPUBLISH:-aliPublish} --debug              \
+  ./${ALIPUBLISH:-aliPublishS3} --debug            \
                ${DRYRUN:+--dry-run}                \
                ${NO_NOTIF:+--no-notification}      \
                ${CONF:+--config "$CONF"}           \
