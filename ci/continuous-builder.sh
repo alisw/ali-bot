@@ -94,14 +94,9 @@ if [ -n "$HASHES" ]; then
 
       # Allow overriding the ali-bot/alibuild version to install -- this is useful
       # for testing changes to those with a few workers before deploying widely.
-      # Building a wheel for alibuild and/or ali-bot will fail, as they have an
-      # invalid version string ("LAST_TAG"). This messes up shebang mangling on
-      # some platforms, so use --no-binary for those packages. Also, we need to
-      # install ali-bot and alibuild as editable, else pip doesn't update them
-      # properly (perhaps because the version string is always "LAST_TAG").
-      short_timeout python3 -m pip install --upgrade --no-binary=alibuild,ali-bot \
-          -e "git+https://github.com/$(get_config_value install-alibot   "$INSTALL_ALIBOT")[ci]" \
-          -e "git+https://github.com/$(get_config_value install-alibuild "$INSTALL_ALIBUILD")" ||
+      short_timeout python3 -m pip install --upgrade \
+          "git+https://github.com/$(get_config_value install-alibot   "$INSTALL_ALIBOT")[ci]" \
+          "git+https://github.com/$(get_config_value install-alibuild "$INSTALL_ALIBUILD")" ||
         exit 1
 
       # Run the build
