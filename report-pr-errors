@@ -41,7 +41,7 @@ FAILED_UNIT_TEST_RE = re.compile(
     r'Test *#[0-9]*: .*\*\*\*(Failed|Timeout|Exception)|% tests passed')
 KILLED_RE = re.compile(r'fatal error: Killed signal terminated program')
 CMAKE_ERROR_RE = re.compile(r'^CMake Error')
-O2CHECKCODE_RE = re.compile(r'=== List of errors found ===')
+O2CHECKCODE_RE = re.compile(r'^=+ List of errors found =+$')
 # Messages from the full system test
 FST_TASK_TIMEOUT_RE = re.compile(r'task timeout reached')
 FST_LOGFILE_RE = re.compile(r'Detected critical problem in logfile')
