@@ -20,10 +20,9 @@ env:
 jobs:
   clang-format:
     name: clang-format
-    # We need at least 20.04 to have clang-format-13 preinstalled.
     # Keep the clang-format version synced with the one installed by aliBuild,
     # (see https://github.com/alisw/alidist/blob/master/clang.sh).
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
@@ -40,10 +39,12 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
+          sudo apt update
+          sudo apt install -y clang-format-15
           sudo update-alternatives --install /usr/bin/clang-format \
-            clang-format /usr/bin/clang-format-13 100
+            clang-format /usr/bin/clang-format-15 100
           sudo update-alternatives --install /usr/bin/git-clang-format \
-            git-clang-format /usr/bin/git-clang-format-13 100
+            git-clang-format /usr/bin/git-clang-format-15 100
 
       # We need to fetch the PR's head commit to base our cleanup commit on.
       - name: Fetch PR branch
