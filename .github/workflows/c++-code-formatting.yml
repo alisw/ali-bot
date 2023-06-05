@@ -80,10 +80,8 @@ jobs:
           # Abort now if invalid file extensions found.
           [ -z "$have_invalid_extension" ]
 
-          patch=$(git-clang-format --commit "$base_commit" --diff \
-                                   --style file "${commit_files[@]}")
-          if [ "$patch" = 'no modified files to format' ] ||
-             [ "$patch" = 'clang-format did not modify any files' ]
+          if patch=$(git-clang-format --commit "$base_commit" --diff \
+                                      --style file "${commit_files[@]}")
           then
             echo 'clang-format passed.' >> "$GITHUB_STEP_SUMMARY"
             echo cleanup_commit= >> "$GITHUB_OUTPUT"
