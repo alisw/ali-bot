@@ -185,45 +185,69 @@ class CvmfsServer(PlainFilesystem):
 
 class AliEn:
 
-  def __init__(self, publishScriptTpl, connParams, dryRun=False):
+  def __init__(self, connParams, dryRun=False):
+    self._req_params = {
+      "timeout": connParams["conn_timeout_s"],
+      "verify": bool(connParams["http_ssl_verify"]),
+    }
     self._dryRun = dryRun
-    self._publishScriptTpl = publishScriptTpl
     self._packs = None
-    self._connParams = connParams
 
-  def _kw(self, url, arch, pkgName, pkgVer, deps):
-    kw =  { "url": url, "package": pkgName, "version": pkgVer, "arch": arch, "dependencies": deps }
-    kw.update(self._connParams)
-    kw["http_ssl_verify"] = 1 if kw["http_ssl_verify"] else 0
-    return kw
+  def _list_packs(self):
+    if self._packs:
+      return
+    debug("AliEn: fetching list of packages from alimonitor")
+    response = requests.get("http://alimonitor.cern.ch/export/packages.jsp",
+                            **self._req_params)
+    response.raise_for_status()
+    self._packs = response.json()
 
   def installed(self, arch, pkgName, pkgVer):
     debug("AliEn: checking if %s %s is installed for %s", pkgName, pkgVer, arch)
-
-    if self._packs is None:
-      debug("AliEn: fetching list of packages from alimonitor")
-      self._packs = json.loads(requests.get(
-        "http://alimonitor.cern.ch/export/packages.jsp",
-        timeout=self._connParams["conn_timeout_s"],
-      ).text)
-
+    # self._packs should've been set by self.transaction(), but be safe.
+    assert self._packs, "AliEn: empty package list; aborting for safety"
     return any(pkg["name"] == pkgName and pkg["version"] == pkgVer and
                arch in pkg["platforms"] for pkg in self._packs)
 
   def install(self, url, arch, pkgName, pkgVer, deps, allDeps):
-    kw = self._kw(url, arch, pkgName, pkgVer,
-                  ",".join(["VO_ALICE@"+x["name"]+"::"+x["ver"] for x in deps]))
-    return runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
+    request_data = {
+      "name": pkgName,
+      "version": pkgVer,
+      "platform": arch,
+      "dependencies": ",".join(f"VO_ALICE@{dep['name']}::{dep['ver']}"
+                               for dep in deps)
+    }
+    if self._dryRun:
+      debug("Dry run: would have registered %r with alimonitor", request_data)
+    else:
+      try:
+        requests.post("http://alimonitor.cern.ch/packages/define.jsp",
+                      data=request_data, **self._req_params) \
+                .raise_for_status()
+      except requests.HTTPError as exc:
+        error("AliEn: failed to register new package", exc_info=exc)
+        return 1
+    return 0   # simulate successful exit status from script
 
   def transaction(self):
     # Not actually opening a "transaction", but failing if AliEn appears down.
     # If we don't fail here, package list appears empty and we'll attempt to
     # publish *every* package, and failing...
-    _,out = grabOutput([ "alien", "-exec", "ls", "/alice/packages" ])
-    if "AliRoot" in out.split("\n"):
+    try:
+      self._list_packs()
+    except requests.RequestException as exc:
+      error("AliEn: could not fetch list of packages" , exc_info=exc)
+      return False
+    except json.JSONDecodeError as exc:
+      error("AliEn: could not decode response as JSON", exc_info=exc)
+      return False
+    if not self._packs:
+      error("AliEn: returned empty package list")
+      return False
+    if any(p["name"] == "AliRoot" for p in self._packs):
       debug("AliEn: AliEn connection and APIs appear to work")
       return True
-    error("AliEn: API response incorrect, assuming AliEn is not working at the moment")
+    error("AliEn: API response incorrect: %r", self._packs)
     return False
 
   def abort(self, force=False):
@@ -860,9 +884,7 @@ def main():
                             dryRun=args.dryRun)
     elif args.action == "sync-alien":
       archKey = "AliEn"
-      pub = AliEn(publishScriptTpl=open(progDir+"/pub-alien-template.sh").read(),
-                  connParams=connParams,
-                  dryRun=args.dryRun)
+      pub = AliEn(connParams=connParams, dryRun=args.dryRun)
     else:
       conf["rpm_updatable"] = conf.get("rpm_updatable", False)
       archKey = "RPM"
