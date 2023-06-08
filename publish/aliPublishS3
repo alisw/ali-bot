@@ -957,7 +957,7 @@ def main():
             error(msg, arch, pkg, ver,
                   " but it should not" if match else " but it should")
             return 1
-          info(msg, arch, pkg, ver)
+          info(msg, arch, pkg, ver, "")
     info("All rules%s tested with success",
          " in "+args.testConf if args.testConf else "")
     return 0
