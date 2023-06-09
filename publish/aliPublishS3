@@ -194,20 +194,49 @@ class AliEn:
     self._packs = None
 
   def _list_packs(self):
+    """Cache the full package list from alimonitor and perform sanity checks."""
     if self._packs:
-      return
+      return self._packs
+
     debug("AliEn: fetching list of packages from alimonitor")
     response = requests.get("http://alimonitor.cern.ch/export/packages.jsp",
                             **self._req_params)
-    response.raise_for_status()
-    self._packs = response.json()
+
+    if response.status_code != requests.codes.ok:
+      error("AliEn: got HTTP %d from alimonitor when fetching package list; "
+            "aborting", response.status_code)
+      raise PublishException(response)
+
+    try:
+      self._packs = response.json()
+    except json.JSONDecodeError as exc:
+      error("AliEn: could not decode response as JSON", exc_info=exc)
+      raise PublishException(response) from exc
+
+    if not self._packs:
+      error("AliEn: returned empty package list")
+      raise PublishException(response)
+
+    # As a simple sanity check, make sure we get the right order of magnitude
+    # in the number of existing packages.
+    expect_min_packages = 20000
+    if len(self._packs) < expect_min_packages:
+      error("AliEn: got fewer packages (%d) than expected (%d)",
+            len(self._packs), expect_min_packages)
+      raise PublishException(response)
+
+    if any(p["name"] == "AliRoot" for p in self._packs):
+      debug("AliEn: AliEn connection and APIs appear to work")
+      return self._packs
+
+    error("AliEn: API response incorrect (no AliRoot packages found): %r",
+          self._packs)
+    raise PublishException(response)
 
   def installed(self, arch, pkgName, pkgVer):
     debug("AliEn: checking if %s %s is installed for %s", pkgName, pkgVer, arch)
-    # self._packs should've been set by self.transaction(), but be safe.
-    assert self._packs, "AliEn: empty package list; aborting for safety"
     return any(pkg["name"] == pkgName and pkg["version"] == pkgVer and
-               arch in pkg["platforms"] for pkg in self._packs)
+               arch in pkg["platforms"] for pkg in self._list_packs())
 
   def install(self, url, arch, pkgName, pkgVer, deps, allDeps):
     request_data = {
@@ -232,25 +261,7 @@ class AliEn:
     return 0   # simulate successful exit status from script
 
   def transaction(self):
-    # Not actually opening a "transaction", but failing if AliEn appears down.
-    # If we don't fail here, package list appears empty and we'll attempt to
-    # publish *every* package, and failing...
-    try:
-      self._list_packs()
-    except requests.RequestException as exc:
-      error("AliEn: could not fetch list of packages" , exc_info=exc)
-      return False
-    except json.JSONDecodeError as exc:
-      error("AliEn: could not decode response as JSON", exc_info=exc)
-      return False
-    if not self._packs:
-      error("AliEn: returned empty package list")
-      return False
-    if any(p["name"] == "AliRoot" for p in self._packs):
-      debug("AliEn: AliEn connection and APIs appear to work")
-      return True
-    error("AliEn: API response incorrect: %r", self._packs)
-    return False
+    return True
 
   def abort(self, force=False):
     return True
@@ -438,8 +449,19 @@ def prettyPrintPkg(pkg):
   return pkg["name"] + " " + pkg["ver"]
 
 
+def iterUninstalled(publisher, arch, archName, pubPackages):
+  """Generate packages that are not installed in the publisher."""
+  for pack in pubPackages:
+    if publisher.installed(archName, pack["name"], pack["ver"]):
+      debug("%s / %s / %s: already installed: skipping",
+            arch, pack["name"], pack["ver"])
+    else:
+      yield pack
+
+
 def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
-         includeFirst, autoIncludeDeps, notifEmail, dryRun, connParams):
+         includeFirst, autoIncludeDeps, notifEmail, dryRun, connParams,
+         publishLimit):
 
   # Template URLs
   packNamesPathTpl = "%(arch)s/dist-direct"
@@ -554,13 +576,18 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
     debug("%s: %d package(s) candidate for publication: %s",
           arch, len(pubPackages), ", ".join(map(prettyPrintPkg, pubPackages)))
 
+    pubPackages = list(iterUninstalled(pub, arch, architectures[arch], pubPackages))
+    debug("%s: %d package(s) will be published: %s",
+          arch, len(pubPackages), ", ".join(map(prettyPrintPkg, pubPackages)))
+
+    if publishLimit and len(pubPackages) > publishLimit:
+      error("Too many packages to publish (%d); limiting to %d to avoid "
+            "running out of temporary disk space",
+            len(pubPackages), publishLimit)
+      pubPackages = pubPackages[:publishLimit]
+
     # Packages installation
     for pack in pubPackages:
-      if pub.installed(architectures[arch], pack["name"], pack["ver"]):
-        debug("%s / %s / %s: already installed: skipping",
-              arch, pack["name"], pack["ver"])
-        continue
-
       # Get direct and indirect dependencies
       deps = {}
       depFail = False
@@ -794,6 +821,13 @@ def main():
   if not isinstance(conf["http_ssl_verify"], bool):
     error("http_ssl_verify must be a bool")
     doExit = True
+  conf.setdefault("publish_max_packages", 0)  # 0 == unlimited
+  if not isinstance(conf["publish_max_packages"], int):
+    error("publish_max_packages must be an integer")
+    doExit = True
+  if conf["publish_max_packages"] < 0:
+    error("publish_max_packages must not be negative; use 0 for unlimited")
+    doExit = True
 
   if doExit: exit(1)
 
@@ -917,7 +951,8 @@ def main():
                         autoIncludeDeps=conf["auto_include_deps"],
                         notifEmail=conf["notification_email"],
                         dryRun=args.dryRun,
-                        connParams=connParams))
+                        connParams=connParams,
+                        publishLimit=conf["publish_max_packages"]))
   if args.action == "test-rules":
     testRules = {}
 
