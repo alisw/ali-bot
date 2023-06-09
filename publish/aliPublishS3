@@ -221,8 +221,10 @@ class AliEn:
       debug("Dry run: would have registered %r with alimonitor", request_data)
     else:
       try:
-        requests.post("http://alimonitor.cern.ch/packages/define.jsp",
-                      data=request_data, **self._req_params) \
+        # Our request is only accepted when running on alimonitor and
+        # requesting from localhost, for security reasons.
+        requests.get("http://127.0.0.1/packages/define.jsp",
+                     params=request_data, **self._req_params) \
                 .raise_for_status()
       except requests.HTTPError as exc:
         error("AliEn: failed to register new package", exc_info=exc)
