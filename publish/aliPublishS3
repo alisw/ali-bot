@@ -263,6 +263,7 @@ class RPM(object):
     self._s3 = s3Client
     self._baseUrl = baseUrl
     self._bucket = s3Bucket
+    self._s3_path = "UpdRPMS" if genUpdatableRpms else "RPMS"
     self._remoteRpms = {}
 
   def _kw(self, url, arch, pkgName, pkgVer, workDir=None, deps=None):
@@ -290,14 +291,16 @@ class RPM(object):
       self._remoteRpms[arch] = [
         item["Key"]
         for page in self._s3.get_paginator("list_objects_v2").paginate(
-            Bucket=self._bucket, Delimiter="/", Prefix="RPMS/%s/" % arch)
+            Bucket=self._bucket, Delimiter="/",
+            Prefix="%s/%s/" % (self._s3_path, arch))
         for item in page.get("Contents", ())
         if item["Key"].endswith(".rpm")
       ]
 
     kw = self._kw(None, arch, pkgName, pkgVer)
     debug("RPM: checking if %(rpm)s exists for %(package)s %(version)s on %(arch)s" % kw)
-    return ("RPMS/%(arch)s/%(rpm)s" % kw) in self._remoteRpms[arch]
+    s3_key = "{s3_path}/{arch}/{rpm}".format(s3_path=self._s3_path, **kw)
+    return s3_key in self._remoteRpms[arch]
 
   def install(self, url, arch, pkgName, pkgVer, deps, allDeps):
     # All RPMs are created in workDir (temporary, destroyed after creation).
@@ -364,7 +367,7 @@ class RPM(object):
       stagedir = join(self._stageDir, arch)
       mergedir = join(self._stageDir, "merged", arch)
 
-      baseUrl = self._baseUrl.rstrip("/") + "/RPMS/" + arch
+      baseUrl = self._baseUrl.rstrip("/") + "/" + self._s3_path + "/" + arch
       createrepo = ["createrepo", "--baseurl", baseUrl, stagedir]
       debug("RPM: %s", " ".join(createrepo))
 
@@ -374,7 +377,8 @@ class RPM(object):
         error("RPM: error creating repository for %s", arch)
         return False
 
-      mergerepo = ["mergerepo", "--nogroups", "--noupdateinfo",
+      mergerepo = ["mergerepo", "--verbose", "--all",
+                   "--nogroups", "--noupdateinfo",
                    "--repo", baseUrl,
                    "--repo", "file://" + abspath(stagedir),
                    "--outputdir", mergedir]
@@ -391,20 +395,20 @@ class RPM(object):
       for rpm in glob(join(stagedir, "*.rpm")):
         info("RPM: uploading new RPM %s", basename(rpm))
         self._s3.upload_file(Filename=rpm, Bucket=self._bucket,
-                             Key=join("RPMS", arch, basename(rpm)))
+                             Key=join(self._s3_path, arch, basename(rpm)))
       # 2. Delete current metadata files on S3.
       info("RPM: deleting old repo metadata")
       self._s3.delete_objects(Bucket=self._bucket, Delete={"Objects": [
         {"Key": old_file["Key"]} for old_file in self._s3.list_objects_v2(
           Bucket=self._bucket, Delimiter="/",
-          Prefix="RPMS/%s/repodata/" % arch).get("Contents", ())
+          Prefix="%s/%s/repodata/" % (self._s3_path, arch)).get("Contents", ())
       ]})
       # 3. Upload new, merged metadata files.
       for new_file in listdir(join(mergedir, "repodata")):
         info("RPM: uploading new repo metadata: %s", new_file)
         self._s3.upload_file(Bucket=self._bucket,
                              Filename=join(mergedir, "repodata", new_file),
-                             Key=join("RPMS", arch, "repodata", new_file))
+                             Key=join(self._s3_path, arch, "repodata", new_file))
 
     # Errors here are not fatal.
     debug("RPM: removing staging directory %s", self._stageDir)
@@ -879,7 +883,9 @@ def main():
     else:
       conf["rpm_updatable"] = conf.get("rpm_updatable", False)
       archKey = "RPM"
-      pub = RPM(publishScriptTpl=open(progDir+"/pub-rpms-template.sh").read(),
+      template = "pub-updatable-rpms-template.sh" if conf["rpm_updatable"] \
+        else "pub-rpms-template.sh"
+      pub = RPM(publishScriptTpl=open(progDir + "/" + template).read(),
                 connParams=connParams,
                 genUpdatableRpms=conf["rpm_updatable"],
                 baseUrl=conf["base_url"],
