@@ -186,10 +186,16 @@ class CvmfsServer(PlainFilesystem):
 class AliEn:
 
   def __init__(self, connParams, dryRun=False):
-    self._req_params = {
-      "timeout": connParams["conn_timeout_s"],
-      "verify": bool(connParams["http_ssl_verify"]),
-    }
+    self._session = requests.Session()
+    self._session.timeout = connParams["conn_timeout_s"]
+    # "verify" can be a string pointing to a CA file or directory, or a
+    # boolean to switch host cert verification on or off.
+    self._session.verify = \
+      environ.get("ALIEN_CA_BUNDLE", bool(connParams["http_ssl_verify"]))
+    self._session.cert = \
+      (environ["ALIEN_CLIENT_CERT"], environ["ALIEN_CLIENT_KEY"])
+    self._session.auth = \
+      requests.auth.HTTPBasicAuth(environ["ALIEN_USER"], environ["ALIEN_TOKEN"])
     self._dryRun = dryRun
     self._packs = None
 
@@ -199,9 +205,7 @@ class AliEn:
       return self._packs
 
     debug("AliEn: fetching list of packages from alimonitor")
-    response = requests.get("http://alimonitor.cern.ch/export/packages.jsp",
-                            **self._req_params)
-
+    response = self._session.get("https://alimonitor.cern.ch/export/packages.jsp")
     if response.status_code != requests.codes.ok:
       error("AliEn: got HTTP %d from alimonitor when fetching package list; "
             "aborting", response.status_code)
@@ -250,11 +254,11 @@ class AliEn:
       debug("Dry run: would have registered %r with alimonitor", request_data)
     else:
       try:
-        # Our request is only accepted when running on alimonitor and
-        # requesting from localhost, for security reasons.
-        requests.get("http://127.0.0.1/packages/define.jsp",
-                     params=request_data, **self._req_params) \
-                .raise_for_status()
+        self._session.get("https://alimonitor.cern.ch/packages/define.jsp",
+                          # Set stream=False to read the response body and
+                          # release the connection back to the pool.
+                          params=request_data, stream=False) \
+                     .raise_for_status()
       except requests.HTTPError as exc:
         error("AliEn: failed to register new package", exc_info=exc)
         return 1
