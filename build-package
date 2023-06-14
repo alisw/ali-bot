@@ -105,7 +105,7 @@ fi
 
 RWOPT='::rw'
 [[ "$PUBLISH_BUILDS" == "false" ]] && RWOPT=
-REMOTE_STORE="${REMOTE_STORE:-rsync://alibuild03.cern.ch/store/}$RWOPT"
+REMOTE_STORE="${REMOTE_STORE:-b3://alibuild-repo}$RWOPT"
 [[ "$USE_REMOTE_STORE" == "false" ]] && REMOTE_STORE=
 FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
 aliBuild --reference-sources $MIRROR                    \

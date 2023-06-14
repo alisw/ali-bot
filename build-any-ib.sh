@@ -118,7 +118,7 @@ fi
 
 case "$ARCHITECTURE" in
   slc8_*|ubuntu*) : "${REMOTE_STORE:=b3://alibuild-repo}" ;;
-  *) : "${REMOTE_STORE:=rsync://alibuild03.cern.ch/store/}" ;;
+  *) : "${REMOTE_STORE:=b3://alibuild-repo}" ;;
 esac
 [ "$PUBLISH_BUILDS" = true ] && REMOTE_STORE=$REMOTE_STORE::rw
 [ "$USE_REMOTE_STORE" = false ] && REMOTE_STORE=
