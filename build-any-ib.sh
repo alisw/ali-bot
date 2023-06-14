@@ -115,10 +115,7 @@ else
   rm -rf AliPhysics
 fi
 
-case "$ARCHITECTURE" in
-  slc8_*|ubuntu*) : "${REMOTE_STORE:=b3://alibuild-repo}" ;;
-  *) : "${REMOTE_STORE:=b3://alibuild-repo}" ;;
-esac
+: "${REMOTE_STORE:=b3://alibuild-repo}"
 [ "$PUBLISH_BUILDS" = true ] && REMOTE_STORE=$REMOTE_STORE::rw
 [ "$USE_REMOTE_STORE" = false ] && REMOTE_STORE=
 case "$REMOTE_STORE" in
