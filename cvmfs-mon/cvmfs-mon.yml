@@ -8,16 +8,16 @@ api_url: "https://cernvm-monitor.cern.ch/cvmfs-monitor/api/v0/details"
 replicas:
   CERN:
     url: "http://cvmfs-stratum-one.cern.ch/cvmfs"
-    contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
+    contact: maarten.litmaath@cern.ch
   RAL:
     url: "http://cvmfs-wlcg.gridpp.rl.ac.uk/cvmfs"
-    contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
+    contact: maarten.litmaath@cern.ch
   BNL:
     url: "http://cvmfs.racf.bnl.gov/cvmfs"
-    contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
+    contact: maarten.litmaath@cern.ch
   Fermilab:
     url: "http://cvmfs.fnal.gov/cvmfs"
-    contact: dario.berzano@cern.ch,miguel.martinez.pedreira@cern.ch,maarten.litmaath@cern.ch
+    contact: maarten.litmaath@cern.ch
   ASGC:
     url: "http://cvmfs02.grid.sinica.edu.tw/cvmfs"
     contact: maarten.litmaath@cern.ch
