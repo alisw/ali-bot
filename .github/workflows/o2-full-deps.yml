@@ -7,8 +7,7 @@ name: o2-full-deps release
 "on":
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   rpm-el7:

@@ -16,8 +16,7 @@ name: Check GitHub workflows
       - ready_for_review
       - synchronize
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   actionlint:

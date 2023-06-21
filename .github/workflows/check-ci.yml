@@ -16,8 +16,7 @@ name: Check CI
       - ready_for_review
       - synchronize
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   shellcheck:
