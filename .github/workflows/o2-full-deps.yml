@@ -7,6 +7,9 @@ name: o2-full-deps release
 "on":
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   rpm-el7:
     runs-on: ubuntu-latest

@@ -16,6 +16,9 @@ name: Check publisher
       - ready_for_review
       - synchronize
 
+permissions:
+  contents: read
+
 jobs:
   rules:
     runs-on: ubuntu-latest
