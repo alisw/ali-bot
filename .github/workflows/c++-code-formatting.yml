@@ -10,6 +10,11 @@ name: C++ code formatting reusable workflow
           The GitHub token to use to push commits to alibuild's repo. This is
           used for automatic cleanup PRs containing fixes from clang-format.
 
+permissions:
+  # For sensitive actions (e.g. pushing to cleanup branches), we use a
+  # manually-specified token (secrets.alibuild_github_token).
+  contents: read
+
 env:
   BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
   PR_BRANCH: ${{ github.event.pull_request.head.ref }}
