@@ -129,8 +129,12 @@ class CIEnvironment:
                     for pkg_dir in self.work_dir.glob("*_*/*")
                     # Path.glob("*/") doesn't only select directories,
                     # so explicitly filter for directories.
-                    if pkg_dir.is_dir() and pkg_dir.name in self.packages
+                    if pkg_dir.is_dir()
                     for entry in pkg_dir.iterdir()
+                    # Clean up old nightlies for non-dev packages as well.
+                    if pkg_dir.name in self.packages
+                    or "nightly" in entry.resolve().name
+                    or "daily" in entry.resolve().name
             ))
             if entry.is_symlink()
         )
