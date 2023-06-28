@@ -132,7 +132,7 @@ try {
   }
 } catch (e) {
   // Notify failures
-  emailext(subject: "Daily ${PACKAGES} tag failed",
+  emailext(subject: "${env.JOB_NAME}#${env.BUILD_NUMBER}: daily tag failed for ${PACKAGES}",
            body: "More details here: ${env.BUILD_URL}",
            to: "${NOTIFY_EMAILS}")
   throw e
