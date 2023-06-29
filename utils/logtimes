@@ -8,7 +8,7 @@ import io
 import re
 import sys
 
-LOG_RE: re.Pattern = re.compile(r'''
+LOG_RE: re.Pattern = re.compile(rb'''
 ( \d{4}-\d{2}-\d{2}   @   # date
   \d{2}:\d{2}:\d{2} ) :   # time
 (?: \x1b \[ [0-9;]* m )?  # ANSI escape for log level
@@ -22,33 +22,33 @@ LOG_RE: re.Pattern = re.compile(r'''
 ''', re.VERBOSE)
 
 
-def build_duration(package: str | None,
-                   start_time: str | None,
-                   end_time: str | None) -> list[tuple[timedelta, str]]:
+def build_duration(package: bytes | None,
+                   start_time: bytes | None,
+                   end_time: bytes | None) -> list[tuple[timedelta, bytes]]:
     '''Return a record of the duration of the build of the given package.'''
     if package is None:
         return []
     if start_time is None or end_time is None:
         duration = timedelta(0)
     else:
-        duration = (datetime.fromisoformat(end_time) -
-                    datetime.fromisoformat(start_time))
+        duration = (datetime.fromisoformat(end_time.decode('utf-8')) -
+                    datetime.fromisoformat(start_time.decode('utf-8')))
     return [(duration, package)]
 
 
-def output(durations: list[tuple[timedelta, str]],
+def output(durations: list[tuple[timedelta, bytes]],
            output_file: io.TextIOBase) -> None:
     '''Print durations and package names from the given list, in order.'''
     for duration, package in durations:
-        print(duration, package, sep='\t', file=output_file)
+        print(duration, package.decode('utf-8'), sep='\t', file=output_file)
 
 
 def main(args: argparse.Namespace) -> None:
     '''Script entry point.'''
-    durations: list[tuple[timedelta, str]] = []
-    cur_pkg_name: str | None = None
-    cur_start_time: str | None = None
-    cur_end_time: str | None = None
+    durations: list[tuple[timedelta, bytes]] = []
+    cur_pkg_name: bytes | None = None
+    cur_start_time: bytes | None = None
+    cur_end_time: bytes | None = None
 
     def new_package(name, start, end, durations):
         new_durations = build_duration(name, start, end)
@@ -58,7 +58,7 @@ def main(args: argparse.Namespace) -> None:
             durations += new_durations
 
     for line in args.logfile:
-        if not (match := re.match(LOG_RE, line)):
+        if not (match := LOG_RE.match(line)):
             continue
         timestr, package = match.groups()
         if package == cur_pkg_name:
@@ -100,7 +100,7 @@ def parse_args() -> argparse.Namespace:
         help='where to output the resulting table (default stdout)')
     parser.add_argument(
         'logfile', metavar='LOGFILE', nargs='?',
-        type=argparse.FileType('r'), default='-',
+        type=argparse.FileType('rb'), default='-',
         help='alibuild log file to analyse (default stdin)')
     return parser.parse_args()
 
