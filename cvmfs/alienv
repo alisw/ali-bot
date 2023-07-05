@@ -140,7 +140,7 @@ case $distro_name in
               distro_xrelease=6.x
               platform=ubuntu1404
               ;;
-           16.*|17.*|18.*)
+           16.*|17.*|18.*|2?.*)
               # Required from system: apt install libx11-6 environment-modules
               distro_xrelease=
               platform=ubuntu1604
