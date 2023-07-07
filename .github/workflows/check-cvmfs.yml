@@ -103,7 +103,7 @@ jobs:
               ln -nfs "$ALIENV" "$np/alienv"
               # shellcheck disable=SC2030
               export PATH=$np:$PATH
-              ALIENV_DEBUG=1 alienv q | grep AliPhysics | tail -n1
+              ALIENV_DEBUG=1 alienv printenv AliPhysics/v5-09-59o-01_O2-1
             )
           done
 
@@ -113,7 +113,7 @@ jobs:
             ln -nfs "$(dn=$(dirname "$ALIENV"); while [ "$dn" != / ]; do dn=$(dirname "$dn"); printf ../; done)$ALIENV" "$np/alienv"
             # shellcheck disable=SC2030,SC2031
             export PATH=$np:$PATH
-            ALIENV_DEBUG=1 alienv q | grep AliPhysics | tail -n1
+            ALIENV_DEBUG=1 alienv printenv AliPhysics/v5-09-59o-01_O2-1
           )
           unset np
           # shellcheck disable=SC2031
@@ -142,8 +142,10 @@ jobs:
           alienv checkenv AliGenerators/v20180424-1 ||
             pe "expected 0, returned $?"
 
-          pt "list AliPhysics packages"
-          alienv q | grep AliPhysics | tail -n5
+          # "alienv q" takes too long in a GitHub workflow (>45 min).
+          # pt "list AliPhysics packages"
+          # alienv q | grep AliPhysics | tail -n5
+
           alienv_test () {
             local method=$1 package=$2 command=$3
             case $method in
