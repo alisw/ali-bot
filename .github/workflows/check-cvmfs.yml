@@ -104,7 +104,7 @@ jobs:
               # shellcheck disable=SC2030
               export PATH=$np:$PATH
               ALIENV_DEBUG=1 alienv printenv AliPhysics/v5-09-59o-01_O2-1
-            )
+            ) || exit $?
           done
 
           np=/tmp/alienv_symlink/bin
@@ -114,7 +114,7 @@ jobs:
             # shellcheck disable=SC2030,SC2031
             export PATH=$np:$PATH
             ALIENV_DEBUG=1 alienv printenv AliPhysics/v5-09-59o-01_O2-1
-          )
+          ) || exit $?
           unset np
           # shellcheck disable=SC2031
           PATH=$(dirname "$ALIENV"):$PATH
@@ -122,7 +122,8 @@ jobs:
           [ "$(command -v alienv)" = "$ALIENV" ]
 
           pt "test package reordering"
-          ALIENV_DEBUG=1 alienv setenv VO_ALICE@AliEn-Runtime::v2-19-le-21,VO_ALICE@ROOT::v5-34-30-alice7-2,VO_ALICE@AliPhysics::vAN-20170301-1 -c true 2>&1 |
+          (ALIENV_DEBUG=1 alienv setenv VO_ALICE@AliEn-Runtime::v2-19-le-21,VO_ALICE@ROOT::v5-34-30-alice7-2,VO_ALICE@AliPhysics::vAN-20170301-1 -c true 2>&1 || :) |
+            tee /dev/stderr |
             grep 'normalized to AliPhysics/vAN-20170301-1 ROOT/v5-34-30-alice7-2 AliEn-Runtime/v2-19-le-21'
 
           pt "test checkenv command with a successful combination"
