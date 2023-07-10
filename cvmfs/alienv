@@ -48,7 +48,7 @@ fi
 [ x$ALIENV_DEBUG == x1 ] && printf "distro_name=$distro_name\ndistro_release=$distro_release\n" >&2
 
 case $distro_name in
-     Scientific*|CentOS*|Rocky*|Alma*|RedHatEnterprise*)
+     Scientific*|CentOS*|Rocky*|Alma*|RedHatEnterprise*|'Red Hat Enterprise'*)
         distro_dir="Scientific"
         uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
