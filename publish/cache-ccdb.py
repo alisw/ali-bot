@@ -70,8 +70,9 @@ def store_object(ccdb_url: str,
         # alien:// location.
         try:
             cvmfs_path = cvmfs_prefix / next(
-                loc[len(ALIEN_REWRITE_PREFIX):] for loc in locations
-                if loc.startswith(ALIEN_REWRITE_PREFIX)
+                location[len(ALIEN_REWRITE_PREFIX):].strip("/")
+                for location in locations
+                if location.startswith(ALIEN_REWRITE_PREFIX)
             )
         except StopIteration:
             LOG.error("no usable alien:// location for %s; skipping", ccdb_url)
