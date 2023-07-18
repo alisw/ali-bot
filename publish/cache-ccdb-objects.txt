@@ -1,1 +1,1 @@
-http://alice-ccdb.cern.ch/browse/GLO/Param/MatLUT
+http://alice-ccdb.cern.ch/GLO/Param/MatLUT/1672531199000
