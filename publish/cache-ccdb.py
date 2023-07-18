@@ -56,13 +56,16 @@ def store_object(ccdb_url: str,
 
     Return the newly cached object's GUID, or None if nothing was cached.
     """
-    resp = session.get(ccdb_url, stream=False,  # return connection to pool
-                       headers={"If-None-Match": ", ".join(have_guids)})
-    if resp.status_code == requests.codes.SEE_OTHER:
+    caching_headers = {"If-None-Match": ", ".join(have_guids)}
+    # We only need the Content-Location header, so a HEAD request is enough.
+    # requests.head() doesn't follow redirects by default, which is good.
+    with session.head(ccdb_url, headers=caching_headers) as resp:
+        status_code = resp.status_code
+        locations = resp.headers.get("Content-Location", "").split(", ")
+    if status_code == requests.codes.SEE_OTHER:
         # We don't have this object yet (or the underlying object has been
         # edited, so we need to cache the new object and GUID).
         LOG.debug("caching new object: %s", ccdb_url)
-        locations = resp.headers["Content-Location"].split(", ")
         # We expect a http:// Content-Location so we can fetch the object's
         # data. Getting it though alien:// would be much more effort.
         try:
@@ -83,28 +86,29 @@ def store_object(ccdb_url: str,
             LOG.error("no usable alien:// location for %s; skipping", ccdb_url)
             return None
         # Now fetch the actual data and store it in CVMFS.
-        obj_resp = session.get(download_url)
-        if dry_run and obj_resp.status_code == 200:
-            LOG.info("fetched %s (%s bytes) OK; CVMFS not changed", ccdb_url,
-                     obj_resp.headers.get("Content-Length", "<unknown>"))
-        elif obj_resp.status_code == 200:
-            cvmfs_path.parent.mkdir(parents=True, exist_ok=True)
-            with cvmfs_path.open("wb") as out_file:
-                for block in obj_resp.iter_content():
-                    out_file.write(block)
-            LOG.info("successfully fetched %s => %s (%d bytes)",
-                     ccdb_url, cvmfs_path, cvmfs_path.stat().st_size)
-            # The filename is the GUID of the object we've just cached. Store
-            # it so we don't cache the same thing twice.
-            return cvmfs_path.name
-        else:
-            LOG.error("got HTTP status %d when fetching %s; skipping",
-                      obj_resp.status_code, download_url)
-    elif resp.status_code == requests.codes.NOT_MODIFIED:
+        with session.get(download_url, stream=True) as obj_resp:
+            if dry_run and obj_resp.ok():
+                LOG.info("fetched %s OK (%s; %s bytes); CVMFS not changed",
+                         ccdb_url, cvmfs_path,
+                         obj_resp.headers.get("Content-Length", "<unknown>"))
+            elif obj_resp.ok():
+                cvmfs_path.parent.mkdir(parents=True, exist_ok=True)
+                with cvmfs_path.open("wb") as out_file:
+                    for block in obj_resp.iter_content():
+                        out_file.write(block)
+                LOG.info("successfully fetched %s => %s (%d bytes)",
+                         ccdb_url, cvmfs_path, cvmfs_path.stat().st_size)
+                # The filename is the GUID of the object we've just cached.
+                # Store it so we don't cache the same thing twice.
+                return cvmfs_path.name
+            else:
+                LOG.error("got HTTP status %d when fetching %s; skipping",
+                          obj_resp.status_code, download_url)
+    elif status_code == requests.codes.NOT_MODIFIED:
         LOG.debug("object already cached and not modified: %s", ccdb_url)
     else:
         LOG.error("unhandled status code %d from CCDB for %s; skipping",
-                  resp.status_code, ccdb_url)
+                  status_code, ccdb_url)
     return None
 
 
