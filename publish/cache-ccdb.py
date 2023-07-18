@@ -8,11 +8,11 @@ speed-up. This also reduces the load on CCDB.
 """
 
 import argparse
-import collections.abc
 import contextlib
 import logging
 import pathlib
 import subprocess
+import typing
 import requests
 
 LOG = logging.Logger(__name__)
@@ -39,7 +39,7 @@ def main(args: argparse.Namespace) -> None:
 def store_object(ccdb_url: str,
                  session: requests.Session,
                  cvmfs_prefix: pathlib.Path,
-                 have_guids: collections.abc.Iterable[str],
+                 have_guids: typing.Iterable[str],
                  *, dry_run: bool) -> str | None:
     """Fetch the given object from CCDB if needed and store it in CVMFS.
 
@@ -105,7 +105,7 @@ def store_object(ccdb_url: str,
 
 @contextlib.contextmanager
 def cvmfs_transaction(repository: str, *, dry_run: bool = False) \
-        -> collections.abc.Iterator[None]:
+        -> typing.Iterator[None]:
     """Context manager to wrap code in a CVMFS transaction."""
     if dry_run:
         LOG.debug("would open CVMFS transaction")
