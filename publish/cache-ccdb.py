@@ -11,6 +11,7 @@ import argparse
 import contextlib
 import logging
 import pathlib
+import re
 import subprocess
 import sys
 import typing
@@ -20,7 +21,7 @@ LOG = logging.Logger(__name__)
 ALIEN_REWRITE_PREFIX = "alien:///alice/data/CCDB/"
 
 
-def main(args: argparse.Namespace) -> None:
+def main(args: argparse.Namespace) -> int:
     """Script entry point."""
     LOG.setLevel(logging.DEBUG)
     handler = logging.StreamHandler(sys.stderr)
@@ -31,14 +32,24 @@ def main(args: argparse.Namespace) -> None:
     # We expect files to be named after their CCDB GUIDs. Paths may be
     # arbitrarily deep.
     have_guids = {f.name for f in cvmfs_prefix.glob("**/????????-????-????-????-????????????")}
+    ok = True
     with requests.Session() as session:
-        with cvmfs_transaction(args.cvmfs_repository, dry_run=args.dry_run):
-            for ccdb_url in map(str.strip, args.ccdb_urls_file):
-                if ccdb_url and not ccdb_url.startswith("#"):
-                    new_guid = store_object(ccdb_url, session, cvmfs_prefix,
-                                            have_guids, dry_run=args.dry_run)
-                    if new_guid:
-                        have_guids.add(new_guid)
+        with contextlib.nullcontext() if args.test_urls else \
+             cvmfs_transaction(args.cvmfs_repository, dry_run=args.dry_run):
+            for lineno0, ccdb_url in enumerate(map(str.strip, args.ccdb_urls_file)):
+                if not ccdb_url or ccdb_url.startswith("#"):
+                    continue
+                if args.test_urls:
+                    ok &= test_object(session, args.ccdb_urls_file.name,
+                                      lineno0 + 1, ccdb_url)
+                    continue
+                new_guid = store_object(ccdb_url, session, cvmfs_prefix,
+                                        have_guids, dry_run=args.dry_run)
+                if new_guid:
+                    have_guids.add(new_guid)
+    if args.test_urls and not ok:
+        return 1
+    return 0
 
 
 def store_object(ccdb_url: str,
@@ -143,6 +154,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("-n", "--dry-run", action="store_true",
                         help="do not update CVMFS, only show what would be done")
+    parser.add_argument("-t", "--test-urls", action="store_true",
+                        help="only perform sanity checks on URLs in URLS_FILE")
     parser.add_argument("--cvmfs-repository", default="alice.cern.ch",
                         help="use a different CVMFS repository, assumed to be "
                         "present under /cvmfs (default %(default)s)")
@@ -156,5 +169,42 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def test_object(session: requests.Session, filename: str, lineno: int,
+                ccdb_url: str) -> bool:
+    """Perform sanity checks on the given URL. Useful for GitHub Actions."""
+    def error(title, message):
+        LOG.error("%s:%d: %s: %s", filename, lineno, title, message)
+        print(f"::error file={filename},line={lineno},title={title}::{message}")
+
+    if not re.match(r"^https?://alice-ccdb\.cern\.ch/", ccdb_url):
+        error("Invalid URL",
+              "URLs should start with http[s]://alice-ccdb.cern.ch/")
+        return False
+
+    with session.head(ccdb_url) as resp:
+        LOG.debug("HEAD %s returned HTTP %d", ccdb_url, resp.status_code)
+        if resp.status_code != requests.codes.SEE_OTHER:
+            error("Unexpected return code",
+                  f"CCDB replied with HTTP {resp.status_code}, but 303 was "
+                  "expected. Make sure you have the right URL (e.g. not a "
+                  "/browse/ page).")
+            return False
+        locations = resp.headers.get("Content-Location", "").split(", ")
+    LOG.debug("Content-Locations for %s: %r", ccdb_url, locations)
+
+    ok = True
+    if not any(loc.startswith("http://") for loc in locations):
+        error("No http:// location",
+              "CCDB returned no HTTP location for this object, so we cannot "
+              "download it.")
+        ok = False
+    if not any(loc.startswith(ALIEN_REWRITE_PREFIX) for loc in locations):
+        error("No suitable alien:// location",
+              "CCDB returned no suitable AliEn location for this object. "
+              "This is needed to calculate the correct path on CVMFS.")
+        ok = False
+    return ok
+
+
 if __name__ == "__main__":
-    main(parse_args())
+    sys.exit(main(parse_args()))

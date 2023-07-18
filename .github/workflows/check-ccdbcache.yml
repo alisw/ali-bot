@@ -1,0 +1,34 @@
+---
+# Check commits and incoming PRs that change the file declaring CCDB URLs to
+# cache on CVMFS.
+name: Check CCDB cache file
+
+'on':
+  push:
+    paths:
+      - publish/cache-ccdb-objects.txt
+  pull_request:
+    paths:
+      - publish/cache-ccdb-objects.txt
+    types:
+      - opened
+      - reopened
+      - edited
+      - ready_for_review
+      - synchronize
+
+permissions: {}
+
+jobs:
+  urls:
+    name: check CCDB URLs
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install prerequisites
+        run: python3 -m pip install requests
+
+      - name: Check CCDB URLs
+        run: publish/cache-ccdb --test-urls publish/cache-ccdb-objects.txt
