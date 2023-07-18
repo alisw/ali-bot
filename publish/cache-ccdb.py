@@ -40,7 +40,7 @@ def store_object(ccdb_url: str,
                  session: requests.Session,
                  cvmfs_prefix: pathlib.Path,
                  have_guids: typing.Iterable[str],
-                 *, dry_run: bool) -> str | None:
+                 *, dry_run: bool) -> 'str | None':
     """Fetch the given object from CCDB if needed and store it in CVMFS.
 
     If we already have the GUID that the given CCDB_URL points to (i.e., it is
