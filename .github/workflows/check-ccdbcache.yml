@@ -21,7 +21,7 @@ permissions: {}
 
 jobs:
   urls:
-    name: check CCDB URLs
+    name: CCDB URLs
     runs-on: ubuntu-latest
 
     steps:
