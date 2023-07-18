@@ -20,11 +20,13 @@ elif [[ -d /cvmfs/alice-test.cern.ch ]]; then
 elif [[ -d /cvmfs/alice-nightlies.cern.ch ]]; then
   CONF=aliPublish-nightlies.conf
   CMD=sync-cvmfs
+  PUB_CCDB=1
   PUB_DATA=1
   PUB_CERT=1
   export PATH=$HOME/opt/bin:$PATH
 elif [[ -d /cvmfs/alice.cern.ch ]]; then
   CMD=sync-cvmfs
+  PUB_CCDB=1
   PUB_DATA=1
   PUB_CERT=1
   export PATH=$HOME/opt/bin:$PATH
@@ -74,6 +76,12 @@ pushd $DEST/publish
                $CMD                                \
                2>&1 | tee -a $LOG.error
   [[ ${PIPESTATUS[0]} == 0 ]] || ERR="$ERR packages"
+
+  # CCDB caching
+  if [[ $PUB_CCDB == 1 ]]; then
+    ./cache-ccdb.py 2>&1 | tee -a "$LOG.error"
+    [[ ${PIPESTATUS[0]} == 0 ]] || ERR="$ERR ccdb"
+  fi
 
   # Data publisher (e.g. OADB)
   if [[ $PUB_DATA == 1 ]]; then
