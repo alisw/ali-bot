@@ -79,7 +79,7 @@ pushd $DEST/publish
 
   # CCDB caching
   if [[ $PUB_CCDB == 1 ]]; then
-    ./cache-ccdb.py 2>&1 | tee -a "$LOG.error"
+    ./cache-ccdb.py cache-ccdb-objects.txt 2>&1 | tee -a "$LOG.error"
     [[ ${PIPESTATUS[0]} == 0 ]] || ERR="$ERR ccdb"
   fi
 

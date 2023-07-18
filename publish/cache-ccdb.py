@@ -149,10 +149,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cvmfs-path", default="ccdb",
                         help="specify the path inside the CVMFS repository to "
                         "use; will be created if needed (default %(default)s)")
-    parser.add_argument("ccdb_urls_file", metavar="URLS_FILE", nargs="?",
+    parser.add_argument("ccdb_urls_file", metavar="URLS_FILE",
                         type=argparse.FileType("r"),
-                        default=(pathlib.Path(__file__).parent /
-                                 "cache-ccdb-objects.txt"),
                         help="file declaring CCDB objects to store in CVMFS, "
                         "one URL per line (default %(default)s)")
     return parser.parse_args()
