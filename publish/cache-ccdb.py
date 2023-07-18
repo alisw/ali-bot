@@ -87,11 +87,11 @@ def store_object(ccdb_url: str,
             return None
         # Now fetch the actual data and store it in CVMFS.
         with session.get(download_url, stream=True) as obj_resp:
-            if dry_run and obj_resp.ok():
+            if dry_run and obj_resp.status_code == requests.codes.OK:
                 LOG.info("fetched %s OK (%s; %s bytes); CVMFS not changed",
                          ccdb_url, cvmfs_path,
                          obj_resp.headers.get("Content-Length", "<unknown>"))
-            elif obj_resp.ok():
+            elif obj_resp.status_code == requests.codes.OK:
                 cvmfs_path.parent.mkdir(parents=True, exist_ok=True)
                 with cvmfs_path.open("wb") as out_file:
                     for block in obj_resp.iter_content():
