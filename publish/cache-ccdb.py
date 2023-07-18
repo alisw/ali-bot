@@ -12,6 +12,7 @@ import contextlib
 import logging
 import pathlib
 import subprocess
+import sys
 import typing
 import requests
 
@@ -22,6 +23,10 @@ ALIEN_REWRITE_PREFIX = "alien:///alice/data/CCDB/"
 def main(args: argparse.Namespace) -> None:
     """Script entry point."""
     LOG.setLevel(logging.DEBUG)
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+    handler.setLevel(logging.DEBUG)
+    LOG.addHandler(handler)
     cvmfs_prefix = pathlib.Path("/cvmfs") / args.cvmfs_repository / args.cvmfs_path
     # We expect files to be named after their CCDB GUIDs. Paths may be
     # arbitrarily deep.
