@@ -31,4 +31,4 @@ jobs:
         run: python3 -m pip install requests
 
       - name: Check CCDB URLs
-        run: publish/cache-ccdb --test-urls publish/cache-ccdb-objects.txt
+        run: publish/cache-ccdb.py --test-urls publish/cache-ccdb-objects.txt
