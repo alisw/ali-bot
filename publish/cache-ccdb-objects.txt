@@ -1,1 +1,4 @@
+# Syntax of this file: one URL per line. Empty lines and comments are ignored.
+# Comments start with a "#" and can be on their own lines or after URLs.
+
 http://alice-ccdb.cern.ch/GLO/Param/MatLUT/1672531199000

@@ -36,8 +36,10 @@ def main(args: argparse.Namespace) -> int:
     with requests.Session() as session:
         with contextlib.nullcontext() if args.test_urls else \
              cvmfs_transaction(args.cvmfs_repository, dry_run=args.dry_run):
-            for lineno0, ccdb_url in enumerate(map(str.strip, args.ccdb_urls_file)):
-                if not ccdb_url or ccdb_url.startswith("#"):
+            for lineno0, ccdb_url in enumerate(args.ccdb_urls_file):
+                comment_start = ccdb_url.find("#")
+                ccdb_url = ccdb_url[:comment_start].strip()
+                if not ccdb_url:
                     continue
                 if args.test_urls:
                     ok &= test_object(session, args.ccdb_urls_file.name,
