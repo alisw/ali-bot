@@ -50,9 +50,7 @@ def main(args: argparse.Namespace) -> int:
                                         have_guids, dry_run=args.dry_run)
                 if new_guid:
                     have_guids.add(new_guid)
-    if args.test_urls and not ok:
-        return 1
-    return 0
+    return 0 if ok else 1
 
 
 def store_object(ccdb_url: str,
@@ -174,7 +172,11 @@ def parse_args() -> argparse.Namespace:
 
 def test_object(session: requests.Session, filename: str, lineno: int,
                 ccdb_url: str) -> bool:
-    """Perform sanity checks on the given URL. Useful for GitHub Actions."""
+    """Perform sanity checks on the given URL.
+
+    If a check fails, print a GitHub Actions-compatible error message and
+    return False. Return True if everything passed.
+    """
     def error(title, message):
         LOG.error("%s:%d: %s: %s", filename, lineno, title, message)
         print(f"::error file={filename},line={lineno},title={title}::{message}")
@@ -186,24 +188,22 @@ def test_object(session: requests.Session, filename: str, lineno: int,
     with session.head(ccdb_url) as resp:
         LOG.debug("HEAD %s returned HTTP %d", ccdb_url, resp.status_code)
         if resp.status_code != requests.codes.SEE_OTHER:
-            error("Unexpected return code",
-                  f"CCDB replied with HTTP {resp.status_code}, but 303 was "
-                  "expected. Make sure you have the right URL (e.g. not a "
-                  "/browse/ page).")
+            error("Unexpected return code", "CCDB replied with HTTP "
+                  f"{resp.status_code}, but 303 was expected. Make sure the "
+                  "URL points to an object, not a download or browse page.")
             return False
         locations = resp.headers.get("Content-Location", "").split(", ")
     LOG.debug("Content-Locations for %s: %r", ccdb_url, locations)
 
     ok = True
     if not any(loc.startswith("http://") for loc in locations):
-        error("No http:// location",
-              "CCDB returned no HTTP location for this object, so we cannot "
-              "download it.")
+        error("No http:// location", "CCDB returned no HTTP location for this "
+              "object, so we cannot download it.")
         ok = False
     if not any(loc.startswith(ALIEN_REWRITE_PREFIX) for loc in locations):
-        error("No suitable alien:// location",
-              "CCDB returned no suitable AliEn location for this object. "
-              "This is needed to calculate the correct path on CVMFS.")
+        error("No suitable alien:// location", "CCDB returned no suitable "
+              "AliEn location for this object. This is needed to calculate "
+              "the correct path on CVMFS.")
         ok = False
     return ok
 
