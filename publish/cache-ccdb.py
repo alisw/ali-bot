@@ -11,7 +11,6 @@ import argparse
 import contextlib
 import logging
 import pathlib
-import re
 import subprocess
 import sys
 import typing
@@ -180,9 +179,8 @@ def test_object(session: requests.Session, filename: str, lineno: int,
         LOG.error("%s:%d: %s: %s", filename, lineno, title, message)
         print(f"::error file={filename},line={lineno},title={title}::{message}")
 
-    if not re.match(r"^https?://alice-ccdb\.cern\.ch/", ccdb_url):
-        error("Invalid URL",
-              "URLs should start with http[s]://alice-ccdb.cern.ch/")
+    if not ccdb_url.startswith("http://alice-ccdb.cern.ch/"):
+        error("Invalid URL", "URLs must start with http://alice-ccdb.cern.ch/")
         return False
 
     with session.head(ccdb_url) as resp:
