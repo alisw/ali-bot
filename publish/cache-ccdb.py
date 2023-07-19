@@ -38,7 +38,9 @@ def main(args: argparse.Namespace) -> int:
              cvmfs_transaction(args.cvmfs_repository, dry_run=args.dry_run):
             for lineno0, ccdb_url in enumerate(args.ccdb_urls_file):
                 comment_start = ccdb_url.find("#")
-                ccdb_url = ccdb_url[:comment_start].strip()
+                if comment_start != -1:
+                    ccdb_url = ccdb_url[:comment_start]
+                ccdb_url = ccdb_url.strip()
                 if not ccdb_url:
                     continue
                 if args.test_urls:
