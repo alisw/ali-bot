@@ -114,10 +114,15 @@ done
 # Select build directory in order to prevent conflicts and allow for cleanups.
 workarea=$(mktemp -d "$PWD/daily-tags.XXXXXXXXXX")
 
+# NOMAD_CPU_CORES is of the form "0-2,7,12-14". Get the total number of
+# assigned cores from that (i.e. 7 cores in the example).
+: "${JOBS:=$(echo "$NOMAD_CPU_CORES" | tr , '\n' | awk -F- '/^./{num_cores += $2 ? 1 + $2 - $1 : 1} END{print num_cores}')}"
+: "${JOBS:=$(nproc)}"  # potentially dangerous on machines with other jobs running, so try getting Nomad allocation first
+
 # Define aliBuild args once, so that we have (mostly) the same args for
 # templating and the real build.
 alibuild_args=(
-  --debug --work-dir "$workarea" --jobs "${JOBS:-8}"
+  --debug --work-dir "$workarea" --jobs "$JOBS"
   --reference-sources mirror
   ${ARCHITECTURE:+--architecture "$ARCHITECTURE"}
   ${DEFAULTS:+--defaults "$DEFAULTS"}
