@@ -285,7 +285,7 @@ def build_dist_manifest(s3c, bucket, store_tarballs, dir_name, read_only):
         LOG.info("found existing manifest %s", manifest)
         with gzip.open(manifest_object, "rb") as gzip_file:
             for i, line in enumerate(gzip_file):
-                link_key, sep, target = line.partition("\t")
+                link_key, sep, target = line.decode("utf-8").partition("\t")
                 if sep and link_key and target:
                     cached_symlinks[link_key] = target.rstrip("\n")
                 else:
