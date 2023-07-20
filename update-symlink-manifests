@@ -219,8 +219,7 @@ def build_package_manifest(s3c, bucket, package, read_only):
     else:
         LOG.info("writing %d records (%d bytes) to %s",
                  len(symlinks), len(content), manifest)
-        s3c.put_object(Bucket=bucket, Key=manifest,
-                       Body=content.encode("utf-8"))
+        put_object(s3c, bucket, manifest, content.encode("utf-8"))
 
 
 def get_dist_symlinks_for_package(s3c, bucket, package_path, store_tarballs):
@@ -345,7 +344,7 @@ def build_dist_manifest(s3c, bucket, store_tarballs, dir_name, read_only):
         LOG.info("writing %d records (%d bytes compressed) to %s",
                  len(complete_symlinks), buffer.tell(), manifest)
         buffer.seek(0)   # let put_object read the whole thing
-        s3c.put_object(Bucket=bucket, Key=manifest, Body=buffer)
+        put_object(s3c, bucket, manifest, buffer)
 
 
 def read_object(s3c, bucket, key):
@@ -377,6 +376,12 @@ def list_files(s3c, bucket, prefix, *, recursive=False):
             Bucket=bucket, Prefix=prefix, **args):
         for item in page.get("Contents", ()):
             yield item["Key"]
+
+
+def put_object(s3c, bucket, key, contents):
+    """Write an object to S3 at the given key."""
+    LOG.log(LOG_TRACE, "put_object(%r)", key)
+    s3c.put_object(Bucket=bucket, Key=key, Body=contents)
 
 
 def create_s3_client(endpoint_url):
