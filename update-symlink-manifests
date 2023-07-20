@@ -142,7 +142,6 @@ def main(args):
     # "quit" sentinel off the queue.
     for _ in workers:
         req_queue.put(("quit", None))
-    req_queue.join()
     for worker in workers:
         worker.join()
 
