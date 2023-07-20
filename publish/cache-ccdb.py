@@ -69,6 +69,9 @@ def main(args: argparse.Namespace) -> int:
     else:
         if args.test_urls:
             pass
+        elif args.dry_run and not new_objects:
+            # We mustn't create too many transactions, so abort empty ones.
+            LOG.debug("would abort transaction as there is nothing to publish")
         elif args.dry_run:
             LOG.debug("would publish CVMFS transaction")
         elif not new_objects:
