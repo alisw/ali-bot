@@ -241,18 +241,16 @@ def get_dist_symlinks_for_package(s3c, bucket, package_path, store_tarballs):
     package_and_version = os.path.basename(package_path.rstrip("/"))
     main_tar_name = f"{package_and_version}.{arch}.tar.gz"
     if main_tar_name not in map(os.path.basename, store_tarballs):
-        LOG.warning("rejected dist symlinks in %s due to incomplete "
-                    "upload: main tarball not in store: %s",
-                    package_path, main_tar_name)
+        LOG.info("rejected dist symlinks in %s due to incomplete upload: "
+                 "main tarball not in store: %s", package_path, main_tar_name)
         return {}
 
     LOG.debug("directory %s not yet cached; listing...", package_path)
     symlink_keys = frozenset(list_files(s3c, bucket, package_path))
 
     if package_path + main_tar_name not in symlink_keys:
-        LOG.warning("rejected dist symlinks in %s due to incomplete "
-                    "upload: main tarball not in dist directory: %s",
-                    package_path, package_path + main_tar_name)
+        LOG.info("rejected dist symlinks in %s due to incomplete upload: main "
+                 "tarball not found here: %s", package_path, main_tar_name)
         return {}
 
     # Fetch symlink targets.
@@ -329,9 +327,10 @@ def build_dist_manifest(s3c, bucket, store_tarballs, dir_name, read_only):
             symlinks = get_dist_symlinks_for_package(
                 s3c, bucket, package_version_path, store_tarballs,
             )
-            LOG.debug("adding %d safe new dist symlinks from %s",
-                      len(symlinks), package_version_path)
-            new_symlinks.extend(symlinks.items())
+            if symlinks:
+                LOG.debug("adding %d safe new dist symlinks from %s",
+                          len(symlinks), package_version_path)
+                new_symlinks.extend(symlinks.items())
 
     if not new_symlinks:
         LOG.debug("no new symlinks for %s; skipping upload", manifest)
