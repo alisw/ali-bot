@@ -293,6 +293,7 @@ def build_dist_manifest(s3c, bucket, store_tarballs, dir_name, read_only):
     # First, fetch the existing manifest (if any) for this package.
     cached_symlinks = {}
     try:
+        LOG.log(LOG_TRACE, "get_object(%r)", manifest)
         manifest_object = s3c.get_object(Bucket=bucket, Key=manifest)["Body"]
     except botocore.exceptions.ClientError as err:
         # Treat a missing manifest like an empty one; i.e., use only the
