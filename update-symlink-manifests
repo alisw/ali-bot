@@ -198,9 +198,13 @@ def build_package_manifest(s3c, bucket, package, read_only):
         if not linkpath.endswith(".tar.gz"):
             LOG.warning("rejected symlink: not a tarball: %s", linkpath)
             continue
+        linkname = os.path.basename(linkpath)
+        if linkname in symlinks:
+            LOG.debug("symlink already cached; not re-reading: %s", linkpath)
+            continue
         target = read_object(s3c, bucket, linkpath).rstrip("\r\n")
         LOG.log(LOG_TRACE, "read symlink: %s -> %s", link_key, target)
-        symlinks[os.path.basename(linkpath)] = target
+        symlinks[linkname] = target
 
     # Now write out the new manifest.
     # We must have a trailing newline at the end of the content, so that
@@ -226,18 +230,24 @@ def get_dist_symlinks_for_package(s3c, bucket, package_path, store_tarballs):
     """
     _, arch, *_ = package_path.split("/")
 
-    LOG.debug("directory %s not yet cached; listing...", package_path)
-    symlink_keys = frozenset(list_files(s3c, bucket, package_path))
-
     # Prune dist directories where we don't have a symlink to
     # the package itself, which indicates that the set of symlinks
     # is incomplete. aliBuild is probably still uploading it.
     package_and_version = os.path.basename(package_path.rstrip("/"))
-    main_tar_name = f"{package_path}{package_and_version}.{arch}.tar.gz"
-    if main_tar_name not in symlink_keys:
+    main_tar_name = f"{package_and_version}.{arch}.tar.gz"
+    if main_tar_name not in map(os.path.basename, store_tarballs):
         LOG.warning("rejected dist symlinks in %s due to incomplete "
-                    "upload: main tarball not present: %s",
+                    "upload: main tarball not in store: %s",
                     package_path, main_tar_name)
+        return {}
+
+    LOG.debug("directory %s not yet cached; listing...", package_path)
+    symlink_keys = frozenset(list_files(s3c, bucket, package_path))
+
+    if package_path + main_tar_name not in symlink_keys:
+        LOG.warning("rejected dist symlinks in %s due to incomplete "
+                    "upload: main tarball not in dist directory: %s",
+                    package_path, package_path + main_tar_name)
         return {}
 
     # Fetch symlink targets.
@@ -297,6 +307,8 @@ def build_dist_manifest(s3c, bucket, store_tarballs, dir_name, read_only):
         LOG.debug("%s: found %d records", manifest, len(cached_symlinks))
 
     cached_directories = frozenset(map(os.path.dirname, cached_symlinks))
+    LOG.debug("found %d already-cached directories in %s",
+              len(cached_directories), manifest)
 
     # Look for directories of symlinks that we haven't seen before and
     # add them to the cache.
@@ -304,7 +316,9 @@ def build_dist_manifest(s3c, bucket, store_tarballs, dir_name, read_only):
     for package_path in list_subdirs(s3c, bucket, dir_name):
         for package_version_path in list_subdirs(s3c, bucket, package_path):
             # If we've cached this subdirectory before, skip it.
-            if package_path.rstrip("/") in cached_directories:
+            if package_version_path.rstrip("/") in cached_directories:
+                LOG.debug("directory %s already cached; skipping",
+                          package_version_path)
                 continue
             symlinks = get_dist_symlinks_for_package(
                 s3c, bucket, package_version_path, store_tarballs,
