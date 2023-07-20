@@ -8,10 +8,9 @@ speed-up. This also reduces the load on CCDB.
 """
 
 import argparse
-import contextlib
 import logging
 import pathlib
-import subprocess
+from subprocess import check_call
 import sys
 import typing
 import requests
@@ -31,10 +30,17 @@ def main(args: argparse.Namespace) -> int:
     # We expect files to be named after their CCDB GUIDs. Paths may be
     # arbitrarily deep.
     have_guids = {f.name for f in cvmfs_prefix.glob("**/????????-????-????-????-????????????")}
+    new_objects = False
     ok = True
-    with requests.Session() as session:
-        with contextlib.nullcontext() if args.test_urls else \
-             cvmfs_transaction(args.cvmfs_repository, dry_run=args.dry_run):
+    if args.test_urls:
+        pass
+    elif args.dry_run:
+        LOG.debug("would open CVMFS transaction")
+    else:
+        LOG.debug("opening CVMFS transaction")
+        check_call(("cvmfs_server", "transaction", args.cvmfs_repository))
+    try:
+        with requests.Session() as session:
             for lineno0, ccdb_url in enumerate(args.ccdb_urls_file):
                 comment_start = ccdb_url.find("#")
                 if comment_start != -1:
@@ -49,7 +55,29 @@ def main(args: argparse.Namespace) -> int:
                 new_guid = store_object(ccdb_url, session, cvmfs_prefix,
                                         have_guids, dry_run=args.dry_run)
                 if new_guid:
+                    new_objects = True
                     have_guids.add(new_guid)
+    except Exception as exc:
+        if args.test_urls:
+            pass
+        elif args.dry_run:
+            LOG.fatal("would abort CVMFS transaction due to:", exc_info=exc)
+        else:
+            LOG.fatal("aborting CVMFS transaction due to:", exc_info=exc)
+            check_call(("cvmfs_server", "abort", "-f", args.cvmfs_repository))
+        raise
+    else:
+        if args.test_urls:
+            pass
+        elif args.dry_run:
+            LOG.debug("would publish CVMFS transaction")
+        elif not new_objects:
+            # We mustn't create too many transactions, so abort empty ones.
+            LOG.debug("aborting transaction as there is nothing to publish")
+            check_call(("cvmfs_server", "abort", "-f", args.cvmfs_repository))
+        else:
+            LOG.debug("publishing CVMFS transaction")
+            check_call(("cvmfs_server", "publish", args.cvmfs_repository))
     return 0 if ok else 1
 
 
@@ -122,32 +150,6 @@ def store_object(ccdb_url: str,
         LOG.error("unhandled status code %d from CCDB for %s; skipping",
                   status_code, ccdb_url)
     return None
-
-
-@contextlib.contextmanager
-def cvmfs_transaction(repository: str, *, dry_run: bool = False) \
-        -> typing.Iterator[None]:
-    """Context manager to wrap code in a CVMFS transaction."""
-    if dry_run:
-        LOG.debug("would open CVMFS transaction")
-    else:
-        LOG.debug("opening CVMFS transaction")
-        subprocess.check_call(("cvmfs_server", "transaction", repository))
-    try:
-        yield    # run the contents of the "with:" block now
-    except Exception as exc:
-        if dry_run:
-            LOG.fatal("would abort CVMFS transaction due to:", exc_info=exc)
-        else:
-            LOG.fatal("aborting CVMFS transaction due to:", exc_info=exc)
-            subprocess.check_call(("cvmfs_server", "abort", "-f", repository))
-        raise
-    else:
-        if dry_run:
-            LOG.debug("would publish CVMFS transaction")
-        else:
-            LOG.debug("publishing CVMFS transaction")
-            subprocess.check_call(("cvmfs_server", "publish", repository))
 
 
 def parse_args() -> argparse.Namespace:
