@@ -189,6 +189,7 @@ def build_package_manifest(s3c, bucket, package, read_only):
         LOG.debug("%s: found %d records", manifest, len(symlinks))
 
     # Now go through the individual symlinks to fill out the new manifest.
+    have_changes = False
     for linkpath in list_files(s3c, bucket, package):
         if not os.path.basename(linkpath).startswith(
                 os.path.basename(package)):
@@ -205,6 +206,11 @@ def build_package_manifest(s3c, bucket, package, read_only):
         target = read_object(s3c, bucket, linkpath).rstrip("\r\n")
         LOG.log(LOG_TRACE, "read symlink: %s -> %s", link_key, target)
         symlinks[linkname] = target
+        have_changes = True
+
+    if not have_changes:
+        LOG.debug("no new symlinks for %s; skipping upload", manifest)
+        return
 
     # Now write out the new manifest.
     # We must have a trailing newline at the end of the content, so that
@@ -325,6 +331,10 @@ def build_dist_manifest(s3c, bucket, store_tarballs, dir_name, read_only):
             LOG.debug("adding %d safe new dist symlinks from %s",
                       len(symlinks), package_version_path)
             new_symlinks.extend(symlinks.items())
+
+    if not new_symlinks:
+        LOG.debug("no new symlinks for %s; skipping upload", manifest)
+        return
 
     complete_symlinks = new_symlinks + list(cached_symlinks.items())
     complete_symlinks.sort()
