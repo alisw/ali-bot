@@ -261,25 +261,18 @@ def get_dist_symlinks_for_package(s3c, bucket, package_path, store_tarballs):
             continue
         target = read_object(s3c, bucket, link_key).rstrip("\r\n")
         LOG.log(LOG_TRACE, "read symlink: %s -> %s", link_key, target)
+        if target.lstrip("./") not in store_tarballs:
+            # If any symlink's target isn't present in /store, aliBuild is
+            # probably still uploading the relevant tarballs, and we can't
+            # rely on this directory being complete. Skip it for now.
+            LOG.info("rejected dist symlinks in %s due to incomplete upload: "
+                     "target of %s -> %s not found in store",
+                     package_path, link_key, target)
+            return {}
         symlink_targets[link_key] = target
+
     LOG.debug("found %d new dist symlinks for %s",
               len(symlink_targets), package_path)
-
-    # If any symlink's target isn't present in /store, aliBuild is
-    # probably still uploading the relevant tarballs, and we can't
-    # rely on this directory being complete. Skip it for now.
-    dangling_symlinks = [
-        (link_key, target)
-        for link_key, target in symlink_targets.items()
-        if target.lstrip("./") not in store_tarballs
-    ]
-    if dangling_symlinks:
-        for link_key, target in dangling_symlinks:
-            LOG.warning("rejected dist symlinks in %s due to incomplete "
-                        "upload: target of %s -> %s not found in store",
-                        package_path, link_key, target)
-        return {}
-
     return symlink_targets
 
 
