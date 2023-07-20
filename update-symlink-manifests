@@ -87,9 +87,11 @@ def main(args):
     s3c = create_s3_client(args.s3_endpoint_url)
 
     LOG.debug("listing architectures...")
-    architectures = fnmatch.filter(
-        list_subdirs(s3c, args.s3_bucket, args.store_prefix),
-        args.architectures)
+    all_archs = [os.path.basename(arch_dir.rstrip("/"))
+                 for arch_dir in list_subdirs(s3c, args.s3_bucket,
+                                              args.store_prefix)]
+    LOG.debug("found architectures: %r", all_archs)
+    architectures = fnmatch.filter(all_archs, args.architectures)
     LOG.debug("found %d architectures matching pattern; listing stores...",
               len(architectures))
 
@@ -102,7 +104,8 @@ def main(args):
     store_tarballs = frozenset(
         tarball
         for arch in architectures
-        for tarball in list_files(s3c, args.s3_bucket, arch + "store/",
+        for tarball in list_files(s3c, args.s3_bucket,
+                                  args.store_prefix + arch + "/store/",
                                   recursive=True)
     )
     LOG.debug("found %d store tarballs in total", len(store_tarballs))
@@ -123,7 +126,8 @@ def main(args):
     # Loop through packages and their individual symlinks, and queue each
     # symlink for download.
     for arch in architectures:
-        for subdir in list_subdirs(s3c, args.s3_bucket, arch):
+        arch_path = args.store_prefix + arch + "/"
+        for subdir in list_subdirs(s3c, args.s3_bucket, arch_path):
             if subdir.endswith("/store/"):
                 LOG.debug("skipped store directory: %s", subdir)
             elif any(map(subdir.endswith, DIST_DIRS)):
