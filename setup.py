@@ -19,7 +19,12 @@ install_requires = ['PyGithub==1.45', 'argparse', 'requests', 'pytz', 's3cmd',
                     'pyyaml']
 # Old setuptools versions (which pip2 uses) don't support range comparisons
 # (like :python_version >= "3.6") in extras_require, so do this ourselves here.
-if sys.version_info >= (3, 6):
+if sys.version_info >= (3, 8):
+    # Older boto3 versions are incompatible with newer Python versions,
+    # specifically the newer urllib3 that comes with newer Python versions.
+    install_requires.append('boto3')
+elif sys.version_info >= (3, 6):
+    # This is the last version to support Python 3.6.
     install_requires.append('boto3==1.23.10')
 
 setup(
