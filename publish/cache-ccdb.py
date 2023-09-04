@@ -137,7 +137,7 @@ def store_object(ccdb_url: str,
             elif obj_resp.status_code == requests.codes.OK:
                 cvmfs_path.parent.mkdir(parents=True, exist_ok=True)
                 with cvmfs_path.open("wb") as out_file:
-                    for block in obj_resp.iter_content():
+                    for block in obj_resp.iter_content(None):
                         out_file.write(block)
                 LOG.info("successfully fetched %s => %s (%d bytes)",
                          ccdb_url, cvmfs_path, cvmfs_path.stat().st_size)
