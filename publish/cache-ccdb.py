@@ -139,8 +139,16 @@ def store_object(ccdb_url: str,
                 with cvmfs_path.open("wb") as out_file:
                     for block in obj_resp.iter_content(None):
                         out_file.write(block)
+                data_written = cvmfs_path.stat().st_size
+                if "Content-Length" in obj_resp.headers:
+                    content_length = int(obj_resp.headers["Content-Length"])
+                    if data_written != content_length:
+                        cvmfs_path.unlink(missing_ok=True)
+                        LOG.error("wrote %d bytes, but expected %d bytes",
+                                  data_written, content_length)
+                        return None
                 LOG.info("successfully fetched %s => %s (%d bytes)",
-                         ccdb_url, cvmfs_path, cvmfs_path.stat().st_size)
+                         ccdb_url, cvmfs_path, data_written)
                 # The filename is the GUID of the object we've just cached.
                 # Store it so we don't cache the same thing twice.
                 return cvmfs_path.name
