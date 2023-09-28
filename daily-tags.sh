@@ -117,7 +117,9 @@ workarea=$(mktemp -d "$PWD/daily-tags.XXXXXXXXXX")
 # Define aliBuild args once, so that we have (mostly) the same args for
 # templating and the real build.
 alibuild_args=(
-  --debug --work-dir "$workarea" --jobs "${JOBS:-8}"
+  --debug --work-dir "$workarea"
+  # JOBS is set by the Jenkins job, MAX_CORES is set by Nomad.
+  --jobs "${JOBS:-${MAX_CORES:-$(nproc)}}"
   --reference-sources mirror
   ${ARCHITECTURE:+--architecture "$ARCHITECTURE"}
   ${DEFAULTS:+--defaults "$DEFAULTS"}

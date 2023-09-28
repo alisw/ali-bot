@@ -128,16 +128,16 @@ case "$REMOTE_STORE" in
 esac
 
 FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
-aliBuild --reference-sources $MIRROR                    \
-         --debug                                        \
-         --work-dir $WORKAREA/$WORKAREA_INDEX           \
-         ${FETCH_REPOS:+--fetch-repos}                  \
-         --architecture $ARCHITECTURE                   \
-         --jobs ${JOBS:-16}                             \
-         ${REMOTE_STORE:+--remote-store $REMOTE_STORE}  \
-         ${DEFAULTS:+--defaults $DEFAULTS}              \
-         ${DISABLE:+--disable $DISABLE}                 \
-         build $PACKAGE_NAME || BUILDERR=$?
+aliBuild --reference-sources "$MIRROR"                    \
+         --debug                                          \
+         --work-dir "$WORKAREA/$WORKAREA_INDEX"           \
+         ${FETCH_REPOS:+--fetch-repos}                    \
+         --architecture "$ARCHITECTURE"                   \
+         --jobs "${JOBS:-${MAX_CORES:-$(nproc)}}"         \
+         ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}  \
+         ${DEFAULTS:+--defaults "$DEFAULTS"}              \
+         ${DISABLE:+--disable "$DISABLE"}                 \
+         build "$PACKAGE_NAME" || BUILDERR=$?
 
 for logf in "$WORKAREA/$WORKAREA_INDEX/BUILD"/*/*/*.log; do
   [ -e "$logf" ] || continue
