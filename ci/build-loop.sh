@@ -12,7 +12,6 @@ get_config
 ensure_vars CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS
 
 : "${WORKERS_POOL_SIZE:=1}" "${WORKER_INDEX:=0}" "${PR_REPO_CHECKOUT:=$(basename "$PR_REPO")}"
-[ -d /build/mirror ] && : "${MIRROR:=/build/mirror}"
 
 host_id=${NOMAD_SHORT_ALLOC_ID:-$(hostname -f)}
 
@@ -238,7 +237,6 @@ if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
      clean_env long_timeout aliBuild build "$PACKAGE"        \
      -j "${JOBS:-$(nproc)}" -z "$build_identifier"           \
      --defaults "$ALIBUILD_DEFAULTS"                         \
-     ${MIRROR:+--reference-sources "$MIRROR"}                \
      ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}         \
      -e ALIBOT_CI_NAME="$CI_NAME"                            \
      -e ALIBOT_CHECK_NAME="$CHECK_NAME"                      \

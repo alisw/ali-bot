@@ -5,7 +5,9 @@ pytz
 s3cmd
 pyyaml
 # This is the last boto3 version to support python3.6.
-boto3==1.23.10; python_version >= '3.6'
+boto3==1.23.10; python_version >= '3.6' and python_version < '3.8'
+# Newer Pythons need a newer boto3.
+boto3; python_version >= '3.8'
 Twisted[services]==18.9.0
 klein[services]
 python-ldap[services]

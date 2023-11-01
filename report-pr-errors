@@ -227,7 +227,7 @@ class Logs(object):
             future_context = 0
             first_match = True
             try:
-                with open(log, encoding='utf-8') as logf:
+                with open(log, encoding='utf-8', errors='replace') as logf:
                     for line in logf:
                         if re.search(regex, line):
                             # If this is the first match in this file, print
@@ -304,7 +304,7 @@ class Logs(object):
         else:
             # Get the last lines from the log for the package built last.
             try:
-                with open(self.all_logs[-1], encoding="utf-8") as logf:
+                with open(self.all_logs[-1], encoding="utf-8", errors="replace") as logf:
                     error_log_lines = logf.read().splitlines()[-self.limit:]
             except IndexError:
                 error_log_lines = ['No log files found']
@@ -326,7 +326,7 @@ class Logs(object):
             return 'block' if string else 'none'
 
         try:
-            with open(self.fetch_log, encoding='utf-8') as fetch_logf:
+            with open(self.fetch_log, encoding='utf-8', errors='replace') as fetch_logf:
                 fetch_log = fetch_logf.read()
         except OSError:
             fetch_log = ''
@@ -383,7 +383,7 @@ class Logs(object):
             # so this clause handles both.
             print("cannot create target dir:", err, file=sys.stderr)
 
-        with open(join("copy-logs", target_file), "w") as logf:
+        with open(join("copy-logs", target_file), "w", encoding="utf-8") as logf:
             print("Finished building on", platform.node(), "at",
                   datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S"),
                   file=logf)
@@ -411,7 +411,7 @@ class Logs(object):
                       sep="\n", file=logf)
             for log in self.all_logs:
                 print("## Begin", log, file=logf)
-                with open(log) as sublogf:
+                with open(log, encoding="utf-8", errors="replace") as sublogf:
                     logf.writelines(sublogf)
                 print("## End", log, file=logf)
 
