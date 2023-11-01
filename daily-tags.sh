@@ -115,9 +115,9 @@ done
 workarea=$(mktemp -d "$PWD/daily-tags.XXXXXXXXXX")
 
 # NOMAD_CPU_CORES is of the form "0-2,7,12-14". Get the total number of
-# assigned cores from that (i.e. 7 cores in the example).
-: "${JOBS:=$(echo "$NOMAD_CPU_CORES" | tr , '\n' | awk -F- '/^./{num_cores += $2 ? 1 + $2 - $1 : 1} END{print num_cores}')}"
-: "${JOBS:=$(nproc)}"  # potentially dangerous on machines with other jobs running, so try getting Nomad allocation first
+# assigned cores from that (i.e. 7 cores in the example). For some Nomad jobs,
+# we manually set MAX_CORES, so only assign to it if it's not already set.
+: "${MAX_CORES:=$(echo "$NOMAD_CPU_CORES" | tr , '\n' | awk -F- '/^./{num_cores += $2 ? 1 + $2 - $1 : 1} END{print num_cores}')}"
 
 # Define aliBuild args once, so that we have (mostly) the same args for
 # templating and the real build.
