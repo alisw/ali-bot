@@ -40,24 +40,22 @@ Package shipping essential configuration macros to build %scl Software Collectio
 %install
 %scl_install
 
-# There are currently no published RPMs for el9, so to avoid error messages
-# from "yum update", don't install the .repo files.
-#mkdir -p $RPM_BUILD_ROOT%_root_sysconfdir/yum.repos.d
-#cat > $RPM_BUILD_ROOT%_root_sysconfdir/yum.repos.d/alisw.repo <<EOF
-#[alisw]
-#name=ALICE Software - EL9
-#baseurl=https://s3.cern.ch/swift/v1/alibuild-repo/RPMS/el9.x86_64/
-#enabled=0
-#gpgcheck=0
-#EOF
-#
-#cat > $RPM_BUILD_ROOT%_root_sysconfdir/yum.repos.d/alisw-upd.repo <<EOF
-#[alisw-upd]
-#name=ALICE Software - EL9
-#baseurl=https://s3.cern.ch/swift/v1/alibuild-repo/UpdRPMS/el9.x86_64/
-#enabled=0
-#gpgcheck=0
-#EOF
+mkdir -p $RPM_BUILD_ROOT%_root_sysconfdir/yum.repos.d
+cat > $RPM_BUILD_ROOT%_root_sysconfdir/yum.repos.d/alisw.repo <<EOF
+[alisw]
+name=ALICE Software - EL9
+baseurl=https://s3.cern.ch/swift/v1/alibuild-repo/RPMS/el9.x86_64/
+enabled=0
+gpgcheck=0
+EOF
+
+cat > $RPM_BUILD_ROOT%_root_sysconfdir/yum.repos.d/alisw-upd.repo <<EOF
+[alisw-upd]
+name=ALICE Software - EL9
+baseurl=https://s3.cern.ch/swift/v1/alibuild-repo/UpdRPMS/el9.x86_64/
+enabled=0
+gpgcheck=0
+EOF
 
 mkdir -p %{buildroot}%{_scl_prefix}
 cat >> %{buildroot}%{_scl_scripts}/enable << EOF
@@ -75,8 +73,8 @@ mkdir -p %{buildroot}%{_mandir}/man7/
 
 %files runtime -f filelist
 %scl_files
-#%_root_sysconfdir/yum.repos.d/alisw-el8.repo
-#%_root_sysconfdir/yum.repos.d/alisw-upd-el8.repo
+%_root_sysconfdir/yum.repos.d/alisw.repo
+%_root_sysconfdir/yum.repos.d/alisw-upd.repo
 
 %files build
 %{_root_sysconfdir}/rpm/macros.%{scl}-config
