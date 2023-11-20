@@ -55,7 +55,11 @@ if [[ ! $NO_UPDATE ]]; then
   popd
 fi
 
-pip3 install --user -Ue "$DEST"
+venv=$(dirname "$DEST")/venv
+rm -rf "$venv"
+python3 -m venv "$venv"
+. "$venv/bin/activate"
+pip install -Ue "$DEST"
 
 ln -nfs $(basename $LOG.error) $PWD/log/latest
 CACHE=$PWD/cache
