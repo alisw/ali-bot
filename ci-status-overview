@@ -472,7 +472,7 @@ def main(args: argparse.Namespace) -> None:
         output = TextOutput(args.recent_hours)
     with Client(transport=RequestsHTTPTransport(url=API_URL, headers={
             'Authorization': 'bearer ' + os.environ['GITHUB_TOKEN'],
-    }), fetch_schema_from_transport=True) as session:
+    }), fetch_schema_from_transport=False) as session:
         output.document(session, get_all_checks(
             args.definitions_dir, args.roles, args.containers, args.repos,
             args.checks))
