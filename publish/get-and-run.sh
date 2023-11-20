@@ -63,7 +63,7 @@ venv=${NOMAD_TASK_DIR-$PWD}/venv
 rm -rf "$venv"
 python3 -m venv "$venv"
 . "$venv/bin/activate"
-pip install -Ue "$DEST"
+pip install -U "$DEST"
 
 ln -nfs "$(basename "$LOG.error")" "$logdir/latest"
 cachedir=${NOMAD_TASK_DIR-$PWD}/cache
