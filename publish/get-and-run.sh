@@ -70,7 +70,7 @@ cachedir=${NOMAD_TASK_DIR-$PWD}/cache
 mkdir -p "$cachedir"
 pushd $DEST/publish
 
-  echo "Running version $(git rev-parse HEAD)"
+  echo "Running version $(pip list --format freeze | grep ali-bot)"
   ERR=
 
   # Packages publisher
