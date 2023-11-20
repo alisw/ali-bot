@@ -10,7 +10,10 @@ NOTIFICATION_STATE_FILE=/tmp/publisher_notification_snoozer
 
 export LANG=C
 cd "$(dirname "$0")"
-if [[ -x /home/monalisa/bin/alien ]]; then
+if [ -n "$NOMAD_TASK_DIR" ] && [ -d "$NOMAD_TASK_DIR" ]; then
+  # We're running under Nomad, variables should be set by the job.
+  : "${CMD:?Please set CMD}" "${CONF:?Please set CONF}" "${NO_UPDATE=true}"
+elif [[ -x /home/monalisa/bin/alien ]]; then
   export PATH="/home/monalisa/bin:$PATH"
   CMD=sync-alien
   OVERRIDE='{"notification_email":{}}'
