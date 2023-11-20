@@ -13,6 +13,8 @@ cd "$(dirname "$0")"
 if [ -n "$NOMAD_TASK_DIR" ] && [ -d "$NOMAD_TASK_DIR" ]; then
   # We're running under Nomad, variables should be set by the job.
   : "${CMD:?Please set CMD}" "${CONF:?Please set CONF}" "${NO_UPDATE=true}"
+  # Under Nomad, we run publish/get-and-run.sh directly from the repo.
+  DEST=$(dirname "$(dirname "$0")")
 elif [[ -x /home/monalisa/bin/alien ]]; then
   export PATH="/home/monalisa/bin:$PATH"
   CMD=sync-alien
@@ -38,13 +40,12 @@ elif [[ -d /cvmfs ]]; then
 else
   false
 fi
-CMD="$CMD"
-DEST=ali-bot
-DRYRUN=${DRYRUN:-}
-[[ ! -e $DEST/.git ]] && git clone https://github.com/alisw/ali-bot $DEST
-mkdir -p log
-find log/ -type f -mtime +3 -delete || true
-LOG="$PWD/log/log-$(date -u +%Y%m%d-%H%M%S%z)"
+: "${CMD:?}" "${DEST=ali-bot}"
+[[ ! -e $DEST/.git ]] && git clone https://github.com/alisw/ali-bot "$DEST"
+logdir=${NOMAD_TASK_DIR-$PWD}/log
+mkdir -p "$logdir"
+find "$logdir" -type f -mtime +3 -delete || true
+LOG=$logdir/log-$(date -u +%Y%m%d-%H%M%S%z)
 
 # Export NO_UPDATE to prevent automatic updates
 if [[ ! $NO_UPDATE ]]; then
@@ -58,15 +59,15 @@ if [[ ! $NO_UPDATE ]]; then
   popd
 fi
 
-venv=$(dirname "$DEST")/venv
+venv=${NOMAD_TASK_DIR-$PWD}/venv
 rm -rf "$venv"
 python3 -m venv "$venv"
 . "$venv/bin/activate"
 pip install -Ue "$DEST"
 
-ln -nfs $(basename $LOG.error) $PWD/log/latest
-CACHE=$PWD/cache
-mkdir -p $CACHE
+ln -nfs "$(basename "$LOG.error")" "$logdir/latest"
+cachedir=${NOMAD_TASK_DIR-$PWD}/cache
+mkdir -p "$cachedir"
 pushd $DEST/publish
 
   echo "Running version $(git rev-parse HEAD)"
@@ -78,7 +79,7 @@ pushd $DEST/publish
                ${NO_NOTIF:+--no-notification}      \
                ${CONF:+--config "$CONF"}           \
                ${OVERRIDE:+--override "$OVERRIDE"} \
-               --cache-deps-dir $CACHE             \
+               --cache-deps-dir "$cachedir"        \
                --pidfile /tmp/aliPublish.pid       \
                $CMD                                \
                2>&1 | tee -a $LOG.error
@@ -144,8 +145,10 @@ else
   echo "All OK"
   mv -v $LOG.error $LOG
   rm -f "$NOTIFICATION_STATE_FILE"
-  ln -nfs $(basename $LOG) log/latest
+  ln -nfs "$(basename "$LOG")" "$logdir/latest"
 fi
 
 # Get new version of this script
-[[ -x $DEST/publish/get-and-run.sh ]] && cp -v $DEST/publish/get-and-run.sh .
+if [ -z "$NO_UPDATE" ] && [ -x "$DEST/publish/get-and-run.sh" ]; then
+  cp -v "$DEST/publish/get-and-run.sh" .
+fi
