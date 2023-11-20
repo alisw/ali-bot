@@ -152,3 +152,5 @@ fi
 if [ -z "$NO_UPDATE" ] && [ -x "$DEST/publish/get-and-run.sh" ]; then
   cp -v "$DEST/publish/get-and-run.sh" .
 fi
+
+[ -z "$ERR" ]   # exit with failure if any errors occurred
