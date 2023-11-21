@@ -94,8 +94,8 @@ try {
       '''
 
     stage "Create daily"
-    retry (2) {
-      timeout (240) {
+    timeout (480) {
+      retry (2) {
         withEnv(["START_TIMESTAMP=" + start_time.toString()]) {
           sh '''
               set -ex
