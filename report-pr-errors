@@ -360,7 +360,7 @@ class Logs(object):
                                        self.fst_task_timeout or
                                        self.fst_failed_command),
                 'hostname': htmlescape(platform.node()),
-                'finish_time': datetime.datetime.utcnow().strftime('%a %-d %b %Y, %H:%M:%S UTC'),
+                'finish_time': datetime.datetime.now().strftime('%a %-d %b %Y, %H:%M:%S %Z'),
                 'repo': self.pr_built.repo_name,
                 'pr_id': self.pr_built.id,
                 'commit': self.pr_built.commit,

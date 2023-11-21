@@ -30,7 +30,7 @@ from alibot_helpers.utilities import parse_env_file
 
 DEFAULTENV: Final[str] = 'DEFAULTS.env'
 TIMEFORMAT: Final[str] = '%Y-%m-%dT%H:%M:%SZ'
-NOW: Final[datetime] = datetime.utcnow()
+NOW: Final[datetime] = datetime.now()
 PR_URL_FMT: Final[str] = 'https://github.com/{repo}/pull/{pr}'
 API_URL: Final[str] = 'https://api.github.com/graphql'
 GET_PR_STATUSES_GRAPHQL: Final[DocumentNode] = gql('''\
