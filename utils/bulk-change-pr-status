@@ -13,7 +13,6 @@ from __future__ import print_function
 from argparse import ArgumentParser, Namespace
 from collections import defaultdict
 from datetime import datetime, timezone
-from os.path import expanduser
 from sys import stderr
 
 import alibot_helpers.github_utilities as ghutil
@@ -99,9 +98,8 @@ def process_pr(cgh, args, repo, pull):
 
 def main(args):
     '''Application entry point.'''
-    token = ghutil.github_token()
     cache = ghutil.PickledCache(args.github_cache_file)
-    with ghutil.GithubCachedClient(token=token, cache=cache) as cgh:
+    with ghutil.GithubCachedClient(cache=cache) as cgh:
         for repo in args.repo_name:
             for pull in cgh.get('/repos/{repo}/pulls', repo=repo):
                 process_pr(cgh, args, repo, pull)
@@ -132,7 +130,7 @@ def parse_args():
                         help=("don't clear statuses' result URLs, for "
                               'inspection of previous build results'))
     parser.add_argument('-C', '--github-cache-file', metavar='GHCACHE',
-                        default=expanduser('~/.github-cached-commits'),
+                        default=ghutil.PickledCache.default_cache_location(),
                         help='GitHub cache location; default %(default)s')
     parser.add_argument('-b', '--before', metavar='DATE', type=datetime.fromisoformat,
                         default=datetime.now(), dest='filter_before',

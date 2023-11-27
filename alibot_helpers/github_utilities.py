@@ -2,6 +2,7 @@
 from __future__ import print_function
 from collections import OrderedDict
 from hashlib import sha1
+import errno
 import inspect
 import os
 import json
@@ -12,6 +13,7 @@ import sys
 import requests
 
 from alibot_helpers.utilities import to_unicode
+
 
 def trace(func):
     """Simple function to trace enter and exit of a function/method
@@ -44,9 +46,9 @@ def trace(func):
             path += ':' + func.__name__ + '():'
         else:
             path = func.__module__ + '.' + func.__name__ + '():'
-        
+
         m = _(path)
-    
+
         if args:
             m += '{0} *args:\n'.format(len(args))
             m += examine(OrderedDict(zip(argspec.args, args)))
@@ -107,9 +109,17 @@ def pagination(cache_item, nextLink, api, self, stable_api):
 
 
 class PickledCache(object):
-    def __init__(self, filename):
+    def __init__(self, filename=None):
+        if filename is None:
+            filename = PickledCache.default_cache_location()
         self.filename = filename
         self.cache = OrderedDict()
+
+    @staticmethod
+    def default_cache_location():
+        """Return the default location for caching GitHub API data on disk."""
+        xdg_cache_dir = os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))
+        return os.path.join(xdg_cache_dir, "ali-bot", "commits.pickle")
 
     def __enter__(self):
         self.load()
@@ -141,6 +151,14 @@ class PickledCache(object):
         self.cache = OrderedDict()
 
     def dump(self, limit=1000):
+        try:
+            os.makedirs(os.path.dirname(self.filename))
+        except OSError as exc:
+            if exc.errno != errno.EEXIST:
+                print("Unable to create directory for ", self.filename, ": ",
+                      exc, sep="", file=sys.stderr)
+                return
+
         message = ""
         try:
             with open(self.filename, "wb") as f:
@@ -165,7 +183,11 @@ class PickledCache(object):
 
 
 class GithubCachedClient(object):
-    def __init__(self, token, cache, api="https://api.github.com"):
+    def __init__(self, token=None, cache=None, api="https://api.github.com"):
+        if token is None:
+            token = github_token()
+        if cache is None:
+            cache = PickledCache()
         self.token = token
         self.api = api
         self.cache = cache
@@ -317,6 +339,7 @@ def parseGithubRef(s):
     commit_ref = s.split("@")[1] if "@" in s else "master"
     pr_n = re.split("[@#]", s)[1] if "#" in s else None
     return (repo_name, pr_n, commit_ref)
+
 
 def setGithubStatus(cgh, args, debug_print=True):
     repo_name, _, commit_ref = parseGithubRef(args.commit)

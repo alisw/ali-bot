@@ -17,7 +17,7 @@ import shutil
 import sys
 import datetime
 
-from alibot_helpers.github_utilities import calculateMessageHash, github_token
+from alibot_helpers.github_utilities import calculateMessageHash
 from alibot_helpers.github_utilities import setGithubStatus, parseGithubRef
 from alibot_helpers.github_utilities import GithubCachedClient, PickledCache
 from alibot_helpers.utilities import to_unicode
@@ -127,7 +127,7 @@ def parse_args():
                         default="https://ali-ci.cern.ch/repo/logs",
                         help="Destination path for logs")
 
-    parser.add_argument("--github-cache-file", default=expanduser("~/.cached-commits"),
+    parser.add_argument("--github-cache-file", default=PickledCache.default_cache_location(),
                         help="Where to cache GitHub API responses (default %(default)s)")
 
     parser.add_argument("--debug", "-d",
@@ -538,8 +538,7 @@ def main():
     if not args.message and not args.pending:
         logs.parse()
 
-    cache = PickledCache(args.github_cache_file)
-    with GithubCachedClient(token=github_token(), cache=cache) as cgh:
+    with GithubCachedClient(cache=PickledCache(args.github_cache_file)) as cgh:
         # If the branch is not a PR, we should look for open issues
         # for the branch. This should really folded as a special case
         # of the PR case.
