@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools", "setuptools-scm"]
+requires = ["setuptools", "setuptools_scm[toml]"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = 'ali-bot'
-dynamic = ['readme']
+dynamic = ['readme', 'version']
 
 description = 'ALICE Multipurpose bot'
 authors = [
@@ -36,7 +36,6 @@ dependencies = [
   'boto3'
 ]
 
-version = "2.0.0"
 [project.optional-dependencies]
 services = [
   "Twisted==18.9.0",
@@ -52,8 +51,10 @@ ci = [
 utils = [
   "python-nomad"
 ]
+
 [project.urls]
 homepage = 'https://alisw.github.io/ali-bot'
+
 [scripts]
 # Continuous Integration
 set-github-status = {path = "set-github-status"}
