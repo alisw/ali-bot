@@ -227,14 +227,13 @@ fi
 build_identifier=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
 : "${build_identifier:=${CHECK_NAME//\//_}}"
 
-# o2checkcode needs the ALIBUILD_{HEAD,BASE}_HASH variables.
+# o2checkcode and O2DPG checks need the ALIBUILD_{HEAD,BASE}_HASH variables.
 # We need "--no-auto-cleanup" so that build logs for dependencies are kept, too.
 # For instance, when building O2FullCI, we want to keep the o2checkcode log, as
 # report-pr-errors looks for errors in it.
 # --docker-extra-args=... uses an equals sign as its arg can start with "--",
 # --which would confuse argparse if passed as a separate argument.
-if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
-     clean_env long_timeout aliBuild build "$PACKAGE"        \
+if clean_env long_timeout aliBuild build "$PACKAGE"          \
      -j "${JOBS:-$(nproc)}" -z "$build_identifier"           \
      --defaults "$ALIBUILD_DEFAULTS"                         \
      ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}         \
@@ -244,6 +243,8 @@ if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
      -e ALIBOT_PR_BRANCH="$PR_BRANCH"                        \
      -e "ALIBUILD_O2_TESTS=$ALIBUILD_O2_TESTS"               \
      -e "ALIBUILD_O2PHYSICS_TESTS=$ALIBUILD_O2PHYSICS_TESTS" \
+     -e "ALIBUILD_HEAD_HASH=$PR_HASH"                        \
+     -e "ALIBUILD_BASE_HASH=$base_hash"                      \
      ${jalien_token_cert:+-e "JALIEN_TOKEN_CERT=$jalien_token_cert"} \
      ${jalien_token_key:+-e "JALIEN_TOKEN_KEY=$jalien_token_key"} \
      ${use_docker:+-e GIT_CONFIG_COUNT=1}                    \
