@@ -293,7 +293,11 @@ class GithubCachedClient(object):
             return None
 
         if r.status_code == 403:
-            print("Forbidden", file=sys.stderr)
+            print("GitHub error: Forbidden. Check GITHUB_TOKEN.", file=sys.stderr)
+            return None
+
+        if r.status_code == 422:
+            print("GitHub error: Unprocessable Entity", file=sys.stderr)
             return None
 
         if r.status_code == 200:
@@ -322,8 +326,8 @@ class GithubCachedClient(object):
             self.cache.update({cacheKey: cacheValue})
             return cacheValue["payload"]
 
-        print(r.status_code)
-        assert(False)
+        print("Unknown response from GitHub:", r.status_code, file=sys.stderr)
+        raise NotImplementedError(r.status_code)
 
 
 def calculateMessageHash(message):
