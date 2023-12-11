@@ -1,18 +1,24 @@
 #!/bin/bash -ex
 set -ex
 
+substitute_vars () {
+  local value=$1
+  value=${value//!!FLPSUITE_LATEST!!/$flpsuite_latest}
+  value=${value//!!FLPSUITE_CURRENT!!/$flpsuite_current}
+  value=${value//!!ALIDIST_BRANCH!!/$ALIDIST_BRANCH}
+  LANG=C TZ=Europe/Zurich date -d "@$START_TIMESTAMP" "+$value"
+}
+
 edit_package_tag () {
   # Patch package definition (e.g. o2.sh) with a new tag and version, changing
   # the defaults as well if necessary.
   local package=$1 defaults=$2 tag=$3 version=$4
-  sed -E -i.old \
-      "s|^tag: .*\$|tag: \"$tag\"|; ${version:+s|^version: .*\$|version: \"$version\"|}" \
-      "alidist/${package,,}.sh"
+  sed -E -i.old "s|^tag: .*$|tag: \"$tag\"|; ${version:+"s|^version: .*\$|version: \"$version\"|"}" "alidist/${package,,}.sh"
 
   # Patch defaults definition (e.g. defaults-o2.sh)
   # Process overrides by changing in-place the given defaults. This requires
   # some YAML processing so we are better off with Python.
-  tag=$tag package=$package defaults=$defaults $PYTHON <<\EOF
+  package=$package defaults=$defaults tag=$tag version=$version $PYTHON <<\EOF
 import yaml
 from os import environ
 f = "alidist/defaults-%s.sh" % environ["defaults"].lower()
@@ -25,7 +31,7 @@ overrides = d.setdefault("overrides", {}).setdefault(p, {})
 if "tag" in overrides:
     overrides["tag"] = environ["tag"]
     write = True
-v = environ.get("AUTOTAG_OVERRIDE_VERSION")
+v = environ.get("version")
 if v and "version" in overrides:
     overrides["version"] = v
     write = True
@@ -103,12 +109,16 @@ if [ -n "$ALIDIST_OVERRIDE_BRANCH" ]; then (
 # Apply explicit tag overrides after possibly checking out the recipe from
 # ALIDIST_OVERRIDE_BRANCH to allow combining the two effects.
 for tagspec in $OVERRIDE_TAGS; do
-  tag=${tagspec#*=}
-  tag=${tag//!!FLPSUITE_LATEST!!/$flpsuite_latest}
-  tag=${tag//!!FLPSUITE_CURRENT!!/$flpsuite_current}
-  tag=${tag//!!ALIDIST_BRANCH!!/$ALIDIST_BRANCH}
-  tag=$(LANG=C TZ=Europe/Zurich date -d "@$START_TIMESTAMP" "+$tag")
-  edit_package_tag "${tagspec%%=*}" "$DEFAULTS" "$tag"
+  package=${tagspec%%=*}
+  # Find a matching version override for this package.
+  version=
+  for versionspec in $OVERRIDE_VERSIONS; do
+    if [ "${versionspec%%=*}" = "$package" ]; then
+      version=$(substitute_vars "${versionspec#*=}")
+      break
+    fi
+  done
+  edit_package_tag "$package" "$DEFAULTS" "$(substitute_vars "${tagspec#*=}")" "$version"
 done
 
 # Select build directory in order to prevent conflicts and allow for cleanups.
