@@ -1,0 +1,105 @@
+---
+# Notes on rule specifications:
+#
+# `delete' and `keep' regexes must NOT be anchored. They will be matched
+# against the complete version string, so use ".*" to match prefixes/suffixes.
+#
+# `delete_older_than' accepts keys like the Python datetime.timedelta()
+# constructor: weeks, days, hours, minutes, seconds, microseconds,
+# milliseconds.
+
+- architectures: [slc8_x86-64]
+  packages:
+    - O2PDPSuite
+    - O2
+    - O2Physics
+    - O2sim
+    - O2DPG
+    - DataDistribution
+    - QualityControl
+  # These packages were published as RPMs, so we must reserve their revision
+  # numbers by keeping symlinks and only deleting the main tarball.
+  delete_symlinks: false
+  delete:
+    # Delete all EPN tags from October 2023 or before.
+    - epn-2022.*
+    - epn-20230.*
+    - epn-202310.*
+    - 358bbf3602ec199cbae58c30e1964ed1d49c1716-1
+  keep:
+    # Keep the following O2PDPSuite versions and their dependencies.
+    # As of 2023-12-12, these are still in use on the EPNs.
+    - epn-20230810.1-DDv1.6.0-fix.1-flp-suite-v1.6.0-ROCm5.5.3-1
+    - epn-20230829.1-DDv1.6.1-flp-suite-v1.8.0-ODC-0.80.0-1
+    - epn-20230829.1-DDv1.6.0-fix.1-flp-suite-v1.8.0-ODC-0.80.0-1
+# Corresponding O2sim versions are named differently.
+- architectures: [slc8_x86-64]
+  packages:
+    - O2sim
+  delete:
+    - v202[0-9][0-9]{4}-[0-9]+
+# Some DD/QC packages have "tagged" versions, not nightly tags. These should
+# still be deleted after some time, to allow the deletion of old O2 nightlies.
+- architectures: [slc8_x86-64]
+  packages:
+    - DataDistribution
+    - QualityControl
+  # These packages were published as RPMs, so we must reserve their revision
+  # numbers by keeping symlinks and only deleting the main tarball.
+  delete_symlinks: false
+  delete_older_than:
+    days: 30
+
+# Old tags, announced cleanup in Dec 2022
+# nightly/nightly-gpu: Feb '21 - May '22
+# dataflow: May '21 - Jan '22
+- architectures: [slc8_x86-64]
+  packages:
+    - O2PDPSuite
+    - O2
+    - O2Physics
+    - O2sim
+    - O2DPG
+    - DataDistribution
+    - QualityControl
+  delete:
+    - nightly-2021(02|1[0-9])[0-9]{2}-(gpu-)?[0-9]+
+    - nightly-20220[1-5][0-9]{2}-(gpu-)?[0-9]+
+# Corresponding O2sim versions are named differently.
+- architectures: [slc8_x86-64]
+  packages: [O2sim]
+  delete:
+    - v2021(02|1[0-9])[0-9]{2}-[0-9]+
+    - v20220[1-5][0-9]{2}-[0-9]+
+
+- architectures: [slc7_aarch64]
+  packages:
+    - O2PDPSuite
+    - O2
+    - O2Physics
+    - O2sim
+    - O2DPG
+    - DataDistribution
+    - QualityControl
+  # We publish to CVMFS, so keep symlinks to reserve revision numbers.
+  delete_symlinks: false
+  delete_older_than:
+    days: 7
+
+- architectures:
+    - slc9_x86-64
+    - ubuntu2004_x86-64
+    - ubuntu2204_x86-64
+  packages:
+    - O2PDPSuite
+    - O2
+    - O2Physics
+    - O2sim
+    - O2DPG
+    - DataDistribution
+    - QualityControl
+  # On these platforms, we do not publish RPMs or CVMFS packages, so no need
+  # to keep old revision numbers around.
+  delete_symlinks: true
+  delete_older_than:
+    days: 7
