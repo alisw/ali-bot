@@ -12,31 +12,30 @@ substitute_vars () {
 edit_package_tag () {
   # Patch package definition (e.g. o2.sh) with a new tag and version, changing
   # the defaults as well if necessary.
-  local package=$1 defaults=$2 tag=$3 version=$4
-  sed -E -i.old "s|^tag: .*$|tag: \"$tag\"|; ${version:+"s|^version: .*\$|version: \"$version\"|"}" "alidist/${package,,}.sh"
+  local package=${1:?edit_package_tag: package not provided} defaults=${2:?edit_package_tag: defaults not provided} tag=$3 version=$4
+  [ -n "$tag$version" ] || return 0
+
+  sed -E -i "${tag:+"s|^tag: .*$|tag: \"$tag\"|;"} ${version:+"s|^version: .*\$|version: \"$version\"|"}" "alidist/${package,,}.sh"
 
   # Patch defaults definition (e.g. defaults-o2.sh)
   # Process overrides by changing in-place the given defaults. This requires
   # some YAML processing so we are better off with Python.
   package=$package defaults=$defaults tag=$tag version=$version $PYTHON <<\EOF
-import yaml
-from os import environ
-f = "alidist/defaults-%s.sh" % environ["defaults"].lower()
-p = environ["package"]
-meta, rest = open(f).read().split("\n---\n", 1)
+import os, yaml
+f = "alidist/defaults-%s.sh" % os.environ["defaults"].lower()
+with open(f, "r") as recipef:
+    meta, sep, rest = recipef.read().partition("\n---\n")
+assert sep, "could not parse defaults recipe in %s" % f
 d = yaml.safe_load(meta)
-open(f+".old", "w").write(yaml.dump(d)+"\n---\n"+rest)
 write = False
-overrides = d.setdefault("overrides", {}).setdefault(p, {})
-if "tag" in overrides:
-    overrides["tag"] = environ["tag"]
-    write = True
-v = environ.get("version")
-if v and "version" in overrides:
-    overrides["version"] = v
-    write = True
+overrides = d.setdefault("overrides", {}).setdefault(os.environ["package"], {})
+for key in ("tag", "version"):
+    if key in os.environ and key in overrides:
+        overrides[key] = os.environ[key]
+        write = True
 if write:
-    open(f, "w").write(yaml.dump(d)+"\n---\n"+rest)
+    with open(f, "w") as outf:
+        yaml.dump(d, f); outf.write(sep); outf.write(rest)
 EOF
 }
 
@@ -109,16 +108,10 @@ if [ -n "$ALIDIST_OVERRIDE_BRANCH" ]; then (
 # Apply explicit tag overrides after possibly checking out the recipe from
 # ALIDIST_OVERRIDE_BRANCH to allow combining the two effects.
 for tagspec in $OVERRIDE_TAGS; do
-  package=${tagspec%%=*}
-  # Find a matching version override for this package.
-  version=
-  for versionspec in $OVERRIDE_VERSIONS; do
-    if [ "${versionspec%%=*}" = "$package" ]; then
-      version=$(substitute_vars "${versionspec#*=}")
-      break
-    fi
-  done
-  edit_package_tag "$package" "$DEFAULTS" "$(substitute_vars "${tagspec#*=}")" "$version"
+  edit_package_tag "${tagspec%%=*}" "$DEFAULTS" "$(substitute_vars "${tagspec#*=}")" ''
+done
+for versionspec in $OVERRIDE_VERSIONS; do
+  edit_package_tag "${versionspec%%=*}" "$DEFAULTS" '' "$(substitute_vars "${versionspec#*=}")"
 done
 
 # Select build directory in order to prevent conflicts and allow for cleanups.
