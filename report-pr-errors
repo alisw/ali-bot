@@ -9,7 +9,7 @@ except ImportError:
 from collections import deque
 from fnmatch import fnmatch
 from glob import glob
-from os.path import dirname, join, expanduser, getmtime
+from os.path import dirname, join, getmtime
 import re
 import os
 import platform
@@ -17,9 +17,10 @@ import shutil
 import sys
 import datetime
 
-from alibot_helpers.github_utilities import calculateMessageHash
-from alibot_helpers.github_utilities import setGithubStatus, parseGithubRef
-from alibot_helpers.github_utilities import GithubCachedClient, PickledCache
+from alibot_helpers.github_utilities import (
+    calculateMessageHash, setGithubStatus, parseGithubRef, GithubCachedClient,
+    PickledCache,
+)
 from alibot_helpers.utilities import to_unicode
 
 # Allow uploading logs to S3
@@ -32,7 +33,7 @@ except ImportError:
 
 ERRORS_RE = re.compile(
     ': (\x1b\\[[0-9;]+m)?(internal compiler |fatal )?error:|^Error(:| in )|'
-    ' !!! \x1b\\[[0-9;]+mError - |'
+    '^ERROR: | !!! \x1b\\[[0-9;]+mError - |'
     r'ninja: build stopped: |make.*: \*\*\*|\[(ERROR|FATAL)\]')
 WARNINGS_RE = re.compile(
     ': warning:|^Warning: (?!Unused direct dependencies:$)|'
