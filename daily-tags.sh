@@ -35,7 +35,7 @@ for key in ("tag", "version"):
         write = True
 if write:
     with open(f, "w") as outf:
-        yaml.dump(d, f); outf.write(sep); outf.write(rest)
+        yaml.dump(d, outf); outf.write(sep); outf.write(rest)
 EOF
 }
 
