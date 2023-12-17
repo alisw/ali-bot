@@ -15,7 +15,7 @@ try {
   stage "Wait pull requests"
   if ("$WAIT_PR" == "true") {
     node ("slc7_x86-64-light") {
-      timeout (7200) {
+      timeout (240) {
         withEnv(["ALIBOT_SLUG=${ALIBOT_SLUG}",
                  "WAIT_PR_LIMIT=${WAIT_PR_LIMIT}",
                  "PACKAGES=${PACKAGES}"]) {
