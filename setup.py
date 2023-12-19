@@ -148,6 +148,8 @@ setup(
         "ci/process-pull-request-http.py",
         "ci/sync-egroups.py",
         "ci/sync-mapusers.py",
+        # S3 repo maintenance
+        "update-symlink-manifests",
         # Get PR information
         "ci/prinfo",
         # Resolve Mesos DNS

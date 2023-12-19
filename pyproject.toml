@@ -85,6 +85,8 @@ check-open-pr = {path = "ci/check-open-pr"}
 process-pull-request-http.py = {path = "ci/process-pull-request-http.py"}
 sync-egroups.py = {path = "ci/sync-egroups.py"}
 sync-mapusers.py = {path = "ci/sync-mapusers.py"}
+# S3 repo maintenance
+update-symlink-manifests = {path = "update-symlink-manifests"}
 # Get PR information
 prinfo = {path = "ci/prinfo"}
 # Resolve Mesos DNS
