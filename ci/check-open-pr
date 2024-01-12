@@ -9,10 +9,13 @@
 # we do not need to wait any longer.
 
 from __future__ import print_function
-from github import Github,GithubException
-import os, sys, pytz
-from datetime import datetime
 import json
+import os
+import sys
+from datetime import datetime
+import pytz
+from github import Github
+
 
 def utc_to_local(utc_dt):
   tz = pytz.timezone("Europe/Zurich")
@@ -53,25 +56,29 @@ for pull in gh.get_repo(repo_name).get_pulls():
   wait_for_build = True
   what_approved = None
 
-  # Collect statuses (review and required build checks). Beware, states are
-  # cumulative (state history is kept). We should only keep the first one per
-  # given context, the others are old!
-  for st in pull.base.repo.get_commit(pull.head.sha).get_statuses():
-    if st.context == "review" and not review:
-      review = st.state
-      what_approved = st.description
-    if st.context in checks and not st.context in build:
-      # This is one of the mandatory tests
-      build[st.context] = st.state
-      if st.state == "error":
-        wait_for_build = False
+  if pull.draft:
+    wait_for_build = False
+  else:
+    # Collect statuses (review and required build checks). Beware, states are
+    # cumulative (state history is kept). We should only keep the first one per
+    # given context, the others are old!
+    for st in pull.base.repo.get_commit(pull.head.sha).get_statuses():
+      if st.context == "review" and not review:
+        review = st.state
+        what_approved = st.description
+      if st.context in checks and st.context not in build:
+        # This is one of the mandatory tests
+        build[st.context] = st.state
+        if st.state == "error":
+          wait_for_build = False
 
-  # Take a decision. If we need to wait, exit from the program with nonzero
-  # Policy: we need all PRs to be:
-  #  * opened before the deadline,
-  #  * review == "success" with status == "merge approved" (not just testing)
-  #  * all build statuses must NOT be "error"
-  wait_for_build = (wait_for_build and review == "success" and what_approved == "merge approved")
+    # Take a decision. If we need to wait, exit from the program with nonzero
+    # Policy: we need all PRs to be:
+    #  * opened before the deadline,
+    #  * review == "success" with status == "merge approved" (not just testing)
+    #  * all build statuses must NOT be "error"
+    wait_for_build = (wait_for_build and review == "success" and
+                      what_approved == "merge approved")
 
   # Print out the current status
   decision = "must wait" if wait_for_build else "not waiting: bad state"

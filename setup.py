@@ -15,7 +15,7 @@ here = path.abspath(path.dirname(__file__))
 with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
     long_description = f.read()
 
-install_requires = ['PyGithub==1.45', 'argparse', 'requests', 'pytz', 's3cmd',
+install_requires = ['PyGithub==1.55', 'argparse', 'requests', 'pytz', 's3cmd',
                     'pyyaml']
 # Old setuptools versions (which pip2 uses) don't support range comparisons
 # (like :python_version >= "3.6") in extras_require, so do this ourselves here.
