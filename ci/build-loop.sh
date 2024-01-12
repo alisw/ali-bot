@@ -143,7 +143,10 @@ if pushd "$PR_REPO_CHECKOUT"; then
   git reset --hard "origin/$PR_BRANCH"  # reset to branch target of PRs
   git clean -fxd
   old_size=$(du -sm . | cut -f1)
-  base_hash=$(git rev-parse --verify HEAD)  # reference upstream hash
+  # Make $base_hash the commit where our PR split off from the main branch, so
+  # that a "git diff $base_hash $PR_HASH" shows only changes introduced by the
+  # PR. O2DPG-sim-tests requires this.
+  base_hash=$(git merge-base "$PR_HASH" HEAD)  # reference upstream hash
   NUM_BASE_COMMITS=$(git rev-list --count HEAD)
 
   if ! git merge --no-edit "$PR_HASH"; then
