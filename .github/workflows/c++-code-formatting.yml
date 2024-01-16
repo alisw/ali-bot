@@ -88,7 +88,6 @@ jobs:
           if patch=$(git-clang-format --commit "$base_commit" --diff \
                                       --style file "${commit_files[@]}")
           then
-            echo 'clang-format passed.' >> "$GITHUB_STEP_SUMMARY"
             echo cleanup_commit= >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -206,15 +205,15 @@ jobs:
           done
 
           # Tell user what to do in case of copyright notice error
-          if [ ${#incorrect_files[@]} -gt 0 ]; then
-            cat << EOF >> "$GITHUB_STEP_SUMMARY"
+          [ ${#incorrect_files[@]} -gt 0 ] || exit 0
+          cat << EOF >> "$GITHUB_STEP_SUMMARY"
           The following files are missing the correct copyright notice:
 
           EOF
-            for file in "${incorrect_files[@]}"; do
-              echo "- \`$file\`" >> "$GITHUB_STEP_SUMMARY"
-            done
-            cat << EOF >> "$GITHUB_STEP_SUMMARY"
+          for file in "${incorrect_files[@]}"; do
+            echo "- \`$file\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+          cat << EOF >> "$GITHUB_STEP_SUMMARY"
 
           Make sure all of your C++ and CMake source files begin with the
           following exact lines (but replace the \`//\` at the beginning of each
@@ -228,10 +227,7 @@ jobs:
 
           (The year numbers on the first line aren't checked.)
           EOF
-            exit 1
-          else
-            echo 'Copyright check passed.' >> "$GITHUB_STEP_SUMMARY"
-          fi
+          exit 1
 
   line-endings:
     name: line endings
@@ -261,9 +257,9 @@ jobs:
                function error(title, message) {
                  printf "The following error is for file %s:\n", $6
                  printf "::error file=%s,title=%s::%s\n", $6, title, message
-                 exit_code = 1
+                 exit_code = 0
                }
-               BEGIN { exit_code = 0 }
+               BEGIN { exit_code = 1 }
                END { exit exit_code }
                ($5 != "text") { next }
                ($4 != "no_bom") {
@@ -283,8 +279,6 @@ jobs:
                }
              '
           then
-            echo 'Line endings check passed.' >> "$GITHUB_STEP_SUMMARY"
-          else
             cat << EOF >> "$GITHUB_STEP_SUMMARY"
           # Line ending and/or encoding errors found
 
@@ -330,13 +324,13 @@ jobs:
           # Find tabs and trailing whitespaces in modified text files and show
           # where they are.
           if awk '
-            BEGIN { exit_code = 0 }
+            BEGIN { exit_code = 1 }
             function error(title, message) {
               printf "The following error is for file %s, line %i, column %i:\n",
                      FILENAME, FNR, RSTART
               printf "::error file=%s,line=%i,col=%i,endColumn=%i,title=%s::%s\n",
                      FILENAME, FNR, RSTART, RSTART + RLENGTH, title, message
-              exit_code = 1
+              exit_code = 0
             }
             match($0, / +$/) {
               error("Trailing spaces",
@@ -351,8 +345,6 @@ jobs:
             }
           ' "${files[@]}"
           then
-            echo 'Whitespace check passed.' >> "$GITHUB_STEP_SUMMARY"
-          else
             cat << EOF >> "$GITHUB_STEP_SUMMARY"
           # Whitespace errors found.
 
@@ -394,21 +386,17 @@ jobs:
 
       - name: Run pragma check
         run: |
-          if git --no-pager grep -q '#pragma once' -- '*.h'; then
-            # Some files have #pragma once.
-            cat << EOF >> "$GITHUB_STEP_SUMMARY"
+          git --no-pager grep -q '#pragma once' -- '*.h' || exit 0
+          # Some files have #pragma once.
+          cat << EOF >> "$GITHUB_STEP_SUMMARY"
           The following files use \`#pragma once\`. Please change them.
 
           EOF
-            git --no-pager grep --line-number --column '#pragma once' -- '*.h' |
-              while IFS=: read -r file line column _; do
-                echo "The following error is for file $file, line $line:"
-                echo -n "::error file=$file,line=$line,column=$column,"
-                echo 'title=#pragma once::Do not use #pragma once.'
-                echo "- \`$file\`" >> "$GITHUB_STEP_SUMMARY"
-              done
-            exit 1
-          else
-            # No #pragma once found.
-            echo "\`#pragma once\` check passed." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          git --no-pager grep --line-number --column '#pragma once' -- '*.h' |
+            while IFS=: read -r file line column _; do
+              echo "The following error is for file $file, line $line:"
+              echo -n "::error file=$file,line=$line,column=$column,"
+              echo 'title=#pragma once::Do not use #pragma once.'
+              echo "- \`$file\`" >> "$GITHUB_STEP_SUMMARY"
+            done
+          exit 1
