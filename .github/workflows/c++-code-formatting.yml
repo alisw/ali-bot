@@ -77,6 +77,7 @@ jobs:
             case $file in
               */3rdparty/*) ;;   # ignore vendored files
               *.hxx|*.cc|*.hpp)
+                echo "The following error is for file $file:"
                 echo "::error file=$file::$file uses non-allowed extension"
                 have_invalid_extension=true ;;
             esac
@@ -197,6 +198,7 @@ jobs:
                [ "$(head -n "$total_lines" "$file" | tail -n +2)" != "$rest" ]
             then
               incorrect_files+=("$file")
+              echo "The following error is for file $file:"
               echo -n "::error file=$file,line=1,endLine=$total_lines,"
               echo -n "title=Missing or malformed copyright notice::"
               echo "This source file is missing the correct copyright notice."
@@ -257,6 +259,7 @@ jobs:
              xargs -0 dos2unix -i |
              awk '
                function error(title, message) {
+                 printf "The following error is for file %s:\n", $6
                  printf "::error file=%s,title=%s::%s\n", $6, title, message
                  exit_code = 1
                }
@@ -329,6 +332,8 @@ jobs:
           if awk '
             BEGIN { exit_code = 0 }
             function error(title, message) {
+              printf "The following error is for file %s, line %i, column %i:\n",
+                     FILENAME, FNR, RSTART
               printf "::error file=%s,line=%i,col=%i,endColumn=%i,title=%s::%s\n",
                      FILENAME, FNR, RSTART, RSTART + RLENGTH, title, message
               exit_code = 1
@@ -397,6 +402,7 @@ jobs:
           EOF
             git --no-pager grep --line-number --column '#pragma once' -- '*.h' |
               while IFS=: read -r file line column _; do
+                echo "The following error is for file $file, line $line:"
                 echo -n "::error file=$file,line=$line,column=$column,"
                 echo 'title=#pragma once::Do not use #pragma once.'
                 echo "- \`$file\`" >> "$GITHUB_STEP_SUMMARY"
