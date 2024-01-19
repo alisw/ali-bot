@@ -108,7 +108,8 @@ notification_email:
       default: admins@institute.gov                # send notification for unspecified packages
   failure:
     body: |
-      Publishing failed for %(package)s %(version)s. Please have a look.
+      Publishing failed for %(package)s %(version)s.
+      Please have a look in the logs at [wherever].
     subject: "[publisher] %(package)s %(version)s failed"
     from: "publisher <publisher@instutute.gov>"
     to: admins@institute.gov
