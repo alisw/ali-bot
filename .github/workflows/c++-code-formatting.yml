@@ -183,7 +183,7 @@ jobs:
           # with the ones in the "case" statement below!
           readarray -d '' files < \
             <(git diff -z --diff-filter d --name-only --merge-base "origin/$BASE_BRANCH" \
-                       -- '*.cxx' '*.h' '*.C' '*.cmake' '*/CMakeLists.txt')
+                       -- '*.cxx' '*.h' '*.C' '*.cmake' '*/CMakeLists.txt' CMakeLists.txt)
           # Run copyright notice check. Comment lines start with "//" for C++
           # files and "#" for CMake files.
           cpp_first="// $COPYRIGHT_FIRST_LINE"
