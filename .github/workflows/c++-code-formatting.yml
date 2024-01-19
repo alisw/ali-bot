@@ -15,9 +15,9 @@ name: C++ code formatting reusable workflow
 permissions: {}
 
 env:
-  # GitHub also provides github.event.pull_request.{head,base}.sha, but these
-  # aren't always the latest commits on their respective branches (e.g. see
-  # https://github.com/AliceO2Group/AliceO2/pull/12499). Using them might lead
+  # GitHub also provides github.event.pull_request.base.sha, but that isn't
+  # always the latest commit on the base branch (e.g. see
+  # https://github.com/AliceO2Group/AliceO2/pull/12499). Using it might lead
   # to false positives in the errors we show.
   BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
   PR_BRANCH: ${{ github.event.pull_request.head.ref }}
@@ -57,7 +57,7 @@ jobs:
         run: |
           git config --global user.email 'alibuild@cern.ch'
           git config --global user.name 'ALICE Action Bot'
-          git fetch origin "$BASE_BRANCH:$BASE_BRANCH" "pull/$PR_NUMBER/head:$PR_BRANCH"
+          git fetch origin "$BASE_BRANCH"
 
       - name: Run clang format
         id: clang_format
@@ -66,7 +66,7 @@ jobs:
           # $BASE_BRANCH is the branch the PR will be merged into, NOT the
           # commit this PR derives from! For that, we need to find the latest
           # common ancestor between the PR and the branch we are merging into.
-          base_commit=$(git merge-base HEAD "$BASE_BRANCH")
+          base_commit=$(git merge-base HEAD "origin/$BASE_BRANCH")
           # Find changed files, ignoring binary files.
           readarray -d '' commit_files < \
             <(git diff -z --diff-filter d --name-only "$base_commit")
@@ -157,10 +157,9 @@ jobs:
           # many commits back that point is.
           fetch-depth: 0
 
-      # Fetch the PR's head commit to find the common ancestor.
-      - name: Fetch PR branch
-        run: |
-          git fetch origin "$BASE_BRANCH:$BASE_BRANCH" "pull/$PR_NUMBER/head:$PR_BRANCH"
+      # Fetch the PR's base branch to find the common ancestor.
+      - name: Update PR branch
+        run: git fetch origin "$BASE_BRANCH"
 
       - name: Check copyright headers
         env:
@@ -183,7 +182,7 @@ jobs:
           # Find changed C++ and CMake files. Keep the file extensions in sync
           # with the ones in the "case" statement below!
           readarray -d '' files < \
-            <(git diff -z --diff-filter d --name-only --merge-base "$BASE_BRANCH" \
+            <(git diff -z --diff-filter d --name-only --merge-base "origin/$BASE_BRANCH" \
                        -- '*.cxx' '*.h' '*.C' '*.cmake' '*/CMakeLists.txt')
           # Run copyright notice check. Comment lines start with "//" for C++
           # files and "#" for CMake files.
@@ -311,16 +310,15 @@ jobs:
           # many commits back that point is.
           fetch-depth: 0
 
-      # Fetch the PR's head commit to find the common ancestor.
-      - name: Fetch PR branch
-        run: |
-          git fetch origin "$BASE_BRANCH:$BASE_BRANCH" "pull/$PR_NUMBER/head:$PR_BRANCH"
+      # Fetch the PR's base branch to find the common ancestor.
+      - name: Update PR branch
+        run: git fetch origin "$BASE_BRANCH"
 
       - name: Find bad spacing
         run: |
           # Find changed files, ignoring binary files.
           readarray -d '' files < \
-            <(git diff -z --diff-filter d --name-only --merge-base "$BASE_BRANCH" |
+            <(git diff -z --diff-filter d --name-only --merge-base "origin/$BASE_BRANCH" |
                 while read -rd '' filename; do
                   file -bi "$filename" | grep -q charset=binary ||
                     printf "%s\\0" "$filename"
