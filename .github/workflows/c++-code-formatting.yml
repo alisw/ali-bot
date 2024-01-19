@@ -57,7 +57,7 @@ jobs:
         run: |
           git config --global user.email 'alibuild@cern.ch'
           git config --global user.name 'ALICE Action Bot'
-          git fetch origin "$BASE_BRANCH" "pull/$PR_NUMBER/head:$PR_BRANCH"
+          git fetch origin "$BASE_BRANCH:$BASE_BRANCH" "pull/$PR_NUMBER/head:$PR_BRANCH"
 
       - name: Run clang format
         id: clang_format
@@ -160,7 +160,7 @@ jobs:
       # Fetch the PR's head commit to find the common ancestor.
       - name: Fetch PR branch
         run: |
-          git fetch origin "$BASE_BRANCH" "pull/$PR_NUMBER/head:$PR_BRANCH"
+          git fetch origin "$BASE_BRANCH:$BASE_BRANCH" "pull/$PR_NUMBER/head:$PR_BRANCH"
 
       - name: Check copyright headers
         env:
@@ -314,7 +314,7 @@ jobs:
       # Fetch the PR's head commit to find the common ancestor.
       - name: Fetch PR branch
         run: |
-          git fetch origin "$BASE_BRANCH" "pull/$PR_NUMBER/head:$PR_BRANCH"
+          git fetch origin "$BASE_BRANCH:$BASE_BRANCH" "pull/$PR_NUMBER/head:$PR_BRANCH"
 
       - name: Find bad spacing
         run: |
