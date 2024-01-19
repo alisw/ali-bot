@@ -1,9 +1,0 @@
-slc7_x86-64:
-  Control:
-    v0.7.0-2: True
-    0.7.0-2: False
-    0.0.0_DEVEL-2: False
-  flpproto:
-    v0.9.2-10: True
-    0.9.2-10: False
-    0.0.0_DEVEL-3: False
