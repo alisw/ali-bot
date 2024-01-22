@@ -143,7 +143,7 @@ done <<< "$BUILD_ENV_VARS"
 
 # Process the pattern as a jinja2 template with aliBuild's templating plugin.
 # Fetch the source repos now, so they're available for the "real" build later.
-AUTOTAG_PATTERN=$(aliBuild --debug --plugin templating --fetch-repos "${alibuild_args[@]}" << EOF
+AUTOTAG_PATTERN=$(aliBuild --plugin templating --fetch-repos "${alibuild_args[@]}" << EOF
 {%- set alidist_branch = "$ALIDIST_BRANCH" -%}
 {%- set flpsuite_latest = "$flpsuite_latest" -%}
 {%- set flpsuite_current = "$flpsuite_current" -%}
