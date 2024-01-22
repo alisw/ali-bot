@@ -127,7 +127,11 @@ case "$REMOTE_STORE" in
     set -x ;;
 esac
 
-FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
+# Feature detection
+FETCH_REPOS='' ANNOTATE=''
+aliBuild build --help | grep -q -- --fetch-repos && FETCH_REPOS=1
+aliBuild build --help | grep -q -- --annotate && ANNOTATE=1
+
 aliBuild --reference-sources "$MIRROR"                    \
          --debug                                          \
          --work-dir "$WORKAREA/$WORKAREA_INDEX"           \
@@ -137,7 +141,7 @@ aliBuild --reference-sources "$MIRROR"                    \
          ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}  \
          ${DEFAULTS:+--defaults "$DEFAULTS"}              \
          ${DISABLE:+--disable "$DISABLE"}                 \
-         ${BUILD_COMMENT:+--annotate "$PACKAGE_NAME=$BUILD_COMMENT"} \
+         ${ANNOTATE:+${BUILD_COMMENT:+--annotate "$PACKAGE_NAME=$BUILD_COMMENT"}} \
          build "$PACKAGE_NAME" || BUILDERR=$?
 
 for logf in "$WORKAREA/$WORKAREA_INDEX/BUILD"/*/*/*.log; do

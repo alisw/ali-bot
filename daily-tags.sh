@@ -142,7 +142,9 @@ while read -r assignment; do
 done <<< "$BUILD_ENV_VARS"
 
 # Attach any user-specified comment to all top-level packages.
-if [ -n "$BUILD_COMMENT" ]; then
+if [ -n "$BUILD_COMMENT" ] &&
+     # Make sure that this aliBuild supports --annotate.
+     aliBuild build --help | grep -q -- --annotate; then
   for package in $PACKAGES; do
     alibuild_args+=(--annotate "$package=$BUILD_COMMENT")
   done
