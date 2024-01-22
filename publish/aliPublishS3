@@ -1003,13 +1003,14 @@ def main():
       if not isinstance(conf.get("cvmfs_repository", None), str):
         error("cvmfs_repository must be a string")
         doExit = True
+    if doExit:
+      return 1
 
     s3Client = boto3.client("s3", endpoint_url=conf["s3_endpoint_url"],
                             aws_access_key_id=environ["AWS_ACCESS_KEY_ID"],
                             aws_secret_access_key=environ["AWS_SECRET_ACCESS_KEY"])
 
     if args.action == "sync-cvmfs":
-      if doExit: return 1
       archKey = "CVMFS"
       pub = CvmfsServer(repository=conf["cvmfs_repository"],
                         modulefileTpl=conf["modulefile"],
@@ -1018,7 +1019,6 @@ def main():
                         connParams=connParams,
                         dryRun=args.dryRun)
     elif args.action == "sync-dir":
-      if doExit: return 1
       archKey = "dir"
       pub = PlainFilesystem(modulefileTpl=conf["modulefile"],
                             pkgdirTpl=conf["package_dir"],
