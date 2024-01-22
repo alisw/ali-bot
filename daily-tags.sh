@@ -141,6 +141,13 @@ while read -r assignment; do
   fi
 done <<< "$BUILD_ENV_VARS"
 
+# Attach any user-specified comment to all top-level packages.
+if [ -n "$BUILD_COMMENT" ]; then
+  for package in $PACKAGES; do
+    alibuild_args+=(--annotate "$package=$BUILD_COMMENT")
+  done
+fi
+
 # Process the pattern as a jinja2 template with aliBuild's templating plugin.
 # Fetch the source repos now, so they're available for the "real" build later.
 AUTOTAG_PATTERN=$(aliBuild --plugin templating --fetch-repos "${alibuild_args[@]}" << EOF
