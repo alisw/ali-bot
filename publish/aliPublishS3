@@ -188,7 +188,7 @@ class CvmfsServer(PlainFilesystem):
 
 class AliEn:
 
-  def __init__(self, connParams, dryRun=False):
+  def __init__(self, connParams, repository, package_dir, dryRun=False):
     self._session = requests.Session()
     self._session.timeout = connParams["conn_timeout_s"]
     # "verify" can be a string pointing to a CA file or directory, or a
@@ -201,6 +201,8 @@ class AliEn:
       requests.auth.HTTPBasicAuth(environ["ALIEN_USER"], environ["ALIEN_TOKEN"])
     self._dryRun = dryRun
     self._packs = None
+    self._cvmfs_package_dir = package_dir
+    self._repository = repository
 
   def _list_packs(self):
     """Cache the full package list from alimonitor and perform sanity checks."""
@@ -251,7 +253,13 @@ class AliEn:
       "version": pkgVer,
       "platform": arch,
       "dependencies": ",".join(f"VO_ALICE@{dep['name']}::{dep['ver']}"
-                               for dep in deps)
+                               for dep in deps),
+      "meta_json_path": join(self._cvmfs_package_dir % {
+          "repo": self._repository,
+          "arch": arch,
+          "package": pkgName,
+          "version": pkgVer,
+        }, ".meta.json"),
     }
     if self._dryRun:
       debug("Dry run: would have registered %r with alimonitor", request_data)
@@ -983,12 +991,17 @@ def main():
       except IOError as e:
         error("Cannot write pidfile %s, aborting", args.pidFile)
         return 1
-    if args.action in [ "sync-cvmfs", "sync-dir" ]:
+    if args.action in ("sync-cvmfs", "sync-dir", "sync-alien"):
       if not isinstance(conf["package_dir"], str):
         error("[cvmfs_]package_dir must be a string")
         doExit = True
+    if args.action in ("sync-cvmfs", "sync-dir"):
       if not isinstance(conf["modulefile"], str):
         error("[cvmfs_]modulefile must be a string")
+        doExit = True
+    if args.action in ("sync-cvmfs", "sync-alien"):
+      if not isinstance(conf.get("cvmfs_repository", None), str):
+        error("cvmfs_repository must be a string")
         doExit = True
 
     s3Client = boto3.client("s3", endpoint_url=conf["s3_endpoint_url"],
@@ -996,9 +1009,6 @@ def main():
                             aws_secret_access_key=environ["AWS_SECRET_ACCESS_KEY"])
 
     if args.action == "sync-cvmfs":
-      if not isinstance(conf.get("cvmfs_repository", None), str):
-        error("cvmfs_repository must be a string")
-        doExit = True
       if doExit: return 1
       archKey = "CVMFS"
       pub = CvmfsServer(repository=conf["cvmfs_repository"],
@@ -1017,7 +1027,10 @@ def main():
                             dryRun=args.dryRun)
     elif args.action == "sync-alien":
       archKey = "AliEn"
-      pub = AliEn(connParams=connParams, dryRun=args.dryRun)
+      pub = AliEn(connParams=connParams,
+                  repository=conf["cvmfs_repository"],
+                  package_dir=conf["package_dir"],
+                  dryRun=args.dryRun)
     else:
       conf["rpm_updatable"] = conf.get("rpm_updatable", False)
       archKey = "RPM"
