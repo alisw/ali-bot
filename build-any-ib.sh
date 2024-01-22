@@ -137,6 +137,7 @@ aliBuild --reference-sources "$MIRROR"                    \
          ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}  \
          ${DEFAULTS:+--defaults "$DEFAULTS"}              \
          ${DISABLE:+--disable "$DISABLE"}                 \
+         ${BUILD_COMMENT:+--annotate "$PACKAGE_NAME=$BUILD_COMMENT"} \
          build "$PACKAGE_NAME" || BUILDERR=$?
 
 for logf in "$WORKAREA/$WORKAREA_INDEX/BUILD"/*/*/*.log; do
