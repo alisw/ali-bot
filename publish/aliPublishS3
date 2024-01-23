@@ -872,7 +872,7 @@ def main():
   logger = logging.getLogger()
   loggerHandler = logging.StreamHandler()
   logger.addHandler(loggerHandler)
-  loggerHandler.setFormatter(logging.Formatter('%(levelname)-5s: %(message)s'))
+  loggerHandler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-5s: %(message)s"))
   logger.setLevel(logging.DEBUG if args.debug else logging.INFO)
   logging.getLogger("boto3").setLevel(logging.WARNING)
   logging.getLogger("botocore").setLevel(logging.WARNING)
