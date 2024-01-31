@@ -115,11 +115,11 @@ jobs:
           git clone -b "$ALIBUILD_TAG" https://github.com/alisw/alibuild
           cd alibuild
           cat <<EOF > debian/changelog
-          python3-alibuild (${ALIBUILD_TAG#v}) $ALIBUILD_DISTRO; urgency=medium
+          python3-alibuild (${ALIBUILD_TAG#v}+$ALIBUILD_DISTRO) $ALIBUILD_DISTRO; urgency=medium
 
             * Bump to $ALIBUILD_TAG
 
            -- Giulio Eulisse <giulio.eulisse@cern.ch>  $(date -R -u)
           EOF
           debuild --no-lintian -k48F330BAFFA564EF2383E2B472E9262B5C0D9DE5 -S
-          dput ppa:alisw/ppa "../python3-alibuild_${ALIBUILD_TAG#v}_source.changes"
+          dput ppa:alisw/ppa "../python3-alibuild_${ALIBUILD_TAG#v}+${ALIBUILD_DISTRO}_source.changes"
