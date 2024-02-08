@@ -48,7 +48,6 @@ while true; do
   # architecture-specific canary files under rpmstatus/$arch/.
   s3cmd ls "s3://alibuild-repo/rpmstatus/$arch/" | cut -b 32- > canaries.txt
 
-  pip3 install -Ur ../requirements.txt
   for conf in "$@"; do
     path=$(s3_path "$conf")
 
