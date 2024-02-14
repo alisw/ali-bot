@@ -326,6 +326,13 @@ slc8_x86-64:
     gpu-nightly-20221214-1: true
     gpu-nightly-20230131-1: true
 
+slc9_x86-64:
+  O2PDPSuite:
+    slc9-nightly-20240214-1: true
+    # Exclude tags that overlap with slc7, while we're still building on slc7.
+    nightly-20240214-1: false
+    daily-20240214-0100-1: false
+
 ubt14_x86-64:
   GCC-Toolchain:
     v4.9.3-8               : False
