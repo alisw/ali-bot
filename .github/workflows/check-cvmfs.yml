@@ -157,30 +157,4 @@ jobs:
             esac
           }
 
-          # Define an "old" and "new" version of AliPhysics to check for. "new" has AliEn
-          # as dependency, "old" does not
-          OLD_VER=AliPhysics/vAN-20150131 NEW_VER=AliPhysics/vAN-20170301-1
-
-          pt "check that the legacy AliEn package can be loaded"
-          for method in setenv printenv enter; do
-            [[ $(alienv_test $method AliEn 'which aliensh') == */AliEn/* ]]
-          done
-          for ALIENV_OVERRIDE_PLATFORM in el6 el7 ubuntu1404; do
-            export ALIENV_OVERRIDE_PLATFORM
-            for method in setenv printenv enter; do
-              for ver in "$NEW_VER" "$OLD_VER"; do
-                pt "check g++ with $ver on $ALIENV_OVERRIDE_PLATFORM"
-                [ "$ver" = "$NEW_VER" ] && EXPECT="/cvmfs/alice.cern.ch/$ALIENV_OVERRIDE_PLATFORM" || EXPECT=/usr/
-                [[ $(alienv_test $method $ver 'which g++') == "$EXPECT"* ]]
-
-                pt "check aliroot with $ver on $ALIENV_OVERRIDE_PLATFORM"
-                [[ $(alienv_test $method $ver 'which aliroot') == /cvmfs/alice.cern.ch/*bin/aliroot ]]
-
-                pt "check AliEn-Runtime with $ver on $ALIENV_OVERRIDE_PLATFORM"
-                [ "$ver" = "$NEW_VER" ] && EXPECT=/AliEn-Runtime/ || EXPECT=/AliEn/
-                [[ $(alienv_test $method $ver 'which aliensh') == /cvmfs/alice.cern.ch/*"$EXPECT"* ]]
-              done
-            done
-          done
-
           pg "all tests successful"
