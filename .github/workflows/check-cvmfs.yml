@@ -96,7 +96,7 @@ jobs:
           tag=AliPhysics/v5-09-59r-01_O2-1
 
           # Overriding platform (not important for our tests)
-          export ALIENV_OVERRIDE_PLATFORM=el7-x86_64
+          export ALIENV_OVERRIDE_PLATFORM=el7
           pi "Overriding platform to $ALIENV_OVERRIDE_PLATFORM"
 
           for np in /tmp/alienv_bin /tmp/alienv_path/bin; do
