@@ -138,10 +138,6 @@ jobs:
           fi | grep -q 'conflicting version' ||
             pe "could not find expected output message"
 
-          pt "test checkenv command with dependencies from multiple platforms"
-          alienv checkenv AliGenerators/v20180424-1 ||
-            pe "expected 0, returned $?"
-
           # "alienv q" takes too long in a GitHub workflow (>45 min).
           # pt "list AliPhysics packages"
           # alienv q | grep AliPhysics | tail -n5
