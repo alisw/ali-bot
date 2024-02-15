@@ -305,7 +305,7 @@ alien="AliEn"
 # pick all packages consistently from a certain platform tree. When listing
 # packages we show them all, when we load a package e define a priority list and
 # we always have a fallback for backward compatibility.
-PLATFORM_PRIORITY="el7-$uname_m el6-$uname_m el5-$uname_m el8-$uname_m"
+PLATFORM_PRIORITY="el9-$uname_m el7-$uname_m el6-$uname_m el5-$uname_m el8-$uname_m"
 ARGS=("$@")
 PACKAGES=
 EXPECT_PACKAGES=
@@ -341,14 +341,15 @@ if [[ $PACKAGES ]]; then
 else
   # PACKAGES is empty, meaning we are executing list operations. Use all paths
   # in MODULEPATH because we want to list packages for all platforms.
-  moduledirs="`echo "$modulepath
-                     $cvmfsdir/$uname_m-2.6-gnu-4.1.2
-                     $cvmfsdir/$uname_m-2.6-gnu-4.7.2
-                     $cvmfsdir/$uname_m-2.6-gnu-4.8.3
-                     $cvmfsdir/$uname_m-2.6-gnu-4.8.4
-                     $cvmfsdir/el6-$uname_m
-                     $cvmfsdir/el7-$uname_m
-                     $cvmfsdir/el8-$uname_m"`"
+  moduledirs="$modulepath
+              $cvmfsdir/$uname_m-2.6-gnu-4.1.2
+              $cvmfsdir/$uname_m-2.6-gnu-4.7.2
+              $cvmfsdir/$uname_m-2.6-gnu-4.8.3
+              $cvmfsdir/$uname_m-2.6-gnu-4.8.4
+              $cvmfsdir/el6-$uname_m
+              $cvmfsdir/el7-$uname_m
+              $cvmfsdir/el8-$uname_m
+              $cvmfsdir/el9-$uname_m"
   export MODULEPATH=$(modulepath modulefiles $moduledirs)
   [ x$platform != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
 fi
