@@ -93,8 +93,10 @@ jobs:
           ALIENV=/cvmfs/alice.cern.ch/bin/alienv
           pi "Testing alienv from $ALIENV"
 
+          tag=AliPhysics/v5-09-59r-01_O2-1
+
           # Overriding platform (not important for our tests)
-          export ALIENV_OVERRIDE_PLATFORM=el6-x86_64
+          export ALIENV_OVERRIDE_PLATFORM=el7-x86_64
           pi "Overriding platform to $ALIENV_OVERRIDE_PLATFORM"
 
           for np in /tmp/alienv_bin /tmp/alienv_path/bin; do
@@ -103,7 +105,7 @@ jobs:
               ln -nfs "$ALIENV" "$np/alienv"
               # shellcheck disable=SC2030
               export PATH=$np:$PATH
-              ALIENV_DEBUG=1 alienv printenv AliPhysics/v5-09-59o-01_O2-1
+              ALIENV_DEBUG=1 alienv printenv "$tag"
             ) || exit $?
           done
 
@@ -113,7 +115,7 @@ jobs:
             ln -nfs "$(dn=$(dirname "$ALIENV"); while [ "$dn" != / ]; do dn=$(dirname "$dn"); printf ../; done)$ALIENV" "$np/alienv"
             # shellcheck disable=SC2030,SC2031
             export PATH=$np:$PATH
-            ALIENV_DEBUG=1 alienv printenv AliPhysics/v5-09-59o-01_O2-1
+            ALIENV_DEBUG=1 alienv printenv "$tag"
           ) || exit $?
           unset np
           # shellcheck disable=SC2031
@@ -122,16 +124,16 @@ jobs:
           [ "$(command -v alienv)" = "$ALIENV" ]
 
           pt "test package reordering"
-          (ALIENV_DEBUG=1 alienv setenv VO_ALICE@AliEn-Runtime::v2-19-le-21,VO_ALICE@ROOT::v5-34-30-alice7-2,VO_ALICE@AliPhysics::vAN-20170301-1 -c true 2>&1 || :) |
+          (ALIENV_DEBUG=1 alienv setenv "VO_ALICE@AliEn-Runtime::v2-19-le-143,VO_ALICE@ROOT::v6-28-04-alice3-5,$tag" -c true 2>&1 || :) |
             tee /dev/stderr |
-            grep 'normalized to AliPhysics/vAN-20170301-1 ROOT/v5-34-30-alice7-2 AliEn-Runtime/v2-19-le-21'
+            grep 'normalized to AliPhysics/v5-09-59r-01_O2-1 ROOT/v6-28-04-alice3-5 AliEn-Runtime/v2-19-le-143'
 
           pt "test checkenv command with a successful combination"
-          alienv checkenv AliPhysics/vAN-20170301-1,AliRoot/v5-08-22-1 ||
+          alienv checkenv "$tag,AliRoot/$(basename "$tag" | sed 's/-01//')" ||
             pe "expected 0, returned $?"
 
           pt "test checkenv command with a faulty combination"
-          alienv checkenv AliPhysics/vAN-20170301-1,AliPhysics/vAN-20170201-1 2>&1 | tee log.txt && :
+          alienv checkenv "$tag,AliPhysics/vAN-20240214_O2-1" 2>&1 | tee log.txt && :
           ec=$?
           [ $ec -eq 1 ] || pe "expected 1, returned $ec"
           unset ec
@@ -140,7 +142,7 @@ jobs:
           rm -f log.txt
 
           pt "test checkenv command with dependencies from multiple platforms"
-          alienv checkenv AliGenerators/v20180424-1 ||
+          alienv checkenv AliGenerators/v20240214-1 ||
             pe "expected 0, returned $?"
 
           # "alienv q" takes too long in a GitHub workflow (>45 min).
