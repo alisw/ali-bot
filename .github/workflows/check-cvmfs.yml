@@ -149,14 +149,4 @@ jobs:
           # pt "list AliPhysics packages"
           # alienv q | grep AliPhysics | tail -n5
 
-          alienv_test () {
-            local method=$1 package=$2 command=$3
-            case $method in
-              setenv) alienv setenv "$package" -c "$command";;
-              printenv) (eval "$(alienv printenv "$package")"; $command);;
-              enter) (echo 'echo TEST=`'"$command"'`' | alienv enter "$package" |
-                        grep '^TEST=' | cut -d= -f2-);;
-            esac
-          }
-
           pg "all tests successful"
