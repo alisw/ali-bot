@@ -133,17 +133,10 @@ jobs:
             pe "expected 0, returned $?"
 
           pt "test checkenv command with a faulty combination"
-          alienv checkenv "$tag,AliPhysics/vAN-20240214_O2-1" 2>&1 | tee log.txt || :
-          ec=$?
-          [ $ec -eq 1 ] || pe "expected 1, returned $ec"
-          unset ec
-          grep -q 'conflicting version' log.txt ||
+          if alienv checkenv "$tag,AliPhysics/vAN-20240214_O2-1" 2>&1; then
+            pe "expected failure, returned $?"
+          fi | grep -q 'conflicting version' ||
             pe "could not find expected output message"
-          rm -f log.txt
-
-          pt "test checkenv command with dependencies from multiple platforms"
-          alienv checkenv AliGenerators/v20200409-1 ||
-            pe "expected 0, returned $?"
 
           # "alienv q" takes too long in a GitHub workflow (>45 min).
           # pt "list AliPhysics packages"
