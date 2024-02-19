@@ -33,7 +33,7 @@ except ImportError:
 
 ERRORS_RE = re.compile(
     ': (\x1b\\[[0-9;]+m)?(internal compiler |fatal )?error:|^Error(:| in )|'
-    '^ERROR: | !!! \x1b\\[[0-9;]+mError - |'
+    '^ERROR: | !!! \x1b\\[[0-9;]+mError - | -> FAILED|'
     r'ninja: build stopped: |make.*: \*\*\*|\[(ERROR|FATAL)\]')
 WARNINGS_RE = re.compile(
     ': warning:|^Warning: (?!Unused direct dependencies:$)|'
