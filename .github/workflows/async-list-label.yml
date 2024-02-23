@@ -27,9 +27,9 @@ jobs:
           body_text="**REQUEST FOR PRODUCTION RELEASES:**\nTo request your PR to be included in production software, \
           please add the corresponding labels called \"async-<name>\" to your PR. \
           Add the labels directly (if you have the permissions) or add a comment \
-          of the form \n \
+          of the form (note that labels are separated by a \",\") \n \
           \`\`\`\n \
-          +async-label <label1> <label2> !<label3> ...\n \
+          +async-label <label1>, <label2>, !<label3> ...\n \
           \`\`\`\n \
           This will add \`<label1>\` and \`<label2>\` and removes \`<label3>\`.\n\n \
           **The following labels are available**\n${labels_line_break}"
