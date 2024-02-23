@@ -1,0 +1,37 @@
+---
+name: Collect and print async labels
+
+'on':
+  workflow_call:
+
+permissions:
+  pull-requests: write   # to update labels
+
+jobs:
+  print-labels:
+    runs-on: ubuntu-latest
+    name: Print labels
+    steps:
+      - name: Collect labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          nr: ${{ github.event.pull_request.number }}
+
+        id: collect_labels
+        run: |
+          labels="$(gh label list --repo "${GITHUB_REPOSITORY}" --json name --jq '.[].name | select(startswith("async-"))')"
+          labels_line_break=
+          for l in ${labels} ; do
+            labels_line_break+="${l}\n"
+          done
+          body_text="**REQUEST FOR PRODUCTION RELEASES:**\nTo request your PR to be included in production software, \
+          please add the corresponding labels called \"async-<name>\" to your PR. \
+          Add the labels directly (if you have the permissions) or add a comment \
+          of the form \n \
+          \`\`\`\n \
+          +async-label <label1> <label2> !<label3> ...\n \
+          \`\`\`\n \
+          This will add \`<label1>\` and \`<label2>\` and removes \`<label3>\`.\n\n \
+          **The following labels are available**\n${labels_line_break}"
+          # read the body text from stdin
+          echo -e "${body_text}" | gh pr comment "${nr}" --body-file - --repo "${GITHUB_REPOSITORY}"
