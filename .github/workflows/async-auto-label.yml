@@ -1,0 +1,85 @@
+---
+name: Apply requested async label
+
+'on':
+  workflow_call:
+
+permissions:
+  pull-requests: write   # to update labels
+
+jobs:
+  apply-label:
+    name: Apply label
+    runs-on: ubuntu-latest
+    if: ${{ github.event.issue.pull_request &&
+            startsWith(github.event.comment.body, '+async-label') }}
+
+    steps:
+      - name: Install prerequisites
+        run: python3 -m pip install --user pygithub
+
+      - name: Parse comment to find label name
+        shell: python
+        env:
+          comment: ${{ github.event.comment.body }}
+          requester: ${{ github.event.comment.user.login }}
+          repo: ${{ github.event.repository.full_name }}
+          pr: ${{ github.event.issue.number }}
+          token: ${{ github.token }}
+          association: ${{ github.event.comment.author_association }}
+        run: |
+          import re
+          import os
+          import github
+
+          accepted_associations = ['COLLABORATOR', 'CONTRIBUTOR', 'MEMBER', 'OWNER']
+          repo = github.Github(os.environ['token']).get_repo(os.environ['repo'])
+          pr = repo.get_pull(int(os.environ['pr']))
+          requester = os.environ['requester']
+
+          def modify_labels():
+            match = re.match(r'\+async-label\s+(.+)', os.environ['comment'])
+            assert match, f'could not parse comment: {os.environ["comment"]!r}'
+            labels = [label.strip() for label in match.group(1).split(',')]
+
+            # Since changing the labels may change which branches this PR is
+            # merged into, stay on the safe side and dismiss any approvals.
+            for review in pr.get_reviews():
+                if review.state == 'APPROVED':
+                    review.dismiss('Labels updated; please review again.')
+
+            possible_labels = {label.name: label for label in repo.get_labels() if label.name.startswith('async-')}
+            add_labels, invalid_labels = [], []
+            for label_name in labels:
+                delete = label_name.startswith('!')
+                label_name = label_name.lstrip('!')
+                try:
+                    label = possible_labels[label_name]
+                except KeyError:
+                    print(f'::warning::Ignoring unknown label {label_name!r}')
+                    invalid_labels.append(label_name)
+                    continue
+                if delete:
+                    pr.remove_from_labels(label)
+                else:
+                    add_labels.append(label)
+
+            pr.add_to_labels(*add_labels)
+
+            if invalid_labels:
+                pr.create_issue_comment(
+                    f'Hi @{requester}, the following label names '
+                    f'could not be recognised: {", ".join(invalid_labels)}'
+                )
+
+          if os.environ['association'] in accepted_associations:
+            modify_labels()
+
+          else:
+            pr.create_issue_comment(
+                f'Hi @{requester}, due to your association, '
+                 'labels are not added automatically. '
+                 'Probably, this is your first contribution. '
+                 'Please contact one of the reviewers or '
+                 'code owners.'
+            )
