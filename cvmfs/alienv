@@ -334,6 +334,8 @@ if [[ $PACKAGES ]]; then
     for X in $PACKAGES; do
       # Policy: all specified packages must be found in current platform. If
       # this is not the case then fallback on the next platform.
+      # If we're loading a <package>/default symlink, just check if any version is loaded.
+      [ "${X##*/}" = default ] && X=${X%/*}
       echo $LOADED | grep -q $X || { OK=0; break; }
     done
     [[ $OK == 1 ]] && break || { [[ $ALIENV_DEBUG == 1 ]] && printf "NOTICE: cannot find packages with MODULEPATH=$MODULEPATH\n" >&2 ; }
