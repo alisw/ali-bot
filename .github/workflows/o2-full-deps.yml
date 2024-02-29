@@ -75,11 +75,11 @@ jobs:
           createrepo .
           ls -la
           case "$DISTRO" in
-            el7) repo_suffix= ;;
-            *) repo_suffix=_$DISTRO ;;
+            el7) repo_suffix=_ ;;
+            *) repo_suffix=_$DISTRO. ;;
           esac
           rclone --config /tmp/rclone.conf --transfers=10 --progress --delete-before \
-                 sync local:./ "rpms3:alibuild-repo/RPMS/o2-full-deps$repo_suffix.x86-64/"
+                 sync local:./ "rpms3:alibuild-repo/RPMS/o2-full-deps${repo_suffix}x86-64/"
 
   deb-ubuntu:
     runs-on: ubuntu-latest
