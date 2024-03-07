@@ -60,12 +60,12 @@ This is implemented in the get_dist_symlinks_for_package function.
 import argparse
 import fnmatch
 import gzip
-import io
 import logging
 import math
 import os
 import os.path
 import queue
+import tempfile
 import threading
 import boto3
 import botocore.exceptions
@@ -331,23 +331,23 @@ def build_dist_manifest(s3c, bucket, store_tarballs, dir_name, read_only):
 
     complete_symlinks = new_symlinks + list(cached_symlinks.items())
     complete_symlinks.sort()
-    buffer = io.BytesIO()
-    with gzip.open(buffer, "wt") as gzip_file:
-        for name, target in complete_symlinks:
-            print(name, target, sep="\t", file=gzip_file)
-    if read_only:
-        LOG.info("read-only mode; would've written %d records (%d bytes "
-                 "compressed) to %s",
-                 len(complete_symlinks), buffer.tell(), manifest)
-        buffer.seek(0)  # let gzip.open read the whole thing
-        with gzip.open(buffer, "rt") as gzip_file:
-            for i, line in enumerate(gzip_file):
-                LOG.log(LOG_TRACE, "%s:%d: %s", manifest, i + 1, line)
-    else:
-        LOG.info("writing %d records (%d bytes compressed) to %s",
-                 len(complete_symlinks), buffer.tell(), manifest)
-        buffer.seek(0)   # let put_object read the whole thing
-        put_object(s3c, bucket, manifest, buffer)
+    with tempfile.TemporaryFile("w+b") as buffer:
+        with gzip.open(buffer, "wt") as gzip_file:
+            for name, target in complete_symlinks:
+                print(name, target, sep="\t", file=gzip_file)
+        if read_only:
+            LOG.info("read-only mode; would've written %d records (%d bytes "
+                     "compressed) to %s",
+                     len(complete_symlinks), buffer.tell(), manifest)
+            buffer.seek(0)  # let gzip.open read the whole thing
+            with gzip.open(buffer, "rt") as gzip_file:
+                for i, line in enumerate(gzip_file):
+                    LOG.log(LOG_TRACE, "%s:%d: %s", manifest, i + 1, line)
+        else:
+            LOG.info("writing %d records (%d bytes compressed) to %s",
+                     len(complete_symlinks), buffer.tell(), manifest)
+            buffer.seek(0)   # let put_object read the whole thing
+            put_object(s3c, bucket, manifest, buffer)
 
 
 def read_object(s3c, bucket, key):
