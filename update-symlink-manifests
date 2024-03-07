@@ -323,29 +323,28 @@ def build_dist_manifest(s3c, bucket, store_tarballs, dir_name, read_only):
             if symlinks:
                 LOG.debug("adding %d safe new dist symlinks from %s",
                           len(symlinks), package_version_path)
-                new_symlinks.extend(symlinks.items())
+                cached_symlinks.update(symlinks)
+    del cached_directories
 
     if not new_symlinks:
         LOG.debug("no new symlinks for %s; skipping upload", manifest)
         return
 
-    complete_symlinks = new_symlinks + list(cached_symlinks.items())
-    complete_symlinks.sort()
     with tempfile.TemporaryFile("w+b") as buffer:
         with gzip.open(buffer, "wt") as gzip_file:
-            for name, target in complete_symlinks:
+            for name, target in sorted(cached_symlinks.items()):
                 print(name, target, sep="\t", file=gzip_file)
         if read_only:
             LOG.info("read-only mode; would've written %d records (%d bytes "
                      "compressed) to %s",
-                     len(complete_symlinks), buffer.tell(), manifest)
+                     len(cached_symlinks), buffer.tell(), manifest)
             buffer.seek(0)  # let gzip.open read the whole thing
             with gzip.open(buffer, "rt") as gzip_file:
                 for i, line in enumerate(gzip_file):
                     LOG.log(LOG_TRACE, "%s:%d: %s", manifest, i + 1, line)
         else:
             LOG.info("writing %d records (%d bytes compressed) to %s",
-                     len(complete_symlinks), buffer.tell(), manifest)
+                     len(cached_symlinks), buffer.tell(), manifest)
             buffer.seek(0)   # let put_object read the whole thing
             put_object(s3c, bucket, manifest, buffer)
 
