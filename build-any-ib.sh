@@ -16,7 +16,7 @@ which lsb_release > /dev/null 2>&1 && lsb_release -a
 uname -a
 date
 
-BUILD_DATE=$(echo 2015$(echo "$(date -u +%s) / (86400 * 3)" | bc))
+BUILD_DATE=$(echo 2015$(($(echo "$(date -u +%s) / (86400 * 3)"))))
 
 MIRROR=mirror
 
