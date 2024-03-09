@@ -65,7 +65,7 @@ python3 -m venv "$venv"
 . "$venv/bin/activate"
 # If DEST is in the cwd, it might be confused for a PyPI package, so make it
 # an absolute path.
-pip install -U "$(realpath "$DEST")"
+timeout 300 python3 -m pip install -U "$(realpath "$DEST")"
 
 ln -nfs "$(basename "$LOG.error")" "$logdir/latest"
 cachedir=${NOMAD_TASK_DIR-$PWD}/cache
