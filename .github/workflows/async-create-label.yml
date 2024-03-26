@@ -12,7 +12,7 @@ jobs:
     name: Print labels
     runs-on: ubuntu-latest
     # only run if the created branch or tag starts with the correct pattern, namely "async-"
-    if: startsWith(github.ref, 'refs/heads/async-') || startsWith(github.ref, 'refs/tags/async-')
+    if: startsWith(github.ref, 'refs/heads/async-v') || startsWith(github.ref, 'refs/tags/async-v')
     steps:
       - name: Create async branch or tag label
         env:
@@ -34,6 +34,3 @@ jobs:
           # extract only the branch or tag pattern we are really interested in
           ref="${ref##*/}"
           gh label create --repo "${GITHUB_REPOSITORY}" "${ref}" --description "Concerns ${what_am_i} ${ref}" --color 95C6F0
-          # create the corresponding "<label-name>-accepted" label
-          ref_accepted="${ref}-accepted"
-          gh label create --repo "${GITHUB_REPOSITORY}" "${ref_accepted}" --description "Concerns ${what_am_i} ${ref}" --color 95C6F0

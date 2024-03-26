@@ -1,0 +1,67 @@
+---
+name: Update when async branch is pushed
+
+'on':
+  workflow_call:
+
+permissions:
+  pull-requests: write   # to create labels, see https://docs.github.com/en/rest/issues/labels?apiVersion=2022-11-28#create-a-label
+
+jobs:
+  update:
+    name: Update everything
+    runs-on: ubuntu-latest
+    # only run if the created branch or tag starts with the correct pattern, namely "async-"
+    if: startsWith(github.ref, 'refs/heads/async-v')
+    steps:
+      - name: Update, remove labels, publish table
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ref: ${{ github.ref }}
+
+        id: create_label
+        run: |
+          branch_name="${ref##*/}"
+
+          # default branch from env
+          [[ -z "${DEFAULT_BRANCH}" ]] && { echo "ERROR: DEFAULT_BRANCH not set, cannot continue." ; exit 1 ; }
+
+          commits_async_branch="commits.log"
+          # get log with all commits, use --decorate=short to get the tags as well
+          GIT_DIR=${GITHUB_REPOSITORY} git log --decorate=short "${ref}" > "${commits_async_branch}"
+
+          # now we go through the commits
+
+          # remember the current commit on this branch
+          current_commit_sha=
+          # the commit hash it was cherry-picked from
+          linked_commit_sha=
+
+          while read -r line ; do
+            if [[ "${line}" == "commit *" ]] ; then
+              # this means we ran into a new commit without finding a linked SHA in between, break here
+              [[ -n  "${current_commit_sha}" && -z "${linked_commit_sha}" ]] && break
+              current_commit_sha=$(echo "${line}" | cut -f 2 -d ' ')
+              linked_commit_sha=""
+              continue
+            fi
+
+            # no current commit, simply continue
+            [[ -z "${current_commit_sha}" ]] && continue
+
+            # if we find a linked SHA in the commit message,  this was a cherry pick and we do the actual work
+            if [[ "${line}" == "*cherry picked from commit*" ]] ; then
+              linked_commit_sha="${line##from commit }"
+              pr_url=$(gh --repo "${GITHUB_REPOSITORY}" pr list --search "${linked_commit_sha}" --json html_url --jq '.[].html_url')
+              if [[ -z "${pr_url}" ]] ; then
+                echo "Publish this without a linked PR"
+              else
+                # remove the label (if any)
+                gh --repo "${GITHUB_REPOSITORY}" pr edit "${pr_url}" --remove-label "${branch_name}"
+                echo "Publish this with linked PR"
+              fi
+              # reset the SHAs
+              current_commit_sha=""
+              linked_commit_sha=""
+            fi
+          done < ${commits_async_branch}
