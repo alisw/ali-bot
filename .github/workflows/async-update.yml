@@ -23,8 +23,15 @@ jobs:
         run: |
           branch_name="${ref##*/}"
 
-          # default branch from env
-          [[ -z "${DEFAULT_BRANCH}" ]] && { echo "ERROR: DEFAULT_BRANCH not set, cannot continue." ; exit 1 ; }
+          # we check now if this branch contains the tag <branch-name>-start which is the one where we branched off the default back back in the days
+          start_tag="${branch_name}-start"
+          if ! GIT_DIR=${GITHUB_REPOSITORY} git branch --contains "${start_tag}" | grep " ${branch_name}$" ; then
+            echo "ERROR: Expected start tag ${start_tag} is not contained in this branch ${branch_name}."
+            exit 1
+          fi
+
+          # remember the commit of the tag from where this branch started originally; use it as break condition
+          commit_of_start_tag=$(git rev-list -n 1 "${start_tag}")
 
           commits_async_branch="commits.log"
           # get log with all commits, use --decorate=short to get the tags as well
@@ -39,8 +46,16 @@ jobs:
 
           while read -r line ; do
             if [[ "${line}" == "commit *" ]] ; then
-              # this means we ran into a new commit without finding a linked SHA in between, break here
-              [[ -n  "${current_commit_sha}" && -z "${linked_commit_sha}" ]] && break
+
+              # break if we reached the tag where this branch started
+              current_commit_sha_tmp=$(echo "${line}" | cut -f 2 -d ' ')
+              [[ "${current_commit_sha_tmp}" == "${commit_of_start_tag}" ]] && break
+
+              if [[ -n  "${current_commit_sha}" && -z "${linked_commit_sha}" ]] ; then
+                # this means we ran into a new commit without finding a linked SHA in between, break here
+                echo "Publish only this commit for which we don't find a linked commit"
+                # do something
+              fi
               current_commit_sha=$(echo "${line}" | cut -f 2 -d ' ')
               linked_commit_sha=""
               continue

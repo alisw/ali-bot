@@ -22,15 +22,14 @@ jobs:
         id: create_label
         run: |
           # to be on the safe side, check the full ref
-          what_am_i=""
-          if [[ "${ref}" != "refs/heads/*" ]] ; then
-            what_am_i="branch"
-          elif [[ "${ref}" != "refs/tags/*" ]] ; then
-            what_am_i="tag"
-          else
-            echo "Invalid ref ${ref}, abort."
-            exit 1
-          fi
+          case "${ref}" in
+            refs/heads/*) what_am_i=branch
+            ;;
+            refs/tags/*) what_am_i=tag
+            ;;
+            *) echo "Invalid ref ${ref}, abort." && exit 1
+            ;;
+          esac
           # extract only the branch or tag pattern we are really interested in
           ref="${ref##*/}"
           gh label create --repo "${GITHUB_REPOSITORY}" "${ref}" --description "Concerns ${what_am_i} ${ref}" --color 95C6F0
