@@ -1,6 +1,7 @@
 ---
-name: Create label for new async branch or tag
+name: Create label for new async branch
 
+# Foreseen to be used when async-v* branches are pushed in repos that include this workflow
 'on':
   workflow_call:
 
@@ -11,10 +12,12 @@ jobs:
   print-labels:
     name: Print labels
     runs-on: ubuntu-latest
-    # only run if the created branch or tag starts with the correct pattern, namely "async-"
-    if: startsWith(github.ref, 'refs/heads/async-v') || startsWith(github.ref, 'refs/tags/async-v')
+    # only run if the created branch or tag starts with the correct pattern, namely "async-v"
+    # while the workflow is supposed to only run when branches like async-v* are created (to be filtered in downstream repos),
+    # we add this check to make sure we don't see any surprises in case filters are forgotten or wrongly implemented
+    if: startsWith(github.ref, 'refs/heads/async-v')
     steps:
-      - name: Create async branch or tag label
+      - name: Create async branch label
         env:
           GH_TOKEN: ${{ github.token }}
           ref: ${{ github.ref }}
@@ -22,14 +25,7 @@ jobs:
         id: create_label
         run: |
           # to be on the safe side, check the full ref
-          case "${ref}" in
-            refs/heads/*) what_am_i=branch
-            ;;
-            refs/tags/*) what_am_i=tag
-            ;;
-            *) echo "Invalid ref ${ref}, abort." && exit 1
-            ;;
-          esac
           # extract only the branch or tag pattern we are really interested in
           ref="${ref##*/}"
-          gh label create --repo "${GITHUB_REPOSITORY}" "${ref}" --description "Concerns ${what_am_i} ${ref}" --color 95C6F0
+          [[ "$(gh label list --repo "${GITHUB_REPOSITORY}" --json name --jq '.[] | select(.name == "${ref}")')" == "" ]] &&  gh label create --repo "${GITHUB_REPOSITORY}" "${ref}" --description "Request cherry-picks for branch ${ref}" --color 95C6F0 || true
+          [[ "$(gh label list --repo "${GITHUB_REPOSITORY}" --json name --jq '.[] | select(.name == "${ref}-accepted")')" == "" ]] &&  gh label create --repo "${GITHUB_REPOSITORY}" "${ref}-accepted" --description "Request cherry-picks for branch ${ref}" --color 95C6F0 || true

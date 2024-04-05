@@ -1,6 +1,7 @@
 ---
 name: Update when async branch is pushed
 
+# Foreseen to be used when async-v* branches are pushed in repos that include this workflow
 'on':
   workflow_call:
 
@@ -11,10 +12,22 @@ jobs:
   update:
     name: Update everything
     runs-on: ubuntu-latest
-    # only run if the created branch or tag starts with the correct pattern, namely "async-"
+    # only run if the created branch or tag starts with the correct pattern, namely "async-v"
+    # while the workflow is supposed to only run when branches like async-v* are created (to be filtered in downstream repos),
+    # we add this check to make sure we don't see any surprises in case filters are forgotten or wrongly implemented
     if: startsWith(github.ref, 'refs/heads/async-v')
     steps:
+
+      - name: checkout the affected branch of the repo
+        uses: actions/checkout@v4
+        with:
+          path: RepoWithBranch
+          ref: ${{ github.ref }}
+          persist-credentials: false
+          fetch-tags: true
+
       - name: Update, remove labels, publish table
+        working-directory: RepoWithBranch
         env:
           GH_TOKEN: ${{ github.token }}
           ref: ${{ github.ref }}
@@ -22,10 +35,13 @@ jobs:
         id: create_label
         run: |
           branch_name="${ref##*/}"
-
           # we check now if this branch contains the tag <branch-name>-start which is the one where we branched off the default back back in the days
           start_tag="${branch_name}-start"
-          if ! GIT_DIR=${GITHUB_REPOSITORY} git branch --contains "${start_tag}" | grep " ${branch_name}$" ; then
+
+          # initially, only one commit is checked out. Get the entire history and in addition get the tags
+          git pull --unshallow origin "${branch_name}" --tags
+
+          if ! git branch --contains "${start_tag}" | grep " ${branch_name}$" ; then
             echo "ERROR: Expected start tag ${start_tag} is not contained in this branch ${branch_name}."
             exit 1
           fi
@@ -35,7 +51,7 @@ jobs:
 
           commits_async_branch="commits.log"
           # get log with all commits, use --decorate=short to get the tags as well
-          GIT_DIR=${GITHUB_REPOSITORY} git log --decorate=short "${ref}" > "${commits_async_branch}"
+          git log --decorate=short "${ref}" > "${commits_async_branch}"
 
           # now we go through the commits
 
@@ -45,7 +61,7 @@ jobs:
           linked_commit_sha=
 
           while read -r line ; do
-            if [[ "${line}" == "commit *" ]] ; then
+            if [[ "${line}" == "commit "* ]] ; then
 
               # break if we reached the tag where this branch started
               current_commit_sha_tmp=$(echo "${line}" | cut -f 2 -d ' ')
@@ -56,7 +72,7 @@ jobs:
                 echo "Publish only this commit for which we don't find a linked commit"
                 # do something
               fi
-              current_commit_sha=$(echo "${line}" | cut -f 2 -d ' ')
+              current_commit_sha="${current_commit_sha_tmp}"
               linked_commit_sha=""
               continue
             fi
@@ -65,14 +81,15 @@ jobs:
             [[ -z "${current_commit_sha}" ]] && continue
 
             # if we find a linked SHA in the commit message,  this was a cherry pick and we do the actual work
-            if [[ "${line}" == "*cherry picked from commit*" ]] ; then
+            if [[ "${line}" == *"cherry picked from commit"* ]] ; then
               linked_commit_sha="${line##from commit }"
-              pr_url=$(gh --repo "${GITHUB_REPOSITORY}" pr list --search "${linked_commit_sha}" --json html_url --jq '.[].html_url')
-              if [[ -z "${pr_url}" ]] ; then
+              linked_commit_sha="${linked_commit_sha%)*}"
+              pr_number=$(gh --repo "${GITHUB_REPOSITORY}" pr list --state closed --search "${linked_commit_sha}" --json number --jq '.[].number')
+              if [[ -z "${pr_number}" ]] ; then
                 echo "Publish this without a linked PR"
               else
-                # remove the label (if any)
-                gh --repo "${GITHUB_REPOSITORY}" pr edit "${pr_url}" --remove-label "${branch_name}"
+                # add corresponding "accepted" label
+                gh --repo "${GITHUB_REPOSITORY}" pr edit "${pr_number}" --add-label "${branch_name}-accepted"
                 echo "Publish this with linked PR"
               fi
               # reset the SHAs
