@@ -49,22 +49,40 @@ jobs:
                     review.dismiss('Labels updated; please review again.')
 
             possible_labels = {label.name: label for label in repo.get_labels() if label.name.startswith('async-')}
-            add_labels, invalid_labels = [], []
+            add_labels, remove_labels, invalid_labels = [], [], []
+
+            # "all" or "!all" takes precedence over specific labels
+            if 'all' in labels:
+                labels = list(possible_labels.keys())
+            elif '!all' in labels:
+                labels = [f'!{name}' for name in possible_labels.keys()]
+
             for label_name in labels:
                 delete = label_name.startswith('!')
                 label_name = label_name.lstrip('!')
+
                 try:
                     label = possible_labels[label_name]
                 except KeyError:
                     print(f'::warning::Ignoring unknown label {label_name!r}')
                     invalid_labels.append(label_name)
                     continue
-                if delete:
-                    pr.remove_from_labels(label)
-                else:
-                    add_labels.append(label)
 
-            pr.add_to_labels(*add_labels)
+                if delete:
+                    remove_labels.append(label)
+                    continue
+
+                add_labels.append(label)
+
+            # adding labels takes precedence, so remove from this list the ones that should in fact be added
+            remove_labels = [label for label in remove_labels if label not in add_labels]
+
+            for label in remove_labels:
+                # to be done label-by-label
+                pr.remove_from_labels(label)
+
+            if add_labels:
+                pr.add_to_labels(*add_labels)
 
             if invalid_labels:
                 pr.create_issue_comment(

@@ -32,6 +32,14 @@ jobs:
           +async-label <label1>, <label2>, !<label3> ...\n \
           \`\`\`\n \
           This will add \`<label1>\` and \`<label2>\` and removes \`<label3>\`.\n\n \
+          To add all labels, comment with \n \
+          \`\`\`\n \
+          +async-label all\n \
+          \`\`\`\n \
+          To remove all labels, comment with \n \
+          \`\`\`\n \
+          +async-label !all\n \
+          \`\`\`\n \
           **The following labels are available**\n${labels_line_break}"
           # read the body text from stdin
           echo -e "${body_text}" | gh pr comment "${nr}" --body-file - --repo "${GITHUB_REPOSITORY}"
