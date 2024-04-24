@@ -45,6 +45,7 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
+          rm -f /etc/apt/sources.list.d/vscode.list
           sudo apt update
           sudo apt install -y clang-format-15
           sudo update-alternatives --install /usr/bin/clang-format \
