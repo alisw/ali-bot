@@ -79,7 +79,7 @@ jobs:
             *) repo_suffix=_$DISTRO. ;;
           esac
           rclone --config /tmp/rclone.conf --transfers=10 --progress --delete-before \
-                 sync local:./ "rpms3:alibuild-repo/RPMS/o2-full-deps${repo_suffix}x86-64/"
+                 sync local:./ "rpms3:alibuild-repo/RPMS/o2-full-deps${repo_suffix}$(uname -m | tr _ -)/"
 
   deb-ubuntu:
     runs-on: ubuntu-latest
