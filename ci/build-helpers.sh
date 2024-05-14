@@ -182,7 +182,9 @@ function modtime () {
 function ensure_vars () {
   # Make sure variables are defined, and export them.
   for var in "$@"; do
-    if [ -z "${!var}" ]; then
+    # The +x is needed to avoid leaking secrets when running with
+    # bash -ex
+    if [ -z ${!var+x} ]; then
       echo "$(basename "$0"): error: required variable $var not defined!" >&2
       exit 1
     else
