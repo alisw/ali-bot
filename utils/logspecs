@@ -99,7 +99,7 @@ def main(args: argparse.Namespace) -> None:
         for line in fd
         # Only use the pre-hash-assignment spec if selected by the user.
         if not (args.pre_hash_specs and '_revision_hash' in line)
-        and (match := re.search(SPEC_RE, line))
+        and (match := SPEC_RE.search(line))
     } for fd in args.log_files}
     all_pkg_names: set[str] = set().union(*log_specs.values())
     Logger.package_name_length = min(16, max(map(len, all_pkg_names)))

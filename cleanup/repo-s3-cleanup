@@ -1,0 +1,586 @@
+#!/usr/bin/env python3
+
+'''Delete old tarballs in aliBuild's S3 remote store.
+
+This script only considers the specified packages' tarballs for deletion,
+leaving tarballs they depend on in place (but see the warning about false
+positives below).
+
+If requested, symlinks to deleted tarballs are cleaned up from
+TARS/<arch>/<package>/<tarball>, and symlinks under the respective
+TARS/<arch>/dist*/<package>/<package>-<version>/ are deleted as well.
+
+If a tarball is considered for deletion, but another tarball depends on it (and
+the latter is not deleted), then the former will be left in place, even if it
+would otherwise be old enough for deletion. This prevents breaking existing
+packages' dependency trees.
+'''
+
+import enum
+import io
+import logging
+import os
+import re
+import sys
+import typing
+import yaml
+from argparse import ArgumentParser, FileType, Namespace
+from collections import defaultdict
+from collections.abc import Iterable, Set
+from datetime import datetime, timezone, timedelta
+from itertools import chain, groupby
+from boto3 import client
+from botocore.exceptions import ClientError
+
+START_TIME: datetime = datetime.now(timezone(timedelta(0), 'UTC'))
+
+if typing.TYPE_CHECKING:
+    SymlinkMapping = dict[str, tuple[str, str]]
+    '''Map symlink basenames to associated data.
+
+    The data is a tuple of the symlink's associated package name and its
+    target in the store.
+    '''
+
+
+def tarball_arch(key: str) -> str:
+    '''Extract the architecture from a full S3 key.'''
+    _, arch, *_ = key.split('/', 2)
+    return arch
+
+
+class DeletionRule(typing.TypedDict):
+    '''A parsed configuration entry specifying what to delete.'''
+    architectures: 'list[str]'
+    packages: 'list[str]'
+    delete_symlinks: bool
+    delete: 'list[str]'
+    keep: 'list[str]'
+    delete_older_than: 'datetime | None'
+
+
+def parse_rule(yaml_entry: dict) -> DeletionRule:
+    '''Set default values for the given YAML rule entry.'''
+    rule: DeletionRule = {
+        'architectures': yaml_entry.get('architectures') or [],
+        'packages': yaml_entry.get('packages') or [],
+        'delete_symlinks': yaml_entry.get('delete_symlinks', False),
+        'delete': yaml_entry.get('delete') or [],
+        'keep': yaml_entry.get('keep') or [],
+        'delete_older_than':
+        START_TIME - timedelta(**yaml_entry['delete_older_than'])
+        if yaml_entry.get('delete_older_than') else None,
+    }
+    assert isinstance(rule['architectures'], list), \
+        '"architectures" must be a list of architectures'
+    assert isinstance(rule['packages'], list), \
+        '"packages" must be a list of packages'
+    assert isinstance(rule['delete_symlinks'], bool), \
+        '"delete_symlinks" must be a boolean'
+    assert isinstance(rule['delete'], list), \
+        '"delete" must be a list of regexes'
+    assert isinstance(rule['keep'], list), \
+        '"keep" must be a list of regexes'
+    assert rule['delete_older_than'] is None or \
+        isinstance(rule['delete_older_than'], datetime), \
+        '"delete_older_than" must be a dictionary of timedelta() keys'
+    return rule
+
+
+class DeletionAction(enum.IntEnum):
+    '''Specify what to do with a given tarball.
+
+    Items are in order. Earlier values take precedence when evaluating rules.
+    '''
+    KEEP = enum.auto()
+    '''Block deletion of this tarball and any associated symlinks.'''
+    DELETE_TARBALL_ONLY = enum.auto()
+    '''Delete this tarball from the store, but keep its symlinks intact.'''
+    DELETE_WITH_SYMLINKS = enum.auto()
+    '''Completely delete this tarball and any symlinks associated with it.'''
+    UNDECIDED = enum.auto()
+    '''Let other rules decide what to do with this tarball.'''
+
+
+def tarball_matches_any(tarball: str, arch: str,
+                        packages: 'Iterable[str]',
+                        versions_revisions: 'Iterable[str]') -> bool:
+    '''Does the file name match any combination of package and version?'''
+    arch = re.escape(arch)
+    return any(re.fullmatch(rf'{pkg}-{ver}.{arch}\.tar\.gz', tarball)
+               for pkg in map(re.escape, packages)
+               # These are explicitly allowed to be regexes.
+               for ver in versions_revisions)
+
+
+def evaluate_rule(rule: DeletionRule, package: str,
+                  key: str, mtime: datetime) -> 'tuple[DeletionAction, str]':
+    '''Return the action to be taken on the given tarball and the reason.'''
+    if package not in rule['packages']:
+        return DeletionAction.UNDECIDED, \
+            'not matched by rule with the correct package'
+    arch = tarball_arch(key)
+    if arch not in rule['architectures']:
+        return DeletionAction.UNDECIDED, \
+            'not matched by rule with the correct architecture'
+
+    action_if_deletion = DeletionAction.DELETE_WITH_SYMLINKS \
+        if rule['delete_symlinks'] else DeletionAction.DELETE_TARBALL_ONLY
+    tarball = os.path.basename(key)
+
+    if tarball_matches_any(tarball, arch, rule['packages'], rule['keep']):
+        return DeletionAction.KEEP, 'matched by regex'
+    if tarball_matches_any(tarball, arch, rule['packages'], rule['delete']):
+        return action_if_deletion, 'matched by regex'
+    cutoff = rule['delete_older_than']
+    if cutoff is not None and mtime < cutoff:
+        return action_if_deletion, \
+            cutoff.strftime('older than %Y-%m-%d %H:%M:%S %Z')
+    return DeletionAction.UNDECIDED, 'not matched by rule'
+
+
+def evaluate_rules(rules: 'Iterable[DeletionRule]', package: str,
+                   key: str, mtime: datetime) -> 'tuple[DeletionAction, str]':
+    '''Return the rules' combined decision for the given tarball.'''
+    return min(evaluate_rule(rule, package, key, mtime) for rule in rules)
+
+
+def main(args: Namespace) -> int:
+    '''Script entry point.'''
+    setup_logger(verbose=args.verbose)
+    log = logging.getLogger(__name__)
+
+    if args.repo_listing is not None:
+        s3c = MockS3Client(args.repo_listing)
+    else:
+        try:
+            s3c = client('s3', endpoint_url=args.endpoint_url,
+                         aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+                         aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'])
+        except KeyError as err:
+            log.fatal('the AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment'
+                      ' variables are required', exc_info=err)
+            return 1
+
+    rules = [parse_rule(entry) for entry in yaml.safe_load(args.config_file)]
+    args.config_file.close()
+
+    all_archs: 'frozenset[str]' = \
+        frozenset().union(*(rule['architectures'] for rule in rules))
+    log.info('found rules for architectures: %s', ', '.join(sorted(all_archs)))
+
+    # The basename includes the architecture (as .$arch.tar.gz suffix), so
+    # it's safe to merge these dicts for multiple architectures.
+    symlink_targets: 'SymlinkMapping' = {
+        basename: (package, target)
+        for arch in all_archs
+        for package in list_packages(s3c, args.bucket, f'TARS/{arch}/')
+        for basename, target in load_symlink_targets(s3c, args.bucket,
+                                                     f'TARS/{arch}/{package}')
+    }
+
+    # Scan TARS/<arch>/store/*/*/*.tar.gz to find main tarballs.
+    delete_tarballs: 'set[str]' = set()
+    delete_symlinks: 'set[str]' = set()
+    sizes: 'dict[str, int]' = {}
+    for arch in all_archs:
+        for key, mtime, size in get_hierarchy(s3c, args.bucket,
+                                              f'TARS/{arch}/store/'):
+            assert mtime is not None, 'we should have keys here, not prefixes'
+            sizes[key] = size
+            package, _ = symlink_targets[os.path.basename(key)]
+            action, reason = evaluate_rules(rules, package, key, mtime)
+            if action == DeletionAction.DELETE_TARBALL_ONLY:
+                log.debug('tarball to be deleted, symlinks kept '
+                          '(reason: %s, age: %s, size: %s): %s',
+                          reason, mtime.strftime('%Y-%m-%d %H:%M:%S %Z'),
+                          format_byte_size(size), key)
+                delete_tarballs.add(key)
+            elif action == DeletionAction.DELETE_WITH_SYMLINKS:
+                log.debug('tarball to be deleted with symlinks '
+                          '(reason: %s, age: %s, size: %s): %s',
+                          reason, mtime.strftime('%Y-%m-%d %H:%M:%S %Z'),
+                          format_byte_size(size), key)
+                delete_symlinks.add(key)
+            else:
+                log.debug('tarball to be kept (reason: %s, age: %s); '
+                          'skipping: %s',
+                          reason, mtime.strftime('%Y-%m-%d %H:%M:%S %Z'), key)
+
+    # A given key must only have one action applied to it.
+    assert delete_tarballs.isdisjoint(delete_symlinks)
+    log.debug('found %d candidate tarballs for deletion; total size: %s',
+              len(delete_tarballs) + len(delete_symlinks),
+              format_byte_size(sum(sizes.get(k, 0) for k in
+                                   chain(delete_tarballs, delete_symlinks))))
+
+    # We still need to fetch dist symlinks for all archs, in order to work out
+    # dependency relationships, even if dist symlinks should not be deleted.
+    log.debug('fetching dist symlink names for: %s; this may take a while',
+              ', '.join(all_archs))
+    dist_symlinks = (
+        key
+        for arch in all_archs
+        for dist in ('dist', 'dist-direct', 'dist-runtime')
+        for key, _, _ in
+        get_hierarchy(s3c, args.bucket, f'TARS/{arch}/{dist}/', recursive=True)
+        # Match TARS/{arch}/{dist}/{package}/{package}-{version}/*.tar.gz.
+        if key.endswith('.tar.gz') and key.count('/') == 5
+    )
+
+    # Fetch symlinks pointing to the tarballs to be deleted (if applicable),
+    # then resolve dependencies.
+    deletable, blocked = find_deletable(*get_symlinks_for_deletion(
+        delete_symlinks, delete_tarballs, dist_symlinks, symlink_targets,
+    ))
+    assert deletable.isdisjoint(blocked)
+    success = delete_objects(s3c, args.bucket, deletable, do_it=args.do_it)
+    if not success:
+        log.error('encountered errors during deletion; see above for details')
+
+    log.info('repository size for selected architectures: %s',
+             format_byte_size(sum(sizes.values())))
+    not_considered = frozenset(sizes.keys()) - deletable - blocked
+    log.info('not considered for deletion: %d tarballs, totalling %s',
+             # deletable and blocked are disjoint sets
+             len(not_considered),
+             format_byte_size(sum(sizes.get(k, 0) for k in not_considered)))
+    log.info('dependencies blocked from deletion: %d objects, totalling %s',
+             len(blocked),
+             format_byte_size(sum(sizes.get(k, 0) for k in blocked)))
+    log.info('%s %d objects, freeing %s',
+             'deleted' if args.do_it else 'would delete', len(deletable),
+             format_byte_size(sum(sizes.get(k, 0) for k in deletable)))
+
+    return 0 if success else 1
+
+
+def get_symlinks_for_deletion(delete_with_symlinks: 'Set[str]',
+                              delete_only_tarball: 'Set[str]',
+                              dist_symlinks: 'Iterable[str]',
+                              symlink_targets: 'SymlinkMapping') \
+        -> 'tuple[set[str], list[tuple[str, str]]]':
+    '''Return keys which should be deleted for the given tarball.'''
+    log = logging.getLogger(__name__)
+
+    symlinks: 'set[str]' = set()
+    dependencies: 'list[tuple[str, str]]' = []
+
+    # We sort dist_symlinks, so that all symlinks in the same directory are
+    # consecutive elements in the list, which is required by groupby.
+    for symlink_dir, keys in groupby(sorted(dist_symlinks), os.path.dirname):
+        # Save the contents of this dist subdirectory, in case we need to do
+        # something with its contents later.
+        log.debug('listing dependencies under %s', symlink_dir)
+        main_package = '{}.{}.tar.gz'.format(os.path.basename(symlink_dir),
+                                             tarball_arch(symlink_dir))
+        dir_contents = list(keys)
+
+        # This dist directory belongs to a tarball that we want to delete.
+        # Delete all the symlinks inside this directory if and only if we're
+        # deleting the associated tarball.
+        _, store_tarball = symlink_targets[main_package]
+        dependencies.extend((store_tarball, sym) for sym in dir_contents)
+        log.debug('found %d dependencies of tarball under %s/',
+                  len(dir_contents), symlink_dir)
+
+        for symlink_basename in map(os.path.basename, dir_contents):
+            _, this_store_tarball = symlink_targets[symlink_basename]
+            if symlink_basename != main_package:
+                # We've found a symlink inside another package's dist dir; add
+                # a dependency relation.
+                _, main_store_tarball = symlink_targets[main_package]
+                dependencies.append((main_store_tarball, this_store_tarball))
+            elif this_store_tarball in delete_with_symlinks:
+                # If we've found the dist dir belonging to a tarball that we
+                # want to delete along with its symlinks. Add all symlinks in
+                # the same dir to the list of symlinks to consider for
+                # deletion.
+                symlinks.update(dir_contents)
+
+    return symlinks | delete_only_tarball | delete_with_symlinks, dependencies
+
+
+def find_deletable(to_delete: 'Set[str]',
+                   dependencies: 'list[tuple[str, str]]') \
+        -> 'tuple[Set[str], Set[str]]':
+    '''Delete old orphan packages and return files deleted and their sizes.'''
+    log = logging.getLogger(__name__)
+
+    # Sort dependency pairs so that we process tarballs in store/ first. This
+    # ought to speed up resolving transitive dependencies slightly, as the
+    # store/ tarballs have the "real" dependency and the ones in dist*/ just
+    # depend on their respective store/ tarball.
+    dependencies.sort(key=lambda dep: dep[1], reverse=True)
+
+    # A tarball can be deleted if nothing else depends on it, with dependency
+    # relationships having been calculated earlier from dist*/ symlinks.
+    blockers: 'defaultdict[str, set[str]]' = defaultdict(set)
+    converged = False
+    while not converged:
+        converged = True
+        for up, down in dependencies:
+            if up not in to_delete and up not in blockers[down]:
+                # This dependency relationship blocks deletion of `down`.
+                blockers[down].add(up)
+                converged = False
+            elif blockers[up] - blockers[down]:
+                # There is a transitive dependency here. `up` is blocked from
+                # deletion, so block `down` as well.
+                blockers[down] |= blockers[up]
+                converged = False
+
+    for item, reverse_deps in blockers.items():
+        if reverse_deps and item in to_delete:
+            log.debug('not deleting %s: blocked by %s', item,
+                      ', '.join(sorted(reverse_deps)))
+
+    blocked = {down for down, ups in blockers.items() if ups}
+    return to_delete - blocked, to_delete & blocked
+
+
+def delete_objects(s3c, bucket: str, to_delete: 'Iterable[str]',
+                   *, do_it: bool = False) -> bool:
+    '''Perform the "real" deletion for the given objects, if requested.'''
+    log = logging.getLogger(__name__)
+    delete_batch: 'list[dict[typing.Literal["Key"], str]]' = []
+    success: bool = True
+
+    def delete_current_batch() -> bool:
+        '''Delete all objects in the currently-accumulated batch.'''
+        batch_success = True
+        response = s3c.delete_objects(Bucket=bucket, Delete={
+            'Quiet': False, 'Objects': delete_batch,
+        })
+        for deleted in response.get('Deleted', ()):
+            log.info('deleted: %s', deleted['Key'])
+        for error in response.get('Errors', ()):
+            log.error('error %s for %s: %s', error['Code'], error['Key'],
+                      error['Message'])
+            batch_success = False
+        delete_batch.clear()
+        return batch_success
+
+    for item in sorted(to_delete):
+        if not do_it:
+            log.info('would delete: %s', item)
+        elif len(delete_batch) > 999:
+            # We can only delete batches of 1000 keys at a time.
+            success &= delete_current_batch()
+        else:
+            delete_batch.append({'Key': item})
+
+    # Delete the last batch of keys as well.
+    if do_it and delete_batch:
+        success &= delete_current_batch()
+
+    return success
+
+
+def list_packages(s3c, bucket: str, arch_path: str) -> 'Iterable[str]':
+    '''Generate package names found under the given architecture prefix.'''
+    for prefix, _, _ in get_hierarchy(s3c, bucket, arch_path, recursive=False):
+        if prefix.endswith('/'):
+            package = os.path.basename(prefix.rstrip('/'))
+            if package not in {'store', 'dist', 'dist-direct', 'dist-runtime'}:
+                yield package
+
+
+def load_symlink_targets(s3c, bucket: str, package_path: str) \
+        -> 'Iterable[tuple[str, str]]':
+    '''Return tuples of symlink basenames and store tarballs they point to.'''
+    log = logging.getLogger(__name__)
+    symlinks_seen: 'set[str]' = set()
+    manifest_key = f'{package_path}.manifest'
+    try:
+        log.debug('fetching object s3://%s/%s', bucket, manifest_key)
+        manifest = s3c.get_object(Bucket=bucket, Key=manifest_key)['Body'] \
+                      .read().decode('utf-8')
+    except ClientError as exc:
+        # If the manifest doesn't exist, ignore the error and fetch symlinks
+        # individually below.
+        if exc.response['Error']['Code'] != 'NoSuchKey':
+            log.fatal('got unknown error response from S3: %r', exc.response)
+            raise ValueError('could not fetch %s' % manifest_key) from exc
+    else:
+        for line in manifest.splitlines():
+            basename, valid, target = line.partition('\t')
+            if not valid:
+                continue
+            symlinks_seen.add(basename)
+            norm = normalize_symlink_target(f'{package_path}/_', target)
+            yield (basename, norm)
+
+    # Fetch any leftover symlinks not listed in the manifest.
+    for key, _, _ in get_hierarchy(s3c, bucket, f'{package_path}/',
+                                   recursive=False):
+        if key.endswith('/'):
+            continue
+        basename = os.path.basename(key)
+        if basename in symlinks_seen or not basename.endswith('.tar.gz'):
+            continue
+        log.debug('fetching object s3://%s/%s', bucket, key)
+        target = s3c.get_object(Bucket=bucket, Key=key)['Body'] \
+                    .read().decode('utf-8').rstrip('\n')
+        yield (basename, normalize_symlink_target(key, target))
+
+
+def get_hierarchy(s3c, bucket: str, prefix: str, recursive: bool = True) \
+        -> 'Iterable[tuple[str, datetime | None, int]]':
+    '''Retrieve all objects under the specified prefix.
+
+    If recursive=False is given, include common subprefixes in the output.
+    These can be identified by their trailing slash.
+    '''
+    log = logging.getLogger(__name__)
+    log.debug('listing keys under s3://%s/%s (recursive=%r)',
+              bucket, prefix, recursive)
+    kwargs = {} if recursive else {'Delimiter': '/'}
+    for page in s3c.get_paginator('list_objects_v2') \
+                   .paginate(Bucket=bucket, Prefix=prefix, **kwargs):
+        for item in page.get('Contents', ()):
+            yield (item['Key'], item['LastModified'], item['Size'])
+        for subprefix in page.get('CommonPrefixes', ()):
+            yield (subprefix['Prefix'], None, 0)
+
+
+def normalize_symlink_target(symlink_key: str, target: str) -> str:
+    '''Turn the target of a symlink pointing into the store into an S3 key.'''
+    if target.startswith('TARS/'):
+        return target
+    if not target.startswith('../../'):
+        target = '../../' + target
+    return os.path.normpath(os.path.dirname(symlink_key) + '/' + target)
+
+
+def format_byte_size(size_bytes: int) -> str:
+    '''Make a number of bytes into a human-readable file size.'''
+    if size_bytes < 1024:
+        return f'{size_bytes:d} B'
+    kbytes = size_bytes / 1024
+    prefixes = 'KMGTPEZY'
+    for i, prefix in enumerate(prefixes):
+        prefix_size = kbytes / 1024 ** i
+        if abs(prefix_size) < 1024:
+            return f'{prefix_size:.1f} {prefix}iB'
+    return f'{kbytes / 1024 ** len(prefixes):.1f} {prefixes[-1]}iB'
+
+
+def setup_logger(verbose: bool) -> None:
+    '''Set up the logger for this module, and silence boto3.'''
+    logging.getLogger('boto3').setLevel(logging.WARNING)
+    log = logging.getLogger(__name__)
+    log.setLevel(logging.DEBUG if verbose else logging.INFO)
+    handler = logging.StreamHandler()
+    handler.setLevel(0)  # the level set above still applies
+    log.addHandler(handler)
+
+
+def parse_args() -> Namespace:
+    '''Parse command-line arguments.'''
+    parser = ArgumentParser(description=__doc__, epilog='''\
+    Warning: the way -p/--package is defined, it can cause false positives,
+    e.g. specifying "-p O2" leads to O2-customization tarballs being considered
+    for deletion as well (but not e.g. O2Suite due to the "-" added by this
+    script to the end of specified package names).
+    ''')
+    parser.add_argument(
+        '-v', '--verbose', action='store_true', default=False,
+        help='show debug output')
+    parser.add_argument(
+        '-y', '--do-it', action='store_true', default=False,
+        help='actually delete packages (without this, only print which '
+        'objects would be deleted)')
+    parser.add_argument(
+        '-u', '--endpoint-url', default='https://s3.cern.ch', metavar='URL',
+        help='S3 endpoint base URL (default %(default)s)')
+    parser.add_argument(
+        '-b', '--bucket', default='alibuild-repo',
+        help='S3 bucket to clean up (default %(default)s). '
+        'The script expects a TARS/<arch>/... hierarchy inside the bucket.')
+    parser.add_argument(
+        '-r', '--repo-listing', default=None, type=FileType('r'),
+        help=('File containing a listing of all keys in the S3 repo, in '
+              '"s3cmd ls -r" format. Useful for testing and prototyping.'))
+    parser.add_argument(
+        'config_file', metavar='RULES.yaml', type=FileType('r'),
+        help='YAML file specifying cleanup rules')
+    args = parser.parse_args()
+    if args.do_it and args.repo_listing:
+        parser.error(
+            'refusing to delete files from live repo when -r/--repo-listing '
+            'is given; remove -y/--do-it and try again'
+        )
+    return args
+
+
+class MockS3Client:
+    def __init__(self, repo_listing):
+        log = logging.getLogger(__name__)
+        log.debug('parsing repository listing...')
+        contents = {
+            key: (datetime.fromisoformat(f'{date}T{time}:00+00:00'), size)
+            for date, time, size, key in
+            (line.rstrip('\n').split(maxsplit=3) for line in repo_listing)
+        }
+
+        key_regex = re.compile(r'(s3://[^/]+/)((TARS/[^/]+/[^/]+/).*)')
+        self._dirs = defaultdict(list)
+        for key, (mtime, size) in contents.items():
+            if (mtch := key_regex.fullmatch(key)):
+                prefix, s3_key, dir_prefix = mtch.groups()
+                self._dirs[prefix + dir_prefix].append({
+                    'Key': s3_key, 'LastModified': mtime, 'Size': int(size),
+                })
+        for l in self._dirs.values():
+            pass
+
+        self._store = {
+            (key.split('/', 2)[1], os.path.basename(key)): key
+            for key in contents
+            if '/store/' in key
+        }
+        log.debug('finished parsing repository listing; found %d entries',
+                  len(contents))
+
+    def get_paginator(self, method):
+        if method == 'list_objects_v2':
+            return self
+        raise NotImplementedError
+
+    def paginate(self, Bucket, Prefix, Delimiter=None):
+        bucket_and_prefix = f's3://{Bucket}/{Prefix}'
+
+        if Delimiter is None:
+            return [{'Contents': self._dirs[bucket_and_prefix]}]
+
+        contents = []
+        prefixes = set()
+
+        for item in self._dirs[bucket_and_prefix]:
+            if item['Key'].find(Delimiter, len(Prefix)) == -1:
+                contents.append(item)
+            else:
+                prefixes.add(item['Key'])
+
+        return [{'Contents': contents, 'CommonPrefixes': (
+            {'Prefix': prefix} for prefix in sorted(prefixes)
+        )}]
+
+    def delete_objects(self, Bucket, Delete):
+        raise NotImplementedError
+
+    def get_object(self, Bucket, Key):
+        if Key.endswith('.tar.gz'):
+            _, arch, *_ = Key.split('/', 2)
+            s3_key = self._store.get((arch, os.path.basename(Key)),
+                                     f'TARS/{arch}/store/00/0000/dummy')
+            return {'Body': io.BytesIO(s3_key.encode('utf-8'))}
+        raise ClientError({'Error': {'Code': 'NoSuchKey'}}, 'get_object')
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main(parse_args()))
+    except (KeyboardInterrupt, BrokenPipeError):
+        pass

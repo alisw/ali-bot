@@ -27,13 +27,9 @@ export MODULES_USE_COMPAT_VERSION=1
 
 Eval(){
    cmd=$*
-   ret=`$cmd`
-   if [ "x$ret" != x ]
-   then
-      eval $ret
-   else
-      return 1
-   fi
+   ret=`$cmd` || return 1
+   [ -z "$ret" ] && return 0
+   eval $ret
 }
 
 os_release=/etc/os-release
@@ -52,7 +48,7 @@ fi
 [ x$ALIENV_DEBUG == x1 ] && printf "distro_name=$distro_name\ndistro_release=$distro_release\n" >&2
 
 case $distro_name in
-     Scientific*|CentOS*|RedHatEnterprise*)
+     Scientific*|CentOS*|Rocky*|Alma*|RedHatEnterprise*|'Red Hat Enterprise'*)
         distro_dir="Scientific"
         uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
@@ -69,6 +65,15 @@ case $distro_name in
               distro_xrelease=6.x
               platform=el7
               ;;
+           8*)
+              distro_xrelease=8.x
+              platform=el7
+              ;;
+           9*)
+              distro_xrelease=8.x
+              platform=el7
+              ;;
+
         esac
         ;;
      Fedora*)
@@ -135,7 +140,7 @@ case $distro_name in
               distro_xrelease=6.x
               platform=ubuntu1404
               ;;
-           16.*|17.*|18.*)
+           16.*|17.*|18.*|2?.*)
               # Required from system: apt install libx11-6 environment-modules
               distro_xrelease=
               platform=ubuntu1604
@@ -300,7 +305,7 @@ alien="AliEn"
 # pick all packages consistently from a certain platform tree. When listing
 # packages we show them all, when we load a package e define a priority list and
 # we always have a fallback for backward compatibility.
-PLATFORM_PRIORITY="el7-x86_64 el6-x86_64 el5-x86_64"
+PLATFORM_PRIORITY="el9-$uname_m el7-$uname_m el6-$uname_m el5-$uname_m el8-$uname_m"
 ARGS=("$@")
 PACKAGES=
 EXPECT_PACKAGES=
@@ -316,10 +321,10 @@ for ARG in "$@"; do
 done
 if [[ $PACKAGES ]]; then
   for P in $PLATFORM_PRIORITY; do
-    [[ "${P:0:3}" == el5 ]] && P="$cvmfsdir/x86_64-2.6-gnu-4.1.2
-                                  $cvmfsdir/x86_64-2.6-gnu-4.7.2
-                                  $cvmfsdir/x86_64-2.6-gnu-4.8.3
-                                  $cvmfsdir/x86_64-2.6-gnu-4.8.4" \
+    [[ "${P:0:3}" == el5 ]] && P="$cvmfsdir/$uname_m-2.6-gnu-4.1.2
+                                  $cvmfsdir/$uname_m-2.6-gnu-4.7.2
+                                  $cvmfsdir/$uname_m-2.6-gnu-4.8.3
+                                  $cvmfsdir/$uname_m-2.6-gnu-4.8.4" \
                             || P="$cvmfsdir/$P"
     moduledirs="`echo $modulepath $P`"
     export MODULEPATH=$(modulepath modulefiles $moduledirs)
@@ -329,6 +334,8 @@ if [[ $PACKAGES ]]; then
     for X in $PACKAGES; do
       # Policy: all specified packages must be found in current platform. If
       # this is not the case then fallback on the next platform.
+      # If we're loading a <package>/default symlink, just check if any version is loaded.
+      [ "${X##*/}" = default ] && X=${X%/*}
       echo $LOADED | grep -q $X || { OK=0; break; }
     done
     [[ $OK == 1 ]] && break || { [[ $ALIENV_DEBUG == 1 ]] && printf "NOTICE: cannot find packages with MODULEPATH=$MODULEPATH\n" >&2 ; }
@@ -336,13 +343,15 @@ if [[ $PACKAGES ]]; then
 else
   # PACKAGES is empty, meaning we are executing list operations. Use all paths
   # in MODULEPATH because we want to list packages for all platforms.
-  moduledirs="`echo "$modulepath
-                     $cvmfsdir/x86_64-2.6-gnu-4.1.2
-                     $cvmfsdir/x86_64-2.6-gnu-4.7.2
-                     $cvmfsdir/x86_64-2.6-gnu-4.8.3
-                     $cvmfsdir/x86_64-2.6-gnu-4.8.4
-                     $cvmfsdir/el6-x86_64
-                     $cvmfsdir/el7-x86_64"`"
+  moduledirs="$modulepath
+              $cvmfsdir/$uname_m-2.6-gnu-4.1.2
+              $cvmfsdir/$uname_m-2.6-gnu-4.7.2
+              $cvmfsdir/$uname_m-2.6-gnu-4.8.3
+              $cvmfsdir/$uname_m-2.6-gnu-4.8.4
+              $cvmfsdir/el6-$uname_m
+              $cvmfsdir/el7-$uname_m
+              $cvmfsdir/el8-$uname_m
+              $cvmfsdir/el9-$uname_m"
   export MODULEPATH=$(modulepath modulefiles $moduledirs)
   [ x$platform != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
 fi

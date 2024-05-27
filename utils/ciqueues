@@ -1,46 +1,40 @@
-#!/usr/bin/bash -e
-mode=nomad
-case $1 in
-  -a|--aurora) mode=aurora; shift ;;
-  -n|--nomad) mode=nomad; shift ;;
-  -h|--help)
-    cat << EOF
-usage: $(basename "$0") [-han] ROLE CONTAINER [SUFFIX]
+#!/usr/bin/env -S bash -e
+if [ "$1" = -h ] || [ "$1" = --help ]; then
+  cat << EOF; exit
+usage: $(basename "$0") [-h] ROLE CONTAINER [SUFFIX]
 
   -h, --help    show this help message and exit
-  -a, --aurora  query Aurora for running CI builders
-  -n, --nomad   query Nomad for running CI builders (default)
-EOF
-    exit ;;
-esac
 
-declare -r role=$1 container=$2 suffix=$3
+  ROLE          Mesos role, e.g. "mesosci"
+  CONTAINER     container arch, e.g. "slc7"
+  SUFFIX        optional suffix for multiple builders with the same role and
+                container, e.g. "-o2physics"
+EOF
+fi
+
+readonly role=$1 container=$2 suffix=$3
 : "${role:?you must supply a Mesos role as the first argument}" \
   "${container:?you must supply a container arch as the second argument}"
 
+: "${NOMAD_TOKEN=$(pass cern/ci/nomad-bootstrap-token | head -1)}" \
+  "${GITHUB_TOKEN=$(pass personal/github-token | head -1)}"
+export NOMAD_TOKEN GITHUB_TOKEN
+
 declare -a instances
 mapfile -t instances < <(
-  case $mode in
-    aurora)
-      REQUESTS_CA_BUNDLE=${XDG_CONFIG_HOME:-$HOME/.config}/cern-ca-bundle.crt \
-        aurora job status "build/$role/prod/ci_alisw_$container-builder_latest$suffix" 2>/dev/null |
-        sed -rn '/^Inactive tasks/,$d; s/.*instance: ([0-9]+).*/\1/p' ;;
-    nomad)
-      NOMAD_TOKEN=$(pass cern/ci/nomad-bootstrap-token | head -1) \
-        nomad job allocs -t '{{range .}}{{println .ID}}{{end}}' "ci-$role-$container$suffix" |
-        sed '/^$/d' ;;
-    *) echo "unknown mode: $mode" >&2; exit 1 ;;
-  esac
+  nomad job allocs -t '{{range .}}{{if eq .ClientStatus "running"}}{{println .Name .ID}}{{end}}{{end}}' \
+        "ci-$role-$container$suffix" |
+    # Sort by alloc index, which is appended as [N] to the name.
+    sed '/^$/d' | sort | cut -f 2 -d ' '
 )
 
-GITHUB_TOKEN=$(pass personal/github-token | head -1)
-export GITHUB_TOKEN
-
-cd
 declare -i i=0
 for instance_id in "${instances[@]}"; do
-  queue=$(ali-bot/list-branch-pr -i "$i" -n "${#instances[@]}" -r "$role" -c "$container" -s="$suffix" 2>/dev/null |
-            cut -f 1,2,4 | tr '\t' ' ' | sed 's/^untested\b/U/; s/^failed\b/F/; s/^succeeded\b/S/; s/^/\t/')
+  queue=$("$(dirname "$0")/../list-branch-pr" \
+            --definitions-dir "$(dirname "$0")/../ci/repo-config" \
+            -i "$i" -n "${#instances[@]}" \
+            -r "$role" -c "$container" -s="$suffix" 2>/dev/null |
+            cut -f 1,2,4 | sed 's/\t/ /g; s/^/\t/')
   if [ -z "$queue" ]; then
     echo "worker $i/${#instances[@]} ($instance_id): (nothing to do)"
   else

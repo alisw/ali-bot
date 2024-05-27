@@ -22,12 +22,15 @@ import os.path
 import random
 import sys
 
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
 from collections import defaultdict
+from datetime import datetime, timezone
 
 from gql import Client, gql
 from gql.transport.requests import RequestsHTTPTransport
 from alibot_helpers.utilities import parse_env_file
+from alibot_helpers.github_utilities import \
+    github_token, GithubCachedClient, setGithubStatus
 
 DEFAULTENV_NAME = "DEFAULTS.env"
 
@@ -129,15 +132,18 @@ class RepoConfig:
         intended_worker = int(sha.hexdigest(), 16) % self.worker_pool_size
         return intended_worker == self.worker_index
 
-    def trust_pr(self, session, pull):
+    def trust_pr(self, cgh, session, pull):
         """Determine whether the PR is trustworthy and can be built.
 
         If we specified a list of trusted users, teams or if we trust
         contributors, we need to check if this is the case for the given PR.
         Some of these options (notably trusting a team) will actually consume
         API calls, so you need to be careful about what you enable.
+
+        If the PR is not trusted, an appropriate status is set on its latest
+        commit.
         """
-        return bool(
+        trusted = bool(
             # If this PR has any approving reviews, trust it.
             # We only include approving reviews in pull["reviews"].
             pull["reviews"]["isApproved"] or
@@ -155,8 +161,20 @@ class RepoConfig:
                 session, self.repo_name.split("/")[0], self.trusted_team_slug
             )
         )
+        if not trusted:
+            setGithubStatus(cgh, Namespace(
+                commit="{repo}#{pr}@{commit}".format(
+                    repo=self.repo_name,
+                    pr=pull["number"],
+                    commit=pull["commits"]["nodes"][0]["commit"]["oid"],
+                ),
+                status="{}/pending".format(self.check_name),
+                message="Security: approval needed, not starting",
+                url=None,
+            ), debug_print=False)
+        return trusted
 
-    def process_single_pr(self, pull_number, last_commit,
+    def process_single_pr(self, pull_number, last_commit, pr_created,
                           is_draft=False, is_trusted=False):
         """Decide whether to queue this PR (or branch) for testing.
 
@@ -179,31 +197,39 @@ class RepoConfig:
                 ("succeeded" if success else "failed")
         else:
             state = "skip"
-        print("pr: {number:6d}@{sha:.7s}: revd={reviewed:d} trust={trust:d} "
-              "tested={tested:d} success={success:d} => state={state}".format(
-                  number=pull_number, sha=commit_hash, reviewed=reviewed,
-                  trust=is_trusted, tested=tested, success=success, state=state
-              ), file=sys.stderr)
+
+        # The PR has been waiting for checks either since it was created or
+        # since its latest commit was pushed. commit["pushedDate"] was
+        # unfortunately deprecated and removed by GitHub, so committedDate
+        # will have to do. Eliminate a common source for errors by falling
+        # back to the PR creation time, in case the commit was created well
+        # before the PR.
+        waiting_since = max(pr_created, last_commit["committedDate"])
+        print(f"pr: {pull_number:6d}@{commit_hash:.7s}: wait={waiting_since} "
+              f"revd={reviewed:d} trust={is_trusted:d} tested={tested:d} "
+              f"success={success:d} => state={state}", file=sys.stderr)
         return None if state == "skip" else (state, {
             "number": pull_number,
             "sha": commit_hash,
             "build_config": self.build_config,
-            "updated_at": last_commit["pushedDate"],
+            "waiting_since": waiting_since,
         })
 
-    def process_pulls(self, session, repo_info, show_base_branch=False):
+    def process_pulls(self, cgh, session, repo_info, show_base_branch=False):
         """Return pull requests we can process, with relevant attributes."""
         for pull in repo_info["pullRequests"]["nodes"]:
             item = self.process_single_pr(
                 pull["number"], pull["commits"]["nodes"][0]["commit"],
+                pull["createdAt"],
                 is_draft=pull["isDraft"] or pull["title"].startswith("[WIP]"),
-                is_trusted=self.trust_pr(session, pull),
+                is_trusted=self.trust_pr(cgh, session, pull),
             )
             if item is not None:
                 yield item
 
         if show_base_branch:
-            item = self.process_single_pr(self.branch_ref, repo_info["object"])
+            item = self.process_single_pr(self.branch_ref, repo_info["object"],
+                                          pull["createdAt"])
             if item is not None:
                 yield item
 
@@ -214,38 +240,37 @@ class RepoConfig:
 def main(args):
     """Script entry point."""
     grouped = defaultdict(list)
-    transport = RequestsHTTPTransport(
-        url="https://api.github.com/graphql",
-        auth=("bearer", os.environ["GITHUB_TOKEN"]),
-    )
-    with Client(transport=transport) as session:
-        # Find .env files for this worker, parse them and find PRs to process
-        # for each build config.
-        env_files = glob.glob(os.path.join(
-            args.definitions_dir, args.mesos_role,
-            args.container_name + args.config_suffix, "*.env",
-        ))
-        for env_file in env_files:
-            env_file_name = os.path.basename(env_file)
-            if env_file_name == DEFAULTENV_NAME:
-                continue
+    # Find .env files for this worker, parse them and find PRs to process for
+    # each build config.
+    env_files = glob.glob(os.path.join(
+        args.definitions_dir, args.mesos_role,
+        args.container_name + args.config_suffix, "*.env",
+    ))
+    transport = RequestsHTTPTransport(url="https://api.github.com/graphql",
+                                      auth=("bearer", github_token()))
+    with GithubCachedClient() as cgh:
+        with Client(transport=transport) as session:
+            for env_file in env_files:
+                env_file_name = os.path.basename(env_file)
+                if env_file_name == DEFAULTENV_NAME:
+                    continue
 
-            try:
-                repo = RepoConfig(env_file_name[:-4],
-                                  args.definitions_dir, args.mesos_role,
-                                  args.container_name, args.config_suffix,
-                                  args.worker_index, args.worker_pool_size)
-            except ValueError as err:
-                print(env_file_name, err, sep=": ", file=sys.stderr)
-            else:
-                # Extend PR groups with PRs from this repo.
-                org, _, repo_name = repo.repo_name.partition("/")
-                repo_info = query_repo_info(session, org, repo_name,
-                                            repo.branch_ref,
-                                            args.show_base_branch)
-                for state, item in repo.process_pulls(session, repo_info,
-                                                      args.show_base_branch):
-                    grouped[state].append(item)
+                try:
+                    repo = RepoConfig(env_file_name[:-4],
+                                      args.definitions_dir, args.mesos_role,
+                                      args.container_name, args.config_suffix,
+                                      args.worker_index, args.worker_pool_size)
+                except ValueError as err:
+                    print(env_file_name, err, sep=": ", file=sys.stderr)
+                else:
+                    # Extend PR groups with PRs from this repo.
+                    org, _, repo_name = repo.repo_name.partition("/")
+                    repo_info = query_repo_info(session, org, repo_name,
+                                                repo.branch_ref,
+                                                args.show_base_branch)
+                    for state, item in repo.process_pulls(cgh, session, repo_info,
+                                                          args.show_base_branch):
+                        grouped[state].append(item)
 
     def print_prs(group, number=None):
         """Print N randomly chosen PRs from group on stdout."""
@@ -255,9 +280,21 @@ def main(args):
         # Sort by PR number so that older PRs are built first. Don't use
         # .sort() here as it modifies the list in-place, and that list might
         # also be used elsewhere.
-        for pull in sorted(prs, key=lambda pr: pr["updated_at"]):
-            print(group, pull["number"], pull["sha"],
-                  pull["build_config"], sep="\t")
+        # pr["waiting_since"] can apparently be None sometimes, which breaks
+        # sorting, so default to the empty string if so.
+        for pull in sorted(prs, key=lambda pr: pr["waiting_since"] or ""):
+            if group == "untested":
+                commit_timestr = pull["waiting_since"]
+                commit_time = datetime.fromisoformat(commit_timestr.replace("Z", "+00:00")) \
+                    if commit_timestr else datetime.now(timezone.utc)
+                waiting_since = str(int(commit_time.timestamp()))
+            else:
+                # If this PR has been built before, the commit time is a bit
+                # meaningless -- the PR hasn't actually been waiting since
+                # then for this check.
+                waiting_since = ""
+            print(group, pull["number"], pull["sha"], pull["build_config"],
+                  waiting_since, sep="\t")
 
     if grouped["untested"]:
         # If there are untested PRs waiting, build all of them first.
@@ -363,6 +400,7 @@ query statuses(
         number
         title
         isDraft
+        createdAt
         authorAssociation
         author {
           login
@@ -389,7 +427,7 @@ query statuses(
 
 fragment commitInfo on Commit {
   oid
-  pushedDate
+  committedDate
   status {
     contexts {
       context

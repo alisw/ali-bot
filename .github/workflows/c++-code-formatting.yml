@@ -10,17 +10,24 @@ name: C++ code formatting reusable workflow
           The GitHub token to use to push commits to alibuild's repo. This is
           used for automatic cleanup PRs containing fixes from clang-format.
 
+# For sensitive actions (e.g. pushing to cleanup branches), we use a
+# manually-specified token (secrets.alibuild_github_token).
+permissions: {}
+
 env:
+  # GitHub also provides github.event.pull_request.base.sha, but that isn't
+  # always the latest commit on the base branch (e.g. see
+  # https://github.com/AliceO2Group/AliceO2/pull/12499). Using it might lead
+  # to false positives in the errors we show.
   BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
   PR_BRANCH: ${{ github.event.pull_request.head.ref }}
   PR_NUMBER: ${{ github.event.pull_request.number }}
-  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-  BASE_SHA: ${{ github.event.pull_request.base.sha }}
 
 jobs:
   clang-format:
     name: clang-format
-    # We need at least 20.04 to install clang-format-11.
+    # Keep the clang-format version synced with the one installed by aliBuild,
+    # (see https://github.com/alisw/alidist/blob/master/clang.sh).
     runs-on: ubuntu-latest
 
     steps:
@@ -38,51 +45,51 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
+          sudo apt update
+          sudo apt install -y clang-format-15
           sudo update-alternatives --install /usr/bin/clang-format \
-            clang-format /usr/bin/clang-format-11 100
+            clang-format /usr/bin/clang-format-15 100
           sudo update-alternatives --install /usr/bin/git-clang-format \
-            git-clang-format /usr/bin/git-clang-format-11 100
+            git-clang-format /usr/bin/git-clang-format-15 100
 
       # We need to fetch the PR's head commit to base our cleanup commit on.
       - name: Fetch PR branch
         run: |
           git config --global user.email 'alibuild@cern.ch'
           git config --global user.name 'ALICE Action Bot'
-          git fetch origin "$BASE_BRANCH" "pull/$PR_NUMBER/head:$PR_BRANCH"
+          git fetch origin "$BASE_BRANCH"
 
       - name: Run clang format
         id: clang_format
         run: |
           set -x
-          # $BASE_SHA is the latest commit on the branch the PR will be merged
-          # into, NOT the commit this PR derives from! For that, we need to find
-          # the latest common ancestor between the PR and the branch we are
-          # merging into.
-          base_commit=$(git merge-base HEAD "$BASE_SHA")
+          # $BASE_BRANCH is the branch the PR will be merged into, NOT the
+          # commit this PR derives from! For that, we need to find the latest
+          # common ancestor between the PR and the branch we are merging into.
+          base_commit=$(git merge-base HEAD "origin/$BASE_BRANCH")
           # Find changed files, ignoring binary files.
           readarray -d '' commit_files < \
-            <(git diff -z --diff-filter d --name-only --merge-base "$BASE_SHA")
+            <(git diff -z --diff-filter d --name-only "$base_commit")
           [ ${#commit_files[@]} -gt 0 ] || { echo "No files to check"; exit 0; }
 
           # Check for invalid file extensions for C++ code.
           have_invalid_extension=
           for file in "${commit_files[@]}"; do
             case $file in
+              */3rdparty/*) ;;   # ignore vendored files
               *.hxx|*.cc|*.hpp)
-                echo "::error file=$x::$x uses non-allowed extension"
+                echo "The following error is for file $file:"
+                echo "::error file=$file::$file uses non-allowed extension"
                 have_invalid_extension=true ;;
             esac
           done
           # Abort now if invalid file extensions found.
           [ -z "$have_invalid_extension" ]
 
-          patch=$(git-clang-format --commit "$base_commit" --diff \
-                                   --style file "${commit_files[@]}")
-          if [ "$patch" = 'no modified files to format' ] ||
-             [ "$patch" = 'clang-format did not modify any files' ]
+          if patch=$(git-clang-format --commit "$base_commit" --diff \
+                                      --style file "${commit_files[@]}")
           then
-            echo 'clang-format passed.' >> "$GITHUB_STEP_SUMMARY"
-            printf '%s\n' cleanup_commit= clean=true >> "$GITHUB_OUTPUT"
+            echo cleanup_commit= >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -102,10 +109,12 @@ jobs:
 
           Opening a PR to your branch with the fixes.
           EOF
-          printf '%s\n' cleanup_commit=HEAD clean=false >> "$GITHUB_OUTPUT"
+          echo cleanup_commit=HEAD >> "$GITHUB_OUTPUT"
+          exit 1
 
       - name: Update cleanup branch
-        if: ${{ github.event.repository.owner.login == 'AliceO2Group' }}
+        # Run this even if clang-format fails (i.e. finds formatting issues).
+        if: ${{ (success() || failure()) && github.event.repository.owner.login == 'AliceO2Group' }}
         env:
           REMOTE_URL: "https://alibuild:${{ secrets.alibuild_github_token }}@\
             github.com/alibuild/${{ github.event.repository.name }}"
@@ -116,7 +125,8 @@ jobs:
 
       - name: Create pull request with formatting changes
         uses: alisw/pull-request@v2
-        if: ${{ github.event.repository.owner.login == 'AliceO2Group' }}
+        # Run this even if clang-format fails (i.e. finds formatting issues).
+        if: ${{ (success() || failure()) && github.event.repository.owner.login == 'AliceO2Group' }}
         with:
           source_branch: 'alibuild:alibot-cleanup-${{ github.event.pull_request.number }}'
           destination_branch: '${{ github.event.pull_request.head.label }}'
@@ -132,13 +142,6 @@ jobs:
             <https://github.com/AliceO2Group/CodingGuidelines>.
         continue-on-error: true  # We do not create PRs if the branch is not there.
 
-      - name: Exit with error if the PR is not clean
-        run: |
-          case "${{ steps.clang_format.outputs.clean }}" in
-            true) echo 'PR clean' ; exit 0 ;;
-            false) echo 'PR not clean' ; exit 1 ;;
-          esac
-
   copyright:
     name: copyright headers
     runs-on: ubuntu-latest
@@ -153,6 +156,10 @@ jobs:
           # PR diverged. We're fetching everything here, as we don't know how
           # many commits back that point is.
           fetch-depth: 0
+
+      # Fetch the PR's base branch to find the common ancestor.
+      - name: Update PR branch
+        run: git fetch origin "$BASE_BRANCH"
 
       - name: Check copyright headers
         env:
@@ -175,8 +182,8 @@ jobs:
           # Find changed C++ and CMake files. Keep the file extensions in sync
           # with the ones in the "case" statement below!
           readarray -d '' files < \
-            <(git diff -z --diff-filter d --name-only --merge-base "$BASE_SHA" \
-                       -- '*.cxx' '*.h' '*.C' '*.cmake' CMakeLists.txt)
+            <(git diff -z --diff-filter d --name-only --merge-base "origin/$BASE_BRANCH" \
+                       -- '*.cxx' '*.h' '*.C' '*.cmake' '*/CMakeLists.txt' CMakeLists.txt)
           # Run copyright notice check. Comment lines start with "//" for C++
           # files and "#" for CMake files.
           cpp_first="// $COPYRIGHT_FIRST_LINE"
@@ -188,13 +195,14 @@ jobs:
           for file in "${files[@]}"; do
             case $file in
               *.cxx|*.h|*.C) first=$cpp_first rest=$cpp_rest ;;
-              *.cmake|CMakeLists.txt) first=$hash_first rest=$hash_rest ;;
+              *.cmake|*CMakeLists.txt) first=$hash_first rest=$hash_rest ;;
               *) echo "error: unknown file type for $file" >&2; exit 1 ;;
             esac
             if head -1 "$file" | grep -qvEx "$first" ||
                [ "$(head -n "$total_lines" "$file" | tail -n +2)" != "$rest" ]
             then
               incorrect_files+=("$file")
+              echo "The following error is for file $file:"
               echo -n "::error file=$file,line=1,endLine=$total_lines,"
               echo -n "title=Missing or malformed copyright notice::"
               echo "This source file is missing the correct copyright notice."
@@ -202,15 +210,15 @@ jobs:
           done
 
           # Tell user what to do in case of copyright notice error
-          if [ ${#incorrect_files[@]} -gt 0 ]; then
-            cat << EOF >> "$GITHUB_STEP_SUMMARY"
+          [ ${#incorrect_files[@]} -gt 0 ] || exit 0
+          cat << EOF >> "$GITHUB_STEP_SUMMARY"
           The following files are missing the correct copyright notice:
 
           EOF
-            for file in "${incorrect_files[@]}"; do
-              echo "- \`$file\`" >> "$GITHUB_STEP_SUMMARY"
-            done
-            cat << EOF >> "$GITHUB_STEP_SUMMARY"
+          for file in "${incorrect_files[@]}"; do
+            echo "- \`$file\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+          cat << EOF >> "$GITHUB_STEP_SUMMARY"
 
           Make sure all of your C++ and CMake source files begin with the
           following exact lines (but replace the \`//\` at the beginning of each
@@ -224,10 +232,7 @@ jobs:
 
           (The year numbers on the first line aren't checked.)
           EOF
-            exit 1
-          else
-            echo 'Copyright check passed.' >> "$GITHUB_STEP_SUMMARY"
-          fi
+          exit 1
 
   line-endings:
     name: line endings
@@ -255,10 +260,11 @@ jobs:
              xargs -0 dos2unix -i |
              awk '
                function error(title, message) {
+                 printf "The following error is for file %s:\n", $6
                  printf "::error file=%s,title=%s::%s\n", $6, title, message
-                 exit_code = 1
+                 exit_code = 0
                }
-               BEGIN { exit_code = 0 }
+               BEGIN { exit_code = 1 }
                END { exit exit_code }
                ($5 != "text") { next }
                ($4 != "no_bom") {
@@ -278,8 +284,6 @@ jobs:
                }
              '
           then
-            echo 'Line endings check passed.' >> "$GITHUB_STEP_SUMMARY"
-          else
             cat << EOF >> "$GITHUB_STEP_SUMMARY"
           # Line ending and/or encoding errors found
 
@@ -306,16 +310,15 @@ jobs:
           # many commits back that point is.
           fetch-depth: 0
 
-      # Fetch the PR's head commit to find the common ancestor.
-      - name: Fetch PR branch
-        run: |
-          git fetch origin "$BASE_BRANCH" "pull/$PR_NUMBER/head:$PR_BRANCH"
+      # Fetch the PR's base branch to find the common ancestor.
+      - name: Update PR branch
+        run: git fetch origin "$BASE_BRANCH"
 
       - name: Find bad spacing
         run: |
           # Find changed files, ignoring binary files.
           readarray -d '' files < \
-            <(git diff -z --diff-filter d --name-only --merge-base "$BASE_SHA" |
+            <(git diff -z --diff-filter d --name-only --merge-base "origin/$BASE_BRANCH" |
                 while read -rd '' filename; do
                   file -bi "$filename" | grep -q charset=binary ||
                     printf "%s\\0" "$filename"
@@ -325,11 +328,13 @@ jobs:
           # Find tabs and trailing whitespaces in modified text files and show
           # where they are.
           if awk '
-            BEGIN { exit_code = 0 }
+            BEGIN { exit_code = 1 }
             function error(title, message) {
+              printf "The following error is for file %s, line %i, column %i:\n",
+                     FILENAME, FNR, RSTART
               printf "::error file=%s,line=%i,col=%i,endColumn=%i,title=%s::%s\n",
                      FILENAME, FNR, RSTART, RSTART + RLENGTH, title, message
-              exit_code = 1
+              exit_code = 0
             }
             match($0, / +$/) {
               error("Trailing spaces",
@@ -344,8 +349,6 @@ jobs:
             }
           ' "${files[@]}"
           then
-            echo 'Whitespace check passed.' >> "$GITHUB_STEP_SUMMARY"
-          else
             cat << EOF >> "$GITHUB_STEP_SUMMARY"
           # Whitespace errors found.
 
@@ -387,20 +390,17 @@ jobs:
 
       - name: Run pragma check
         run: |
-          if git --no-pager grep -q '#pragma once' -- '*.h'; then
-            # Some files have #pragma once.
-            cat << EOF >> "$GITHUB_STEP_SUMMARY"
+          git --no-pager grep -q '#pragma once' -- '*.h' || exit 0
+          # Some files have #pragma once.
+          cat << EOF >> "$GITHUB_STEP_SUMMARY"
           The following files use \`#pragma once\`. Please change them.
 
           EOF
-            git --no-pager grep --line-number --column '#pragma once' -- '*.h' |
-              while IFS=: read -r file line column _; do
-                echo -n "::error file=$file,line=$line,column=$column,"
-                echo 'title=#pragma once::Do not use #pragma once.'
-                echo "- \`$file\`" >> "$GITHUB_STEP_SUMMARY"
-              done
-            exit 1
-          else
-            # No #pragma once found.
-            echo "\`#pragma once\` check passed." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          git --no-pager grep --line-number --column '#pragma once' -- '*.h' |
+            while IFS=: read -r file line column _; do
+              echo "The following error is for file $file, line $line:"
+              echo -n "::error file=$file,line=$line,column=$column,"
+              echo 'title=#pragma once::Do not use #pragma once.'
+              echo "- \`$file\`" >> "$GITHUB_STEP_SUMMARY"
+            done
+          exit 1

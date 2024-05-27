@@ -1,0 +1,76 @@
+---
+name: Security approval
+
+'on':
+  workflow_call:
+
+permissions:
+  pull-requests: read  # to get last commit for PR
+  statuses: write      # for set-github-status
+
+jobs:
+  clear-message:
+    name: Clear security message
+    runs-on: ubuntu-latest
+    if: ${{ github.event.review.state == 'APPROVED' &&
+            contains('COLLABORATOR,CONTRIBUTOR,MEMBER,OWNER',
+                     github.event.review.author_association) }}
+
+    steps:
+      - name: Set up Python 3
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.x
+
+      - name: Install ali-bot
+        run: python3 -m pip install git+https://github.com/alisw/ali-bot@master
+
+      - name: Fetch latest commit of pull request
+        uses: octokit/graphql-action@v2.x
+        id: last_commit
+        with:
+          query: |
+            query($owner: String!, $name: String!, $pr: Int!) {
+              repository(owner: $owner, name: $name) {
+                pullRequest(number: $pr) {
+                  commits(last: 1) {
+                    nodes {
+                      commit {
+                        oid
+                        status {
+                          contexts {
+                            state
+                            context
+                            description
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          owner: ${{ github.event.repository.owner.login }}
+          name: ${{ github.event.repository.name }}
+          pr: ${{ github.event.pull_request.number }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Reset any security messages
+        run: |
+          jq -r '
+            .repository.pullRequest.commits.nodes[0].commit.status.contexts[] |
+            select(.state == "PENDING" and .description == "Security: approval needed, not starting") |
+            .context
+          ' <<\EOF |
+          ${{ steps.last_commit.outputs.data }}
+          EOF
+            xargs -trd '\n' -I '{}' set-github-status \
+                  -c "$ORG/$REPO@$COMMIT" -s '{}/pending' \
+                  -m 'Approved; waiting for builder...'
+        env:
+          ORG: ${{ github.event.repository.owner.login }}
+          REPO: ${{ github.event.repository.name }}
+          COMMIT: ${{ fromJSON(steps.last_commit.outputs.data)
+                      .repository.pullRequest.commits.nodes[0].commit.oid }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

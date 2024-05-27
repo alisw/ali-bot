@@ -19,19 +19,28 @@ install_requires = ['PyGithub==1.45', 'argparse', 'requests', 'pytz', 's3cmd',
                     'pyyaml']
 # Old setuptools versions (which pip2 uses) don't support range comparisons
 # (like :python_version >= "3.6") in extras_require, so do this ourselves here.
-if sys.version_info >= (3, 6):
+if sys.version_info >= (3, 8):
+    # Older boto3 versions are incompatible with newer Python versions,
+    # specifically the newer urllib3 that comes with newer Python versions.
+    install_requires.append('boto3')
+elif sys.version_info >= (3, 6):
+    # This is the last version to support Python 3.6.
     install_requires.append('boto3==1.23.10')
 
 setup(
     name='ali-bot',
 
-    # Versions should comply with PEP440.  For a discussion on single-sourcing
-    # the version across setup.py and the project code, see
-    # https://packaging.python.org/en/latest/single_source_version.html
-    #
-    # LAST_TAG is actually a placeholder which will be automatically replaced by 
-    # the release-alibuild pipeline in jenkins whenever we need a new release.
-    version='LAST_TAG',
+    # Single-source our package version using setuptools_scm. This makes it
+    # PEP440-compliant, and it always references the ali-bot commit that each
+    # script was built from.
+    use_scm_version=True,
+    setup_requires=[
+        # The 6.* series removed support for Python 2.7.
+        'setuptools_scm<6.0.0' if sys.version_info < (3, 0) else
+        # The 7.* series removed support for Python 3.6.
+        'setuptools_scm<7.0.0' if sys.version_info < (3, 7) else
+        'setuptools_scm'
+    ],
 
     description='ALICE Multipurpose bot',
     long_description=long_description,
@@ -139,6 +148,8 @@ setup(
         "ci/process-pull-request-http.py",
         "ci/sync-egroups.py",
         "ci/sync-mapusers.py",
+        # S3 repo maintenance
+        "update-symlink-manifests",
         # Get PR information
         "ci/prinfo",
         # Resolve Mesos DNS

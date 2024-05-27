@@ -7,3 +7,4 @@
 /publish/aliPublish-rpms.conf                    @alisw/dataflow-experts
 /publish/aliPublish-updatable-rpms.conf          @alisw/dataflow-experts
 /publish/aliPublish-updatable-test-rpms.conf     @alisw/dataflow-experts
+/publish/cache-ccdb-objects.txt                  @alisw/ccdb-cache-owners

@@ -1,297 +1,3 @@
-slc5_x86-64:
-  GCC-Toolchain:
-    v7.3.0-alice1-1        : False
-  pythia6:
-    421-alice1-1           : True
-    425-alice1-1           : True
-    123-alice1-1           : False
-  cctools:
-    v5.4.1-1               : False
-  AliEn-WorkQueue:
-    v1.0-1                 : False
-  AliGenerators:
-    v20160829-1            : True
-    v20180203_PWGMMTEST-1  : False
-  # AliDPG is handled by aliPublish-noarch.conf.
-  AliDPG:
-    v5-08-XX-12            : False
-    v5-08-XX-Titan-2       : False
-    v5-07-XX-6             : False
-    v5-09-XX-1             : False
-    rc20180521-1           : False
-    v9-99-XX-rc20180524-1  : False
-    prod-201808-01-2       : False
-    prod-201899-02-1       : False
-    prod-201912-04-1       : False
-  AliPhysics:
-    v5-09-02-devel-itsgeom1-1 : False
-    v5-09-02-devel-itsgeom1-01-1 : True
-    v5-09-37a-01_ROOT6-1   : False
-    v9-99-99-01-rc20180524-1 : False
-    rc20180521-1           : False
-    vAN-20151110-1         : False
-    vAN-20151201-1         : False
-    vAN-20151201-2         : False
-    vAN-20151202-1         : False
-    vAN-20151203-1         : False
-    vAN-20151204-1         : False
-    vAN-20151205-1         : False
-    vAN-20151206-1         : False
-    vAN-20151207-1         : False
-    vAN-20151208-1         : False
-    vAN-20151209-1         : False
-    vAN-20151210-1         : False
-    vAN-20151211-1         : False
-    vAN-20151212-1         : False
-    vAN-20151213-1         : False
-    vAN-20151214-1         : False
-    vAN-20151215-1         : False
-    vAN-20151216-1         : False
-    vAN-20151217-1         : False
-    vAN-20151218-1         : False
-    vAN-20151219-1         : False
-    vAN-20151220-1         : False
-    vAN-20151221-1         : False
-    vAN-20151222-1         : False
-    vAN-20151223-1         : False
-    vAN-20151224-1         : False
-    vAN-20151225-1         : False
-    vAN-20151226-1         : False
-    vAN-20151227-1         : False
-    vAN-20151228-1         : False
-    vAN-20151230-1         : False
-    vAN-20151231-1         : True
-    vAN-20160101-1         : False
-    vAN-20160102-1         : False
-    vAN-20160103-1         : False
-    vAN-20160104-1         : False
-    vAN-20160105-1         : False
-    vAN-20160106-1         : False
-    vAN-20160107-1         : False
-    vAN-20160108-1         : False
-    vAN-20160109-1         : False
-    vAN-20160110-1         : False
-    vAN-20160111-1         : False
-    vAN-20160112-1         : False
-    vAN-20160113-1         : False
-    vAN-20160114-1         : False
-    vAN-20160115-1         : False
-    vAN-20160116-1         : False
-    vAN-20160117-1         : False
-    vAN-20160118-1         : False
-    vAN-20160119-1         : False
-    vAN-20160120-1         : False
-    vAN-20160121-1         : False
-    vAN-20160122-1         : False
-    vAN-20160123-1         : False
-    vAN-20160124-1         : False
-    vAN-20160125-1         : False
-    vAN-20160126-1         : False
-    vAN-20160127-1         : False
-    vAN-20160128-1         : False
-    vAN-20160129-1         : False
-    vAN-20160130-1         : False
-    vAN-20160131-1         : True
-    vAN-20160201-1         : False
-    vAN-20160202-1         : False
-    vAN-20160203-1         : False
-    vAN-20160204-1         : False
-    vAN-20160205-1         : False
-    vAN-20160206-1         : False
-    vAN-20160207-1         : False
-    vAN-20160208-1         : False
-    vAN-20160209-1         : False
-    vAN-20160210-1         : False
-    vAN-20160211-1         : False
-    vAN-20160212-1         : False
-    vAN-20160213-1         : False
-    vAN-20160214-1         : False
-    vAN-20160215-1         : False
-    vAN-20160216-1         : False
-    vAN-20160217-1         : False
-    vAN-20160218-1         : False
-    vAN-20160219-1         : False
-    vAN-20160220-1         : False
-    vAN-20160221-1         : False
-    vAN-20160222-1         : False
-    vAN-20160223-1         : False
-    vAN-20160224-1         : False
-    vAN-20160225-1         : False
-    vAN-20160226-1         : False
-    vAN-20160227-1         : False
-    vAN-20160228-1         : False
-    vAN-20160229-1         : True
-    vAN-20160301-1         : False
-    vAN-20160302-1         : False
-    vAN-20160303-1         : False
-    vAN-20160304-1         : False
-    vAN-20160305-1         : False
-    vAN-20160306-1         : False
-    vAN-20160307-1         : False
-    vAN-20160308-1         : False
-    vAN-20160309-1         : False
-    vAN-20160310-1         : False
-    vAN-20160310_TESTGCC-1 : False
-    vAN-20160311-1         : False
-    vAN-20160311_TESTGCC-1 : False
-    vAN-20160312-1         : False
-    vAN-20160312_TESTGCC-1 : False
-    vAN-20160313-1         : False
-    vAN-20160313_TESTGCC-1 : False
-    vAN-20160314-1         : False
-    vAN-20160314_TESTGCC-1 : False
-    vAN-20160315-1         : False
-    vAN-20160315_TESTGCC-1 : False
-    vAN-20160316-1         : False
-    vAN-20160316_TESTGCC-1 : False
-    vAN-20160317-1         : False
-    vAN-20160317_TESTGCC-1 : False
-    vAN-20160318-1         : False
-    vAN-20160318_TESTGCC-1 : False
-    vAN-20160319-1         : False
-    vAN-20160319_TESTGCC-1 : False
-    vAN-20160320-1         : False
-    vAN-20160320_TESTGCC-1 : False
-    vAN-20160321-1         : False
-    vAN-20160321_TESTGCC-1 : False
-    vAN-20160322-1         : False
-    vAN-20160322_TESTGCC-1 : False
-    vAN-20160323-1         : False
-    vAN-20160323_TESTGCC-1 : False
-    vAN-20160324-1         : False
-    vAN-20160324_TESTGCC-1 : False
-    vAN-20160325-1         : False
-    vAN-20160325_TESTGCC-1 : False
-    vAN-20160326-1         : False
-    vAN-20160326_TESTGCC-1 : False
-    vAN-20160327-1         : False
-    vAN-20160327_TESTGCC-1 : False
-    vAN-20160328-1         : True
-    vAN-20160328_TESTGCC-1 : False
-    vAN-20160329-2         : False
-    vAN-20160329_TESTGCC-2 : False
-    vAN-20160330-2         : False
-    vAN-20160330_TESTGCC-2 : False
-    vAN-20160331-2         : False
-    vAN-20160331_TESTGCC-2 : False
-    vAN-20160401-1         : False
-    vAN-20160402-1         : False
-    vAN-20160403-1         : False
-    vAN-20160404-1         : False
-    vAN-20160405-1         : False
-    vAN-20160406-1         : False
-    vAN-20160407-1         : False
-    vAN-20160408-1         : False
-    vAN-20160409-1         : False
-    vAN-20160410-1         : False
-    vAN-20160411-1         : False
-    vAN-20160412-1         : False
-    vAN-20160413-1         : False
-    vAN-20160414-1         : False
-    vAN-20160415-1         : False
-    vAN-20160416-1         : False
-    vAN-20160417-1         : False
-    vAN-20160418-1         : False
-    vAN-20160419-1         : False
-    vAN-20160420-1         : False
-    vAN-20160421-1         : False
-    vAN-20160422-1         : False
-    vAN-20160423-1         : False
-    vAN-20160424-1         : False
-    vAN-20160425-1         : False
-    vAN-20160426-1         : False
-    vAN-20160427-1         : False
-    vAN-20160428-1         : False
-    vAN-20160429-1         : False
-    vAN-20160430-1         : True
-    v5-08-15-01-pcm1-1     : True
-    v5-08-13-01-mctest-rc1-1 : True
-    vAN-20101616-fjtest1-1 : True
-    v5-08-13q-p1-01-1      : True
-    v5-08-13s-01-1         : True
-    v5-08-13q-p1-01-cookdedx-1 : True
-    v5-08-18-01-pcm2-1     : True
-    v5-08-19-01-emcalEmbedding-1 : True
-    v5-08-13z-01-cookdedx-1 : True
-    v5-08-13za-01-cookdedx-1 : True
-    vAN-20170216_GITHUB-1  : False
-    vAN-20170301_GITHUB-1  : False
-    v5-09-01-01-1          : True
-    v5-09-01-01-newTPCsm1-1 : True
-    vAN-20170706-1 : False
-    vAN-20170707-1 : False
-    vAN-20170708-1 : False
-    vAN-20170709-1 : False
-    vAN-20170710-1 : False
-    vAN-20170711-1 : False
-    vAN-20170712-1 : False
-    vAN-20170713-1 : False
-    vAN-20170714-1 : False
-    vAN-20170715-1 : False
-    vAN-20170716-1 : False
-    vAN-20170717-1 : False
-    vAN-20170718-1 : False
-    vAN-20170719-1 : False
-    vAN-20170720-1 : False
-    vAN-20170721-1 : False
-    vAN-20170722-1 : False
-    v5-09-15-01-1 : False
-    v5-09-16-01-1 : True
-    vAN-20180918_ROOT6-1 : False
-  FLUKA_VMC:
-    2011.2c-vmc1-1: False
-    2011.2c-vmc1-2: False
-    2011.2c-vmc2-1: True
-    2011.2c-vmc3-1: True
-    2011.2x-vmc1-1: True
-
-slc6_x86-64:
-  KFParticle:
-    v1.0-9 : True
-    v1.1-1 : True
-    v4.0-1 : False
-  jemalloc:
-    v5.1.0-1 : True
-    5.1.0-1 : False
-    3.6.0-1 : False
-  # AliDPG is handled by aliPublish-noarch.conf.
-  AliDPG:
-    prod-201808-01-2       : False
-    prod-201899-02-1       : False
-    prod-201912-04-1       : False
-  cctools:
-    v5.4.1-2               : True
-  AliEn-WorkQueue:
-    v1.0-2                 : True
-  GCC-Toolchain:
-    v4.9.3-alice2-1        : False
-    v4.9.3-alice3-1        : True
-  AliGenerators:
-    v20180203-1            : True
-    v20180203_PWGMMTEST-1  : False
-    v20180907-1            : True
-  Rivet-hi:
-    2.6.0-alice1-2         : True
-    2.6.0-4                : True
-    4.5.6-alice20-1        : False
-  Rivet:
-    2.7.0-alice1-1         : True
-  JAliEn:
-    1.0.0-1                : True
-    1.1.0-27               : True
-  AliPhysics:
-    v5-09-37a-01_ROOT6-1   : True
-    vAN-20181231_ROOT6-1   : True
-    vAN-20180918_ROOT6-1   : True
-    vAN-20190110-1         : True
-    v5-09-44a-01-1         : True
-    v5-09-45-01-1          : True
-    v5-09-20fa-01-1        : True
-    vAN-20190213-1         : False
-    vAN-20190213_ROOT6-1   : False
-    v5-09-46a-01_TESTROOT5-1 : True
-    v5-09-46a-01_TESTROOT6-1 : True
-
 slc7_x86-64:
   GCC-Toolchain:
     v4.9.3-2               : False
@@ -304,10 +10,32 @@ slc7_x86-64:
     nightly-20220923-1     : True
   O2Physics:
     nightly-20220923-1     : True
+  O2PDPSuite:
+    nightly-20221125-3     : True
+    daily-20221125-1515-1  : True
+
+slc7_aarch64:
+  O2sim:
+    v20221215-1: true
+  O2:
+    nightly-20221107-1: true
+  O2Physics:
+    nightly-20221107-1: true
 
 slc8_x86-64:
   O2PDPSuite:
-    async-20220923-1       : True
+    async-20220923-1: true
+    async-nightly-20221125-alidist-master-QC-daily-20221125-1515: true
+    nightly-20221210-gpu-1: false
+    nightly-20221212-gpu-1: true
+    nightly-20230131-gpu-1: false
+    gpu-nightly-20221214-1: true
+    gpu-nightly-20230131-1: true
+
+slc9_x86-64:
+  O2PDPSuite:
+    slc9-nightly-20240214-1: true
+    daily-20240307-0100-1: true
 
 ubt14_x86-64:
   GCC-Toolchain:

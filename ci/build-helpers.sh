@@ -42,8 +42,11 @@ function report_state () {
   # Push to InfluxDB if configured
   influxdb_push prcheck "repo=$PR_REPO" "checkname=$CHECK_NAME" \
                 "worker=$CHECK_NAME/$WORKER_INDEX/$WORKERS_POOL_SIZE" \
+                ${NUM_BASE_COMMITS:+"num_base_commits=$NUM_BASE_COMMITS"} \
+                "prev_build=$BUILD_TYPE" \
                 -- "host=\"$(hostname -s)\"" "state=\"$current_state\"" \
                 "prid=\"$PR_NUMBER\"" ${prtime:+prtime=$prtime} ${PR_OK:+prok=$PR_OK} \
+                ${WAITING_SINCE:+waittime=$((time_now - WAITING_SINCE))} \
                 ${HAVE_JALIEN_TOKEN:+have_jalien_token=$HAVE_JALIEN_TOKEN}
 
   # Push to Google Analytics if configured
@@ -179,7 +182,9 @@ function modtime () {
 function ensure_vars () {
   # Make sure variables are defined, and export them.
   for var in "$@"; do
-    if [ -z "${!var}" ]; then
+    # The +x is needed to avoid leaking secrets when running with
+    # bash -ex
+    if [ -z ${!var+x} ]; then
       echo "$(basename "$0"): error: required variable $var not defined!" >&2
       exit 1
     else

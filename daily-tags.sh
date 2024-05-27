@@ -1,36 +1,41 @@
 #!/bin/bash -ex
 set -ex
 
+substitute_vars () {
+  local value=$1
+  value=${value//!!FLPSUITE_LATEST!!/$flpsuite_latest}
+  value=${value//!!FLPSUITE_CURRENT!!/$flpsuite_current}
+  value=${value//!!ALIDIST_BRANCH!!/$ALIDIST_BRANCH}
+  LANG=C TZ=Europe/Zurich date -d "@$START_TIMESTAMP" "+$value"
+}
+
 edit_package_tag () {
   # Patch package definition (e.g. o2.sh) with a new tag and version, changing
   # the defaults as well if necessary.
-  local package=$1 defaults=$2 tag=$3 version=$4
-  sed -E -i.old \
-      "s|^tag: .*\$|tag: \"$tag\"|; ${version:+s|^version: .*\$|version: \"$version\"|}" \
-      "alidist/${package,,}.sh"
+  local package=${1:?edit_package_tag: package not provided} defaults=${2:?edit_package_tag: defaults not provided} tag=$3 version=$4
+  [ -n "$tag$version" ] || return 0
+
+  sed -E -i "${tag:+"s|^tag: .*$|tag: \"$tag\"|;"} ${version:+"s|^version: .*\$|version: \"$version\"|"}" "alidist/${package,,}.sh"
 
   # Patch defaults definition (e.g. defaults-o2.sh)
   # Process overrides by changing in-place the given defaults. This requires
   # some YAML processing so we are better off with Python.
-  tag=$tag package=$package defaults=$defaults $PYTHON <<\EOF
-import yaml
-from os import environ
-f = "alidist/defaults-%s.sh" % environ["defaults"].lower()
-p = environ["package"]
-meta, rest = open(f).read().split("\n---\n", 1)
+  package=$package defaults=$defaults tag=$tag version=$version $PYTHON <<\EOF
+import os, yaml
+f = "alidist/defaults-%s.sh" % os.environ["defaults"].lower()
+with open(f, "r") as recipef:
+    meta, sep, rest = recipef.read().partition("\n---\n")
+assert sep, "could not parse defaults recipe in %s" % f
 d = yaml.safe_load(meta)
-open(f+".old", "w").write(yaml.dump(d)+"\n---\n"+rest)
 write = False
-overrides = d.setdefault("overrides", {}).setdefault(p, {})
-if "tag" in overrides:
-    overrides["tag"] = environ["tag"]
-    write = True
-v = environ.get("AUTOTAG_OVERRIDE_VERSION")
-if v and "version" in overrides:
-    overrides["version"] = v
-    write = True
+overrides = d.setdefault("overrides", {}).setdefault(os.environ["package"], {})
+for key in ("tag", "version"):
+    if key in os.environ and key in overrides:
+        overrides[key] = os.environ[key]
+        write = True
 if write:
-    open(f, "w").write(yaml.dump(d)+"\n---\n"+rest)
+    with open(f, "w") as outf:
+        yaml.dump(d, outf); outf.write(sep); outf.write(rest)
 EOF
 }
 
@@ -55,8 +60,8 @@ git config --global user.email alibuild@cern.ch
 
 # Set the default python and pip depending on the architecture...
 case $ARCHITECTURE in
-  slc8*) PIP=pip3 PYTHON=python3 ;;
-  *) PIP=pip PYTHON=python ;;
+  slc6*) PIP=pip PYTHON=python ;;
+  *) PIP=pip3 PYTHON=python3 ;;
 esac
 # ...and override it if PYTHON_VERSION is specified.
 case "$PYTHON_VERSION" in
@@ -72,50 +77,82 @@ aliBuild analytics off
 # "normal" patch release number.
 flpsuite_latest=$(git ls-remote "https://github.com/$ALIDIST_REPO" -- 'refs/heads/flp-suite-v*' |
                     cut -f2 | sort -V | sed -rn '$s,^refs/heads/(.*)\.[0-9]+$,\1.0,p')
-flpsuite_current=flp-suite-v$(curl -fSsLk https://ali-flp.cern.ch/suite_version)
-flpsuite_current=${flpsuite_current%.*}.0
+# In case ali-flp is offline, don't fail if we don't need its info.
+if echo "$ALIDIST_BRANCH $AUTOTAG_PATTERN $OVERRIDE_TAGS" | grep -qi 'flpsuite_current'; then
+  flpsuite_current=flp-suite-v$(curl -fSsLk https://ali-flp.cern.ch/suite_version)
+  flpsuite_current=${flpsuite_current%.*}.0
+fi
 if [ "$(date +%u)" = 1 ]; then   # On Mondays (for Sunday night builds)
   flpsuite_current=$flpsuite_latest
 fi
 
 ALIDIST_BRANCH=${ALIDIST_BRANCH//!!FLPSUITE_LATEST!!/$flpsuite_latest}
 ALIDIST_BRANCH=${ALIDIST_BRANCH//!!FLPSUITE_CURRENT!!/$flpsuite_current}
-git clone -b $ALIDIST_BRANCH https://github.com/$ALIDIST_REPO alidist/
+if ! git clone -b "$ALIDIST_BRANCH" "https://github.com/$ALIDIST_REPO" alidist/; then
+  # We may have been given a commit hash as $ALIDIST_BRANCH, and we can't pass
+  # hashes to -b. Clone and checkout instead.
+  git clone "https://github.com/$ALIDIST_REPO" alidist/
+  (cd alidist && git checkout -f "$ALIDIST_BRANCH")
+fi
 
 # Switch the recipes for the packages specified in ALIDIST_OVERRIDE_PKGS
 # to the version found in the alidist branch specified by ALIDIST_OVERRIDE_BRANCH
-if [ -n "$ALIDIST_OVERRIDE_BRANCH" ]; then
-  git -C alidist checkout $ALIDIST_OVERRIDE_BRANCH -- \
-      $(echo $ALIDIST_OVERRIDE_PKGS |tr ",[:upper:]" "\ [:lower:]" | xargs -r -n1 echo | sed -e 's/$/.sh/g')
-fi
+if [ -n "$ALIDIST_OVERRIDE_BRANCH" ]; then (
+  cd alidist
+  git checkout "$ALIDIST_OVERRIDE_BRANCH" -- \
+      $(echo "$ALIDIST_OVERRIDE_PKGS" |
+          tr ',[:upper:]' ' [:lower:]' |
+          xargs -rn1 echo | sed 's/$/.sh/')
+); fi
 
 # Apply explicit tag overrides after possibly checking out the recipe from
 # ALIDIST_OVERRIDE_BRANCH to allow combining the two effects.
 for tagspec in $OVERRIDE_TAGS; do
-  tag=${tagspec#*=}
-  tag=${tag//!!FLPSUITE_LATEST!!/$flpsuite_latest}
-  tag=${tag//!!FLPSUITE_CURRENT!!/$flpsuite_current}
-  tag=${tag//!!ALIDIST_BRANCH!!/$ALIDIST_BRANCH}
-  tag=$(LANG=C TZ=Europe/Zurich date -d "@$START_TIMESTAMP" "+$tag")
-  edit_package_tag "${tagspec%%=*}" "$DEFAULTS" "$tag"
+  edit_package_tag "${tagspec%%=*}" "$DEFAULTS" "$(substitute_vars "${tagspec#*=}")" ''
+done
+for versionspec in $OVERRIDE_VERSIONS; do
+  edit_package_tag "${versionspec%%=*}" "$DEFAULTS" '' "$(substitute_vars "${versionspec#*=}")"
 done
 
 # Select build directory in order to prevent conflicts and allow for cleanups.
 workarea=$(mktemp -d "$PWD/daily-tags.XXXXXXXXXX")
 
+# NOMAD_CPU_CORES is of the form "0-2,7,12-14". Get the total number of
+# assigned cores from that (i.e. 7 cores in the example). For some Nomad jobs,
+# we manually set MAX_CORES, so only assign to it if it's not already set.
+: "${MAX_CORES:=$(echo "$NOMAD_CPU_CORES" | tr , '\n' | awk -F- '/^./{num_cores += $2 ? 1 + $2 - $1 : 1} END{print num_cores}')}"
+
 # Define aliBuild args once, so that we have (mostly) the same args for
 # templating and the real build.
 alibuild_args=(
-  --debug --work-dir "$workarea" --jobs "${JOBS:-8}"
+  --debug --work-dir "$workarea"
+  # JOBS is set by the Jenkins job, MAX_CORES is set by Nomad.
+  --jobs "${JOBS:-${MAX_CORES:-$(nproc)}}"
   --reference-sources mirror
   ${ARCHITECTURE:+--architecture "$ARCHITECTURE"}
   ${DEFAULTS:+--defaults "$DEFAULTS"}
   build "$main_pkg"
 )
 
+# Assignments are specified as a multi-line string with one VAR=value pair per line.
+while read -r assignment; do
+  if [ -n "$assignment" ]; then
+    alibuild_args+=(-e "$assignment")
+  fi
+done <<< "$BUILD_ENV_VARS"
+
+# Attach any user-specified comment to all top-level packages.
+if [ -n "$BUILD_COMMENT" ] &&
+     # Make sure that this aliBuild supports --annotate.
+     aliBuild build --help | grep -q -- --annotate; then
+  for package in $PACKAGES; do
+    alibuild_args+=(--annotate "$package=$BUILD_COMMENT")
+  done
+fi
+
 # Process the pattern as a jinja2 template with aliBuild's templating plugin.
 # Fetch the source repos now, so they're available for the "real" build later.
-AUTOTAG_PATTERN=$(aliBuild --debug --plugin templating --fetch-repos "${alibuild_args[@]}" << EOF
+AUTOTAG_PATTERN=$(aliBuild --plugin templating --fetch-repos "${alibuild_args[@]}" << EOF
 {%- set alidist_branch = "$ALIDIST_BRANCH" -%}
 {%- set flpsuite_latest = "$flpsuite_latest" -%}
 {%- set flpsuite_current = "$flpsuite_current" -%}
@@ -139,7 +176,7 @@ for package in $PACKAGES; do
   edit_package_tag "$package" "$DEFAULTS" "rc/$AUTOTAG_TAG" "$AUTOTAG_OVERRIDE_VERSION"
 done
 
-git -C alidist diff || :
+(cd alidist && git diff) || :
 
 for package in $PACKAGES; do (
   rm -rf "${package,,}.git"
@@ -160,7 +197,7 @@ for package in $PACKAGES; do (
       # Tag does not exist, but we have requested this job to forcibly use an existing one.
       # Will abort the job.
       echo "Tag $AUTOTAG_TAG was not found, however we have been requested to not create a new one" \
-          "(DO_NOT_CREATE_NEW_TAG is true). Aborting with error"
+           "(DO_NOT_CREATE_NEW_TAG is true). Aborting with error"
       exit 1
     else
       # Tag does not exist. Create release candidate branch, if not existing.
@@ -191,8 +228,8 @@ for package in $PACKAGES; do (
 
 # Set default remote store -- S3 on slc8 and Ubuntu, rsync everywhere else.
 case "$ARCHITECTURE" in
-  slc8_*|ubuntu*) : "${REMOTE_STORE:=b3://alibuild-repo::rw}" ;;
-  *) : "${REMOTE_STORE:=rsync://alibuild03.cern.ch/store/::rw}" ;;
+  slc[567]_x86-64) : "${REMOTE_STORE:=b3://alibuild-repo::rw}" ;;
+  *) : "${REMOTE_STORE:=b3://alibuild-repo::rw}" ;;
 esac
 case "$REMOTE_STORE" in
   b3://*)

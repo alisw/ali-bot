@@ -10,35 +10,28 @@ NOTIFICATION_STATE_FILE=/tmp/publisher_notification_snoozer
 
 export LANG=C
 cd "$(dirname "$0")"
-if [[ -x /home/monalisa/bin/alien ]]; then
+if [ -n "$NOMAD_TASK_DIR" ] && [ -d "$NOMAD_TASK_DIR" ]; then
+  # We're running under Nomad, variables should be set by the job.
+  : "${CMD:?Please set CMD}" "${CONF:?Please set CONF}" "${NO_UPDATE=true}"
+  # Under Nomad, we run publish/get-and-run.sh directly from the repo.
+  DEST=$(dirname "$(dirname "$0")")
+elif [[ -x /home/monalisa/bin/alien ]]; then
   export PATH="/home/monalisa/bin:$PATH"
   CMD=sync-alien
   OVERRIDE='{"notification_email":{}}'
-elif [[ -d /lustre/atlas/proj-shared/csc108 && -d /lustre/atlas/proj-shared/csc108 ]]; then
-  # Titan needs some magic.
-  source /usr/share/Modules/init/bash
-  eval $(modulecmd bash load git/2.2.0)
-  git --help > /dev/null 2>&1
-  FAKECVMFS=/lustre/atlas/proj-shared/csc108/psvirin/publisher/.fakecvmfs
-  mkdir -p $FAKECVMFS
-  ln -nfs $(which true) $FAKECVMFS/cvmfs_server
-  export PATH="$FAKECVMFS:$PATH"
-  [[ ! -e alibuild/.git ]] && git clone https://github.com/alisw/alibuild
-  [[ ! -e requests/.git ]] && git clone https://github.com/kennethreitz/requests -b v2.6.0
-  export PYTHONPATH="$PWD/alibuild:$PWD/requests:$PYTHONPATH"
-  CONF=aliPublish-titan.conf
-  CMD=sync-cvmfs
 elif [[ -d /cvmfs/alice-test.cern.ch ]]; then
   CONF=aliPublish-test.conf
   CMD=sync-cvmfs
 elif [[ -d /cvmfs/alice-nightlies.cern.ch ]]; then
   CONF=aliPublish-nightlies.conf
   CMD=sync-cvmfs
+  PUB_CCDB=1
   PUB_DATA=1
   PUB_CERT=1
   export PATH=$HOME/opt/bin:$PATH
 elif [[ -d /cvmfs/alice.cern.ch ]]; then
   CMD=sync-cvmfs
+  PUB_CCDB=1
   PUB_DATA=1
   PUB_CERT=1
   export PATH=$HOME/opt/bin:$PATH
@@ -47,13 +40,12 @@ elif [[ -d /cvmfs ]]; then
 else
   false
 fi
-CMD="$CMD"
-DEST=ali-bot
-DRYRUN=${DRYRUN:-}
-[[ ! -e $DEST/.git ]] && git clone https://github.com/alisw/ali-bot $DEST
-mkdir -p log
-find log/ -type f -mtime +3 -delete || true
-LOG="$PWD/log/log-$(date -u +%Y%m%d-%H%M%S%z)"
+: "${CMD:?}" "${DEST=ali-bot}"
+[[ ! -e $DEST/.git ]] && git clone https://github.com/alisw/ali-bot "$DEST"
+logdir=${NOMAD_TASK_DIR-$PWD}/log
+mkdir -p "$logdir"
+find "$logdir" -type f -mtime +3 -delete || true
+LOG=$logdir/log-$(date -u +%Y%m%d-%H%M%S%z)
 
 # Export NO_UPDATE to prevent automatic updates
 if [[ ! $NO_UPDATE ]]; then
@@ -67,27 +59,39 @@ if [[ ! $NO_UPDATE ]]; then
   popd
 fi
 
-pip3 install --user -Ue "$DEST"
+venv=${NOMAD_TASK_DIR-$PWD}/venv
+rm -rf "$venv"
+python3 -m venv "$venv"
+. "$venv/bin/activate"
+# If DEST is in the cwd, it might be confused for a PyPI package, so make it
+# an absolute path.
+pip install -U "$(realpath "$DEST")"
 
-ln -nfs $(basename $LOG.error) $PWD/log/latest
-CACHE=$PWD/cache
-mkdir -p $CACHE
+ln -nfs "$(basename "$LOG.error")" "$logdir/latest"
+cachedir=${NOMAD_TASK_DIR-$PWD}/cache
+mkdir -p "$cachedir"
 pushd $DEST/publish
 
-  echo "Running version $(git rev-parse HEAD)"
+  echo "Running version $(pip list --format freeze | grep ali-bot)"
   ERR=
 
   # Packages publisher
-  ./${ALIPUBLISH:-aliPublish} --debug              \
+  ./${ALIPUBLISH:-aliPublishS3} --debug            \
                ${DRYRUN:+--dry-run}                \
                ${NO_NOTIF:+--no-notification}      \
                ${CONF:+--config "$CONF"}           \
                ${OVERRIDE:+--override "$OVERRIDE"} \
-               --cache-deps-dir $CACHE             \
+               --cache-deps-dir "$cachedir"        \
                --pidfile /tmp/aliPublish.pid       \
                $CMD                                \
                2>&1 | tee -a $LOG.error
   [[ ${PIPESTATUS[0]} == 0 ]] || ERR="$ERR packages"
+
+  # CCDB caching
+  if [[ $PUB_CCDB == 1 ]]; then
+    ./cache-ccdb.py cache-ccdb-objects.txt 2>&1 | tee -a "$LOG.error"
+    [[ ${PIPESTATUS[0]} == 0 ]] || ERR="$ERR ccdb"
+  fi
 
   # Data publisher (e.g. OADB)
   if [[ $PUB_DATA == 1 ]]; then
@@ -143,8 +147,12 @@ else
   echo "All OK"
   mv -v $LOG.error $LOG
   rm -f "$NOTIFICATION_STATE_FILE"
-  ln -nfs $(basename $LOG) log/latest
+  ln -nfs "$(basename "$LOG")" "$logdir/latest"
 fi
 
 # Get new version of this script
-[[ -x $DEST/publish/get-and-run.sh ]] && cp -v $DEST/publish/get-and-run.sh .
+if [ -z "$NO_UPDATE" ] && [ -x "$DEST/publish/get-and-run.sh" ]; then
+  cp -v "$DEST/publish/get-and-run.sh" .
+fi
+
+[ -z "$ERR" ]   # exit with failure if any errors occurred

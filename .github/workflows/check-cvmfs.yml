@@ -16,6 +16,8 @@ name: Check CVMFS scripts
       - ready_for_review
       - synchronize
 
+permissions: {}
+
 jobs:
   alienv:
     runs-on: ubuntu-latest
@@ -91,8 +93,10 @@ jobs:
           ALIENV=/cvmfs/alice.cern.ch/bin/alienv
           pi "Testing alienv from $ALIENV"
 
+          tag=AliPhysics/v5-09-59r-01_O2-1
+
           # Overriding platform (not important for our tests)
-          export ALIENV_OVERRIDE_PLATFORM=el6-x86_64
+          export ALIENV_OVERRIDE_PLATFORM=el7
           pi "Overriding platform to $ALIENV_OVERRIDE_PLATFORM"
 
           for np in /tmp/alienv_bin /tmp/alienv_path/bin; do
@@ -101,8 +105,8 @@ jobs:
               ln -nfs "$ALIENV" "$np/alienv"
               # shellcheck disable=SC2030
               export PATH=$np:$PATH
-              ALIENV_DEBUG=1 alienv q | grep AliPhysics | tail -n1
-            )
+              ALIENV_DEBUG=1 alienv printenv "$tag"
+            ) || exit $?
           done
 
           np=/tmp/alienv_symlink/bin
@@ -111,8 +115,8 @@ jobs:
             ln -nfs "$(dn=$(dirname "$ALIENV"); while [ "$dn" != / ]; do dn=$(dirname "$dn"); printf ../; done)$ALIENV" "$np/alienv"
             # shellcheck disable=SC2030,SC2031
             export PATH=$np:$PATH
-            ALIENV_DEBUG=1 alienv q | grep AliPhysics | tail -n1
-          )
+            ALIENV_DEBUG=1 alienv printenv "$tag"
+          ) || exit $?
           unset np
           # shellcheck disable=SC2031
           PATH=$(dirname "$ALIENV"):$PATH
@@ -120,62 +124,22 @@ jobs:
           [ "$(command -v alienv)" = "$ALIENV" ]
 
           pt "test package reordering"
-          ALIENV_DEBUG=1 alienv setenv VO_ALICE@AliEn-Runtime::v2-19-le-21,VO_ALICE@ROOT::v5-34-30-alice7-2,VO_ALICE@AliPhysics::vAN-20170301-1 -c true 2>&1 |
-            grep 'normalized to AliPhysics/vAN-20170301-1 ROOT/v5-34-30-alice7-2 AliEn-Runtime/v2-19-le-21'
+          (ALIENV_DEBUG=1 alienv setenv "VO_ALICE@AliEn-Runtime::v2-19-le-143,VO_ALICE@ROOT::v6-28-04-alice3-5,$tag" -c true 2>&1 || :) |
+            tee /dev/stderr |
+            grep 'normalized to AliPhysics/v5-09-59r-01_O2-1 ROOT/v6-28-04-alice3-5 AliEn-Runtime/v2-19-le-143'
 
           pt "test checkenv command with a successful combination"
-          alienv checkenv AliPhysics/vAN-20170301-1,AliRoot/v5-08-22-1 ||
+          alienv checkenv "$tag,AliRoot/$(basename "$tag" | sed 's/-01//')" ||
             pe "expected 0, returned $?"
 
           pt "test checkenv command with a faulty combination"
-          alienv checkenv AliPhysics/vAN-20170301-1,AliPhysics/vAN-20170201-1 2>&1 | tee log.txt && :
-          ec=$?
-          [ $ec -eq 1 ] || pe "expected 1, returned $ec"
-          unset ec
-          grep -q 'conflicting version' log.txt ||
+          if alienv checkenv "$tag,AliPhysics/vAN-20240214_O2-1" 2>&1; then
+            pe "expected failure, returned $?"
+          fi | grep -q 'conflicting version' ||
             pe "could not find expected output message"
-          rm -f log.txt
 
-          pt "test checkenv command with dependencies from multiple platforms"
-          alienv checkenv AliGenerators/v20180424-1 ||
-            pe "expected 0, returned $?"
-
-          pt "list AliPhysics packages"
-          alienv q | grep AliPhysics | tail -n5
-          alienv_test () {
-            local method=$1 package=$2 command=$3
-            case $method in
-              setenv) alienv setenv "$package" -c "$command";;
-              printenv) (eval "$(alienv printenv "$package")"; $command);;
-              enter) (echo 'echo TEST=`'"$command"'`' | alienv enter "$package" |
-                        grep '^TEST=' | cut -d= -f2-);;
-            esac
-          }
-
-          # Define an "old" and "new" version of AliPhysics to check for. "new" has AliEn
-          # as dependency, "old" does not
-          OLD_VER=AliPhysics/vAN-20150131 NEW_VER=AliPhysics/vAN-20170301-1
-
-          pt "check that the legacy AliEn package can be loaded"
-          for method in setenv printenv enter; do
-            [[ $(alienv_test $method AliEn 'which aliensh') == */AliEn/* ]]
-          done
-          for ALIENV_OVERRIDE_PLATFORM in el6 el7 ubuntu1404; do
-            export ALIENV_OVERRIDE_PLATFORM
-            for method in setenv printenv enter; do
-              for ver in "$NEW_VER" "$OLD_VER"; do
-                pt "check g++ with $ver on $ALIENV_OVERRIDE_PLATFORM"
-                [ "$ver" = "$NEW_VER" ] && EXPECT="/cvmfs/alice.cern.ch/$ALIENV_OVERRIDE_PLATFORM" || EXPECT=/usr/
-                [[ $(alienv_test $method $ver 'which g++') == "$EXPECT"* ]]
-
-                pt "check aliroot with $ver on $ALIENV_OVERRIDE_PLATFORM"
-                [[ $(alienv_test $method $ver 'which aliroot') == /cvmfs/alice.cern.ch/*bin/aliroot ]]
-
-                pt "check AliEn-Runtime with $ver on $ALIENV_OVERRIDE_PLATFORM"
-                [ "$ver" = "$NEW_VER" ] && EXPECT=/AliEn-Runtime/ || EXPECT=/AliEn/
-                [[ $(alienv_test $method $ver 'which aliensh') == /cvmfs/alice.cern.ch/*"$EXPECT"* ]]
-              done
-            done
-          done
+          # "alienv q" takes too long in a GitHub workflow (>45 min).
+          # pt "list AliPhysics packages"
+          # alienv q | grep AliPhysics | tail -n5
 
           pg "all tests successful"

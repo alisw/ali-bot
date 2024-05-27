@@ -16,6 +16,8 @@ name: Check CI
       - ready_for_review
       - synchronize
 
+permissions: {}
+
 jobs:
   shellcheck:
     name: ShellCheck

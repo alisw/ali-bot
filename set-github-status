@@ -5,8 +5,7 @@ from argparse import ArgumentParser
 import logging
 import sys
 
-from alibot_helpers.github_utilities import setGithubStatus, github_token
-from alibot_helpers.github_utilities import GithubCachedClient, PickledCache
+from alibot_helpers.github_utilities import setGithubStatus, GithubCachedClient
 
 
 # Just for the moment
@@ -63,10 +62,8 @@ def main():
     if args.dryRun:
         print("Dry run specified. Not executing")
         sys.exit(0)
-    token = github_token()
 
-    cache = PickledCache(".cached-commits")
-    with GithubCachedClient(token=token, cache=cache) as cgh:
+    with GithubCachedClient() as cgh:
         try:
             setGithubStatus(cgh, args)
         except RuntimeError as e:

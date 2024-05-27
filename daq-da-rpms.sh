@@ -14,7 +14,7 @@ ALIDIST_BRANCH=${ALIDIST_REPO##*:}
 ALIDIST_REPO=${ALIDIST_REPO%:*}
 OVERRIDE_TAGS="AliRoot=$ALIROOT_VERSION"
 DEFAULTS=daq
-REMOTE_STORE=rsync://alibuild03.cern.ch/store/
+REMOTE_STORE=b3://alibuild-repo
 YUM_DISABLEREPO=rpmforge,epel,cernvm
 
 function getver() {

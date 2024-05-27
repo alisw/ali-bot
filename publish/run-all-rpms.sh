@@ -4,17 +4,11 @@ set +e
 # enable-alice.sh doesn't work with set -e, so only enable it now.
 set -exo pipefail
 
-publish_s3 () {
-  ./aliPublishS3 --config "$1" --debug sync-rpms
-}
-
-publish_both () {
-  if ./aliPublish --config "$1" --debug sync-rpms; then
-    timeout 300 rclone sync --config /secrets/alibuild_rclone_config --transfers=10 --verbose \
-            "local:/repo/RPMS/$arch/" "rpms3:alibuild-repo/RPMS/$arch/" || true
+s3_path () {
+  if grep -qEix 'rpm_updatable:[[:space:]]+true' "$1"; then
+    echo UpdRPMS
   else
-    echo "ERROR: aliPublish ($1) failed with $?; not syncing to S3" >&2
-    return 1
+    echo RPMS
   fi
 }
 
@@ -35,7 +29,7 @@ shift   # $@ now contains only the config files to read.
 get_secrets
 trap get_secrets USR1
 
-# This script is in the same directory as aliPublish{,S3} in the ali-bot repo.
+# This script is in the same directory as aliPublishS3 in the ali-bot repo.
 cd "$(dirname "$0")"
 
 while true; do
@@ -54,21 +48,17 @@ while true; do
   # architecture-specific canary files under rpmstatus/$arch/.
   s3cmd ls "s3://alibuild-repo/rpmstatus/$arch/" | cut -b 32- > canaries.txt
 
-  case "$arch" in
-    el8.*) publish=publish_s3 ;;
-    *) publish=publish_both ;;
-  esac
-
-  pip3 install -Ur ../requirements.txt
   for conf in "$@"; do
+    path=$(s3_path "$conf")
+
     # Save current list of RPMs so we can see which ones are new later.
     # Sort it so comm is happy.
-    s3cmd ls "s3://alibuild-repo/RPMS/$arch/" | sed 's|.*/||' | sort > before.pkgs
+    s3cmd ls "s3://alibuild-repo/$path/$arch/" | sed 's|.*/||' | sort > before.pkgs
 
-    "$publish" "$conf"
+    ./aliPublishS3 --config "$conf" --debug sync-rpms
 
     # Compare the file list to the dir now, to see which RPMs were published.
-    s3cmd ls "s3://alibuild-repo/RPMS/$arch/" | sed 's|.*/||' | sort |
+    s3cmd ls "s3://alibuild-repo/$path/$arch/" | sed 's|.*/||' | sort |
       comm -13 before.pkgs - > new.pkgs
     # Post in the Release Integration channel if we have new RPMs.
     if [ -s new.pkgs ]; then

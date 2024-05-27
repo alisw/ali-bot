@@ -16,6 +16,8 @@ name: Check publisher
       - ready_for_review
       - synchronize
 
+permissions: {}
+
 jobs:
   rules:
     runs-on: ubuntu-latest
@@ -39,7 +41,7 @@ jobs:
             test=test${conf#aliPublish}
             test=${test%.conf}.yaml
             [ -r "$test" ] || continue
-            if ! ./aliPublish test-rules --conf "$conf" --test-conf "$test" --debug; then
+            if ! ./aliPublishS3 test-rules --conf "$conf" --test-conf "$test" --debug; then
               echo -n "::error file=publish/$conf,line=1,title=Rules validation failed"
               echo "::Testing $conf against $test failed."
               err=1

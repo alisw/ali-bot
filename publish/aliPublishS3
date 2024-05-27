@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 
-import logging, sys, json, yaml, errno, boto3, requests
+import logging, gzip, sys, json, yaml, errno, boto3, requests
+import botocore.exceptions
 from glob import glob
 from argparse import ArgumentParser
+from datetime import datetime, timedelta, timezone
 from time import time
 from logging import debug, info, warning, error
 from re import search, escape
-from os.path import isdir, isfile, realpath, dirname, getmtime, join, basename, abspath
+from os.path import isdir, isfile, realpath, dirname, getmtime, join, basename, abspath, exists
 from os import chmod, remove, getcwd, getpid, kill, makedirs, environ, listdir
 from tempfile import NamedTemporaryFile, mkdtemp
 from subprocess import Popen, PIPE, STDOUT, DEVNULL, getstatusoutput
 from smtplib import SMTP
+from xml.etree.ElementTree import ElementTree
 
 def format(s, **kwds):
   return s % kwds
@@ -114,7 +117,7 @@ class PlainFilesystem(object):
   def abort(self, force=False):
     return True
 
-  def publish(self):
+  def publish(self, architectures):
     return True
 
 
@@ -160,7 +163,7 @@ class CvmfsServer(PlainFilesystem):
     error("%s: cannot abort transaction", self._repository)
     return False
 
-  def publish(self):
+  def publish(self, architectures):
     if not self._inCvmfsTransaction:
       debug("%s: not in a transaction", self._repository)
       return True
@@ -183,70 +186,102 @@ class CvmfsServer(PlainFilesystem):
       return False
 
 
-class AliEnPackMan(object):
+class AliEn:
 
-  def __init__(self, publishScriptTpl, connParams, dryRun=False):
+  def __init__(self, connParams, repository, package_dir, dryRun=False):
+    self._session = requests.Session()
+    self._session.timeout = connParams["conn_timeout_s"]
+    # "verify" can be a string pointing to a CA file or directory, or a
+    # boolean to switch host cert verification on or off.
+    self._session.verify = \
+      environ.get("ALIEN_CA_BUNDLE", bool(connParams["http_ssl_verify"]))
+    self._session.cert = \
+      (environ["ALIEN_CLIENT_CERT"], environ["ALIEN_CLIENT_KEY"])
+    self._session.auth = \
+      requests.auth.HTTPBasicAuth(environ["ALIEN_USER"], environ["ALIEN_TOKEN"])
     self._dryRun = dryRun
-    self._publishScriptTpl = publishScriptTpl
     self._packs = None
-    self._connParams = connParams
-    self._cachedArchs = []
+    self._cvmfs_package_dir = package_dir
+    self._repository = repository
 
-  def _kw(self, url, arch, pkgName, pkgVer, deps):
-    kw =  { "url": url, "package": pkgName, "version": pkgVer, "arch": arch, "dependencies": deps }
-    kw.update(self._connParams)
-    kw["http_ssl_verify"] = 1 if kw["http_ssl_verify"] else 0
-    return kw
+  def _list_packs(self):
+    """Cache the full package list from alimonitor and perform sanity checks."""
+    if self._packs:
+      return self._packs
 
-  def installed(self, arch, pkgName, pkgVer):
-    kw = self._kw(None, arch, pkgName, pkgVer, None)
-    debug("PackMan: checking if %(package)s %(version)s is installed for %(arch)s" % kw)
+    debug("AliEn: fetching list of packages from alimonitor")
+    response = self._session.get("https://alimonitor.cern.ch/export/packages.jsp")
+    if response.status_code != requests.codes.ok:
+      error("AliEn: got HTTP %d from alimonitor when fetching package list; "
+            "aborting", response.status_code)
+      raise PublishException(response)
 
-    if self._packs is None:
-      self._packs = {}
-      for line in grabOutput([ "alien", "-exec",
-                               "packman", "list", "-all", "-force" ])[1].split("\n"):
-        m = search(r"VO_ALICE@(.+?)::([^\s]+)", line)
-        if not m: continue
-        pkg = m.group(1)
-        ver = m.group(2)
-        self._packs.setdefault(pkg, {}).update({ver: []})
+    try:
+      self._packs = response.json()
+    except json.JSONDecodeError as exc:
+      error("AliEn: could not decode response as JSON", exc_info=exc)
+      raise PublishException(response) from exc
 
     if not self._packs:
-      raise PublishException("PackMan: could not get list of packages from AliEn this time")
+      error("AliEn: returned empty package list")
+      raise PublishException(response)
 
-    if not arch in self._cachedArchs:
-      for line in grabOutput([ "alien", "-exec", "find", "/alice/packages", arch ])[1].split("\n"):
-        m = search(r"^/alice/packages/([^/]+)/([^/]+)/", line)
-        if not m: continue
-        pkg = m.group(1)
-        ver = m.group(2)
-        if pkg in self._packs:
-          self._packs[pkg].setdefault(ver, []).append(arch)
-      self._cachedArchs.append(arch)
+    # As a simple sanity check, make sure we get the right order of magnitude
+    # in the number of existing packages.
+    expect_min_packages = 20000
+    if len(self._packs) < expect_min_packages:
+      error("AliEn: got fewer packages (%d) than expected (%d)",
+            len(self._packs), expect_min_packages)
+      raise PublishException(response)
 
-    return arch in self._packs.get(pkgName, {}).get(pkgVer, [])
+    if any(p["name"] == "AliRoot" for p in self._packs):
+      debug("AliEn: AliEn connection and APIs appear to work")
+      return self._packs
+
+    error("AliEn: API response incorrect (no AliRoot packages found): %r",
+          self._packs)
+    raise PublishException(response)
+
+  def installed(self, arch, pkgName, pkgVer):
+    debug("AliEn: checking if %s %s is installed for %s", pkgName, pkgVer, arch)
+    return any(pkg["name"] == pkgName and pkg["version"] == pkgVer and
+               arch in pkg["platforms"] for pkg in self._list_packs())
 
   def install(self, url, arch, pkgName, pkgVer, deps, allDeps):
-    kw = self._kw(url, arch, pkgName, pkgVer,
-                  ",".join(["VO_ALICE@"+x["name"]+"::"+x["ver"] for x in deps]))
-    return runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
+    request_data = {
+      "name": pkgName,
+      "version": pkgVer,
+      "platform": arch,
+      "dependencies": ",".join(f"VO_ALICE@{dep['name']}::{dep['ver']}"
+                               for dep in deps),
+      "meta_json_path": join(self._cvmfs_package_dir % {
+          "repo": self._repository,
+          "arch": arch,
+          "package": pkgName,
+          "version": pkgVer,
+        }, ".meta.json"),
+    }
+    if self._dryRun:
+      debug("Dry run: would have registered %r with alimonitor", request_data)
+    else:
+      try:
+        self._session.get("https://alimonitor.cern.ch/packages/define.jsp",
+                          # Set stream=False to read the response body and
+                          # release the connection back to the pool.
+                          params=request_data, stream=False) \
+                     .raise_for_status()
+      except requests.HTTPError as exc:
+        error("AliEn: failed to register new package", exc_info=exc)
+        return 1
+    return 0   # simulate successful exit status from script
 
   def transaction(self):
-    # Not actually opening a "transaction", but failing if AliEn appears down.
-    # If we don't fail here, package list appears empty and we'll attempt to
-    # publish *every* package, and failing...
-    _,out = grabOutput([ "alien", "-exec", "ls", "/alice/packages" ])
-    if "AliRoot" in out.split("\n"):
-      debug("PackMan: AliEn connection and APIs appear to work")
-      return True
-    error("PackMan: API response incorrect, assuming AliEn is not working at the moment")
-    return False
+    return True
 
   def abort(self, force=False):
     return True
 
-  def publish(self):
+  def publish(self, architectures):
     return True
 
 class RPM(object):
@@ -259,11 +294,11 @@ class RPM(object):
     self._publishScriptTpl = publishScriptTpl
     self._countChanges = 0
     self._connParams = connParams
-    self._archs = []
     self._inRpmTransaction = False
     self._s3 = s3Client
     self._baseUrl = baseUrl
     self._bucket = s3Bucket
+    self._s3_path = "UpdRPMS" if genUpdatableRpms else "RPMS"
     self._remoteRpms = {}
 
   def _kw(self, url, arch, pkgName, pkgVer, workDir=None, deps=None):
@@ -291,14 +326,16 @@ class RPM(object):
       self._remoteRpms[arch] = [
         item["Key"]
         for page in self._s3.get_paginator("list_objects_v2").paginate(
-            Bucket=self._bucket, Delimiter="/", Prefix="RPMS/%s/" % arch)
+            Bucket=self._bucket, Delimiter="/",
+            Prefix="%s/%s/" % (self._s3_path, arch))
         for item in page.get("Contents", ())
         if item["Key"].endswith(".rpm")
       ]
 
     kw = self._kw(None, arch, pkgName, pkgVer)
     debug("RPM: checking if %(rpm)s exists for %(package)s %(version)s on %(arch)s" % kw)
-    return ("RPMS/%(arch)s/%(rpm)s" % kw) in self._remoteRpms[arch]
+    s3_key = "{s3_path}/{arch}/{rpm}".format(s3_path=self._s3_path, **kw)
+    return s3_key in self._remoteRpms[arch]
 
   def install(self, url, arch, pkgName, pkgVer, deps, allDeps):
     # All RPMs are created in workDir (temporary, destroyed after creation).
@@ -323,8 +360,6 @@ class RPM(object):
 
     rv = runInstallScript(self._publishScriptTpl, self._dryRun, **kw)
     if rv == 0:
-      if not arch in self._archs:
-        self._archs.append(arch)
       self._countChanges += 1
     debug("RPM: removing temporary working directory %(workdir)s" % kw)
     rmrf(workDir)
@@ -352,20 +387,93 @@ class RPM(object):
       self._inRpmTransaction = False
     return True
 
-  def publish(self):
-    if self._countChanges <= 0:
-      debug("RPM: nothing new to publish")
-      return True
-    info("RPM: updating repository: %s new package(s)", self._countChanges)
+  def publish(self, architectures):
     if self._dryRun:
       info("RPM: not updating repository, dry run")
       return True
+    info("RPM: updating repository: %d new package(s) in %d architecture(s)",
+         self._countChanges, len(architectures))
 
-    for arch in self._archs:
+    for arch in architectures:
       stagedir = join(self._stageDir, arch)
       mergedir = join(self._stageDir, "merged", arch)
 
-      baseUrl = self._baseUrl.rstrip("/") + "/RPMS/" + arch
+      # Get the list of RPMs to upload now, before we download existing ones.
+      new_rpms = glob(join(stagedir, "*.rpm"))
+      debug("RPM: %d new RPMs to publish for %s", len(new_rpms), arch)
+
+      # 1. Download (up to 10G) RPMs that are not listed in metadata.
+      nonindexed_rpms = set()
+      repomd_xml = "/".join((self._s3_path, arch, "repodata", "repomd.xml"))
+      try:
+        repomd_xml_content = self._s3.get_object(Bucket=self._bucket, Key=repomd_xml)["Body"].read()
+      except botocore.exceptions.ClientError as exc:
+        warning("No existing repomd.xml found at %s", repomd_xml, exc_info=exc)
+      else:
+        index_name_match = search(rb"repodata/[0-9a-f]+-primary\.xml\.gz", repomd_xml_content)
+        if not index_name_match:
+          warning("No reference to primary.xml.gz found in repomd.xml")
+        else:
+          index_key = "/".join((self._s3_path, arch, index_name_match.group(0).decode("utf-8")))
+          try:
+            index_file = self._s3.get_object(Bucket=self._bucket, Key=index_key)
+          except botocore.exceptions.ClientError as exc:
+            warning("Index file at %s not found", index_key, exc_info=exc)
+          else:
+            with gzip.open(index_file["Body"]) as primary_xml:
+              index_rpms = {
+                installed_pkg.attrib["href"]   # basename only, even though it's called "href"
+                for installed_pkg in ElementTree(file=primary_xml).iterfind(
+                    "./c:package/c:location",
+                    {"c": "http://linux.duke.edu/metadata/common"},
+                )
+              }
+            have_rpms = {
+              basename(rpm_file["Key"])
+              for page in self._s3.get_paginator("list_objects_v2").paginate(
+                Bucket=self._bucket, Delimiter="/",
+                Prefix="%s/%s/" % (self._s3_path, arch),
+              )
+              for rpm_file in page.get("Contents", ())
+              if rpm_file["Key"].endswith(".rpm")
+            }
+            nonindexed_rpms = have_rpms - index_rpms
+
+      if not new_rpms and not nonindexed_rpms:
+        debug("RPM: nothing new to publish for %s; skipping", arch)
+        continue
+      debug("RPM: found %d non-indexed RPMs for %s", len(nonindexed_rpms), arch)
+
+      downloaded_size = 0
+
+      def update_downloaded_size(n_bytes):
+        nonlocal downloaded_size
+        downloaded_size += n_bytes
+
+      debug("RPM: creating staging directory %s", stagedir)
+      try:
+        makedirs(stagedir)
+      except OSError as exc:
+        if not isdir(stagedir) or exc.errno != errno.EEXIST:
+          error("RPM: error creating staging directory %s", stagedir)
+          continue
+
+      for rpm_name in nonindexed_rpms:
+        if exists(join(stagedir, rpm_name)):
+          continue
+        debug("RPM: downloading non-indexed RPM: %s", rpm_name)
+        self._s3.download_file(
+          Filename=join(stagedir, rpm_name),
+          Bucket=self._bucket,
+          Key="/".join((self._s3_path, arch, rpm_name)),
+          Callback=update_downloaded_size,
+        )
+        if downloaded_size > 10 * 1024**3:   # 10 GiB
+          debug("RPM: downloaded %.2f GiB, stopping now", downloaded_size / 1024**3)
+          break
+
+      # Create a temporary repo with only the new (and unindexed) RPMs.
+      baseUrl = self._baseUrl.rstrip("/") + "/" + self._s3_path + "/" + arch
       createrepo = ["createrepo", "--baseurl", baseUrl, stagedir]
       debug("RPM: %s", " ".join(createrepo))
 
@@ -375,7 +483,9 @@ class RPM(object):
         error("RPM: error creating repository for %s", arch)
         return False
 
-      mergerepo = ["mergerepo", "--nogroups", "--noupdateinfo",
+      # Merge the temporary repo with the existing metadata.
+      mergerepo = ["mergerepo", "--verbose", "--all",
+                   "--nogroups", "--noupdateinfo",
                    "--repo", baseUrl,
                    "--repo", "file://" + abspath(stagedir),
                    "--outputdir", mergedir]
@@ -387,25 +497,43 @@ class RPM(object):
         error("RPM: error merging repositories for %s", arch)
         return False
 
+      # Upload new RPMs.
       debug("RPM: uploading new RPMs and merged metadata to S3")
-      # 1. Upload new RPMs.
-      for rpm in glob(join(stagedir, "*.rpm")):
+      for rpm in new_rpms:
         info("RPM: uploading new RPM %s", basename(rpm))
         self._s3.upload_file(Filename=rpm, Bucket=self._bucket,
-                             Key=join("RPMS", arch, basename(rpm)))
-      # 2. Delete current metadata files on S3.
-      info("RPM: deleting old repo metadata")
-      self._s3.delete_objects(Bucket=self._bucket, Delete={"Objects": [
-        {"Key": old_file["Key"]} for old_file in self._s3.list_objects_v2(
-          Bucket=self._bucket, Delimiter="/",
-          Prefix="RPMS/%s/repodata/" % arch).get("Contents", ())
-      ]})
-      # 3. Upload new, merged metadata files.
-      for new_file in listdir(join(mergedir, "repodata")):
+                             Key=join(self._s3_path, arch, basename(rpm)))
+      # Backup repomd.xml separately, since we overwrite it later.
+      new_repomd = repomd_xml + "." + datetime.utcnow().isoformat(timespec="seconds")
+      info("RPM: creating backup %s", new_repomd)
+      self._s3.copy_object(CopySource={"Bucket": self._bucket, "Key": repomd_xml},
+                           Bucket=self._bucket, Key=new_repomd)
+      # Upload new, merged metadata files.
+      new_files = listdir(join(mergedir, "repodata"))
+      # Sort repomd.xml last, so that it is only replaced once the files it
+      # refers to are in place.
+      new_files.sort(key=lambda name: name == "repomd.xml")
+      for new_file in new_files:
         info("RPM: uploading new repo metadata: %s", new_file)
         self._s3.upload_file(Bucket=self._bucket,
                              Filename=join(mergedir, "repodata", new_file),
-                             Key=join("RPMS", arch, "repodata", new_file))
+                             Key=join(self._s3_path, arch, "repodata", new_file))
+      # Delete old metadata files on S3.
+      cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+      old_metadata = [
+        old_file["Key"]
+        for page in self._s3.get_paginator("list_objects_v2").paginate(
+          Bucket=self._bucket, Delimiter="/",
+          Prefix="%s/%s/repodata/" % (self._s3_path, arch),
+        )
+        for old_file in page.get("Contents", ())
+        if old_file["LastModified"] < cutoff
+        and basename(old_file["Key"]) not in new_files
+      ]
+      info("RPM: deleting %d old repo metadata files", len(old_metadata))
+      self._s3.delete_objects(Bucket=self._bucket, Delete={"Objects": [
+        {"Key": old_file} for old_file in old_metadata
+      ]})
 
     # Errors here are not fatal.
     debug("RPM: removing staging directory %s", self._stageDir)
@@ -425,8 +553,19 @@ def prettyPrintPkg(pkg):
   return pkg["name"] + " " + pkg["ver"]
 
 
+def iterUninstalled(publisher, arch, archName, pubPackages):
+  """Generate packages that are not installed in the publisher."""
+  for pack in pubPackages:
+    if publisher.installed(archName, pack["name"], pack["ver"]):
+      debug("%s / %s / %s: already installed: skipping",
+            arch, pack["name"], pack["ver"])
+    else:
+      yield pack
+
+
 def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
-         includeFirst, autoIncludeDeps, notifEmail, dryRun, connParams):
+         includeFirst, autoIncludeDeps, notifEmail, dryRun, connParams,
+         publishLimit):
 
   # Template URLs
   packNamesPathTpl = "%(arch)s/dist-direct"
@@ -541,13 +680,18 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
     debug("%s: %d package(s) candidate for publication: %s",
           arch, len(pubPackages), ", ".join(map(prettyPrintPkg, pubPackages)))
 
+    pubPackages = list(iterUninstalled(pub, arch, architectures[arch], pubPackages))
+    debug("%s: %d package(s) will be published: %s",
+          arch, len(pubPackages), ", ".join(map(prettyPrintPkg, pubPackages)))
+
+    if publishLimit and len(pubPackages) > publishLimit:
+      error("Too many packages to publish (%d); limiting to %d to avoid "
+            "running out of temporary disk space",
+            len(pubPackages), publishLimit)
+      pubPackages = pubPackages[:publishLimit]
+
     # Packages installation
     for pack in pubPackages:
-      if pub.installed(architectures[arch], pack["name"], pack["ver"]):
-        debug("%s / %s / %s: already installed: skipping",
-              arch, pack["name"], pack["ver"])
-        continue
-
       # Get direct and indirect dependencies
       deps = {}
       depFail = False
@@ -581,8 +725,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
                     requests.get(symlinkUrl,
                                  verify=connParams["http_ssl_verify"],
                                  timeout=connParams["conn_timeout_s"])
-                            .text.rstrip())
-
+                            .text.rstrip().lstrip("./"))  # strip leading "../"
 
       # Here we can attempt the installation
       def prettyPrintPkgs(key):
@@ -613,7 +756,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
               arch, pack["name"], pack["ver"], rv)
 
   # Publish eventually
-  if pub.publish():
+  if pub.publish(architectures.values()):
     totSuccess = 0
     totFail = 0
     for arch, packStatus in newPackages.items():
@@ -729,11 +872,12 @@ def main():
   logger = logging.getLogger()
   loggerHandler = logging.StreamHandler()
   logger.addHandler(loggerHandler)
-  loggerHandler.setFormatter(logging.Formatter('%(levelname)-5s: %(message)s'))
+  loggerHandler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-5s: %(message)s"))
   logger.setLevel(logging.DEBUG if args.debug else logging.INFO)
   logging.getLogger("boto3").setLevel(logging.WARNING)
   logging.getLogger("botocore").setLevel(logging.WARNING)
   logging.getLogger("urllib3").setLevel(logging.WARNING)
+  logging.getLogger("s3transfer").setLevel(logging.WARNING)
 
   progDir = dirname(realpath(__file__))
 
@@ -781,6 +925,13 @@ def main():
     doExit = True
   if not isinstance(conf["http_ssl_verify"], bool):
     error("http_ssl_verify must be a bool")
+    doExit = True
+  conf.setdefault("publish_max_packages", 0)  # 0 == unlimited
+  if not isinstance(conf["publish_max_packages"], int):
+    error("publish_max_packages must be an integer")
+    doExit = True
+  if conf["publish_max_packages"] < 0:
+    error("publish_max_packages must not be negative; use 0 for unlimited")
     doExit = True
 
   if doExit: exit(1)
@@ -840,23 +991,26 @@ def main():
       except IOError as e:
         error("Cannot write pidfile %s, aborting", args.pidFile)
         return 1
-    if args.action in [ "sync-cvmfs", "sync-dir" ]:
+    if args.action in ("sync-cvmfs", "sync-dir", "sync-alien"):
       if not isinstance(conf["package_dir"], str):
         error("[cvmfs_]package_dir must be a string")
         doExit = True
+    if args.action in ("sync-cvmfs", "sync-dir"):
       if not isinstance(conf["modulefile"], str):
         error("[cvmfs_]modulefile must be a string")
         doExit = True
+    if args.action in ("sync-cvmfs", "sync-alien"):
+      if not isinstance(conf.get("cvmfs_repository", None), str):
+        error("cvmfs_repository must be a string")
+        doExit = True
+    if doExit:
+      return 1
 
     s3Client = boto3.client("s3", endpoint_url=conf["s3_endpoint_url"],
                             aws_access_key_id=environ["AWS_ACCESS_KEY_ID"],
                             aws_secret_access_key=environ["AWS_SECRET_ACCESS_KEY"])
 
     if args.action == "sync-cvmfs":
-      if not isinstance(conf.get("cvmfs_repository", None), str):
-        error("cvmfs_repository must be a string")
-        doExit = True
-      if doExit: return 1
       archKey = "CVMFS"
       pub = CvmfsServer(repository=conf["cvmfs_repository"],
                         modulefileTpl=conf["modulefile"],
@@ -865,7 +1019,6 @@ def main():
                         connParams=connParams,
                         dryRun=args.dryRun)
     elif args.action == "sync-dir":
-      if doExit: return 1
       archKey = "dir"
       pub = PlainFilesystem(modulefileTpl=conf["modulefile"],
                             pkgdirTpl=conf["package_dir"],
@@ -874,13 +1027,16 @@ def main():
                             dryRun=args.dryRun)
     elif args.action == "sync-alien":
       archKey = "AliEn"
-      pub = AliEnPackMan(publishScriptTpl=open(progDir+"/pub-alien-template.sh").read(),
-                         connParams=connParams,
-                         dryRun=args.dryRun)
+      pub = AliEn(connParams=connParams,
+                  repository=conf["cvmfs_repository"],
+                  package_dir=conf["package_dir"],
+                  dryRun=args.dryRun)
     else:
       conf["rpm_updatable"] = conf.get("rpm_updatable", False)
       archKey = "RPM"
-      pub = RPM(publishScriptTpl=open(progDir+"/pub-rpms-template.sh").read(),
+      template = "pub-updatable-rpms-template.sh" if conf["rpm_updatable"] \
+        else "pub-rpms-template.sh"
+      pub = RPM(publishScriptTpl=open(progDir + "/" + template).read(),
                 connParams=connParams,
                 genUpdatableRpms=conf["rpm_updatable"],
                 baseUrl=conf["base_url"],
@@ -905,7 +1061,8 @@ def main():
                         autoIncludeDeps=conf["auto_include_deps"],
                         notifEmail=conf["notification_email"],
                         dryRun=args.dryRun,
-                        connParams=connParams))
+                        connParams=connParams,
+                        publishLimit=conf["publish_max_packages"]))
   if args.action == "test-rules":
     testRules = {}
 
@@ -947,7 +1104,7 @@ def main():
             error(msg, arch, pkg, ver,
                   " but it should not" if match else " but it should")
             return 1
-          info(msg, arch, pkg, ver)
+          info(msg, arch, pkg, ver, "")
     info("All rules%s tested with success",
          " in "+args.testConf if args.testConf else "")
     return 0

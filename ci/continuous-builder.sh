@@ -36,9 +36,9 @@ if [ "$1" != --skip-setup ]; then
   git config --global user.name alibuild
   git config --global user.email alibuild@cern.ch
 
-  # This turns a container image (e.g. alisw/slc8-gpu-builder:latest) into a
-  # short, simple name like slc8-gpu that we use for the .env directories.
-  CUR_CONTAINER=${CONTAINER_IMAGE#*/}
+  # This turns a container image (e.g. registry.cern.ch/alisw/slc8-gpu-builder:latest)
+  # into a short, simple name like slc8-gpu that we use for the .env directories.
+  CUR_CONTAINER=${CONTAINER_IMAGE##*/}
   CUR_CONTAINER=${CUR_CONTAINER%-builder:*}
   ARCHITECTURE=${CUR_CONTAINER%%-*}_$(uname -m | tr _ -)
   ARCHITECTURE=${ARCHITECTURE/#cs/slc}
@@ -77,7 +77,7 @@ fi
 run_start_time=$(date +%s)
 if [ -n "$HASHES" ]; then
   # Loop through PRs we can build if there are any.
-  echo "$HASHES" | cat -n | while read -r BUILD_SEQ BUILD_TYPE PR_NUMBER PR_HASH env_name; do
+  echo "$HASHES" | cat -n | while read -r BUILD_SEQ BUILD_TYPE PR_NUMBER PR_HASH env_name WAITING_SINCE; do
     # Run iterations in a subshell so environment variables are not kept across
     # potentially different repos. This is an issue as env files are allowed to
     # define arbitrary variables that other files (or the defaults file) might
@@ -94,14 +94,9 @@ if [ -n "$HASHES" ]; then
 
       # Allow overriding the ali-bot/alibuild version to install -- this is useful
       # for testing changes to those with a few workers before deploying widely.
-      # Building a wheel for alibuild and/or ali-bot will fail, as they have an
-      # invalid version string ("LAST_TAG"). This messes up shebang mangling on
-      # some platforms, so use --no-binary for those packages. Also, we need to
-      # install ali-bot and alibuild as editable, else pip doesn't update them
-      # properly (perhaps because the version string is always "LAST_TAG").
-      short_timeout python3 -m pip install --upgrade --no-binary=alibuild,ali-bot \
-          -e "git+https://github.com/$(get_config_value install-alibot   "$INSTALL_ALIBOT")" \
-          -e "git+https://github.com/$(get_config_value install-alibuild "$INSTALL_ALIBUILD")" ||
+      short_timeout python3 -m pip install --upgrade \
+          "git+https://github.com/$(get_config_value install-alibot   "$INSTALL_ALIBOT")[ci]" \
+          "git+https://github.com/$(get_config_value install-alibuild "$INSTALL_ALIBUILD")" ||
         exit 1
 
       # Run the build

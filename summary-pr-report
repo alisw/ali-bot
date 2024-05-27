@@ -1,9 +1,8 @@
 #!/usr/bin/env python
 # A script which prepares a report of the pending PRs
 from argparse import ArgumentParser
-from datetime import date, datetime, timedelta
-from alibot_helpers.github_utilities import GithubCachedClient, PickledCache
-from alibot_helpers.github_utilities import github_token
+from datetime import datetime, timedelta
+from alibot_helpers.github_utilities import GithubCachedClient
 
 def from_iso(d):
   return datetime.strptime(d, "%Y-%m-%dT%H:%M:%SZ")
@@ -27,8 +26,7 @@ def getPrStatus(cgh, repo_name, ref):
 
 if __name__ == "__main__":
   args = parse_args()
-  cache = PickledCache('.cached-commits')
-  with GithubCachedClient(token=github_token(), cache=cache) as cgh:
+  with GithubCachedClient() as cgh:
     openIssues = cgh.get('/repos/{repo_name}/pulls?state=open',
                          repo_name=args.repo_name)
     # Print PRs which have an error state for more than 1h

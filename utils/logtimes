@@ -4,10 +4,11 @@
 
 import argparse
 from datetime import datetime, timedelta
+import io
 import re
 import sys
 
-LOG_RE: re.Pattern = re.compile(r'''
+LOG_RE: re.Pattern = re.compile(rb'''
 ( \d{4}-\d{2}-\d{2}   @   # date
   \d{2}:\d{2}:\d{2} ) :   # time
 (?: \x1b \[ [0-9;]* m )?  # ANSI escape for log level
@@ -21,29 +22,43 @@ LOG_RE: re.Pattern = re.compile(r'''
 ''', re.VERBOSE)
 
 
-def build_duration(package: str | None,
-                   start_time: str | None,
-                   end_time: str | None) -> list[tuple[timedelta, str]]:
+def build_duration(package: bytes | None,
+                   start_time: bytes | None,
+                   end_time: bytes | None) -> list[tuple[timedelta, bytes]]:
     '''Return a record of the duration of the build of the given package.'''
     if package is None:
         return []
     if start_time is None or end_time is None:
         duration = timedelta(0)
     else:
-        duration = (datetime.fromisoformat(end_time) -
-                    datetime.fromisoformat(start_time))
+        duration = (datetime.fromisoformat(end_time.decode('utf-8')) -
+                    datetime.fromisoformat(start_time.decode('utf-8')))
     return [(duration, package)]
+
+
+def output(durations: list[tuple[timedelta, bytes]],
+           output_file: io.TextIOBase) -> None:
+    '''Print durations and package names from the given list, in order.'''
+    for duration, package in durations:
+        print(duration, package.decode('utf-8'), sep='\t', file=output_file)
 
 
 def main(args: argparse.Namespace) -> None:
     '''Script entry point.'''
-    durations: list[tuple[timedelta, str]] = []
-    cur_pkg_name: str | None = None
-    cur_start_time: str | None = None
-    cur_end_time: str | None = None
+    durations: list[tuple[timedelta, bytes]] = []
+    cur_pkg_name: bytes | None = None
+    cur_start_time: bytes | None = None
+    cur_end_time: bytes | None = None
+
+    def new_package(name, start, end, durations):
+        new_durations = build_duration(name, start, end)
+        if args.ordering == 'chrono':
+            output(new_durations, args.output_file)
+        else:
+            durations += new_durations
 
     for line in args.logfile:
-        if not (match := re.match(LOG_RE, line)):
+        if not (match := LOG_RE.match(line)):
             continue
         timestr, package = match.groups()
         if package == cur_pkg_name:
@@ -52,21 +67,18 @@ def main(args: argparse.Namespace) -> None:
             continue
         # This log line now comes from a new package!
         # Register the last package's build duration and reset our variables.
-        durations += build_duration(cur_pkg_name, cur_start_time, cur_end_time)
+        new_package(cur_pkg_name, cur_start_time, cur_end_time, durations)
         cur_pkg_name = package
         cur_start_time = cur_end_time = timestr
     # Make sure the last build in the file is registered, too.
-    durations += build_duration(cur_pkg_name, cur_start_time, cur_end_time)
+    new_package(cur_pkg_name, cur_start_time, cur_end_time, durations)
 
-    # Now sort and output the registered build durations.
-    if args.ordering == 'chrono':
-        ordered = durations
-    elif args.ordering == 'duration':
-        ordered = sorted(durations, key=lambda pair: pair[1], reverse=True)
-    else:
+    # Now sort and output the registered build durations, if necessary.
+    if args.ordering == 'duration':
+        output(sorted(durations, key=lambda pair: pair[1], reverse=True),
+               args.output_file)
+    elif args.ordering != 'chrono':
         raise ValueError('unknown ordering:', args.ordering)
-    for duration, package in ordered:
-        print(duration, package, sep='\t', file=args.output_file)
 
 
 def parse_args() -> argparse.Namespace:
@@ -88,7 +100,7 @@ def parse_args() -> argparse.Namespace:
         help='where to output the resulting table (default stdout)')
     parser.add_argument(
         'logfile', metavar='LOGFILE', nargs='?',
-        type=argparse.FileType('r'), default='-',
+        type=argparse.FileType('rb'), default='-',
         help='alibuild log file to analyse (default stdin)')
     return parser.parse_args()
 

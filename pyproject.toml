@@ -1,0 +1,108 @@
+[build-system]
+requires = ["setuptools", "setuptools_scm[toml]"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = 'ali-bot'
+dynamic = ['readme', 'version']
+
+description = 'ALICE Multipurpose bot'
+authors = [
+  {name = 'Giulio Eulisse', email = 'giulio.eulisse@cern.ch'},
+]
+license = {text = 'GPL'}
+classifiers = [
+   'Development Status :: 4 - Beta',
+   'Intended Audience :: Developers',
+   'Topic :: Software Development :: Build Tools',
+   'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
+
+   'Programming Language :: Python :: 2.6',
+   'Programming Language :: Python :: 2.7'
+]
+
+keywords=[
+  'HEP',
+  'ALICE'
+]
+
+dependencies = [
+  'PyGithub==1.45',
+  'argparse',
+  'requests',
+  'pytz',
+  's3cmd',
+  'pyyaml',
+  'boto3'
+]
+
+[project.optional-dependencies]
+services = [
+  "Twisted==18.9.0",
+  "klein",
+  "python-ldap"
+]
+ci = [
+  "gql",
+  "requests-toolbelt",  # for gql
+  "typing-extensions==4.1.1; python_version == '3.6'",
+]
+
+utils = [
+  "python-nomad"
+]
+
+[project.urls]
+homepage = 'https://alisw.github.io/ali-bot'
+
+[scripts]
+# Continuous Integration
+set-github-status = {path = "set-github-status"}
+report-pr-errors = {path = "report-pr-errors"}
+list-branch-pr = {path = "list-branch-pr"}
+alidist-override-tags = {path = "alidist-override-tags"}
+# Analytics
+report-analytics = {path = "analytics/report-analytics"}
+report-metric-monalisa = {path = "analytics/report-metric-monalisa"}
+# Continuous Builders
+continuous-builder.sh = {path = "ci/continuous-builder.sh"}
+build-helpers.sh = {path = "ci/build-helpers.sh"}
+build-loop.sh = {path = "ci/build-loop.sh"}
+cleanup.py = {path = "ci/cleanup.py"}
+# GitHub API monitoring
+monitor-github-api = {path = "monitor-github-api"}
+monitor-github-api-monalisa.sh = {path = "monitor-github-api-monalisa.sh"}
+# S3 housekeeping
+repo-s3-cleanup = {path = "repo-s3-cleanup"}
+# Check daily tags
+check-daily-slack = {path = "check-daily-slack"}
+daily-tags.sh = {path = "daily-tags.sh"}
+build-any-ib.sh = {path = "build-any-ib.sh"}
+build-package = {path = "build-package"}
+# Wait for open Pull Requests before daily tags
+check-open-pr = {path = "ci/check-open-pr"}
+# Process PR permissions
+process-pull-request-http.py = {path = "ci/process-pull-request-http.py"}
+sync-egroups.py = {path = "ci/sync-egroups.py"}
+sync-mapusers.py = {path = "ci/sync-mapusers.py"}
+# S3 repo maintenance
+update-symlink-manifests = {path = "update-symlink-manifests"}
+# Get PR information
+prinfo = {path = "ci/prinfo"}
+# Resolve Mesos DNS
+mesos-dns-lookup = {path = "mesos-dns-lookup"}
+# Helpers
+clean-repo-ci = {path = "clean-repo-ci"}
+ci-status-overview = {path = "ci-status-overview"}
+bulk-change-pr-status = {path = "utils/bulk-change-pr-status"}
+bulk-change-pr-status-by-checker = {path = "utils/bulk-change-pr-status-by-checker"}
+ciqueues = {path = "utils/ciqueues"}
+ci-status-history = {path = "utils/ci-status-history"}
+duplicate-hash-tarballs = {path = "utils/duplicate-hash-tarballs"}
+logspecs = {path = "utils/logspecs"}
+logtimes = {path = "utils/logtimes"}
+nomad-diskfree = {path = "utils/nomad-diskfree"}
+pdci = {path = "utils/pdci"}
+
+[tool.setuptools.dynamic]
+readme = {file = "README.rst"}

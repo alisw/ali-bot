@@ -31,8 +31,8 @@ export PATH=$PYTHONUSERBASE/bin:$PATH
 export LD_LIBRARY_PATH=$PYTHONUSERBASE/lib:$LD_LIBRARY_PATH
 # Set the default python and pip depending on the architecture...
 case $ARCHITECTURE in
-  slc7*|slc8*) PIP=pip3 PYTHON=python3 ;;
-  *) PIP=pip PYTHON=python ;;
+  slc6*) PIP=pip PYTHON=python ;;
+  *) PIP=pip3 PYTHON=python3 ;;
 esac
 # ...and override it if PYTHON_VERSION is specified.
 case "$PYTHON_VERSION" in
@@ -45,14 +45,15 @@ type aliBuild
 rm -rf alidist
 if [[ $ALIDIST_PRNUM ]]; then
   ALIDIST_BRANCH=pull/${ALIDIST_PRNUM}/head
-  git clone https://github.com/${ALIDIST_REPO}
+  git clone "https://github.com/$ALIDIST_REPO" alidist
   pushd alidist
-    ALIDIST_LOCAL_BRANCH=$(echo $ALIDIST_BRANCH|sed -e 's|/|_|g')
-    git fetch origin $ALIDIST_BRANCH:$ALIDIST_LOCAL_BRANCH
-    git checkout $ALIDIST_LOCAL_BRANCH
+    alidist_local_branch=${ALIDIST_BRANCH//\//_}
+    git fetch origin "$ALIDIST_BRANCH:$alidist_local_branch"
+    git checkout "$alidist_local_branch"
   popd
 else
-  git clone ${ALIDIST_BRANCH:+-b $ALIDIST_BRANCH} https://github.com/${ALIDIST_REPO}
+  git clone ${ALIDIST_BRANCH:+-b "$ALIDIST_BRANCH"} \
+      "https://github.com/$ALIDIST_REPO" alidist
 fi
 
 CURRENT_SLAVE=unknown
@@ -115,10 +116,7 @@ else
   rm -rf AliPhysics
 fi
 
-case "$ARCHITECTURE" in
-  slc8_*|ubuntu*) : "${REMOTE_STORE:=b3://alibuild-repo}" ;;
-  *) : "${REMOTE_STORE:=rsync://alibuild03.cern.ch/store/}" ;;
-esac
+: "${REMOTE_STORE:=b3://alibuild-repo}"
 [ "$PUBLISH_BUILDS" = true ] && REMOTE_STORE=$REMOTE_STORE::rw
 [ "$USE_REMOTE_STORE" = false ] && REMOTE_STORE=
 case "$REMOTE_STORE" in
@@ -129,17 +127,22 @@ case "$REMOTE_STORE" in
     set -x ;;
 esac
 
-FETCH_REPOS="$(aliBuild build --help | grep fetch-repos || true)"
-aliBuild --reference-sources $MIRROR                    \
-         --debug                                        \
-         --work-dir $WORKAREA/$WORKAREA_INDEX           \
-         ${FETCH_REPOS:+--fetch-repos}                  \
-         --architecture $ARCHITECTURE                   \
-         --jobs ${JOBS:-16}                             \
-         ${REMOTE_STORE:+--remote-store $REMOTE_STORE}  \
-         ${DEFAULTS:+--defaults $DEFAULTS}              \
-         ${DISABLE:+--disable $DISABLE}                 \
-         build $PACKAGE_NAME || BUILDERR=$?
+# Feature detection
+FETCH_REPOS='' ANNOTATE=''
+aliBuild build --help | grep -q -- --fetch-repos && FETCH_REPOS=1
+aliBuild build --help | grep -q -- --annotate && ANNOTATE=1
+
+aliBuild --reference-sources "$MIRROR"                    \
+         --debug                                          \
+         --work-dir "$WORKAREA/$WORKAREA_INDEX"           \
+         ${FETCH_REPOS:+--fetch-repos}                    \
+         --architecture "$ARCHITECTURE"                   \
+         --jobs "${JOBS:-${MAX_CORES:-$(nproc)}}"         \
+         ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}  \
+         ${DEFAULTS:+--defaults "$DEFAULTS"}              \
+         ${DISABLE:+--disable "$DISABLE"}                 \
+         ${ANNOTATE:+${BUILD_COMMENT:+--annotate "$PACKAGE_NAME=$BUILD_COMMENT"}} \
+         build "$PACKAGE_NAME" || BUILDERR=$?
 
 for logf in "$WORKAREA/$WORKAREA_INDEX/BUILD"/*/*/*.log; do
   [ -e "$logf" ] || continue

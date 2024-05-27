@@ -12,7 +12,6 @@ get_config
 ensure_vars CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS
 
 : "${WORKERS_POOL_SIZE:=1}" "${WORKER_INDEX:=0}" "${PR_REPO_CHECKOUT:=$(basename "$PR_REPO")}"
-[ -d /build/mirror ] && : "${MIRROR:=/build/mirror}"
 
 host_id=${NOMAD_SHORT_ALLOC_ID:-$(hostname -f)}
 
@@ -121,7 +120,7 @@ done
 # Get a temporary JAliEn token certificate and key, to give anything we build
 # below access. Do this before the `report_state pr_processing` line so we have
 # instant feedback in monitoring of whether a token is available for the build.
-if jalien_token=$(alien.py token -v 1); then
+if jalien_token=$(short_timeout alien.py token -v 1); then
   jalien_token_cert=$(echo "$jalien_token" | sed -n '/^-----BEGIN CERTIFICATE-----$/,/^-----END CERTIFICATE-----$/p')
   jalien_token_key=$(echo "$jalien_token" | sed -n '/^-----BEGIN RSA PRIVATE KEY-----$/,/^-----END RSA PRIVATE KEY-----$/p')
   HAVE_JALIEN_TOKEN=1
@@ -132,6 +131,7 @@ unset certdir jalien_token
 
 report_state pr_processing
 
+NUM_BASE_COMMITS=-1
 # Fetch the PR's changes to the git repository.
 if pushd "$PR_REPO_CHECKOUT"; then
   git config --add remote.origin.fetch '+refs/pull/*/head:refs/remotes/origin/pr/*'
@@ -143,7 +143,11 @@ if pushd "$PR_REPO_CHECKOUT"; then
   git reset --hard "origin/$PR_BRANCH"  # reset to branch target of PRs
   git clean -fxd
   old_size=$(du -sm . | cut -f1)
-  base_hash=$(git rev-parse --verify HEAD)  # reference upstream hash
+  # Make $base_hash the commit where our PR split off from the main branch, so
+  # that a "git diff $base_hash $PR_HASH" shows only changes introduced by the
+  # PR. O2DPG-sim-tests requires this.
+  base_hash=$(git merge-base "$PR_HASH" HEAD)  # reference upstream hash
+  NUM_BASE_COMMITS=$(git rev-list --count HEAD)
 
   if ! git merge --no-edit "$PR_HASH"; then
     # clean up in case the merge fails
@@ -167,6 +171,20 @@ if pushd "$PR_REPO_CHECKOUT"; then
   fi
 
   popd || exit 1
+fi
+
+# shellcheck disable=SC2086  # $ONLY_RUN_WHEN_CHANGED must be split by the shell
+# We cannot use an array for $ONLY_RUN_WHEN_CHANGED as *.env files are parsed by
+# Python's shlex, which doesn't parse bash array syntax properly.
+if (cd "$PR_REPO_CHECKOUT" &&
+      git diff --quiet "$base_hash...$PR_HASH" -- $ONLY_RUN_WHEN_CHANGED)
+then
+  # Exit code 0 from git diff means that nothing has changed and we should skip
+  # the build; exit code 1 means files have changed and we need to run it.
+  short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" \
+                -s "$CHECK_NAME/success" -m 'skipped; no relevant changes' ||
+    short_timeout report-analytics exception --desc 'set-github-status failed on skip'
+  exit 0
 fi
 
 # Nomad runs this script inside a cgroup managed by it, so it can clean up
@@ -196,6 +214,9 @@ find sw/BUILD/ -maxdepth 1 -name '*latest*' -delete
 # Delete coverage files from one run to the next to avoid
 # reporting them twice under erroneous circumstances
 find sw/BUILD/ -maxdepth 4 -name coverage.info -delete
+# aliBuild should also delete this file, but make *really* sure there are no
+# leftovers from previous invocations.
+rm -f sw/MIRROR/fetch-log.txt
 
 # Only publish packages to remote store when we build the master branch. For
 # PRs, PR_NUMBER will be numeric; in that case, only write to the regular
@@ -209,17 +230,15 @@ fi
 build_identifier=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
 : "${build_identifier:=${CHECK_NAME//\//_}}"
 
-# o2checkcode needs the ALIBUILD_{HEAD,BASE}_HASH variables.
+# o2checkcode and O2DPG checks need the ALIBUILD_{HEAD,BASE}_HASH variables.
 # We need "--no-auto-cleanup" so that build logs for dependencies are kept, too.
 # For instance, when building O2FullCI, we want to keep the o2checkcode log, as
 # report-pr-errors looks for errors in it.
 # --docker-extra-args=... uses an equals sign as its arg can start with "--",
 # --which would confuse argparse if passed as a separate argument.
-if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
-     clean_env long_timeout aliBuild build "$PACKAGE"        \
+if clean_env long_timeout aliBuild build "$PACKAGE"          \
      -j "${JOBS:-$(nproc)}" -z "$build_identifier"           \
      --defaults "$ALIBUILD_DEFAULTS"                         \
-     ${MIRROR:+--reference-sources "$MIRROR"}                \
      ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}         \
      -e ALIBOT_CI_NAME="$CI_NAME"                            \
      -e ALIBOT_CHECK_NAME="$CHECK_NAME"                      \
@@ -227,6 +246,9 @@ if ALIBUILD_HEAD_HASH=$PR_HASH ALIBUILD_BASE_HASH=$base_hash \
      -e ALIBOT_PR_BRANCH="$PR_BRANCH"                        \
      -e "ALIBUILD_O2_TESTS=$ALIBUILD_O2_TESTS"               \
      -e "ALIBUILD_O2PHYSICS_TESTS=$ALIBUILD_O2PHYSICS_TESTS" \
+     -e "ALIBUILD_XJALIENFS_TESTS=$ALIBUILD_XJALIENFS_TESTS" \
+     -e "ALIBUILD_HEAD_HASH=$PR_HASH"                        \
+     -e "ALIBUILD_BASE_HASH=$base_hash"                      \
      ${jalien_token_cert:+-e "JALIEN_TOKEN_CERT=$jalien_token_cert"} \
      ${jalien_token_key:+-e "JALIEN_TOKEN_KEY=$jalien_token_key"} \
      ${use_docker:+-e GIT_CONFIG_COUNT=1}                    \
