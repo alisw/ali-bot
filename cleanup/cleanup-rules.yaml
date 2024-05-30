@@ -8,6 +8,19 @@
 # constructor: weeks, days, hours, minutes, seconds, microseconds,
 # milliseconds.
 
+- architectures: [slc9_x86-64, slc9_aarch64]
+  packages:
+    - O2PDPSuite
+    - O2
+    - O2Physics
+    - O2sim
+    - O2DPG
+    - DataDistribution
+    - QualityControl
+  # These packages were published as RPMs, so we must reserve their revision
+  # numbers by keeping symlinks and only deleting the main tarball.
+  delete_symlinks: false
+
 - architectures: [slc8_x86-64]
   packages:
     - O2PDPSuite
@@ -87,7 +100,6 @@
     days: 7
 
 - architectures:
-    - slc9_x86-64
     - ubuntu2004_x86-64
     - ubuntu2204_x86-64
   packages:
