@@ -135,7 +135,7 @@ jobs:
             Please consider the following formatting changes to
             #${{ github.event.pull_request.number }}
           pr_body: >-
-            This PR cannot be merged as is. You should either run `clang-format`
+            Your PR ${{ github.event.pull_request.html_url }} cannot be merged as is. You should either run `clang-format`
             yourself and update the pull request, or merge this PR in yours.
 
             You can find the AliceO2 coding conventions at
