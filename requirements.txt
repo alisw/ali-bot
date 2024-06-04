@@ -1,4 +1,4 @@
-PyGithub==1.45
+PyGithub==1.46
 argparse
 requests
 pytz
