@@ -67,6 +67,8 @@ case "$PYTHON_VERSION" in
   3) PIP=pip3 PYTHON=python3 ;;
 esac
 
+# Upgrade pip
+$PIP install --user --upgrade pip
 # Install the latest release if ALIBUILD_SLUG is not provided
 $PIP install --user --upgrade "${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}"
 aliBuild analytics off
