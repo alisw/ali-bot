@@ -105,9 +105,6 @@ try {
               export LD_LIBRARY_PATH=${PYTHONUSERBASE}/lib:${LD_LIBRARY_PATH}
               echo $NODE_NAME
               case $NODE_NAME in
-                *slc6*)
-                  # python3 is not installed on the slc6-builder. Installing it seems to break the build.
-                  pip=pip2 ;;
                 *ubuntu*)
                   # On Ubuntu 20.04, pip is pip3. (On Ubuntu 18.04, it's still pip2.)
                   pip=pip ;;
