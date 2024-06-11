@@ -117,6 +117,7 @@ try {
                 *)
                   pip=pip3 ;;
               esac
+              $pip install --upgrade --user pip
               $pip install --upgrade --user "git+https://github.com/$ALIBOT_SLUG"
               [ -f /opt/rh/rh-git218/enable ] && source /opt/rh/rh-git218/enable
               daily-tags.sh || err=$?
