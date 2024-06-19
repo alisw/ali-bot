@@ -268,7 +268,7 @@ class AliEn:
         self._session.get("https://alimonitor.cern.ch/packages/define.jsp",
                           # Set stream=False to read the response body and
                           # release the connection back to the pool.
-                          params=request_data, stream=False) \
+                          params=request_data, stream=False, timeout=30) \
                      .raise_for_status()
       except requests.HTTPError as exc:
         error("AliEn: failed to register new package", exc_info=exc)
