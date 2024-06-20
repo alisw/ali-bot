@@ -111,7 +111,9 @@ try {
                   export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH:+$CMAKE_PREFIX_PATH:}/opt/rocm/lib/cmake:/opt/clang/lib/cmake
                   export AMDAPPSDKROOT=/opt/amd-app
                   export PATH=$PATH${PATH:+:}/usr/local/cuda/bin
+		  ;;
                 *)
+		  ;;
               esac
               python3 -m pip install --upgrade --user pip==22.0.4
               python3 -m pip install --upgrade --user "git+https://github.com/$ALIBOT_SLUG"
