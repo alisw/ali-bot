@@ -58,19 +58,10 @@ rm -rf alidist/
 git config --global user.name 'ALICE Builder'
 git config --global user.email alibuild@cern.ch
 
-# Set the default python and pip depending on the architecture...
-case $ARCHITECTURE in
-  *) PIP=pip3 PYTHON=python3 ;;
-esac
-# ...and override it if PYTHON_VERSION is specified.
-case "$PYTHON_VERSION" in
-  3) PIP=pip3 PYTHON=python3 ;;
-esac
-
 # Upgrade pip
-$PIP install --user --upgrade pip==22.0.4
+python3 -m pip install --user --upgrade pip==22.0.4
 # Install the latest release if ALIBUILD_SLUG is not provided
-$PIP install --user --upgrade "${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}"
+python3 -m pip install --user --upgrade "${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}"
 aliBuild analytics off
 
 # The alidist branches are always named with a trailing .0 instead of the

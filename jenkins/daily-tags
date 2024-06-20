@@ -31,8 +31,8 @@ try {
               export PATH="$PYTHONUSERBASE/bin:$PATH"
               rm -rf "$PYTHONUSERBASE"
               yum install -y python3-pip python3-devel python3-setuptools
-              pip3 install --user --upgrade pip
-              pip3 install --user --upgrade "${ALIBOT_SLUG:+git+https://github.com/${ALIBOT_SLUG}}"
+              python3 -m pip install --user --upgrade pip
+              python3 -m pip install --user --upgrade "${ALIBOT_SLUG:+git+https://github.com/${ALIBOT_SLUG}}"
               type check-open-pr
               if [ "${PACKAGES%% *}" = AliPhysics ]; then
                 WAIT_TESTS="build/AliPhysics/release build/AliPhysics/root6"
@@ -106,20 +106,15 @@ try {
               export LD_LIBRARY_PATH=${PYTHONUSERBASE}/lib:${LD_LIBRARY_PATH}
               echo $NODE_NAME
               case $NODE_NAME in
-                *ubuntu*)
-                  # On Ubuntu 20.04, pip is pip3. (On Ubuntu 18.04, it's still pip2.)
-                  pip=pip ;;
                 *slc8*)
                   export ALIBUILD_O2_FORCE_GPU=1
                   export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH:+$CMAKE_PREFIX_PATH:}/opt/rocm/lib/cmake:/opt/clang/lib/cmake
                   export AMDAPPSDKROOT=/opt/amd-app
                   export PATH=$PATH${PATH:+:}/usr/local/cuda/bin
-                  pip=pip3 ;;
                 *)
-                  pip=pip3 ;;
               esac
-              $pip install --upgrade --user pip==22.0.4
-              $pip install --upgrade --user "git+https://github.com/$ALIBOT_SLUG"
+              python3 -m pip install --upgrade --user pip==22.0.4
+              python3 -m pip install --upgrade --user "git+https://github.com/$ALIBOT_SLUG"
               [ -f /opt/rh/rh-git218/enable ] && source /opt/rh/rh-git218/enable
               daily-tags.sh || err=$?
               rm -rf alidist daily-tags.?????????? mirror
