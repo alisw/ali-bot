@@ -68,7 +68,7 @@ case "$PYTHON_VERSION" in
 esac
 
 # Upgrade pip
-$PIP install --user --upgrade pip
+$PIP install --user --upgrade pip==22.0.4
 # Install the latest release if ALIBUILD_SLUG is not provided
 $PIP install --user --upgrade "${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}"
 aliBuild analytics off
