@@ -59,7 +59,7 @@ git config --global user.name 'ALICE Builder'
 git config --global user.email alibuild@cern.ch
 
 # Upgrade pip
-python3 -m pip install --user --upgrade pip==22.0.4
+python3 -m pip install --user --upgrade pip
 # Install the latest release if ALIBUILD_SLUG is not provided
 python3 -m pip install --user --upgrade "${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}"
 aliBuild analytics off
