@@ -191,7 +191,10 @@ fi
 # properly when we exit (or are killed), and it can track CPU/RAM usage.
 # Run our Docker builds inside the same cgroup so they're included too.
 if cgroup=$(sed -rn '/:freezer:/{s/.*:freezer:(.*)/\1/p;q}' "/proc/$$/cgroup"); then
-  DOCKER_EXTRA_ARGS="$DOCKER_EXTRA_ARGS ${cgroup:+--cgroup-parent=$cgroup}"
+  case $cgroup in
+    /) DOCKER_EXTRA_ARGS="$DOCKER_EXTRA_ARGS ${NOMAD_PARENT_CGROUP:+--cgroup-parent=$NOMAD_PARENT_CGROUP}" ;;
+    *) DOCKER_EXTRA_ARGS="$DOCKER_EXTRA_ARGS ${cgroup:+--cgroup-parent=$cgroup}" ;;
+  esac
 fi
 
 if ! clean_env short_timeout aliDoctor --defaults "$ALIBUILD_DEFAULTS" "$PACKAGE" \
