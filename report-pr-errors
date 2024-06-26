@@ -19,7 +19,7 @@ import datetime
 
 from alibot_helpers.github_utilities import (
     calculateMessageHash, setGithubStatus, parseGithubRef, GithubCachedClient,
-    PickledCache,
+    PickledCache, generate_gh_htmllink_from_commit
 )
 from alibot_helpers.utilities import to_unicode
 
@@ -318,25 +318,22 @@ class Logs(object):
         self.preview_error_log = '\n'.join(error_log_lines).strip()
 
     def get_versions(self):
+        alidist_version = None
         try:
             out = run('alibuild version', shell=True, capture_output=True)
-            if out.returncode:
-                self.alibuild_version = "Could not get alibuild version"
-            else:
+            if not out.returncode:
                 self.alibuild_version = out.stdout.decode('utf-8').strip()
         except Exception as e:
             print("Error while getting alibuild version:", e, file=sys.stderr)
-            self.alibuild_version = "Could not get alibuild version"
         try:
             out = run('git --git-dir ./alidist/.git rev-parse --short HEAD',
                       shell=True, capture_output=True)
-            if out.returncode:
-                self.alidist_version = "Could not get alidist version"
-            else:
-                self.alidist_version = out.stdout.decode('utf-8').strip()
+            if not out.returncode:
+                alidist_version = out.stdout.decode('utf-8').strip()
         except Exception as e:
             print("Error while getting alidist version:", e, file=sys.stderr)
-            self.alidist_version = "Could not get alidist version"
+        self.alidist_version = generate_gh_htmllink_from_commit(
+            alidist_version, 'alisw/alidist') if alidist_version else 'Couldn\'t get alidist version'
 
 
     def generate_pretty_log(self):
@@ -616,7 +613,7 @@ PRETTY_LOG_TEMPLATE = '''\
     <tr><th>Alibuild version</th>
         <td>%(alibuild_version)s</td></tr>
     <tr><th>Alidist version</th>
-        <td> <a href="https://github.com/alisw/alidist/commit/%(alidist_version)s">alisw/alidist@%(alidist_version)s</a></td></tr>
+        <td> %(alidist_version)s</td></tr>
   </table>
   <p>The code that finds and extracts error messages may have missed some.
      Check the <a href="%(log_url)s">full build log</a> if you suspect the build failed for reasons not listed below.</p>
