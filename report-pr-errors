@@ -5,7 +5,7 @@ from argparse import ArgumentParser, Namespace
 try:
     from commands import getstatusoutput
 except ImportError:
-    from subprocess import getstatusoutput
+    from subprocess import getstatusoutput, run
 from collections import deque
 from fnmatch import fnmatch
 from glob import glob
@@ -21,7 +21,7 @@ from alibot_helpers.github_utilities import (
     calculateMessageHash, setGithubStatus, parseGithubRef, GithubCachedClient,
     PickledCache,
 )
-from alibot_helpers.utilities import to_unicode, getout
+from alibot_helpers.utilities import to_unicode
 
 # Allow uploading logs to S3
 try:
@@ -319,20 +319,21 @@ class Logs(object):
 
     def get_versions(self):
         try:
-            (alibuild_version, status) = getout("alibuild version")
-            if status:
+            out = run('alibuild version', shell=True, capture_output=True)
+            if out.returncode:
                 self.alibuild_version = "Could not get alibuild version"
             else:
-                self.alibuild_version = alibuild_version
+                self.alibuild_version = out.stdout.decode('utf-8').strip()
         except Exception as e:
             print("Error while getting alibuild version:", e, file=sys.stderr)
             self.alibuild_version = "Could not get alibuild version"
         try:
-            (alidist_version, status) = getout("git -C ./alidist rev-parse --short HEAD")
-            if status:
+            out = run('git -C ./alidist rev-parse --short HEAD',
+                      shell=True, capture_output=True)
+            if out.returncode:
                 self.alidist_version = "Could not get alidist version"
             else:
-                self.alidist_version = alidist_version
+                self.alidist_version = out.stdout.decode('utf-8').strip()
         except Exception as e:
             print("Error while getting alidist version:", e, file=sys.stderr)
             self.alidist_version = "Could not get alidist version"

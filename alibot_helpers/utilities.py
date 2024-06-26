@@ -2,8 +2,6 @@
 
 import shlex
 import sys
-from os import devnull
-import subprocess
 
 
 def parse_env_file(env_file_path):
@@ -25,11 +23,3 @@ def to_unicode(s):
     elif not isinstance(s, unicode):
         return unicode(str(s))
     return s
-
-
-def getout(cmd):
-    with open(devnull) as dn:
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=dn, shell=True)
-        out = p.communicate()[0].decode('utf-8')
-        code = p.returncode
-    return (out, code)
