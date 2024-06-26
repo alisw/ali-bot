@@ -328,7 +328,7 @@ class Logs(object):
             print("Error while getting alibuild version:", e, file=sys.stderr)
             self.alibuild_version = "Could not get alibuild version"
         try:
-            out = run('git -C ./alidist rev-parse --short HEAD',
+            out = run('git --git-dir ./alidist/.git rev-parse --short HEAD',
                       shell=True, capture_output=True)
             if out.returncode:
                 self.alidist_version = "Could not get alidist version"
