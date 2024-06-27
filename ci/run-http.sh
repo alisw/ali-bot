@@ -16,11 +16,12 @@ ALI_BOT_DIR="$(dirname "$0")"
 ALI_BOT_DIR="$(cd "$ALI_BOT_DIR/.."; pwd)"
 
 # Move into the scratch directory
-cd "$MESOS_SANDBOX" || :
+cd "$NOMAD_TASK_DIR" || :
 
 # Install with pip
 export PYTHONUSERBASE=$PWD/python_local
 export PATH="$PYTHONUSERBASE/bin:$PATH"
+pip3 install --user --upgrade pip
 pip3 install --ignore-installed --upgrade --user -e "${ALI_BOT_DIR}[services]"
 
 # Setup GitLab credentials (to push new data)
