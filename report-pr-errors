@@ -19,7 +19,7 @@ import datetime
 
 from alibot_helpers.github_utilities import (
     calculateMessageHash, setGithubStatus, parseGithubRef, GithubCachedClient,
-    PickledCache, generate_gh_htmllink_from_commit
+    PickledCache,
 )
 from alibot_helpers.utilities import to_unicode
 
@@ -326,12 +326,7 @@ class Logs(object):
         #   - aliBuild: INSTALL_ALIBUILD
         #   - alidist: (defaults to alidist@master)
         self.alibuild_version = os.getenv('ALIBUILD_SLUG') or os.getenv('INSTALL_ALIBUILD') or 'Not pinned (most likely alibuild@master)'
-        alidist_version = os.getenv('ALIDIST_SLUG')
-        if alidist_version:
-            self.alidist_version = generate_gh_htmllink_from_commit(alidist_version, 'alisw/alidist')
-        else:
-            self.alidist_version = 'Not pinned (most likely alidist@master)'
-
+        self.alidist_version = os.getenv('ALIDIST_SLUG') or 'Not pinned (most likely alidist@master)'
 
     def generate_pretty_log(self):
         '''Extract error messages from logs.

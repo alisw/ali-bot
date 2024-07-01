@@ -407,8 +407,3 @@ def setGithubStatus(cgh, args, debug_print=True):
         repo_name=repo_name,
         ref=commit_ref
     )
-
-
-def generate_gh_htmllink_from_commit(commit: str, repo: str) -> str:
-    return f"<a href=\"https://github.com/{repo}/commit/{commit}\"\
-    target=\"_blank\">{repo}@{commit}</a>"
