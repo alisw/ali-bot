@@ -610,7 +610,7 @@ PRETTY_LOG_TEMPLATE = '''\
     <tr><th>Alibuild version</th>
         <td>%(alibuild_version)s</td></tr>
     <tr><th>Alidist version</th>
-        <td> %(alidist_version)s</td></tr>
+        <td>%(alidist_version)s</td></tr>
   </table>
   <p>The code that finds and extracts error messages may have missed some.
      Check the <a href="%(log_url)s">full build log</a> if you suspect the build failed for reasons not listed below.</p>
