@@ -160,10 +160,13 @@ class Logs(object):
         self.build_successful = args.success
         self.pr_built = parse_pr(args.pr)
         self.main_packages = args.main_packages
+        self.alibuild_version = None
+        self.alidist_version = None
 
     def parse(self):
         self.find()
         self.grep()
+        self.get_versions()
         self.cat(self.full_log)
         self.generate_pretty_log()
         if self.is_branch:
@@ -314,6 +317,17 @@ class Logs(object):
                                    .format(self.all_logs[-1], err)]
         self.preview_error_log = '\n'.join(error_log_lines).strip()
 
+    def get_versions(self):
+        # The versions are defined differently for both job runner setups
+        # Jenkins (daily builds):
+        #   - aliBuild: ALIBUILD_SLUG
+        #   - alidist: ALIDIST_SLUG (if not set it defaults to alidist@master)
+        # Nomad (CI checks):
+        #   - aliBuild: INSTALL_ALIBUILD
+        #   - alidist: (defaults to alidist@master)
+        self.alibuild_version = os.getenv('ALIBUILD_SLUG') or os.getenv('INSTALL_ALIBUILD') or 'Not pinned (most likely alibuild@master)'
+        self.alidist_version = os.getenv('ALIDIST_SLUG') or 'Not pinned (most likely alidist@master)'
+
     def generate_pretty_log(self):
         '''Extract error messages from logs.
 
@@ -368,6 +382,8 @@ class Logs(object):
                 'nomad_alloc_id': os.getenv('NOMAD_ALLOC_ID', ''),
                 'nomad_short_alloc_id': os.getenv('NOMAD_SHORT_ALLOC_ID',
                                                   os.getenv('NOMAD_ALLOC_ID', '(no Nomad ID)')),
+                'alibuild_version': self.alibuild_version,
+                'alidist_version': self.alidist_version,
             })
 
     def cat(self, target_file, no_delete=False):
@@ -586,6 +602,10 @@ PRETTY_LOG_TEMPLATE = '''\
         <td><code>nomad alloc exec %(nomad_short_alloc_id)s bash</code></td></tr>
     <tr><th>Stream logs</th>
         <td><code>nomad alloc logs -stderr -tail -f %(nomad_short_alloc_id)s</code></td></tr>
+    <tr><th>Alibuild version</th>
+        <td>%(alibuild_version)s</td></tr>
+    <tr><th>Alidist version</th>
+        <td>%(alidist_version)s</td></tr>
   </table>
   <p>The code that finds and extracts error messages may have missed some.
      Check the <a href="%(log_url)s">full build log</a> if you suspect the build failed for reasons not listed below.</p>
