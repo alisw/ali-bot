@@ -5,7 +5,7 @@ from argparse import ArgumentParser, Namespace
 try:
     from commands import getstatusoutput
 except ImportError:
-    from subprocess import getstatusoutput, run
+    from subprocess import getstatusoutput
 from collections import deque
 from fnmatch import fnmatch
 from glob import glob
@@ -318,22 +318,19 @@ class Logs(object):
         self.preview_error_log = '\n'.join(error_log_lines).strip()
 
     def get_versions(self):
-        alidist_version = None
-        try:
-            out = run('alibuild version', shell=True, capture_output=True)
-            if not out.returncode:
-                self.alibuild_version = out.stdout.decode('utf-8').strip()
-        except Exception as e:
-            print("Error while getting alibuild version:", e, file=sys.stderr)
-        try:
-            out = run('git --git-dir ./alidist/.git rev-parse --short HEAD',
-                      shell=True, capture_output=True)
-            if not out.returncode:
-                alidist_version = out.stdout.decode('utf-8').strip()
-        except Exception as e:
-            print("Error while getting alidist version:", e, file=sys.stderr)
-        self.alidist_version = generate_gh_htmllink_from_commit(
-            alidist_version, 'alisw/alidist') if alidist_version else 'Couldn\'t get alidist version'
+        # The versions are defined differently for both job runner setups
+        # Jenkins (daily builds):
+        #   - aliBuild: ALIBUILD_SLUG
+        #   - alidist: ALIDIST_SLUG (if not set it defaults to alidist@master)
+        # Nomad (CI checks):
+        #   - aliBuild: INSTALL_ALIBUILD
+        #   - alidist: (defaults to alidist@master)
+        self.alibuild_version = os.getenv('ALIBUILD_SLUG') or os.getenv('INSTALL_ALIBUILD') or 'Not pinned (most likely alibuild@master)'
+        alidist_version = os.getenv('ALIDIST_SLUG')
+        if alidist_version:
+            self.alidist_version = generate_gh_htmllink_from_commit(alidist_version, 'alisw/alidist')
+        else:
+            self.alidist_version = 'Not pinned (most likely alidist@master)'
 
 
     def generate_pretty_log(self):
