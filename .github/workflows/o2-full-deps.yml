@@ -1,7 +1,7 @@
 ---
 # Create repositories with all O2 prerequisites plus aliBuild and push them
 # upstream (e.g. to S3).
-name: Build o2-full-deps repositories
+name: "Build o2-full-deps repositories"
 
 # Controls when the action will run. This workflow is triggered manually.
 "on":
@@ -38,7 +38,7 @@ jobs:
             container: fedora:33
             alibuild_tag: v1.16.1
 
-    name: RPM (${{ matrix.el_version }})
+    name: "RPM (${{ matrix.el_version }})"
     container: ${{ matrix.container }}
     env:
       ALIBUILD_TAG: ${{ matrix.alibuild_tag }}
@@ -48,7 +48,7 @@ jobs:
       # For rpms/*.spec
       - uses: actions/checkout@v3
 
-      - name: Install prerequisites
+      - name: "Install prerequisites"
         run: |
           set -x
           yum clean all
@@ -59,7 +59,7 @@ jobs:
           ${{ secrets.S3_RCLONE_CONFIG }}
           EOF
 
-      - name: Build the ${{ matrix.el_version }} RPM and create a yum repo
+      - name: "Build the ${{ matrix.el_version }} RPM and create a yum repo"
         run: |
           set -x
           rpmbuild -ba "rpms/o2-prereq-$DISTRO.spec"
@@ -101,7 +101,7 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
 
     steps:
-      - name: Install prerequisites
+      - name: "Install prerequisites"
         run: |
           apt update
           apt install -y vim git devscripts build-essential lintian debhelper dh-python python3-all python3-setuptools python3-setuptools-scm
@@ -109,7 +109,7 @@ jobs:
           ${{ secrets.LAUNCHPAD_PPA_GPG_KEY }}
           EOF
 
-      - name: Build a DEB for Ubuntu and push it to the PPA
+      - name: "Build a DEB for Ubuntu and push it to the PPA"
         run: |
           set -x
           git clone -b "$ALIBUILD_TAG" https://github.com/alisw/alibuild
