@@ -27,16 +27,16 @@ jobs:
         include:
           - el_version: el7
             container: centos:7
-            alibuild_tag: v1.16.1
+            alibuild_tag: v1.17.7
           - el_version: el8
             container: almalinux:8
-            alibuild_tag: v1.16.1
+            alibuild_tag: v1.17.7
           - el_version: el9
             container: almalinux:9
-            alibuild_tag: v1.16.1
+            alibuild_tag: v1.17.7
           - el_version: fedora
             container: fedora:33
-            alibuild_tag: v1.16.1
+            alibuild_tag: v1.17.7
 
     name: RPM (${{ matrix.el_version }})
     container: ${{ matrix.container }}
@@ -92,11 +92,12 @@ jobs:
           - focal   # 20.04
           - jammy   # 22.04
           - mantic  # 23.10
+          - noble   # 24.04
 
     name: DEB (${{ matrix.ubuntu_codename }})
     container: ubuntu:${{ matrix.ubuntu_codename }}
     env:
-      ALIBUILD_TAG: v1.16.1
+      ALIBUILD_TAG: v1.17.7
       ALIBUILD_DISTRO: ${{ matrix.ubuntu_codename }}
       DEBIAN_FRONTEND: noninteractive
 
