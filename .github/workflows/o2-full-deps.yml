@@ -35,7 +35,7 @@ jobs:
             container: almalinux:9
             alibuild_tag: v1.17.7
           - el_version: fedora
-            container: fedora:33
+            container: fedora:40
             alibuild_tag: v1.17.7
 
     name: RPM (${{ matrix.el_version }})
