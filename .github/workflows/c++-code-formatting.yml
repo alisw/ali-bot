@@ -46,11 +46,11 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt update
-          sudo apt install -y clang-format-15
+          sudo apt install -y clang-format-18
           sudo update-alternatives --install /usr/bin/clang-format \
-            clang-format /usr/bin/clang-format-15 100
+            clang-format /usr/bin/clang-format-18 100
           sudo update-alternatives --install /usr/bin/git-clang-format \
-            git-clang-format /usr/bin/git-clang-format-15 100
+            git-clang-format /usr/bin/git-clang-format-18 100
 
       # We need to fetch the PR's head commit to base our cleanup commit on.
       - name: Fetch PR branch
