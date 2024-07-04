@@ -43,7 +43,7 @@ jobs:
     env:
       ALIBUILD_TAG: ${{ matrix.alibuild_tag }}
       DISTRO: ${{ matrix.el_version }}
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true'
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true' # Only required for CentOS 7
 
     steps:
       # For rpms/*.spec
