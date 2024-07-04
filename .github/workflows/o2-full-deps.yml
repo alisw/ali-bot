@@ -43,11 +43,11 @@ jobs:
     env:
       ALIBUILD_TAG: ${{ matrix.alibuild_tag }}
       DISTRO: ${{ matrix.el_version }}
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true'
 
     steps:
       # For rpms/*.spec
       - uses: actions/checkout@v3
-
       - name: Install prerequisites
         run: |
           set -ex
