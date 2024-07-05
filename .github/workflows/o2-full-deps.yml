@@ -27,30 +27,37 @@ jobs:
         include:
           - el_version: el7
             container: centos:7
-            alibuild_tag: v1.16.1
+            alibuild_tag: v1.17.7
           - el_version: el8
             container: almalinux:8
-            alibuild_tag: v1.16.1
+            alibuild_tag: v1.17.7
           - el_version: el9
             container: almalinux:9
-            alibuild_tag: v1.16.1
+            alibuild_tag: v1.17.7
           - el_version: fedora
-            container: fedora:33
-            alibuild_tag: v1.16.1
+            container: fedora:40
+            alibuild_tag: v1.17.7
 
     name: RPM (${{ matrix.el_version }})
     container: ${{ matrix.container }}
     env:
       ALIBUILD_TAG: ${{ matrix.alibuild_tag }}
       DISTRO: ${{ matrix.el_version }}
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true' # Only required for CentOS 7
 
     steps:
       # For rpms/*.spec
       - uses: actions/checkout@v3
-
       - name: Install prerequisites
         run: |
-          set -x
+          set -ex
+          if [[ "$DISTRO" == "el7" ]]; then
+            sed -i.bak -e 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
+            sed -i.bak -r -e 's|# ?baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+            find /etc/yum.repos.d -name "*.bak" -delete
+            yum clean all
+            yum update -y
+          fi
           yum clean all
           yum update -y
           yum install -y rpm-build scl-utils-build createrepo unzip git python3 python3-pip python3-setuptools
@@ -61,7 +68,7 @@ jobs:
 
       - name: Build the ${{ matrix.el_version }} RPM and create a yum repo
         run: |
-          set -x
+          set -ex
           rpmbuild -ba "rpms/o2-prereq-$DISTRO.spec"
           git clone -b "$ALIBUILD_TAG" https://github.com/alisw/alibuild
           cd alibuild
@@ -70,8 +77,8 @@ jobs:
             *)   deps=python3,git,python3-pyyaml,python3-requests,python3-distro ;;
           esac
           python3 setup.py bdist_rpm --requires "$deps"
-          cp dist/alibuild-*.noarch.rpm ~/rpmbuild/RPMS/$(uname -m)/
-          cd  ~/rpmbuild/RPMS/$(uname -m)/
+          cp dist/alibuild-*.noarch.rpm ~/rpmbuild/RPMS/"$(uname -m)"/
+          cd  ~/rpmbuild/RPMS/"$(uname -m)"/
           createrepo .
           ls -la
           case "$DISTRO" in
@@ -92,11 +99,12 @@ jobs:
           - focal   # 20.04
           - jammy   # 22.04
           - mantic  # 23.10
+          - noble   # 24.04
 
     name: DEB (${{ matrix.ubuntu_codename }})
     container: ubuntu:${{ matrix.ubuntu_codename }}
     env:
-      ALIBUILD_TAG: v1.16.1
+      ALIBUILD_TAG: v1.17.7
       ALIBUILD_DISTRO: ${{ matrix.ubuntu_codename }}
       DEBIAN_FRONTEND: noninteractive
 
