@@ -313,7 +313,7 @@ for ARG in "$@"; do
   if [[ $EXPECT_PACKAGES == 1 ]]; then
     PACKAGES=$(normalize_sort_packages "$ARG")
     break
-  elif [[ "$ARG" == enter || "$ARG" == printenv || "$ARG" == setenv || "$ARG" == checkenv ]]; then
+  elif [[ "$ARG" == enter || "$ARG" == printenv || "$ARG" == setenv || "$ARG" == checkenv || "$ARG" == load ]]; then
     EXPECT_PACKAGES=1
   else
     EXPECT_PACKAGES=
