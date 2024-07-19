@@ -27,10 +27,10 @@ jobs:
         include:
           - el_version: el7
             container: centos:7
-            alibuild_tag: v1.17.7
+            alibuild_tag: v1.17.8
           - el_version: el8
             container: almalinux:8
-            alibuild_tag: v1.17.7
+            alibuild_tag: v1.17.8
           - el_version: el9
             container: almalinux:9
             alibuild_tag: v1.17.7
