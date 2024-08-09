@@ -152,8 +152,6 @@ setup(
         "update-symlink-manifests",
         # Get PR information
         "ci/prinfo",
-        # Resolve Mesos DNS
-        "mesos-dns-lookup",
         # Helpers
         "clean-repo-ci",
         "ci-status-overview",

@@ -89,8 +89,6 @@ sync-mapusers.py = {path = "ci/sync-mapusers.py"}
 update-symlink-manifests = {path = "update-symlink-manifests"}
 # Get PR information
 prinfo = {path = "ci/prinfo"}
-# Resolve Mesos DNS
-mesos-dns-lookup = {path = "mesos-dns-lookup"}
 # Helpers
 clean-repo-ci = {path = "clean-repo-ci"}
 ci-status-overview = {path = "ci-status-overview"}
