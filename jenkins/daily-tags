@@ -119,6 +119,8 @@ try {
 		  ;;
               esac
               mkdir -p /local/tmp
+              python -m venv /local/tmp/venv
+              source /local/tmp/venv/bin/activate
               TMPDIR=/local/tmp python3 -m pip install --upgrade --user pip
               TMPDIR=/local/tmp python3 -m pip install --upgrade --user "git+https://github.com/$ALIBOT_SLUG"
               [ -f /opt/rh/rh-git218/enable ] && source /opt/rh/rh-git218/enable
