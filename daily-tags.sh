@@ -58,9 +58,9 @@ rm -rf alidist/
 git config --global user.name 'ALICE Builder'
 git config --global user.email alibuild@cern.ch
 
-PYTHON_USER_OPT="--user"
+PYTHON_USER_OPT=""
 if [[ -z "$VIRTUAL_ENV" ]]; then
-    PYTHON_USER_OPT=""
+    PYTHON_USER_OPT="--user"
 fi
 
 # Upgrade pip
