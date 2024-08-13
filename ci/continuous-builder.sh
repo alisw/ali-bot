@@ -87,6 +87,9 @@ if [ -n "$HASHES" ]; then
       # Setup environment. Skip build if the .env file doesn't exist any more.
       source_env_files "$env_name" || exit
 
+      # Pass the versions down for logging
+      export INSTALL_ALIBUILD INSTALL_ALIBOT INSTALL_ALIDIST
+
       # Make a directory for this repo's dependencies so they don't conflict
       # with other repos'
       mkdir -p "$env_name"
