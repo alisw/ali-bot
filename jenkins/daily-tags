@@ -32,6 +32,12 @@ try {
               rm -rf "$PYTHONUSERBASE"
               yum install -y python3-pip python3-devel python3-setuptools
               mkdir -p /local/tmp
+              case $ARCHITECTURE in
+                ubuntu24*)
+                  python -m venv /local/tmp/venv
+                  source /local/tmp/venv/bin/activate
+                  ;;
+              esac
               TMPDIR=/local/tmp python3 -m pip install --user --upgrade pip
               TMPDIR=/local/tmp python3 -m pip install --user --upgrade "${ALIBOT_SLUG:+git+https://github.com/${ALIBOT_SLUG}}"
               type check-open-pr
@@ -117,6 +123,12 @@ try {
 		  ;;
               esac
               mkdir -p /local/tmp
+              case $ARCHITECTURE in
+                ubuntu24*)
+                  python -m venv /local/tmp/venv
+                  source /local/tmp/venv/bin/activate
+                  ;;
+              esac
               TMPDIR=/local/tmp python3 -m pip install --upgrade --user pip
               TMPDIR=/local/tmp python3 -m pip install --upgrade --user "git+https://github.com/$ALIBOT_SLUG"
               [ -f /opt/rh/rh-git218/enable ] && source /opt/rh/rh-git218/enable
