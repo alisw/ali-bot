@@ -688,6 +688,20 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
       error("Too many packages to publish (%d); limiting to %d to avoid "
             "running out of temporary disk space",
             len(pubPackages), publishLimit)
+      # We make sure that if we split, O2Physics, O2 and other toplevel packages
+      # get installed last.
+      def custom_sort_key(s):
+        for l in ["Suite", "QualityControl", "AliGenerator"]:
+          if l in s:
+            return (3, s)
+        for l in ["O2Physics", "AliPhysics"]:
+          if l in s:
+            return (2, s)
+        for l in ["O2", "AliRoot"]:
+          if l in s:
+            return (1, s)
+        return (0, s)
+      pubPackages = sorted(pubPackages, key=custom_sort_key)
       pubPackages = pubPackages[:publishLimit]
 
     # Packages installation
