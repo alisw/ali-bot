@@ -692,15 +692,15 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
       # get installed last.
       def custom_sort_key(s):
         for l in ["Suite", "QualityControl", "AliGenerator"]:
-          if l in s:
-            return (3, s)
+          if l in s["name"]:
+            return (3, s["name"])
         for l in ["O2Physics", "AliPhysics"]:
-          if l in s:
-            return (2, s)
+          if l in s["name"]:
+            return (2, s["name"])
         for l in ["O2", "AliRoot"]:
-          if l in s:
-            return (1, s)
-        return (0, s)
+          if l in s["name"]:
+            return (1, s["name"])
+        return (0, s["name"])
       pubPackages = sorted(pubPackages, key=custom_sort_key)
       pubPackages = pubPackages[:publishLimit]
 
