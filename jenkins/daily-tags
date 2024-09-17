@@ -78,17 +78,6 @@ try {
         '''
     }
     withCredentials([[$class: 'UsernamePasswordMultiBinding',
-                      credentialsId: '369b09bf-5f5e-4b68-832a-2f30cad28755',
-                      usernameVariable: 'GIT_BOT_USER',
-                      passwordVariable: 'GIT_BOT_PASS']]) {
-      sh '''
-          set -e
-          set -o pipefail
-          printf "protocol=https\nhost=git.cern.ch\nusername=$GIT_BOT_USER\npassword=$GIT_BOT_PASS\n" | \
-            git credential-store --file $PWD/git-creds store
-        '''
-    }
-    withCredentials([[$class: 'UsernamePasswordMultiBinding',
                       credentialsId: 'gitlab_alibuild',
                       usernameVariable: 'GIT_BOT_USER',
                       passwordVariable: 'GIT_BOT_PASS']]) {
