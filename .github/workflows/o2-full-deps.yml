@@ -95,7 +95,6 @@ jobs:
       fail-fast: false
       matrix:
         ubuntu_codename:
-          - bionic  # 18.04
           - focal   # 20.04
           - jammy   # 22.04
           - mantic  # 23.10
