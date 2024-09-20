@@ -76,9 +76,10 @@ jobs:
                 }
               }
             }
-          owner: ${{ inputs.owner }}
-          name: ${{ inputs.repo }}
-          pr: ${{ inputs.pr }}
+          variables: |
+            owner: ${{ inputs.owner }}
+            name: ${{ inputs.repo }}
+            pr: ${{ inputs.pr }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
