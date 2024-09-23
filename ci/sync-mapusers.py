@@ -3,10 +3,7 @@ from __future__ import print_function
 from requests import get
 from random import choice
 import yaml,sys
-try:
-  from urlparse import urlsplit,urlunsplit
-except ImportError:
-  from urllib.parse import urlsplit,urlunsplit
+from urllib.parse import urlsplit,urlunsplit
 
 url = sys.argv[1]
 mesos_dns = "leader.mesos:8123"
