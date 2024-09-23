@@ -4,12 +4,8 @@ import argparse
 import os
 import subprocess
 import sys
-try:
-    from commands import getstatusoutput
-    from urllib import urlopen
-except ImportError:
-    from subprocess import getstatusoutput
-    from urllib.request import urlopen
+from subprocess import getstatusoutput
+from urllib.request import urlopen
 
 
 def python_version():

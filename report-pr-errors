@@ -2,10 +2,7 @@
 from __future__ import print_function
 
 from argparse import ArgumentParser, Namespace
-try:
-    from commands import getstatusoutput
-except ImportError:
-    from subprocess import getstatusoutput
+from subprocess import getstatusoutput
 from collections import deque
 from fnmatch import fnmatch
 from glob import glob
