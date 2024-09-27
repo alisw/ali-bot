@@ -8,19 +8,15 @@ name: Cache O2 Package
     inputs:
       package_name:
         type: string
-        required: true
         description: Name of the package to cache
         default: 'O2'
       alidist_slug:
         type: string
-        required: true
         description: Alidist version to use for the package (group/repo[@branch])
         default: 'alisw/alidist@master'
       alibuild_slug:
         type: string
-        required: true
         description: Alibuild version to use for the package. If empty, the latest version from pypi is used.
-        default: 'alisw/alibuild@master'
 
 permissions: {}
 
