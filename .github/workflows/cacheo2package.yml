@@ -1,0 +1,57 @@
+---
+# Laungh the CacheO2Package job in Jenkins. Useful for caching the build
+# results for CI, so there are minimal delays when merging critical packages
+name: Cache O2 Package
+
+'on':
+  workflow_call:
+    inputs:
+      package_name:
+        type: string
+        required: true
+        description: Name of the package to cache
+        default: 'O2'
+      alidist_slug:
+        type: string
+        required: true
+        description: Alidist version to use for the package (group/repo[@branch])
+        default: 'alisw/alidist@master'
+      alibuild_slug:
+        type: string
+        required: true
+        description: Alibuild version to use for the package. If empty, the latest version from pypi is used.
+        default: 'alisw/alibuild@master'
+
+permissions: {}
+
+jobs:
+  cache-o2-package:
+    runs-on: ubuntu-latest
+
+    env:
+      ALIDIST_SLUG: ${{ inputs.alidist_slug }}
+      ALIBUILD_SLUG: ${{ inputs.alibuild_slug }}
+      PACKAGE_NAME: ${{ inputs.package_name }}
+      JENKINS_URL: ${{ secrets.JENKINS_URL }}
+      SSO_AUTH_URL: ${{ secrets.SSO_AUTH_URL }}
+      CLIENT_ID: ${{ secrets.SSO_JENKINS_API_CLIENT_ID }}
+      CLIENT_SECRET: ${{ secrets.SSO_JENKINS_API_CLIENT_SECRET }}
+      TARGET_APP: ${{ secrets.SSO_JENKINS_API_TARGET_APP }}
+      JOB_NAME: 'CacheO2Package'
+
+    steps:
+      - name: Launch the CacheO2Package job in Jenkins
+        run: |
+          # Login against SSO
+          TOKEN="$(curl --location -X POST $SSO_AUTH_URL \
+          --header 'Content-Type: application/x-www-form-urlencoded' \
+          --data-urlencode 'grant_type=client_credentials' \
+          --data-urlencode "client_id=$CLIENT_ID" \
+          --data-urlencode "client_secret=$CLIENT_SECRET" \
+          --data-urlencode "audience=$TARGET_APP" | jq -r '.access_token')"
+
+          # Trigger the Jenkins job
+          curl "$JENKINS_URL/job/$JOB_NAME/buildWithParameters" \
+              -H "Authorization: Bearer $TOKEN"                 \
+              --data "PACKAGE_NAME=$PACKAGE_NAME"               \
+              --data "ALIDIST_SLUG=$ALIDIST_SLUG"
