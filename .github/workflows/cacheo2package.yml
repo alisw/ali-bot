@@ -39,7 +39,7 @@ jobs:
       - name: Launch the CacheO2Package job in Jenkins
         run: |
           # Login against SSO
-          TOKEN="$(curl --location -X POST $SSO_AUTH_URL \
+          TOKEN="$(curl --location -X POST "$SSO_AUTH_URL" \
           --header 'Content-Type: application/x-www-form-urlencoded' \
           --data-urlencode 'grant_type=client_credentials' \
           --data-urlencode "client_id=$CLIENT_ID" \
