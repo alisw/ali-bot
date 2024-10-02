@@ -4,7 +4,7 @@
 name: Cache O2 Package
 
 'on':
-  workflow_call:
+  workflow_dispatch:
     inputs:
       package_name:
         type: string
