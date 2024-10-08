@@ -106,21 +106,26 @@ jobs:
       ALIBUILD_TAG: v1.17.11
       ALIBUILD_DISTRO: ${{ matrix.ubuntu_codename }}
       DEBIAN_FRONTEND: noninteractive
-
     steps:
       - name: Install prerequisites
         run: |
           apt update
           apt install -y vim git devscripts build-essential lintian debhelper dh-python python3-all python3-setuptools python3-setuptools-scm
-          cat <<\EOF | gpg --import
-          ${{ secrets.LAUNCHPAD_PPA_GPG_KEY }}
-          EOF
+          GPG_TTY=$(tty)
+          export GPG_TTY
+          mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          echo -n "${{ secrets.LAUNCHPAD_PPA_GPG_KEY }}" | gpg --no-tty --batch --import
 
       - name: Build a DEB for Ubuntu and push it to the PPA
         run: |
+          GPG_TTY=$(tty)
+          export GPG_TTY
           set -x
-          git clone -b "$ALIBUILD_TAG" https://github.com/alisw/alibuild
+          git clone  https://github.com/alisw/alibuild
           cd alibuild
+          rm -rf .git
           cat <<EOF > debian/changelog
           python3-alibuild (${ALIBUILD_TAG#v}+$ALIBUILD_DISTRO) $ALIBUILD_DISTRO; urgency=medium
 
@@ -128,5 +133,5 @@ jobs:
 
            -- Giulio Eulisse <giulio.eulisse@cern.ch>  $(date -R -u)
           EOF
-          debuild --no-lintian -k48F330BAFFA564EF2383E2B472E9262B5C0D9DE5 -S
+          debuild --no-lintian -kA3A177D7C6BAD5C044ACAC10F56D273E83B84A47 -S -p'gpg --no-tty --passphrase ${{ secrets.LAUNCHPAD_PPA_GPG_PASS }}'
           dput ppa:alisw/ppa "../python3-alibuild_${ALIBUILD_TAG#v}+${ALIBUILD_DISTRO}_source.changes"
