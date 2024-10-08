@@ -251,6 +251,8 @@ class GithubCachedClient(object):
         data = json.dumps(data) if type(data) == dict else data
         response = requests.post(url=url, data=data, headers=headers)
         sc = response.status_code
+        if sc == 422:
+            print(f"GitHub error: Unprocessable Entity", file=sys.stderr)
         return sc
 
     @trace
