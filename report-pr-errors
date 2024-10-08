@@ -372,6 +372,7 @@ class Logs(object):
                                        self.fst_task_timeout or
                                        self.fst_failed_command),
                 'hostname': htmlescape(platform.node()),
+                'pr_start_time': os.getenv('PR_START_TIME', ''),
                 'finish_time': datetime.datetime.now().strftime('%a %-d %b %Y, %H:%M:%S %Z'),
                 'repo': self.pr_built.repo_name,
                 'pr_id': self.pr_built.id,
@@ -588,6 +589,7 @@ PRETTY_LOG_TEMPLATE = '''\
   <h1>The build %(status)s</h1>
   <table>
     <tr><th>Build host</th><td>%(hostname)s</td></tr>
+    <tr><th>Started at</th><td>%(pr_start_time)s</td></tr>
     <tr><th>Finished at</th><td>%(finish_time)s</td></tr>
     <tr><th>Built PR</th>
         <td><a href="https://github.com/%(repo)s/pull/%(pr_id)s">%(repo)s#%(pr_id)s</a></td></tr>
