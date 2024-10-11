@@ -16,8 +16,16 @@ name: Build any IB
       architecture:
         type: choice
         description: Architecture to build the package for
-        default: 'latest'
+        default: 'slc9_x86-64'
         options:
+          - "slc9_x86-64"
+          - "slc8_x86-64"
+          - "slc7_x86-64"
+          - "slc6_x86-64"
+          - "ubuntu2004_x86-64"
+          - "ubuntu2204_x86-64"
+          - "osx_x86-64"
+          - "slc7_aarch64"
 
 permissions: {}
 
