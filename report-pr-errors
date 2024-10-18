@@ -467,7 +467,7 @@ def get_pending_namespace(args):
                      url="")
 
 
-def handle_branch(cgh, pr, logs, args):
+def handle_branch(cgh: GithubCachedClient, pr, logs, args):
     ns = get_pending_namespace(args) if args.pending else \
         Namespace(commit=args.pr,
                   status=args.status + "/error",
@@ -477,7 +477,7 @@ def handle_branch(cgh, pr, logs, args):
     sys.exit(0)
 
 
-def handle_pr_id(cgh, pr, logs, args):
+def handle_pr_id(cgh: GithubCachedClient, pr, logs, args):
     commit = cgh.get("/repos/{repo_name}/commits/{ref}",
                      repo_name=pr.repo_name,
                      ref=pr.commit)
