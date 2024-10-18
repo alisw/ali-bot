@@ -538,7 +538,6 @@ def handle_pr_id(cgh: GithubCachedClient, pr, logs, args):
     )
 
 
-
 def parse_pr(pr):
     repo_name, pr_id, pr_commit = parseGithubRef(pr)
     return Namespace(repo_name=repo_name,
