@@ -6,7 +6,7 @@ substitute_vars () {
   value=${value//!!FLPSUITE_LATEST!!/$flpsuite_latest}
   value=${value//!!FLPSUITE_CURRENT!!/$flpsuite_current}
   value=${value//!!ALIDIST_BRANCH!!/$ALIDIST_BRANCH}
-  LANG=C TZ=Europe/Zurich date -d "@$START_TIMESTAMP" "+$value"
+  LANG=C TZ=UTC date -d "@$START_TIMESTAMP" "+$value"
 }
 
 edit_package_tag () {
@@ -157,7 +157,8 @@ EOF
 )
 
 # Finally, replace strftime formatting (%Y, %m, %d etc) in the pattern.
-AUTOTAG_TAG=$(LANG=C TZ=Europe/Zurich date -d "@$START_TIMESTAMP" "+$AUTOTAG_PATTERN")
+# We use the UTC timezone to avoid issues with DST changes.
+AUTOTAG_TAG=$(LANG=C TZ=UTC date -d "@$START_TIMESTAMP" "+$AUTOTAG_PATTERN")
 
 : "${AUTOTAG_TAG:?}"   # make sure the tag isn't empty
 [ "$TEST_TAG" = true ] && AUTOTAG_TAG=TEST-IGNORE-$AUTOTAG_TAG
