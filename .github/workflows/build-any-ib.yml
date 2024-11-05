@@ -19,13 +19,12 @@ name: Build any IB
         default: 'slc9_x86-64'
         options:
           - "slc9_x86-64"
+          - "slc9_aarch64"
           - "slc8_x86-64"
           - "slc7_x86-64"
-          - "slc6_x86-64"
           - "ubuntu2004_x86-64"
           - "ubuntu2204_x86-64"
           - "osx_x86-64"
-          - "slc7_aarch64"
 
 permissions: {}
 
