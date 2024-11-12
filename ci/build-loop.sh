@@ -9,7 +9,7 @@
 . build-helpers.sh
 get_config
 
-PR_START_TIME=$(TZ=Europe/Zurich date +'%Y-%m-%d, %a %H:%M CET')
+PR_START_TIME=$(TZ=Europe/Zurich date +'%a %H:%M CET')
 echo "$PR_START_TIME: Started building check $CHECK_NAME for $PR_REPO@$PR_HASH on $host_id"
 
 ensure_vars CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS PR_START_TIME
