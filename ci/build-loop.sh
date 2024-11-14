@@ -9,7 +9,10 @@
 . build-helpers.sh
 get_config
 
-ensure_vars CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS
+PR_START_TIME=$(TZ=Europe/Zurich date +'%a %H:%M CET')
+echo "$PR_START_TIME: Started building check $CHECK_NAME for $PR_REPO@$PR_HASH on $host_id"
+
+ensure_vars CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS PR_START_TIME
 
 : "${WORKERS_POOL_SIZE:=1}" "${WORKER_INDEX:=0}" "${PR_REPO_CHECKOUT:=$(basename "$PR_REPO")}"
 
@@ -47,12 +50,12 @@ case "$BUILD_TYPE" in
   # Create a status on GitHub showing the build start time, but only if this is
   # the first build of this check!
   # If we are running in Nomad, add a link to the this allocation.
-  untested) report_pr_errors --pending -m "Started $(TZ=Europe/Zurich date +'%a %H:%M CET') on $host_id" \
+  untested) report_pr_errors --pending -m "Started $PR_START_TIME on $host_id" \
                              ${NOMAD_ALLOC_ID:+--log-url "https://alinomad.cern.ch/ui/allocations/$NOMAD_ALLOC_ID"} ;;
   # Rebuilds only change the existing status's message, keeping the red status
   # and URL intact.
   failed) set-github-status -k -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/$(build_type_to_status "$BUILD_TYPE")" \
-                            -m "Rechecking since $(TZ=Europe/Zurich date +'%a %H:%M CET') on $host_id" ;;
+                            -m "Rechecking since $PR_START_TIME on $host_id" ;;
   # See above for why we don't update the status for green checks.
   succeeded) ;;
 esac
