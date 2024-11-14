@@ -111,8 +111,6 @@ jobs:
         run: |
           apt update
           apt install -y vim git devscripts build-essential lintian debhelper dh-python python3-all python3-setuptools python3-setuptools-scm
-          GPG_TTY=$(tty)
-          export GPG_TTY
           mkdir -p ~/.gnupg
           chmod 700 ~/.gnupg
           echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
@@ -120,8 +118,6 @@ jobs:
 
       - name: Build a DEB for Ubuntu and push it to the PPA
         run: |
-          GPG_TTY=$(tty)
-          export GPG_TTY
           set -x
           git clone  https://github.com/alisw/alibuild
           cd alibuild
