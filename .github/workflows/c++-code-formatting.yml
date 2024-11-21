@@ -194,6 +194,7 @@ jobs:
           incorrect_files=()
           for file in "${files[@]}"; do
             case $file in
+              */3rdparty/*) continue ;;  # ignore vendored files
               *.cxx|*.h|*.C) first=$cpp_first rest=$cpp_rest ;;
               *.cmake|*CMakeLists.txt) first=$hash_first rest=$hash_rest ;;
               *) echo "error: unknown file type for $file" >&2; exit 1 ;;
