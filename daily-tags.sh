@@ -126,6 +126,7 @@ alibuild_args=(
   --jobs "${JOBS:-${MAX_CORES:-$(nproc)}}"
   --reference-sources mirror
   ${ARCHITECTURE:+--architecture "$ARCHITECTURE"}
+  ${ALIBUILD_DISABLE:+--disable "$ALIBUILD_DISABLE"}
   ${DEFAULTS:+--defaults "$DEFAULTS"}
   build "$main_pkg"
 )
