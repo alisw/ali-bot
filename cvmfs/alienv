@@ -67,11 +67,11 @@ case $distro_name in
               ;;
            8*)
               distro_xrelease=8.x
-              platform=el7
+              platform=el8
               ;;
            9*)
               distro_xrelease=8.x
-              platform=el7
+              platform=el9
               ;;
 
         esac
