@@ -3,54 +3,53 @@
 version=3.2.10
 cvmfsdir=/cvmfs/alice.cern.ch
 
-prog=`readlink $0 2>/dev/null`
+prog=$(readlink "$0" 2>/dev/null)
 [[ -z $prog ]] && prog=$0
-path=`dirname $prog`
-path=`cd "$path";pwd`
-[ x$ALIENV_DEBUG == x1 ] && printf "path=$path\nprog=$prog\n" >&2
+path=$(dirname "$prog")
+path=$(cd "$path" || exit;pwd)
+[ "$ALIENV_DEBUG" == 1 ] && printf "path=$path\nprog=$prog\n" >&2
 
 if [[ "$ALIENV_CVMFSDIR" != "" ]]; then
   cvmfsdir="$ALIENV_CVMFSDIR"
-elif [[ `basename $prog` == alienv && `basename $path` == bin ]]; then
-  cvmfsdir=`dirname "$path"`
+elif [[ $(basename "$prog") == alienv && $(basename "$path") == bin ]]; then
+  cvmfsdir=$(dirname "$path")
 else
-  [ x$ALIENV_DEBUG == x1 ] && printf "WARNING: cannot autodetect CVMFS path, falling back to $cvmfsdir\n" >&2
+  [ "$ALIENV_DEBUG" == 1 ] && printf "WARNING: cannot autodetect CVMFS path, falling back to $cvmfsdir\n" >&2
 fi
 
-path=$(cd $(dirname $0) && pwd) # appended to PATH later on
-printvar=""
+path=$(cd $(dirname "$0") && pwd) # appended to PATH later on
 
 # If using modulecmd from the system, and ver >= 4, this var enables 3.x compat mode
 export MODULES_USE_COMPAT_VERSION=1
 
-[ x$ALIENV_DEBUG == x1 ] && printf "cvmfsdir=$cvmfsdir\npath=$path\n" >&2
+[ "$ALIENV_DEBUG" == 1 ] && printf "cvmfsdir=$cvmfsdir\npath=$path\n" >&2
 
 Eval(){
    cmd=$*
-   ret=`$cmd` || return 1
+   ret=$($cmd) || return 1
    [ -z "$ret" ] && return 0
-   eval $ret
+   eval "$ret"
 }
 
 os_release=/etc/os-release
 which lsb_release > /dev/null 2>&1
 if [[ $? == 0 ]] ; then
-  distro_name=`lsb_release -i | sed -e 's/.*://' -e 's/[ \t]*//g'`
-  distro_release=`lsb_release -r | awk '{print $NF}'`
+  distro_name=$(lsb_release -i | sed -e 's/.*://' -e 's/[ \t]*//g')
+  distro_release=$(lsb_release -r | awk '{print $NF}')
 elif [[ -r "$os_release" ]] ; then
-  distro_name=`source "$os_release" ; echo $NAME`
-  distro_release=`source "$os_release" ; echo $VERSION_ID`
+  distro_name=$(source "$os_release" ; echo "$NAME")
+  distro_release=$(source "$os_release" ; echo "$VERSION_ID")
 else
   distro_name='<unknown>'
   distro_release='<unknown>'
 fi
 
-[ x$ALIENV_DEBUG == x1 ] && printf "distro_name=$distro_name\ndistro_release=$distro_release\n" >&2
+[ "$ALIENV_DEBUG" == 1 ] && printf "distro_name=$distro_name\ndistro_release=$distro_release\n" >&2
 
 case $distro_name in
      Scientific*|CentOS*|Rocky*|Alma*|RedHatEnterprise*|'Red Hat Enterprise'*)
         distro_dir="Scientific"
-        uname_m=`uname -m`
+        uname_m=$(uname -m)
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
            5.*)
@@ -78,7 +77,7 @@ case $distro_name in
         ;;
      Fedora*)
         distro_dir="Scientific"
-        uname_m=`uname -m`
+        uname_m=$(uname -m)
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
            17|18)
@@ -96,7 +95,7 @@ case $distro_name in
         ;;
      SUSE*)
         distro_dir="Scientific"
-        uname_m=`uname -m`
+        uname_m=$(uname -m)
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
            11) # Titan
@@ -110,7 +109,7 @@ case $distro_name in
         ;;
      Debian*)
         distro_dir="Scientific"
-        uname_m=`uname -m`
+        uname_m=$(uname -m)
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
            6.*|6|7.*|7)
@@ -130,7 +129,7 @@ case $distro_name in
         ;;
      Ubuntu*)
         distro_dir="Scientific"
-        uname_m=`uname -m`
+        uname_m=$(uname -m)
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
            13.*)
@@ -154,11 +153,11 @@ case $distro_name in
 esac
 
 [[ "$ALIENV_OVERRIDE_PLATFORM" != "" ]] && { printf "WARNING: overriding detected platform ($platform) with $ALIENV_OVERRIDE_PLATFORM\n" >&2; platform=$ALIENV_OVERRIDE_PLATFORM; }
-[ x$ALIENV_DEBUG == x1 ] && printf "distro_dir=$distro_dir\nuname_m=$uname_m\narch=$arch\ndistro_xrelease=$distro_xrelease\nplatform=$platform\n" >&2
+[ "$ALIENV_DEBUG" == 1 ] && printf "distro_dir=$distro_dir\nuname_m=$uname_m\narch=$arch\ndistro_xrelease=$distro_xrelease\nplatform=$platform\n" >&2
 
 modules=$cvmfsdir/$arch/Modules
 
-if [  ! -d $modules ]
+if [  ! -d "$modules" ]
 then
    echo "Platform $distro_dir,$arch not supported"
    exit 1
@@ -174,7 +173,7 @@ function modulepath() {
   subdir=$1; shift 1
   for dir in $MODULEPATH $*
   do
-    if [ -d $dir/Modules/$subdir ]
+    if [ -d "$dir"/Modules/"$subdir" ]
     then
        printf "${colon}${dir}/Modules/${subdir}"
        colon=":"
@@ -193,7 +192,7 @@ int main(int argn, char *argv[]) {
 }
 EOF
   g++ -o $TMPPREF ${TMPPREF}.cpp > ${TMPPREF}.log 2>&1
-  if [[ `/tmp/alienv_helloworld 2> /dev/null` != "hello world" ]]; then
+  if [[ $(/tmp/alienv_helloworld 2> /dev/null) != "hello world" ]]; then
     echo "WARNING: We are using GNU C++ compiler at $(which g++ 2> /dev/null)" >&2
     echo "WARNING: This compiler is unable to produce valid executables on this platform!" >&2
     echo "WARNING: Error from g++ follows:" >&2
@@ -209,15 +208,15 @@ EOF
 # Old modulefiles were not loading AliEn automatically as a dependency. For
 # those packages we must do it manually.
 function load_alien_if_missing() {
-  echo $MODULEPATH | grep 'x86_64-2.6-gnu-4.1.2/Modules/modulefiles' -q || return 0  # load AliEn only on SLC5
+  echo "$MODULEPATH" | grep 'x86_64-2.6-gnu-4.1.2/Modules/modulefiles' -q || return 0  # load AliEn only on SLC5
   local REQ_ALIEN="ROOT GEANT3 GEANT4 AliRoot AliPhysics"
-  if ! $moduleenv $modulecmd bash -t list 2>&1 | grep -q AliEn-Runtime; then
+  if ! $moduleenv "$modulecmd" bash -t list 2>&1 | grep -q AliEn-Runtime; then
     for PKG in $REQ_ALIEN; do
-      if $moduleenv $modulecmd bash -t list 2>&1 | grep -q ^$PKG; then
+      if $moduleenv "$modulecmd" bash -t list 2>&1 | grep -q ^"$PKG"; then
         if [[ $1 == --print-alien-package ]]; then
-          echo $alien$alien_version
+          echo $alien"$alien_version"
         else
-          Eval $moduleenv $modulecmd bash load $alien$alien_version || return 1
+          Eval "$moduleenv" "$modulecmd" bash load $alien"$alien_version" || return 1
         fi
         return 0
       fi
@@ -236,7 +235,7 @@ function load_alien_if_missing() {
 function normalize_sort_packages() {
   local PRIO ORIG NORM P J K
   PRIO=( O2 AliPhysics AliRoot ROOT AliGenerators )
-  ORIG=( $(echo $1 | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g') )
+  ORIG=( $(echo "$1" | sed -e "s%VO_$ALIEN_ORGANISATION@%%g" -e 's%::%/%g' -e 's%,% %g') )
   NORM=()
   for P in "${PRIO[@]}"; do
     for J in "${ORIG[@]}"; do
@@ -244,7 +243,7 @@ function normalize_sort_packages() {
         # Remove $J from ${ORIG[@]}
         ORIG=( $(for K in "${ORIG[@]}"; do
           [[ $K == $J ]] && continue
-          echo $K
+          echo "$K"
         done) )
         # Push to sorted
         NORM+=("$J")
@@ -253,12 +252,12 @@ function normalize_sort_packages() {
   done
   NORM+=("${ORIG[@]}")
   [[ $ALIENV_DEBUG == 1 ]] && printf "NOTICE: list of packages normalized to ${NORM[*]}\n" >&2
-  echo ${NORM[*]}
+  echo "${NORM[*]}"
 }
 
 export PATH=$PATH:$path
 
-if [  -d $modules/$version/$distro_dir/$distro_release ]
+if [  -d "$modules"/$version/$distro_dir/"$distro_release" ]
 then
    moduleenv="env LD_LIBRARY_PATH=$modules/$version/$distro_dir/$distro_release/lib"
    modulecmd="$modules/$version/$distro_dir/$distro_release/bin/modulecmd"
@@ -276,24 +275,22 @@ fi
 
 [[ $ALIENV_DEBUG == 1 ]] && printf "modulecmd=$modulecmd\nmoduleenv=$moduleenv\n" >&2
 
-T=`mktemp`
-$moduleenv $modulecmd &> $T
+T=$(mktemp)
+$moduleenv "$modulecmd" &> "$T"
 if [[ $? == 127 ]]; then
       echo "Unknown distribution release: $distro_name $distro_release"
-      [[ $ALIENV_DEBUG == 1 ]] && printf "ERROR: full error message is: `cat $T`\n" >&2
-      rm -f $T
+      [[ $ALIENV_DEBUG == 1 ]] && printf "ERROR: full error message is: $(cat "$T")\n" >&2
+      rm -f "$T"
       exit 1
 fi
-rm -f $T
+rm -f "$T"
 unset T
 
 tclsh <<EOF >/dev/null 2>&1
 EOF
 [[ $? == 0 ]] && moduleenv=
 
-command=""
-
-if [ "x$ALIEN_VERSION" = "x" ]
+if [ "$ALIEN_VERSION" = "" ]
 then
   alien_version=""
 else
@@ -306,7 +303,6 @@ alien="AliEn"
 # packages we show them all, when we load a package e define a priority list and
 # we always have a fallback for backward compatibility.
 PLATFORM_PRIORITY="el9-$uname_m el7-$uname_m el6-$uname_m el5-$uname_m el8-$uname_m"
-ARGS=("$@")
 PACKAGES=
 EXPECT_PACKAGES=
 for ARG in "$@"; do
@@ -319,24 +315,24 @@ for ARG in "$@"; do
     EXPECT_PACKAGES=
   fi
 done
-if [[ $PACKAGES ]]; then
+if [[ -n $PACKAGES ]]; then
   for P in $PLATFORM_PRIORITY; do
     [[ "${P:0:3}" == el5 ]] && P="$cvmfsdir/$uname_m-2.6-gnu-4.1.2
                                   $cvmfsdir/$uname_m-2.6-gnu-4.7.2
                                   $cvmfsdir/$uname_m-2.6-gnu-4.8.3
                                   $cvmfsdir/$uname_m-2.6-gnu-4.8.4" \
                             || P="$cvmfsdir/$P"
-    moduledirs="`echo $modulepath $P`"
-    export MODULEPATH=$(modulepath modulefiles $moduledirs)
-    [ x$platform != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
-    LOADED="`Eval $moduleenv $modulecmd bash load $PACKAGES > /dev/null 2>&1 ; echo "$_LMFILES_"`"
+    moduledirs="$(echo "$modulepath" "$P")"
+    export MODULEPATH=$(modulepath modulefiles "$moduledirs")
+    [ x"$platform" != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
+    LOADED="$(Eval "$moduleenv" "$modulecmd" bash load "$PACKAGES" > /dev/null 2>&1 ; echo "$_LMFILES_")"
     OK=1
     for X in $PACKAGES; do
       # Policy: all specified packages must be found in current platform. If
       # this is not the case then fallback on the next platform.
       # If we're loading a <package>/default symlink, just check if any version is loaded.
       [ "${X##*/}" = default ] && X=${X%/*}
-      echo $LOADED | grep -q $X || { OK=0; break; }
+      echo "$LOADED" | grep -q "$X" || { OK=0; break; }
     done
     [[ $OK == 1 ]] && break || { [[ $ALIENV_DEBUG == 1 ]] && printf "NOTICE: cannot find packages with MODULEPATH=$MODULEPATH\n" >&2 ; }
   done
@@ -352,11 +348,11 @@ else
               $cvmfsdir/el7-$uname_m
               $cvmfsdir/el8-$uname_m
               $cvmfsdir/el9-$uname_m"
-  export MODULEPATH=$(modulepath modulefiles $moduledirs)
-  [ x$platform != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
+  export MODULEPATH=$(modulepath modulefiles "$moduledirs")
+  [ x"$platform" != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
 fi
 
-[ x$ALIENV_DEBUG == x1 ] && printf "MODULEPATH=$MODULEPATH\n" >&2
+[ "$ALIENV_DEBUG" == 1 ] && printf "MODULEPATH=$MODULEPATH\n" >&2
 
 while [ $# -gt 0 ]
 do
@@ -364,10 +360,10 @@ do
      enter)
        shift 1
        args=$(normalize_sort_packages "$1")
-       before=`printenv`
-       Eval $moduleenv $modulecmd bash load $args || exit 1
+       before=$(printenv)
+       Eval "$moduleenv" "$modulecmd" bash load "$args" || exit 1
        load_alien_if_missing || exit 1
-       after=`printenv | grep -v LS_COLORS=`
+       after=$(printenv | grep -v LS_COLORS=)
        _LM_ENV=""
        for var in $after
        do
@@ -377,27 +373,27 @@ do
          fi
        done
        export _LM_ENV
-       if [ -f  $HOME/.alienvrc ]
+       if [ -f  "$HOME"/.alienvrc ]
        then
           alienvrc="--init-file $HOME/.alienvrc"
        else
           alienvrc=""
        fi
-       [ x$ALIENV_DEBUG == x1 ] && test_toolchain
-       exec env PS1="[$args] \W > " bash --norc $alienvrc -i
+       [ "$ALIENV_DEBUG" == 1 ] && test_toolchain
+       exec env PS1="[$args] \W > " bash --norc "$alienvrc" -i
        ;;
      setenv)
        shift 1
        args=$(normalize_sort_packages "$1")
-       Eval $moduleenv $modulecmd bash load $args || exit 1
+       Eval "$moduleenv" "$modulecmd" bash load "$args" || exit 1
        load_alien_if_missing || exit 1
-       [ x$ALIENV_DEBUG == x1 ] && test_toolchain
+       [ "$ALIENV_DEBUG" == 1 ] && test_toolchain
        shift 1
        ;;
      checkenv)
        shift 1
        args=$(normalize_sort_packages "$1")
-       Eval $moduleenv $modulecmd bash load $args || exit 1
+       Eval "$moduleenv" "$modulecmd" bash load "$args" || exit 1
        load_alien_if_missing || exit 1
        PREV_PKG=
        PREV_VER=
@@ -412,32 +408,32 @@ do
          fi
          PREV_PKG=$PKG
          PREV_VER=$VER
-       done < <(echo $_LMFILES_ | sed -e 's/:/\n/g' | sort)
-       [[ $PKG_ERR ]] && exit 1
+       done < <(echo "$_LMFILES_" | sed -e 's/:/\n/g' | sort)
+       [[ -n $PKG_ERR ]] && exit 1
        [[ $ALIENV_DEBUG == 1 ]] && printf "NOTICE: all packages loaded successfully\n" >&2
        exit 0
        ;;
      printenv)
        shift 1
-       if [ x$1 = x ]
+       if [ "$1" = "" ]
        then
-          echo $_LM_ENV
+          echo "$_LM_ENV"
        fi
        args=$(normalize_sort_packages "$1")
-       $moduleenv $modulecmd bash load $args \
-         $(Eval $moduleenv $modulecmd bash load $args > /dev/null 2>&1 && \
+       $moduleenv "$modulecmd" bash load "$args" \
+         $(Eval "$moduleenv" "$modulecmd" bash load "$args" > /dev/null 2>&1 && \
            load_alien_if_missing --print-alien-package) || exit 1
        exit
        ;;
      -print)
        shift 1
        var=$1
-       echo ${!var}
+       echo "${!var}"
        shift 1
        ;;
      -a|--archive)
        shift 1
-       export MODULEPATH=$MODULEPATH:$(modulepath archive $moduledirs)
+       export MODULEPATH=$MODULEPATH:$(modulepath archive "$moduledirs")
        ;;
      -c)
        shift 1
@@ -450,25 +446,25 @@ do
        ;;
      -alien|--alien)
        shift 1
-       Eval $moduleenv $modulecmd bash load $alien$alien_version || exit 1
+       Eval "$moduleenv" "$modulecmd" bash load $alien"$alien_version" || exit 1
        ;;
      -alien-services|--alien-services)
        shift 1
-       alien_environment=`echo $1 | sed -e 's%,%; %g'`
-       eval $alien_environment
-       alien_services=`echo $2 | sed -e 's%,% %g'`
-       Eval $moduleenv $modulecmd bash load $alien$alien_version || exit 1
-       mkdir -p $HOME/.alien
-       echo $alien_environment > $HOME/.alien/Environment
-       echo "AliEnServices=$alien_services" > $HOME/.alien/etc/aliend/startup.conf
-       exec  $ALIEN_ROOT/etc/rc.d/init.d/aliend start
+       alien_environment=$(echo "$1" | sed -e 's%,%; %g')
+       eval "$alien_environment"
+       alien_services=$(echo "$2" | sed -e 's%,% %g')
+       Eval "$moduleenv" "$modulecmd" bash load $alien"$alien_version" || exit 1
+       mkdir -p "$HOME"/.alien
+       echo "$alien_environment" > "$HOME"/.alien/Environment
+       echo "AliEnServices=$alien_services" > "$HOME"/.alien/etc/aliend/startup.conf
+       exec  "$ALIEN_ROOT"/etc/rc.d/init.d/aliend start
        ;;
      q|query)
-       $moduleenv $modulecmd bash -t avail  2>&1 | grep -v : | awk -v org=$ALIEN_ORGANISATION -F/ '{printf("VO_%s@%s::%s\n",org,$1,$2)}'
+       $moduleenv "$modulecmd" bash -t avail  2>&1 | grep -v : | awk -v org="$ALIEN_ORGANISATION" -F/ '{printf("VO_%s@%s::%s\n",org,$1,$2)}'
        exit $?
        ;;
      *)
-       $moduleenv $modulecmd bash $*
+       $moduleenv "$modulecmd" bash "$*"
        exit
      ;;
     esac
