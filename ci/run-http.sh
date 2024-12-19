@@ -25,9 +25,9 @@ pip3 install --user --upgrade pip
 pip3 install --ignore-installed --upgrade --user -e "${ALI_BOT_DIR}[services]"
 
 # Setup GitLab credentials (to push new data)
-printf 'protocol=https\nhost=gitlab.cern.ch\nusername=alibuild\npassword=%s\n' "$GITLAB_TOKEN" |
-  git credential-store --file git-creds store
-git config --global credential.helper "store --file $PWD/git-creds"
+printf 'protocol=https\nhost=gitlab.cern.ch\nusername=%s\npassword=%s\n' "$GITLAB_USER" "$GITLAB_PASS" |
+git credential-store --file ~/.git-creds store
+git config --global credential.helper 'store --file ~/.git-creds'
 
 # Setup GitHub API credentials (to communicate with PRs)
 echo "$PR_TOKEN" > ~/.github-token
