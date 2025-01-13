@@ -91,7 +91,7 @@ jobs:
 
           echo "Job started at: $BUILD_URL"
 
-          BUILD_URL=$(echo "$BUILD_URL" | sed 's/alijenkins/alijenkins-api/')
+          BUILD_URL=${BUILD_URL//alijenkins/alijenkins-api}
 
           while true; do
             JOB_STATUS=$(curl -s "$BUILD_URL/api/json" -H "Authorization: Bearer $TOKEN" | jq -r '.result')
