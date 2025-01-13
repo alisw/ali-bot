@@ -70,11 +70,8 @@ jobs:
               -H "Authorization: Bearer $TOKEN"                 \
               --data "PACKAGE_NAME=$PACKAGE_NAME"               \
               --data "ALIDIST_SLUG=$ALIDIST_SLUG"               \
-              --data "ARCHITECTURE=$ARCHITECTURE") | grep -i "Location:" | awk '{print $2}' | tr -d '\r')
-
-          # Remove any trailing whitespace, change http to https 
-          QUEUE_URL=$(echo "$QUEUE_URL" | xargs)
-          QUEUE_URL=$(echo "$QUEUE_URL" | sed 's/http/https/')
+              --data "ARCHITECTURE=$ARCHITECTURE" | grep -i "Location:" | awk '{print $2}' | tr -d '\r' |\
+               xargs | sed 's/http/https/') # Remove any trailing whitespace, change http to https 
 
           if [ -z "$QUEUE_URL" ]; then
               echo "::error::Failed to get queue URL from Jenkins"
