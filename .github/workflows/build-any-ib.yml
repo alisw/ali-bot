@@ -2,21 +2,21 @@
 # Launch the build-any-ib job in Jenkins
 name: Build any IB
 
-'on':
+"on":
   workflow_dispatch:
     inputs:
       package_name:
         type: string
         description: Name of the package to build
-        default: 'O2'
+        default: "O2"
       alidist_slug:
         type: string
         description: Alidist version to use for the package (group/repo[@branch])
-        default: 'alisw/alidist@master'
+        default: "alisw/alidist@master"
       architecture:
         type: choice
         description: Architecture to build the package for
-        default: 'slc9_x86-64'
+        default: "slc9_x86-64"
         options:
           - "slc9_x86-64"
           - "slc9_aarch64"
@@ -24,6 +24,7 @@ name: Build any IB
           - "slc7_x86-64"
           - "ubuntu2004_x86-64"
           - "ubuntu2204_x86-64"
+          - "ubuntu2404_x86-64"
           - "osx_x86-64"
 
 permissions: {}
@@ -39,7 +40,7 @@ jobs:
       CLIENT_ID: ${{ secrets.SSO_JENKINS_API_CLIENT_ID }}
       CLIENT_SECRET: ${{ secrets.SSO_JENKINS_API_CLIENT_SECRET }}
       TARGET_APP: ${{ secrets.SSO_JENKINS_API_TARGET_APP }}
-      JOB_NAME: 'build-any-ib'
+      JOB_NAME: "build-any-ib"
 
       # --- build-any-ib build params ---
       # ALIBUILD_SLUG: ${{ inputs.alibuild_slug }}
