@@ -90,7 +90,6 @@ update-symlink-manifests = {path = "update-symlink-manifests"}
 # Get PR information
 prinfo = {path = "ci/prinfo"}
 # Helpers
-clean-repo-ci = {path = "clean-repo-ci"}
 ci-status-overview = {path = "ci-status-overview"}
 bulk-change-pr-status = {path = "utils/bulk-change-pr-status"}
 bulk-change-pr-status-by-checker = {path = "utils/bulk-change-pr-status-by-checker"}
