@@ -151,7 +151,6 @@ setup(
         # Get PR information
         "ci/prinfo",
         # Helpers
-        "clean-repo-ci",
         "ci-status-overview",
         "utils/bulk-change-pr-status",
         "utils/bulk-change-pr-status-by-checker",
