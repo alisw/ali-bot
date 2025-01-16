@@ -1,0 +1,111 @@
+---
+# Launch the build-any-ib job in Jenkins
+name: Build any IB
+
+"on":
+  workflow_dispatch:
+    inputs:
+      package_name:
+        type: string
+        description: Name of the package to build
+        default: "O2"
+      alidist_slug:
+        type: string
+        description: Alidist version to use for the package (group/repo[@branch])
+        default: "alisw/alidist@master"
+      architecture:
+        type: choice
+        description: Architecture to build the package for
+        default: "slc9_x86-64"
+        options:
+          - "slc9_x86-64"
+          - "slc9_aarch64"
+          - "slc8_x86-64"
+          - "slc7_x86-64"
+          - "ubuntu2004_x86-64"
+          - "ubuntu2204_x86-64"
+          - "ubuntu2404_x86-64"
+          - "osx_x86-64"
+
+permissions: {}
+
+jobs:
+  build-any-ib:
+    runs-on: ubuntu-latest
+
+    env:
+      # --- Jenkins and SSO params ---
+      JENKINS_URL: ${{ secrets.JENKINS_URL }}
+      SSO_AUTH_URL: ${{ secrets.SSO_AUTH_URL }}
+      CLIENT_ID: ${{ secrets.SSO_JENKINS_API_CLIENT_ID }}
+      CLIENT_SECRET: ${{ secrets.SSO_JENKINS_API_CLIENT_SECRET }}
+      TARGET_APP: ${{ secrets.SSO_JENKINS_API_TARGET_APP }}
+      JOB_NAME: "build-any-ib"
+
+      # --- build-any-ib build params ---
+      # ALIBUILD_SLUG: ${{ inputs.alibuild_slug }}
+      ALIDIST_SLUG: ${{ inputs.alidist_slug }}
+      ARCHITECTURE: ${{ inputs.architecture }}
+      PACKAGE_NAME: ${{ inputs.package_name }}
+      # OVERRIDE_TAGS: ${{ inputs.override_tags }}
+      # OVERRIDE_VERSIONS: ${{ inputs.override_versions }}
+      # DEFAULTS: "o2"
+      # PUBLISH_BUILDS: "true"
+      # USE_REMOTE_STORE: "true"
+
+    steps:
+      - name: Launch the build-any-ib job in Jenkins and wait for completion
+        run: |
+          set -euo pipefail
+          # Login against SSO
+          TOKEN="$(curl --location -X POST "$SSO_AUTH_URL" \
+          --header 'Content-Type: application/x-www-form-urlencoded' \
+          --data-urlencode 'grant_type=client_credentials' \
+          --data-urlencode "client_id=$CLIENT_ID" \
+          --data-urlencode "client_secret=$CLIENT_SECRET" \
+          --data-urlencode "audience=$TARGET_APP" | jq -r '.access_token')"
+
+          # Trigger the Jenkins job and get the queue item location
+          QUEUE_URL=$(curl -w "%{redirect_url}" -s -o /dev/null "$JENKINS_URL/job/$JOB_NAME/buildWithParameters" \
+              -H "Authorization: Bearer $TOKEN"                 \
+              --data "PACKAGE_NAME=$PACKAGE_NAME"               \
+              --data "ALIDIST_SLUG=$ALIDIST_SLUG"               \
+              --data "ARCHITECTURE=$ARCHITECTURE" | grep -i "Location:" | awk '{print $2}' | tr -d '\r' |\
+               xargs | sed 's/http/https/') # Remove any trailing whitespace, change http to https 
+
+          if [ -z "$QUEUE_URL" ]; then
+              echo "::error::Failed to get queue URL from Jenkins"
+              exit 1
+          fi
+
+          # Poll the queue item until we get the actual job URL
+          while true; do
+            QUEUE_RESPONSE=$(curl -L -s "$QUEUE_URL/api/json" -H "Authorization: Bearer $TOKEN")
+            if echo "$QUEUE_RESPONSE" | jq -e '.executable.url' > /dev/null; then
+              BUILD_URL=$(echo "$QUEUE_RESPONSE" | jq -r '.executable.url')
+              break
+            fi
+            echo "Waiting for job to start..."
+            sleep 10
+          done
+
+          echo "Job started at: $BUILD_URL"
+
+          BUILD_URL=${BUILD_URL//alijenkins/alijenkins-api}
+
+          while true; do
+            JOB_STATUS=$(curl -s "$BUILD_URL/api/json" -H "Authorization: Bearer $TOKEN" | jq -r '.result')
+            if [ "$JOB_STATUS" = "SUCCESS" ]; then
+              echo "Job completed successfully!"
+              exit 0
+            elif [ "$JOB_STATUS" = "FAILURE" ] || [ "$JOB_STATUS" = "ABORTED" ]; then
+              echo "::error::Jenkins job failed with status: $JOB_STATUS"
+              exit 1
+            elif [ "$JOB_STATUS" = "null" ]; then
+              echo "Job is still running..."
+              sleep 30
+            else
+              echo "::error::Unknown Jenkins job status: $JOB_STATUS"
+              exit 1
+            fi
+          done
