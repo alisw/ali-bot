@@ -96,7 +96,7 @@ setup(
     # for example:
     # $ pip install -e .[dev,test]
     extras_require={
-        "services": ["Twisted==18.9.0", "klein", "python-ldap"],
+        "services": ["Twisted", "klein", "python-ldap"],
         "ci": [
             "gql",
             "requests-toolbelt",  # for gql

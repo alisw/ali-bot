@@ -38,7 +38,7 @@ dependencies = [
 
 [project.optional-dependencies]
 services = [
-  "Twisted==18.9.0",
+  "Twisted",
   "klein",
   "python-ldap"
 ]
