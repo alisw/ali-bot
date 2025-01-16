@@ -34,7 +34,7 @@ try {
               mkdir -p /local/tmp
               case $ARCHITECTURE in
                 ubuntu24*)
-                  python -m venv /local/tmp/venv
+                  python -m venv --copies /local/tmp/venv
                   source /local/tmp/venv/bin/activate
                   PYTHON_USER_OPT=""
                   ;;
@@ -118,7 +118,7 @@ try {
               mkdir -p /local/tmp
               case $ARCHITECTURE in
                 ubuntu24*)
-                  python -m venv /local/tmp/venv
+                  python -m venv --copies /local/tmp/venv
                   source /local/tmp/venv/bin/activate
                   PYTHON_USER_OPT=""
                   ;;
