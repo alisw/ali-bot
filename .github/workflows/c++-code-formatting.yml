@@ -342,8 +342,11 @@ jobs:
                     "Remove the trailing spaces at the end of the line.")
             }
             match($0, /\t+/) {
-              error("Tab characters found",
-                    "Indent code using spaces instead of tabs.")
+              # Only check for tabs in C/C++ source files
+              if (FILENAME ~ /\.[ch](xx|pp)?$/) {
+                error("Tab characters found",
+                      "Indent code using spaces instead of tabs.")
+              }
             }
             END {
               exit exit_code
