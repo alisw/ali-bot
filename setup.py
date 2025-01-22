@@ -22,7 +22,7 @@ install_requires = ['PyGithub==1.45', 'argparse', 'requests', 'pytz', 's3cmd',
 if sys.version_info >= (3, 8):
     # Older boto3 versions are incompatible with newer Python versions,
     # specifically the newer urllib3 that comes with newer Python versions.
-    install_requires.append('boto3')
+    install_requires.append('boto3==1.35.95')
 elif sys.version_info >= (3, 6):
     # This is the last version to support Python 3.6.
     install_requires.append('boto3==1.23.10')
@@ -70,8 +70,13 @@ setup(
 
         # Specify the Python versions you support here. In particular, ensure
         # that you indicate whether you support Python 2, Python 3 or both.
-        'Programming Language :: Python :: 2.6',
-        'Programming Language :: Python :: 2.7'
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
+        'Programming Language :: Python :: 3.13',
     ],
 
     # What does your project relate to?
