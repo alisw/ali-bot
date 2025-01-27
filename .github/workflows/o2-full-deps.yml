@@ -47,7 +47,7 @@ jobs:
 
     steps:
       # For rpms/*.spec
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
       - name: "Install prerequisites"
         run: |
@@ -98,7 +98,6 @@ jobs:
         ubuntu_codename:
           - focal   # 20.04
           - jammy   # 22.04
-          - mantic  # 23.10
           - noble   # 24.04
 
     name: DEB (${{ matrix.ubuntu_codename }})
