@@ -8,7 +8,7 @@ pyyaml
 boto3==1.23.10; python_version >= '3.6' and python_version < '3.8'
 # Newer Pythons need a newer boto3.
 # https://github.com/boto/boto3/issues/4398
-boto3==1.35.95; python_version >= '3.8'
+boto3<1.36.0; python_version >= '3.8'
 Twisted[services]
 klein[services]
 python-ldap[services]
