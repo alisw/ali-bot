@@ -14,6 +14,7 @@ function influxdb_push () {
     esac
   done
   data="$data $(date +%s)000000000"
+  set +x
   case "$INFLUXDB_WRITE_URL" in
     '') ;;
     # If INFLUXDB_WRITE_URL starts with insecure_https://, then strip
@@ -23,6 +24,7 @@ function influxdb_push () {
     *)
       curl -fSs --max-time 20 -XPOST --data-binary "$data" "$INFLUXDB_WRITE_URL" || :;;
   esac
+  set -x
 }
 
 function report_state () {
