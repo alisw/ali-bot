@@ -4,3 +4,6 @@
 http://alice-ccdb.cern.ch/GLO/Param/MatLUT/1672531199000
 
 http://alice-ccdb.cern.ch/CTP/Calib/OrbitReset/1449558262000
+
+# testing MatLUT
+http://alice-ccdb.cern.ch/Users/j/jgrosseo/Temp/MatLUT/1/2524604400000
