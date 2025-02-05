@@ -3,9 +3,9 @@
 
 # Track Propagation
 http://alice-ccdb.cern.ch/GLO/Param/MatLUT/1672531199000
-http://alice-ccdb.cern.ch/GLO/Param/GeometryAligned/1729771200000
-http://alice-ccdb.cern.ch/GLO/Param/GeometryAligned/1695167249000
-http://alice-ccdb.cern.ch/GLO/Param/GeometryAligned/1718409600000
+http://alice-ccdb.cern.ch/GLO/Config/GeometryAligned/1729771200000
+http://alice-ccdb.cern.ch/GLO/Config/GeometryAligned/1695167249000
+http://alice-ccdb.cern.ch/GLO/Config/GeometryAligned/1718409600000
 
 http://alice-ccdb.cern.ch/CTP/Calib/OrbitReset/1449558262000
 
