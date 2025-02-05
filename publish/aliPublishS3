@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import logging, gzip, sys, json, yaml, errno, boto3, requests
+import filecmp
+import shutil
 import botocore.exceptions
 from glob import glob
 from argparse import ArgumentParser
@@ -768,6 +770,17 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
       else:
         error("%s / %s / %s: publish script failed with %d",
               arch, pack["name"], pack["ver"], rv)
+
+  # Update the alienv script in CVMFS if it has changed
+  try:
+    new_alienv = dirname(realpath(__file__)) / ".." / "cvmfs" / "alienv"
+    old_alienv = "/cvmfs/alice.cern.ch/bin/alienv"
+    if not filecmp.cmp(new_alienv, old_alienv, shallow=False):
+        info("Replacing ../cvmfs/alienv with /cvmfs/alice.cern.ch/bin/alienv")
+        shutil.copy(old_alienv, new_alienv)
+  except FileNotFoundError as e:
+    error("File not found: %s", e)
+
 
   # Publish eventually
   if pub.publish(architectures.values()):
