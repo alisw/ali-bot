@@ -1,3 +1,0 @@
-#!/bin/sh -e
-export REQUESTS_CA_BUNDLE=${XDG_CONFIG_HOME-$HOME/.config}/cern-ca-bundle.crt
-aurora_admin query --force -l '%slaveHost%	build/%role%/%environment%/%name%/%instanceId%' build | sort -k1,2
