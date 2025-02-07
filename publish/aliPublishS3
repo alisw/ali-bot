@@ -775,7 +775,14 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
   try:
     new_alienv = dirname(realpath(__file__)) / ".." / "cvmfs" / "alienv"
     old_alienv = "/cvmfs/alice.cern.ch/bin/alienv"
+    
+    # Create backup with timestamp if files are different
     if not filecmp.cmp(new_alienv, old_alienv, shallow=False):
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_alienv = f"/cvmfs/alice.cern.ch/bin/alienv.safe-{timestamp}"
+        info("Creating backup of current alienv at %s", backup_alienv)
+        shutil.copy(old_alienv, backup_alienv)
+        
         info("Replacing ../cvmfs/alienv with /cvmfs/alice.cern.ch/bin/alienv")
         shutil.copy(old_alienv, new_alienv)
   except FileNotFoundError as e:
