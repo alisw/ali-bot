@@ -1,6 +1,6 @@
 #!/usr/bin/env -S bash -e
 if [ "$1" = -h ] || [ "$1" = --help ]; then
-  cat << EOF; exit
+  cat << EoF
 usage: $(basename "$0") [-h] ROLE CONTAINER [SUFFIX]
 
   -h, --help    show this help message and exit
@@ -9,7 +9,8 @@ usage: $(basename "$0") [-h] ROLE CONTAINER [SUFFIX]
   CONTAINER     container arch, e.g. "slc7"
   SUFFIX        optional suffix for multiple builders with the same role and
                 container, e.g. "-o2physics"
-EOF
+EoF
+    exit
 fi
 
 readonly role=$1 container=$2 suffix=$3
