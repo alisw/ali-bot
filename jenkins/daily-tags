@@ -34,7 +34,7 @@ try {
               mkdir -p /local/tmp
               case $ARCHITECTURE in
                 ubuntu24*)
-                  PYTHON_USER_OPT="--break-system-packages"
+                  PYTHON_USER_OPT="--break-system-packages --user"
                   ;;
                 *)
                   PYTHON_USER_OPT="--user"
@@ -116,7 +116,7 @@ try {
               mkdir -p /local/tmp
               case $ARCHITECTURE in
                 ubuntu24*)
-                  PYTHON_USER_OPT="--break-system-packages"
+                  PYTHON_USER_OPT="--break-system-packages --user"
                   ;;
                 *)
                   PYTHON_USER_OPT="--user"
