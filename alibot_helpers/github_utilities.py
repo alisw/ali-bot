@@ -253,6 +253,7 @@ class GithubCachedClient(object):
         sc = response.status_code
         if sc == 422:
             print(f"GitHub error: Unprocessable Entity", file=sys.stderr)
+            print('This usually means that the commit has reached the maximum number of statuses.')
         return sc
 
     @trace
