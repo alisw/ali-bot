@@ -20,7 +20,7 @@ edit_package_tag () {
   # Patch defaults definition (e.g. defaults-o2.sh)
   # Process overrides by changing in-place the given defaults. This requires
   # some YAML processing so we are better off with Python.
-  package=$package defaults=$defaults tag=$tag version=$version python3 <<EOF
+  package=$package defaults=$defaults tag=$tag version=$version python3 <<\EOF
 import os, yaml
 f = "alidist/defaults-%s.sh" % os.environ["defaults"].lower()
 with open(f, "r") as recipef:
@@ -58,13 +58,6 @@ rm -rf alidist/
 git config --global user.name 'ALICE Builder'
 git config --global user.email alibuild@cern.ch
 
-PYTHON_USER_OPT=""
-if [[ -z "$VIRTUAL_ENV" ]]; then
-    PYTHON_USER_OPT="--user"
-fi
-
-# Install the latest release if ALIBUILD_SLUG is not provided
-python3 -m pip install ${PYTHON_USER_OPT} --upgrade "${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}"
 aliBuild analytics off
 
 # The alidist branches are always named with a trailing .0 instead of the

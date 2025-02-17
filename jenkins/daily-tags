@@ -43,6 +43,7 @@ try {
               esac
               TMPDIR=/local/tmp python3 -m pip install ${PYTHON_USER_OPT} --upgrade pip
               TMPDIR=/local/tmp python3 -m pip install ${PYTHON_USER_OPT} --upgrade "${ALIBOT_SLUG:+git+https://github.com/${ALIBOT_SLUG}}"
+              TMPDIR=/local/tmp python3 -m pip install --upgrade ${PYTHON_USER_OPT} aliBuild
               type check-open-pr
               if [ "${PACKAGES%% *}" = AliPhysics ]; then
                 WAIT_TESTS="build/AliPhysics/release build/AliPhysics/root6"
@@ -126,6 +127,7 @@ try {
               esac
               TMPDIR=/local/tmp python3 -m pip install --upgrade ${PYTHON_USER_OPT} pip
               TMPDIR=/local/tmp python3 -m pip install --upgrade ${PYTHON_USER_OPT} "git+https://github.com/$ALIBOT_SLUG"
+              TMPDIR=/local/tmp python3 -m pip install --upgrade ${PYTHON_USER_OPT} aliBuild
               [ -f /opt/rh/rh-git218/enable ] && source /opt/rh/rh-git218/enable
               daily-tags.sh || err=$?
               rm -rf alidist daily-tags.?????????? mirror
