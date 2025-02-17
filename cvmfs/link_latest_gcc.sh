@@ -26,9 +26,12 @@ for D in el* ubuntu*; do
   fi
   NEWLINK=../../../../../$LATEST
   CURLINK=$(readlink etc/toolchain/modulefiles/"$D"/Toolchain/GCC-"${GCC_VER}"||true)
-  [[ $CURLINK == $NEWLINK ]] && { echo "No change"; } \
-                             || { mkdir -p etc/toolchain/modulefiles/"$D"/Toolchain;
-                                  ln -nfsv "$NEWLINK" etc/toolchain/modulefiles/"$D"/Toolchain/GCC-"${GCC_VER}"; }
+  if [[ $CURLINK == "$NEWLINK" ]]; then
+    print_green "No change"
+  else
+    mkdir -p etc/toolchain/modulefiles/"$D"/Toolchain
+    ln -nfsv "$NEWLINK" etc/toolchain/modulefiles/"$D"/Toolchain/GCC-"${GCC_VER}"
+  fi
   echo
 done
 print_green "All ok"
