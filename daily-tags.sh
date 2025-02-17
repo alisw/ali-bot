@@ -63,8 +63,6 @@ if [[ -z "$VIRTUAL_ENV" ]]; then
     PYTHON_USER_OPT="--user"
 fi
 
-# Upgrade pip
-python3 -m pip install ${PYTHON_USER_OPT} --upgrade pip
 # Install the latest release if ALIBUILD_SLUG is not provided
 python3 -m pip install ${PYTHON_USER_OPT} --upgrade "${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}"
 aliBuild analytics off
