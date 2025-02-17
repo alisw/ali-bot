@@ -20,7 +20,7 @@ edit_package_tag () {
   # Patch defaults definition (e.g. defaults-o2.sh)
   # Process overrides by changing in-place the given defaults. This requires
   # some YAML processing so we are better off with Python.
-  package=$package defaults=$defaults tag=$tag version=$version python3 <<\EOF
+  package=$package defaults=$defaults tag=$tag version=$version python3 <<EOF
 import os, yaml
 f = "alidist/defaults-%s.sh" % os.environ["defaults"].lower()
 with open(f, "r") as recipef:
