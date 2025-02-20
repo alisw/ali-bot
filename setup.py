@@ -153,8 +153,6 @@ setup(
         "ci/sync-mapusers.py",
         # S3 repo maintenance
         "update-symlink-manifests",
-        # Get PR information
-        "ci/prinfo",
         # Helpers
         "ci-status-overview",
         "utils/bulk-change-pr-status",

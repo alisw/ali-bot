@@ -92,8 +92,6 @@ sync-egroups.py = {path = "ci/sync-egroups.py"}
 sync-mapusers.py = {path = "ci/sync-mapusers.py"}
 # S3 repo maintenance
 update-symlink-manifests = {path = "update-symlink-manifests"}
-# Get PR information
-prinfo = {path = "ci/prinfo"}
 # Helpers
 ci-status-overview = {path = "ci-status-overview"}
 bulk-change-pr-status = {path = "utils/bulk-change-pr-status"}
