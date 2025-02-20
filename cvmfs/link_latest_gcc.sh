@@ -1,37 +1,25 @@
-#!/bin/bash
-set -eo pipefail
+#!/bin/bash -e
+set -o pipefail
 GCC_VER=${1:-"v13.2.0"}
 
-[[ $(pwd) == /cvmfs/alice.cern.ch ]] || { echo "Not in /cvmfs/alice.cern.ch, aborting"; exit 1; }
-
-function pretty_print() {
-    printf "\033[1;34m==>\033[m \033[1m%s\033[m\n" "$1"
-}
-
-function print_green() {
-    printf "\033[1;32m%s\033[m\n" "$1"
-}
-
-function print_red() {
-    printf "\033[1;31m%s\033[m\n" "$1"
-}
+cd /cvmfs/alice.cern.ch
 
 for D in el* ubuntu*; do
   [[ -d "$D" ]] || continue
-  pretty_print "Updating latest GCC $GCC_VER for arch $D"
-  LATEST=$(find "$D"/Modules/modulefiles/GCC-Toolchain/*"${GCC_VER}"* -mindepth 0 -maxdepth 0 -type f | sort -n | tail -n1 || true)
+  printf "\033[1;34m==>\033[m \033[1mUpdating latest GCC %s for arch %s\033[m\n" "$GCC_VER" "$D"
+  LATEST=$(find "$D"/Modules/modulefiles/GCC-Toolchain/*"${GCC_VER}"* -mindepth 0 -maxdepth 0 -type f 2>/dev/null | sort -n | tail -n1 || true)
   if [[ -z "$LATEST" ]]; then
-    print_red "Warning: No GCC $GCC_VER toolchain found for arch $D"
+    echo "No GCC toolchain $GCC_VER found for arch $D"
     continue
   fi
   NEWLINK=../../../../../$LATEST
   CURLINK=$(readlink etc/toolchain/modulefiles/"$D"/Toolchain/GCC-"${GCC_VER}"||true)
   if [[ $CURLINK == "$NEWLINK" ]]; then
-    print_green "No change"
+    printf "\033[1;32mNo change\033[m"
   else
     mkdir -p etc/toolchain/modulefiles/"$D"/Toolchain
     ln -nfsv "$NEWLINK" etc/toolchain/modulefiles/"$D"/Toolchain/GCC-"${GCC_VER}"
   fi
   echo
 done
-print_green "All ok"
+printf "\033[1;32mAll ok\033[m\n"
