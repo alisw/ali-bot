@@ -5,6 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = 'ali-bot'
 dynamic = ['readme', 'version']
+requires-python = '>=3.6'
 
 description = 'ALICE Multipurpose bot'
 authors = [
