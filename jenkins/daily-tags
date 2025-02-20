@@ -17,6 +17,7 @@ try {
     node ("slc9_x86-64-light") {
       timeout (240) {
         withEnv(["ALIBOT_SLUG=${ALIBOT_SLUG}",
+                 "ALIBUILD_SLUG=${ALIBUILD_SLUG}",
                  "WAIT_PR_LIMIT=${WAIT_PR_LIMIT}",
                  "PACKAGES=${PACKAGES}"]) {
           withCredentials([[$class: 'StringBinding',
@@ -34,6 +35,7 @@ try {
               mkdir -p /local/tmp
               case $ARCHITECTURE in
                 ubuntu24*)
+                  # Bypass PEP 668
                   PYTHON_USER_OPT="--break-system-packages --user"
                   ;;
                 *)
@@ -42,6 +44,7 @@ try {
               esac
               TMPDIR=/local/tmp python3 -m pip install ${PYTHON_USER_OPT} --upgrade pip
               TMPDIR=/local/tmp python3 -m pip install ${PYTHON_USER_OPT} --upgrade "${ALIBOT_SLUG:+git+https://github.com/${ALIBOT_SLUG}}"
+              TMPDIR=/local/tmp python3 -m pip install --upgrade ${PYTHON_USER_OPT} "${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}"
               type check-open-pr
               if [ "${PACKAGES%% *}" = AliPhysics ]; then
                 WAIT_TESTS="build/AliPhysics/release build/AliPhysics/root6"
@@ -116,6 +119,7 @@ try {
               mkdir -p /local/tmp
               case $ARCHITECTURE in
                 ubuntu24*)
+                  # Bypass PEP 668
                   PYTHON_USER_OPT="--break-system-packages --user"
                   ;;
                 *)
@@ -124,6 +128,7 @@ try {
               esac
               TMPDIR=/local/tmp python3 -m pip install --upgrade ${PYTHON_USER_OPT} pip
               TMPDIR=/local/tmp python3 -m pip install --upgrade ${PYTHON_USER_OPT} "git+https://github.com/$ALIBOT_SLUG"
+              TMPDIR=/local/tmp python3 -m pip install --upgrade ${PYTHON_USER_OPT} "${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}"
               [ -f /opt/rh/rh-git218/enable ] && source /opt/rh/rh-git218/enable
               daily-tags.sh || err=$?
               rm -rf alidist daily-tags.?????????? mirror
