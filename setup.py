@@ -135,9 +135,6 @@ setup(
         "ci/build-helpers.sh",
         "ci/build-loop.sh",
         "ci/cleanup.py",
-        # GitHub API monitoring
-        "monitor-github-api",
-        "monitor-github-api-monalisa.sh",
         # S3 housekeeping
         "repo-s3-cleanup",
         # Check daily tags
