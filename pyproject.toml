@@ -74,9 +74,6 @@ continuous-builder.sh = {path = "ci/continuous-builder.sh"}
 build-helpers.sh = {path = "ci/build-helpers.sh"}
 build-loop.sh = {path = "ci/build-loop.sh"}
 cleanup.py = {path = "ci/cleanup.py"}
-# GitHub API monitoring
-monitor-github-api = {path = "monitor-github-api"}
-monitor-github-api-monalisa.sh = {path = "monitor-github-api-monalisa.sh"}
 # S3 housekeeping
 repo-s3-cleanup = {path = "repo-s3-cleanup"}
 # Check daily tags
