@@ -26,7 +26,7 @@ if [[ $RPM_IS_UPDATABLE ]]; then
 fi
 
 DEPS=()
-# Use env modules v4 instead of aliswmod
+# Use env modules v4 instead of alienv
 DEPS+=("--depends" "environment-modules >= 4.0")
 
 # Updatable RPMs don't have the version number hardcoded in the package name
