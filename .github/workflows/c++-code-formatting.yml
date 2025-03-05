@@ -321,6 +321,8 @@ jobs:
           readarray -d '' files < \
             <(git diff -z --diff-filter d --name-only --merge-base "origin/$BASE_BRANCH" |
                 while read -rd '' filename; do
+                  # Skip 3rdparty files
+                  [[ "$filename" == */3rdparty/* ]] && continue
                   file -bi "$filename" | grep -q charset=binary ||
                     printf "%s\\0" "$filename"
                 done)
