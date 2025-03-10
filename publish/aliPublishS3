@@ -778,10 +778,17 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
     
     # Create backup with timestamp if files are different
     if not filecmp.cmp(new_alienv, old_alienv, shallow=False):
+        backup_dir = "/cvmfs/alice.cern.ch/bin"
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        backup_alienv = f"/cvmfs/alice.cern.ch/bin/alienv.safe-{timestamp}"
+        backup_alienv = join(backup_dir, f"alienv.safe-{timestamp}")
         info("Creating backup of current alienv at %s", backup_alienv)
         shutil.copy(old_alienv, backup_alienv)
+        
+        # Keep only the 5 most recent backups
+        backups = sorted([join(backup_dir, f) for f in listdir(backup_dir) 
+                         if f.startswith("alienv.")], key=getmtime)
+        for old_backup in backups[:-5]:
+            remove(old_backup)
         
         info("Replacing ../cvmfs/alienv with /cvmfs/alice.cern.ch/bin/alienv")
         shutil.copy(old_alienv, new_alienv)
