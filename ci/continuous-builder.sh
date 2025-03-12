@@ -98,7 +98,7 @@ if [ -n "$HASHES" ]; then
       # Allow overriding the ali-bot/alibuild version to install -- this is useful
       # for testing changes to those with a few workers before deploying widely.
       short_timeout python3 -m pip install --upgrade \
-          "git+https://github.com/$(get_config_value install-alibot   "$INSTALL_ALIBOT")[ci]" \
+          "ali-bot[ci] @ git+https://github.com/$(get_config_value install-alibot   "$INSTALL_ALIBOT")" \
           "git+https://github.com/$(get_config_value install-alibuild "$INSTALL_ALIBUILD")" ||
         exit 1
 
