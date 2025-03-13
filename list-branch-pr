@@ -254,6 +254,10 @@ def main(args):
                 env_file_name = os.path.basename(env_file)
                 if env_file_name == DEFAULTENV_NAME:
                     continue
+                if "aliphysics" in env_file:
+                    # These repos are currently handled by the old CI system.
+                    # (process-pull-request-http)
+                    continue
 
                 try:
                     repo = RepoConfig(env_file_name[:-4],
