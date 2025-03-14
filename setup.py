@@ -15,8 +15,15 @@ here = path.abspath(path.dirname(__file__))
 with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
     long_description = f.read()
 
-install_requires = ['PyGithub==1.45', 'argparse', 'requests', 'pytz', 's3cmd',
-                    'pyyaml']
+install_requires = [
+    'PyGithub==1.45',
+    'argparse',
+    'requests',
+    'pytz',
+    's3cmd',
+    'pyyaml',
+    'legacy-cgi' # for boto3, see https://docs.python.org/3/library/cgi.html
+]
 # Old setuptools versions (which pip2 uses) don't support range comparisons
 # (like :python_version >= "3.6") in extras_require, so do this ourselves here.
 if sys.version_info >= (3, 8):
