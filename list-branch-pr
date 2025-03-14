@@ -265,6 +265,12 @@ def main(args):
                 else:
                     # Extend PR groups with PRs from this repo.
                     org, _, repo_name = repo.repo_name.partition("/")
+                    
+                    # Skip processing for alisw/aliphysics repository
+                    if repo.repo_name.lower() == "alisw/aliphysics":
+                        print(f"Skipping ignored repository: {repo.repo_name}", file=sys.stderr)
+                        continue
+                        
                     repo_info = query_repo_info(session, org, repo_name,
                                                 repo.branch_ref,
                                                 args.show_base_branch)
