@@ -15,9 +15,20 @@ fi
 
 [ -z "$check" ] && show_check=true
 
+# The temporary file lets us format the output nicely
+tmpfile=$(mktemp)
+trap 'rm -f $tmpfile' EXIT
+
+if [ "$show_check" = true ]; then
+  printf "DATE\tTIME\tUSER\tSTATUS\tCHECK\tDESCRIPTION\n" > "$tmpfile"
+else
+  printf "DATE\tTIME\tUSER\tSTATUS\tDESCRIPTION\n" > "$tmpfile"
+fi
+
 curl -fsS "$api_url" | jq -r "[.[]
    ${check:+| select(.context == \"$check\")}
    | [(.created_at | sub(\"T\"; \"\\t\")), .creator.login, .state, ${show_check+.context,} .description]
    | join(\"\\t\")
-] | sort | .[]" |
-  column -tN "DATE,TIME,USER,STATUS,${show_check+CHECK,}DESCRIPTION" -s '	'  # literal tab char!
+] | sort | .[]" >> "$tmpfile"
+
+column -t -s "	" < "$tmpfile" # literal tab char!
