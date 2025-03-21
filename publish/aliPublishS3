@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import logging, gzip, sys, json, yaml, errno, boto3, requests
+import filecmp
+import shutil
 import botocore.exceptions
 from glob import glob
 from argparse import ArgumentParser
@@ -14,6 +16,7 @@ from tempfile import NamedTemporaryFile, mkdtemp
 from subprocess import Popen, PIPE, STDOUT, DEVNULL, getstatusoutput
 from smtplib import SMTP
 from xml.etree.ElementTree import ElementTree
+from pathlib import Path
 
 def format(s, **kwds):
   return s % kwds
@@ -768,6 +771,31 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
       else:
         error("%s / %s / %s: publish script failed with %d",
               arch, pack["name"], pack["ver"], rv)
+
+  # Update the alienv script in CVMFS if it has changed
+  try:
+    new_alienv = Path(dirname(realpath(__file__))) / ".." / "cvmfs" / "alienv"
+    old_alienv = "/cvmfs/alice.cern.ch/bin/alienv"
+    
+    # Create backup with timestamp if files are different
+    if not filecmp.cmp(new_alienv, old_alienv, shallow=False):
+        backup_dir = "/cvmfs/alice.cern.ch/bin"
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_alienv = join(backup_dir, f"alienv.backup-{timestamp}")
+        info("Creating backup of current alienv at %s", backup_alienv)
+        shutil.copy(old_alienv, backup_alienv)
+        
+        # Keep only the 5 most recent backups
+        backups = sorted([join(backup_dir, f) for f in listdir(backup_dir) 
+                         if f.startswith("alienv.backup")], key=getmtime)
+        for old_backup in backups[:-5]:
+            remove(old_backup)
+        
+        info("Replacing ../cvmfs/alienv with /cvmfs/alice.cern.ch/bin/alienv")
+        shutil.copy(old_alienv, new_alienv)
+  except FileNotFoundError as e:
+    error("File not found: %s", e)
+
 
   # Publish eventually
   if pub.publish(architectures.values()):
