@@ -17,7 +17,7 @@ which fpm
 cd $TMPDIR
 
 DEPS=()
-# Use env modules v4 instead of aliswmod
+# Use env modules v4 instead of alienv
 DEPS+=("--depends" "environment-modules >= 4.0")
 
 RPM_VERSION=1
