@@ -103,7 +103,3 @@ pdci = {path = "utils/pdci"}
 
 [tool.setuptools.dynamic]
 readme = {file = "README.rst"}
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["alibot_helpers/*", "ci/*", "metagit/*", "test/*"]
