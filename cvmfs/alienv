@@ -47,10 +47,12 @@ fi
 
 [ x$ALIENV_DEBUG == x1 ] && printf "distro_name=$distro_name\ndistro_release=$distro_release\n" >&2
 
+
+uname_m=$(uname -m)
+
 case $distro_name in
      Scientific*|CentOS*|Rocky*|Alma*|RedHatEnterprise*|'Red Hat Enterprise'*)
         distro_dir="Scientific"
-        uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
            5.*)
@@ -78,7 +80,6 @@ case $distro_name in
         ;;
      Fedora*)
         distro_dir="Scientific"
-        uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
            17|18)
@@ -96,7 +97,6 @@ case $distro_name in
         ;;
      SUSE*)
         distro_dir="Scientific"
-        uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
            11) # Titan
@@ -110,7 +110,6 @@ case $distro_name in
         ;;
      Debian*)
         distro_dir="Scientific"
-        uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
            6.*|6|7.*|7)
@@ -130,7 +129,6 @@ case $distro_name in
         ;;
      Ubuntu*)
         distro_dir="Scientific"
-        uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
            13.*)
