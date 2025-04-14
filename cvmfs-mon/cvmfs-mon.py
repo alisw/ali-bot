@@ -115,7 +115,8 @@ if __name__ == "__main__":
     print("email notifications will be sent via %(host)s:%(port)d" % monit["notif"]["smtp"])
   else:
     print("email notifications disabled")
-    notify = lambda *x, **y: False
+    def notify(*x, **y):
+      return False
 
   monit["sleep"] = getint(monit, "sleep", 120)
   monit["snooze"] = getint(monit, "snooze", 3600)
