@@ -313,7 +313,7 @@ class Transition(object):
       ha = new_state.haveApproved_p2 if state.name == "STATE_MERGE_APPROVAL_PENDING" else new_state.haveApproved
       ha.append({"u":opener,"what":"test" if named_matches["approval"] == "test" else "merge"})
       debug("evolve: list of approvers updated: %s" % new_state.haveApproved)
-    elif not opener in allowed_openers:
+    elif opener not in allowed_openers:
       debug("evolve: opener %s unallowed to move to state %s" % (opener, self.final_state))
       return state
     elif "approvers" in named_matches:
@@ -462,7 +462,7 @@ class PrRPC(object):
       repo,prnum = pr.split("#", 1)
       prnum = int(prnum)
       debug("Queued PR: %s#%d" % (repo,prnum))
-      if not repo in perms:
+      if repo not in perms:
         debug("Skipping %s: not a configured repository" % pr)
         unprocessed.remove(pr)
         continue
@@ -534,7 +534,7 @@ class PrRPC(object):
       info("* %s @ %s UTC: %s" % (comment.who, comment.when, comment.short))
       for transition in TRANSITIONS:
         new_state = transition.evolve(state, comment.who, comment.short, [bot_user]+admins)
-        if not new_state is state:
+        if new_state is not state:
           # A transition occurred
           info("  ==> %s" % new_state)
           state = new_state
@@ -622,7 +622,7 @@ def load_perms(f_perms, f_groups, f_mapusers, admins):
   try:
     mapusers = yaml.safe_load(open(f_mapusers))
     for k in mapusers:
-      if not " " in mapusers[k]:
+      if " " not in mapusers[k]:
         mapusers[k] = mapusers[k] + " " + mapusers[k]
       un,real = mapusers[k].split(" ", 1)
       realnames[un] = real  # gh -> full
@@ -648,7 +648,7 @@ def load_perms(f_perms, f_groups, f_mapusers, admins):
     # Get internal groups (they override external groups with the same name)
     groups[g] = list(set(c["groups"][g].split()))
   for repo in c:
-    if not "/" in repo: continue
+    if "/" not in repo: continue
     try:
       tests[repo] = c[repo].get("tests", [])
     except (KeyError,TypeError):
@@ -684,7 +684,7 @@ def load_perms(f_perms, f_groups, f_mapusers, admins):
               num_approve = 1
         approve += repo_admins  # add admins as approvers to every PR
 
-        auth = [ x for x in auth if not "=" in x ]
+        auth = [ x for x in auth if "=" not in x ]
         # Append rule to perms
         perms[repo].append(Perms(path_regexp=path_regexp,
                                  authorized=auth,

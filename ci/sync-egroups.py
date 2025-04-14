@@ -13,7 +13,7 @@ def egroup_members(egroup):
   rtype,rdata = ld.result(ldap_sid, 0)
   if rdata and rtype == ldap.RES_SEARCH_ENTRY:
     members = []
-    if len(rdata) < 1 or len(rdata[0]) < 2 or not "member" in rdata[0][1]:
+    if len(rdata) < 1 or len(rdata[0]) < 2 or "member" not in rdata[0][1]:
       return []
     for m in rdata[0][1]["member"]:
       cn = [ x.encode("latin-1")[3:] for x in m.decode("latin-1").split(",") if x.startswith("CN=") ][0]
@@ -39,11 +39,11 @@ for repo in perms:
   for rule in perms[repo].get("rules", []):
     for xrule in rule:
       for g in rule[xrule].replace(",", " ").replace("approve=", "").split():
-        if g.startswith("@") and not g[1:] in def_groups:
+        if g.startswith("@") and g[1:] not in def_groups:
           ldap_groups[g[1:]] = []
       break
   for adm in perms[repo].get("admins", "").split(","):
-    if adm and adm.startswith("@") and not adm[1:] in def_groups:
+    if adm and adm.startswith("@") and adm[1:] not in def_groups:
       ldap_groups[adm[1:]] = []
 
 # Open LDAP connection: try to get definitions for each group

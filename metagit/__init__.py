@@ -215,7 +215,7 @@ class MetaGit_GitHub(MetaGit):
 
   @apicalls
   def get_repo_info(self, repo):
-    if not repo in self.gh_repos:
+    if repo not in self.gh_repos:
       try:
         self.gh_repos[repo] = self.gh.get_repo(repo)
       except GithubException as e:
@@ -227,18 +227,18 @@ class MetaGit_GitHub(MetaGit):
   def get_pull(self, pr, cached=False):
     # Given pr in group/repo#num format, returns a MetaPull with attributes. No cache by default
     repo,num = self.split_repo_pr(pr)
-    if not repo in self.gh_repos:
+    if repo not in self.gh_repos:
       try:
         self.gh_repos[repo] = self.gh.get_repo(repo)
       except GithubException as e:
         raise MetaGitException("Cannot get repository %s: %s" % (repo, e))
-    if not cached or not pr in self.gh_pulls:
+    if not cached or pr not in self.gh_pulls:
       try:
         self.gh_pulls[pr] = self.gh_repos[repo].get_pull(num)
       except GithubException as e:
         raise MetaGitException("Cannot get pull request %s: %s" % (pr, e))
     sha = self.gh_pulls[pr].head.sha
-    if not sha in self.gh_commits:
+    if sha not in self.gh_commits:
       try:
         self.gh_commits[sha] = self.gh_pulls[pr].base.repo.get_commit(sha)
       except GithubException as e:
@@ -266,7 +266,7 @@ class MetaGit_GitHub(MetaGit):
   @apicalls
   def get_pulls(self, repo):
     # Returns a set of pull requests for this repository, and caches the objects
-    if not repo in self.gh_repos:
+    if repo not in self.gh_repos:
       try:
         self.gh_repos[repo] = self.gh.get_repo(repo)
       except GithubException as e:
@@ -294,7 +294,7 @@ class MetaGit_GitHub(MetaGit):
     # Given a pr and an array of contexts returns a dict of MetaStatus. If the array of contexts is
     # not given, get all statuses. If status is not found, it will not appear in the returned dict
     pull = self.get_pull(pr, cached=True)
-    if not pull.sha in self.gh_commits:
+    if pull.sha not in self.gh_commits:
       try:
         self.gh_commits[pull.sha] = self.gh_pulls[pr].base.repo.get_commit(pull.sha)
       except GithubException as e:
@@ -302,7 +302,7 @@ class MetaGit_GitHub(MetaGit):
     statuses = {}
     try:
       for s in self.gh_commits[pull.sha].get_statuses():
-        if (not contexts or s.context in contexts) and not s.context in statuses:
+        if (not contexts or s.context in contexts) and s.context not in statuses:
           sn = MetaStatus(context     = s.context,
                           state       = s.state,
                           description = s.description)
@@ -321,7 +321,7 @@ class MetaGit_GitHub(MetaGit):
       return
     info("%s: setting %s=%s" % (pr, context, state))
     pull = self.get_pull(pr, cached=True)
-    if not pull.sha in self.gh_commits:
+    if pull.sha not in self.gh_commits:
       try:
         self.gh_commits[pull.sha] = self.gh_pulls[pr].base.repo.get_commit(pull.sha)
       except GithubException as e:
