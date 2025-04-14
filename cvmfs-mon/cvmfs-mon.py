@@ -103,7 +103,7 @@ if __name__ == "__main__":
 
   monit["notif"] = monit.get("notif", {})
   for k in ["from", "subject", "body", "smtp"]:
-    if not k in monit["notif"]:
+    if k not in monit["notif"]:
       monit["notif"] = {}
   if monit["notif"]:
     monit["notif"]["smtp"] = monit["notif"]["smtp"].split(":", 1)
