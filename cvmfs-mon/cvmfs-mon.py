@@ -109,7 +109,7 @@ if __name__ == "__main__":
     monit["notif"]["smtp"] = monit["notif"]["smtp"].split(":", 1)
     try:
       monit["notif"]["smtp"].append(int(monit["notif"]["smtp"].pop(1)))
-    except (ValueError,IndexError) as e:
+    except (ValueError,IndexError):
        monit["notif"]["smtp"].append(25) # default smtp port
     monit["notif"]["smtp"] = dict(zip(["host", "port"], monit["notif"]["smtp"]))
     print("email notifications will be sent via %(host)s:%(port)d" % monit["notif"]["smtp"])

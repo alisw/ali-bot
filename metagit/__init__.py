@@ -140,7 +140,7 @@ class MetaGit_Dummy(MetaGit):
         f = int(f)
         if self.read(repo, f).get("closed_at", None) is None:
           all_pulls.add("%s#%d" % (repo,f))
-      except (OSError,IOError,ValueError,KeyError) as e:
+      except (OSError,IOError,ValueError,KeyError):
         pass
     return all_pulls
 
@@ -208,7 +208,7 @@ class MetaGit_GitHub(MetaGit):
     try:
       a,b = self.gh.rate_limiting
       return a,b,self.gh.rate_limiting_resettime
-    except GithubException as e:
+    except GithubException:
       raise MetaGitException("Cannot get GitHub rate limiting")
 
   @apicalls
@@ -275,7 +275,7 @@ class MetaGit_GitHub(MetaGit):
         pr = repo + "#" + str(p.number)
         self.gh_pulls[pr] = p
         all_pulls.add(pr)
-    except GithubException as e:
+    except GithubException:
       raise MetaGitException("Cannot get list of pull requests for %s" % repo)
     return all_pulls
 

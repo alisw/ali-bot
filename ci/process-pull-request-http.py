@@ -649,17 +649,17 @@ def load_perms(f_perms, f_groups, f_mapusers, admins):
     if not "/" in repo: continue
     try:
       tests[repo] = c[repo].get("tests", [])
-    except (KeyError,TypeError) as e:
+    except (KeyError,TypeError):
       warning("config %s: wrong syntax for tests in repo %s" % (f_perms, repo))
       tests[repo] = []
     try:
       rules = c[repo].get("rules", [])
-    except (KeyError,TypeError) as e:
+    except (KeyError,TypeError):
       warning("config %s: wrong syntax for rules in repo %s" % (f_perms, repo))
       rules = []
     try:
       repo_admins = c[repo]["admins"].split(",")  # admins are mentioned as approvers in every PR
-    except (KeyError,TypeError) as e:
+    except (KeyError,TypeError):
       repo_admins = []
     perms[repo] = []
     for path_rule in rules:
@@ -676,7 +676,7 @@ def load_perms(f_perms, f_groups, f_mapusers, admins):
             try:
               num_approve = int(a[12:])
               if num_approve < 1: raise ValueError
-            except ValueError as e:
+            except ValueError:
               warning("config %s: invalid %s for repo %s path %s: fallback to 1" % \
                       (cf, a, repo, path_regexp))
               num_approve = 1
