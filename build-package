@@ -10,7 +10,7 @@ case "$ALIDIST_SLUG" in
   *)    ALIDIST_REPO=$ALIDIST_SLUG ;;
 esac
 
-BUILD_DATE=$(echo 2015$(echo "$(date -u +%s) / (86400 * 3)" | bc))
+BUILD_DATE=$(echo 2015$(($(echo "$(date -u +%s) / (86400 * 3)"))))
 
 MIRROR=mirror
 
