@@ -3,7 +3,9 @@ from collections import namedtuple
 from time import time
 from os import listdir
 from datetime import datetime
-import logging, yaml, os
+import logging
+import yaml
+import os
 
 MetaPull = namedtuple("MetaPull", [ "name", "repo", "num", "title", "changed_files", "sha",
                                     "closed_at", "mergeable", "mergeable_state", "who", "when",

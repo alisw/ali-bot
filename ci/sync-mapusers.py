@@ -2,7 +2,8 @@
 from __future__ import print_function
 from requests import get
 from random import choice
-import yaml,sys
+import yaml
+import sys
 from urllib.parse import urlsplit,urlunsplit
 
 url = sys.argv[1]

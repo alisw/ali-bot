@@ -3,12 +3,14 @@
 from logging import debug, info, warning, error
 from argparse import ArgumentParser
 from os.path import expanduser
-import logging, re, json, yaml
+import logging
+import re
+import json
+import yaml
 from klein import Klein
 from twisted.internet.task import LoopingCall
-from twisted.internet import defer, task, reactor, threads
-from time import sleep, time
-from random import randint
+from twisted.internet import reactor, threads
+from time import time
 from metagit import MetaGit,MetaGitException
 
 class Approvers(object):

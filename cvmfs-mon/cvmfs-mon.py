@@ -2,7 +2,9 @@
 from __future__ import print_function
 from requests import get
 from requests.exceptions import RequestException
-import yaml, time, os
+import yaml
+import time
+import os
 from datetime import datetime
 from sys import exit
 from smtplib import SMTP
