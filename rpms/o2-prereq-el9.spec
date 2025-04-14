@@ -14,7 +14,7 @@ Name: %scl_name
 Version: 1
 Release: 1%{?dist}
 License: GPLv2+
-Requires: make rsync glew-devel pigz which git mariadb-devel curl curl-devel bzip2 bzip2-devel unzip autoconf automake texinfo gettext gettext-devel libtool freetype freetype-devel libpng libpng-devel sqlite sqlite-devel ncurses-devel mesa-libGLU-devel libX11-devel libXpm-devel libXext-devel libXft-devel libXi-devel libxml2 libxml2-devel motif motif-devel kernel-devel pciutils-devel kmod-devel bison flex perl-ExtUtils-Embed perl-FindBin environment-modules tk-devel libXinerama-devel libXcursor-devel libXrandr-devel subversion-devel apr-util-devel apr-devel readline-devel bc
+Requires: make rsync glew-devel pigz which git mariadb-devel curl curl-devel bzip2 bzip2-devel unzip autoconf automake texinfo gettext gettext-devel libtool freetype freetype-devel libpng libpng-devel sqlite sqlite-devel ncurses-devel mesa-libGLU-devel libX11-devel libXpm-devel libXext-devel libXft-devel libXi-devel libxml2 libxml2-devel motif motif-devel kernel-devel pciutils-devel kmod-devel bison flex perl-ExtUtils-Embed perl-FindBin environment-modules tk-devel libXinerama-devel libXcursor-devel libXrandr-devel subversion-devel apr-util-devel apr-devel readline-devel bc rdma-core-devel
 BuildRequires: scl-utils-build
 
 %description
