@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 from __future__ import print_function
-import yaml,ldap,sys
+import yaml
+import ldap
+import sys
 
 ld = ldap.initialize("ldap://xldap.cern.ch")
 def egroup_members(egroup):
