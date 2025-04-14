@@ -55,7 +55,7 @@ def check(monit):
       # find corresponding stratum1 in API response by equal URLs
       replica_status = next((x for x in s["recommendedStratum1s"]
                              if x["url"] == monit["replicas"][replica]["url"]), None)
-      if replica_status == None:
+      if replica_status is None:
         print("%s:%s cannot found status for stratum 1" % (repo, replica))
         continue
 
