@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "setuptools_scm[toml]"]
+requires = ["setuptools>=61", "setuptools_scm[toml]>=8.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -103,3 +103,7 @@ pdci = {path = "utils/pdci"}
 
 [tool.setuptools.dynamic]
 readme = {file = "README.rst"}
+
+[tool.setuptools_scm]
+# Configuration for setuptools_scm
+write_to = "ali_bot_version.py"
