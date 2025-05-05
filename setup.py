@@ -30,16 +30,6 @@ elif sys.version_info >= (3, 6):
 setup(
     name='ali-bot',
 
-    # Single-source our package version using setuptools_scm. This makes it
-    # PEP440-compliant, and it always references the ali-bot commit that each
-    # script was built from.
-    use_scm_version=True,
-    setup_requires=[
-        # The 7.* series removed support for Python 3.6.
-        'setuptools_scm<7.0.0' if sys.version_info < (3, 7) else
-        'setuptools_scm'
-    ] + ['packaging<=23'] if sys.version_info <(3, 7) else [],
-
     description='ALICE Multipurpose bot',
     long_description=long_description,
 
