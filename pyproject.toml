@@ -76,8 +76,6 @@ build-loop.sh = {path = "ci/build-loop.sh"}
 cleanup.py = {path = "ci/cleanup.py"}
 # S3 housekeeping
 repo-s3-cleanup = {path = "repo-s3-cleanup"}
-# Check daily tags
-check-daily-slack = {path = "check-daily-slack"}
 daily-tags.sh = {path = "daily-tags.sh"}
 build-any-ib.sh = {path = "build-any-ib.sh"}
 build-package = {path = "build-package"}
