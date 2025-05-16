@@ -9,7 +9,6 @@ Caveat: the check you want to change has to exist on GitHub already!
 This script is useful when cleaning up after a stuck CI builder.
 '''
 
-from __future__ import print_function
 from argparse import ArgumentParser, Namespace
 from collections import defaultdict
 from datetime import datetime, timezone
