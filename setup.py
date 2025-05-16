@@ -127,8 +127,6 @@ setup(
         "ci/cleanup.py",
         # S3 housekeeping
         "repo-s3-cleanup",
-        # Check daily tags
-        "check-daily-slack",
         "daily-tags.sh",
         "build-any-ib.sh",
         "build-package",
