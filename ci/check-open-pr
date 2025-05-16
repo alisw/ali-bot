@@ -8,7 +8,6 @@
 # The command returns nonzero if we still need to wait for open pull requests. It returns zero if
 # we do not need to wait any longer.
 
-from __future__ import print_function
 from github import Github,GithubException
 import os, sys, pytz
 from datetime import datetime

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-from __future__ import print_function
 import yaml
 import sys
 email = (len(sys.argv) > 1 and sys.argv[1] == '--email')
