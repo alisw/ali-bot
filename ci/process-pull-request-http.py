@@ -35,7 +35,7 @@ class Approvers(object):
     if user in self.users_override:
       self.approvers = True
       return True
-    if self.approvers == True:
+    if self.approvers is True:
       return True
     ok = False
     for a in self.approvers:
@@ -66,7 +66,7 @@ class Approvers(object):
         self.approvers.append({ "n":num_approvers, "u":approvers })
   def flat(self):
     f = set()
-    if self.approvers == True:
+    if self.approvers is True:
       return f
     for x in self.approvers:
       f.update(x["u"])
@@ -83,7 +83,7 @@ class Approvers(object):
       pass
     return u.strip("@ ")
   def __str__(self):
-    if self.approvers == True:
+    if self.approvers is True:
       return "approved"
     approval_str = [ "%d of %s" % (x["n"], ", ".join(map(self.ghtagmap, x["u"]))) for x in self.approvers ]
     return "; ".join(approval_str)
@@ -176,7 +176,7 @@ class State(object):
   def action_approval_required(self, git, pr, perms, tests):
     pull = git.get_pull(pr, cached=True)
     self.action_approval_pending(git, pr, perms, tests)
-    if self.approvers() != True:
+    if self.approvers() is not True:
       info("%s: approval required by: %s" % (self.sha, self.approvers))
       self.request_approval(git, pr)
 
@@ -198,18 +198,18 @@ class State(object):
         hasChanged = True
         if u["what"] == "test":
           approveTestsOnly = True
-    if self.approvers() == True:
+    if self.approvers() is True:
       git.set_status(pr, "review", "success", \
                          "tests approved" if approveTestsOnly else "merge approved")
       for t in tests:
         git.set_status(pr, t, "pending", "test required")
-    if self.approvers() == True and approveTestsOnly:
+    if self.approvers() is True and approveTestsOnly:
       info("%s: only testing approved, no auto merge on test success" % self.sha)
       git.add_comment(pr, "%s: testing approved: " \
                           "will not be automatically merged; starting testing. " \
                           "If testing succeeds, merging will require further approval from %s" % \
                           (self.sha, str(self.approvers_unchanged)))
-    elif self.approvers() == True:
+    elif self.approvers() is True:
       info("%s: changes approved, auto merge on test success" % self.sha)
       git.add_comment(pr, "%s: approved: will be automatically merged on successful tests" % self.sha)
     else:
@@ -225,7 +225,7 @@ class State(object):
     for u in self.haveApproved_p2:
       if self.approvers.approve(u["u"]):
         hasChanged = True
-    if self.approvers() == True:
+    if self.approvers() is True:
       info("%s: merge approved, merging now" % self.sha)
       git.merge(pr)
     else:
