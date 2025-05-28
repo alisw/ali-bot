@@ -152,13 +152,13 @@ def get_all_checks(defs_dir: str, roles: list[str], containers: list[str],
 class Output(abc.ABC):
     '''The base class for output formatters.'''
 
-    def __init__(self: Output, recent_hours: float,
+    def __init__(self, recent_hours: float,
                  output_file: TextIO = sys.stdout) -> None:
         self.recent_hours = recent_hours
         self.recent_cutoff = (NOW - timedelta(hours=recent_hours)).strftime(TIMEFORMAT)
         self.output_file = output_file
 
-    def document(self: Output, client,
+    def document(self, client,
                  all_checks: Mapping[tuple[str, str], list[str]]) -> None:
         '''Display the entire overview document for the given checks.'''
         self.begin()
@@ -173,19 +173,19 @@ class Output(abc.ABC):
                     self.empty_table()
         self.end()
 
-    def begin(self: Output) -> None:
+    def begin(self) -> None:
         '''Output anything that is required to be before the overview table.'''
 
     @abc.abstractmethod
-    def repo_header(self: Output, repo: str, branch: str) -> None:
+    def repo_header(self, repo: str, branch: str) -> None:
         '''Display the repository and branch name.'''
 
     @abc.abstractmethod
-    def check_header(self: Output, check_name: str) -> None:
+    def check_header(self, check_name: str) -> None:
         '''Display the given check name.'''
 
     @abc.abstractmethod
-    def empty_table(self: Output) -> None:
+    def empty_table(self) -> None:
         '''Display a helpful message for a table with no PRs.'''
 
     @staticmethod
@@ -196,10 +196,10 @@ class Output(abc.ABC):
         return prnum_len, f'#{{:{prnum_len}d}}'
 
     @abc.abstractmethod
-    def overview_table(self: Output, pr_statuses: list[Check]) -> None:
+    def overview_table(self, pr_statuses: list[Check]) -> None:
         '''Show a nicely formatted table of PR results for the given check.'''
 
-    def end(self: Output) -> None:
+    def end(self) -> None:
         '''Output anything that is required to be after the overview table.'''
 
 
@@ -208,23 +208,23 @@ class TextOutput(Output):
     INDENT: Final[str] = '  '
     SEPARATOR: Final[str] = '  '
 
-    def repo_header(self: TextOutput, repo: str, branch: str) -> None:
+    def repo_header(self, repo: str, branch: str) -> None:
         '''Format repo bold and underlined, and italicize branch.'''
         print(f'\033[4;1m{repo}\033[0m  \033[3m({branch})\033[0m',
               file=self.output_file)
 
-    def check_header(self: TextOutput, check_name: str) -> None:
+    def check_header(self, check_name: str) -> None:
         '''Format the given check name by underlining.'''
         print(f'{self.INDENT}\033[4m{check_name}\033[0m',
               file=self.output_file)
 
-    def empty_table(self: TextOutput) -> None:
+    def empty_table(self) -> None:
         '''Create a helpful message for a table with no PRs.'''
         print(self.INDENT, self.INDENT,
               '\033[3;90m(no open non-draft PRs here)\033[0m',
               sep='', end='\n\n', file=self.output_file)
 
-    def overview_table(self: TextOutput, pr_statuses: list[Check]) -> None:
+    def overview_table(self, pr_statuses: list[Check]) -> None:
         '''Print a nicely formatted table of PR results for the given check.'''
         prnum_len, template = self.overview_table_prep(pr_statuses)
         terminal_width = shutil.get_terminal_size((80, 1)).columns
@@ -236,7 +236,7 @@ class TextOutput(Output):
                             for _, status in row))
         print(file=self.output_file)
 
-    def table_row(self: TextOutput,
+    def table_row(self,
                   statuses_and_text: Iterable[tuple[Check, str]]) -> None:
         '''Format each text for its accompanying status and optional URL.'''
         print(self.INDENT, self.INDENT, sep='', end='', file=self.output_file)
@@ -244,7 +244,7 @@ class TextOutput(Output):
                 for status, text in statuses_and_text),
               sep=self.SEPARATOR, file=self.output_file)
 
-    def format_status(self: TextOutput, status: Check, text: str) -> str:
+    def format_status(self, status: Check, text: str) -> str:
         '''Color the given text as appropriate for the given status.
 
         If possible, the text is also formatted as a hyperlink to the document
@@ -275,7 +275,7 @@ class TextOutput(Output):
 class HtmlOutput(Output):
     '''Export the overview table as a HTML document.'''
 
-    def begin(self: HtmlOutput) -> None:
+    def begin(self) -> None:
         '''Output the HTML <head> element and initial boilerplate.'''
         print(dedent('''\
         <!doctype html>
@@ -340,22 +340,22 @@ class HtmlOutput(Output):
         </details>
         '''), sep='', end='', file=self.output_file)
 
-    def repo_header(self: HtmlOutput, repo: str, branch: str) -> None:
+    def repo_header(self, repo: str, branch: str) -> None:
         '''Output a heading with the repository and branch name.'''
         print(f'<h2>{repo} <span class="branch-name">{branch}</span></h2>',
               file=self.output_file)
 
-    def check_header(self: HtmlOutput, check_name: str) -> None:
+    def check_header(self, check_name: str) -> None:
         '''Output the given check name.'''
         print(f'<h3 class="check-name">{check_name}</h3>',
               file=self.output_file)
 
-    def empty_table(self: HtmlOutput) -> None:
+    def empty_table(self) -> None:
         '''Output a helpful message for a table with no PRs.'''
         print('<div class="table empty">(no open non-draft PRs here)</div>',
               file=self.output_file)
 
-    def overview_table(self: HtmlOutput, pr_statuses: list[Check]) -> None:
+    def overview_table(self, pr_statuses: list[Check]) -> None:
         '''Show a nicely formatted table of PR results for the given check.'''
         _, template = self.overview_table_prep(pr_statuses)
         print('<div class="table">',
@@ -363,7 +363,7 @@ class HtmlOutput(Output):
                 for status in pr_statuses),
               '</div>', sep='\n', file=self.output_file)
 
-    def format_status(self: HtmlOutput, status: Check, text: str) -> str:
+    def format_status(self, status: Check, text: str) -> str:
         '''Tag the given text as appropriate for the given status.
 
         If possible, the text is also hyperlinked to the document reporting
@@ -375,7 +375,7 @@ class HtmlOutput(Output):
         return (f'<div class="status {status["state"]} {date}"'
                 f' title="{status.get("createdAt", "")}">{text}</div>')
 
-    def end(self: HtmlOutput) -> None:
+    def end(self) -> None:
         '''Close any open tags.'''
         print('</body></html>', file=self.output_file)
 
