@@ -1,0 +1,183 @@
+---
+name: Check untested packages
+
+'on':
+  workflow_call:
+    inputs:
+      owner:
+        type: string
+        required: true
+        description: Repository owner or organization
+      repo:
+        type: string
+        required: true
+        description: Repository name (without owner)
+      pr:
+        type: string
+        required: true
+        description: Pull request number in the specified repository
+      max_workers:
+        type: string
+        required: false
+        default: '2'
+        description: Maximum number of parallel aliDoctor processes
+
+permissions: {}
+
+jobs:
+  check-untested-packages:
+    name: Check for untested packages
+    runs-on: ubuntu-latest
+    container:
+      image: registry.cern.ch/alisw/slc9-builder:latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout ali-bot
+        uses: actions/checkout@v4
+        with:
+          repository: alisw/ali-bot
+          path: ali-bot
+
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.owner }}/${{ inputs.repo }}
+          path: ali-bot/alidist
+          fetch-depth: 0
+
+      - name: Install GitHub CLI
+        run: |
+          dnf install -y 'dnf-command(config-manager)'
+          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          dnf install -y gh
+
+      - name: Checkout PR branch
+        run: |
+          cd ali-bot/alidist
+          gh pr checkout ${{ inputs.pr }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install aliDoctor
+        run: |
+          # We need the python binary for ci/tested_pkgs.py
+          uv python install
+          # Install aliBuild which provides aliDoctor
+          uv tool install alibuild
+          aliBuild analytics off
+
+      - name: Get modified packages
+        id: modified_packages
+        run: |
+          set -e
+          cd ali-bot/alidist
+          # Get list of modified .sh files in this PR
+          git fetch origin master
+          MODIFIED_FILES=$(git diff --name-only origin/master...HEAD | grep '\.sh$' || true)
+
+          MODIFIED_PACKAGES=""
+          for file in $MODIFIED_FILES; do
+            if [[ -f "$file" ]]; then
+              PACKAGE=$(grep '^package:' "$file" | head -1 | cut -d: -f2 | tr -d ' ' || echo "")
+              if [[ -n "$MODIFIED_PACKAGES" ]]; then
+                MODIFIED_PACKAGES="$MODIFIED_PACKAGES,$PACKAGE"
+              else
+                MODIFIED_PACKAGES="$PACKAGE"
+              fi
+            fi
+          done
+
+          echo "modified_packages=$MODIFIED_PACKAGES" >> "$GITHUB_OUTPUT"
+          echo "Modified packages: $MODIFIED_PACKAGES"
+
+      - name: Run package analysis
+        id: analysis
+        if: steps.modified_packages.outputs.modified_packages != ''
+        run: |
+          cd ali-bot
+
+          echo "Analyzing modified packages: ${{ steps.modified_packages.outputs.modified_packages }}"
+          ./ci/tested_pkgs.py --json --max-workers ${{ inputs.max_workers }} --packages "${{ steps.modified_packages.outputs.modified_packages }}" > analysis_results.json
+
+          untested_count=$(jq -r '.statistics.untested_packages_count' analysis_results.json)
+          untested_packages=$(jq -r '.untested_packages | join(",")' analysis_results.json)
+
+          echo "untested_count=$untested_count" >> "$GITHUB_OUTPUT"
+          echo "untested_packages=$untested_packages" >> "$GITHUB_OUTPUT"
+
+      - name: Skip analysis - no packages modified
+        id: no_analysis
+        if: steps.modified_packages.outputs.modified_packages == ''
+        run: |
+          echo "No packages were modified in this PR, skipping analysis"
+          echo "untested_count=0" >> "$GITHUB_OUTPUT"
+          echo "untested_packages=" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR
+        if: steps.analysis.outputs.untested_count > 0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          UNTESTED_PACKAGES="${{ steps.analysis.outputs.untested_packages }}"
+          UNTESTED_COUNT="${{ steps.analysis.outputs.untested_count }}"
+
+          if [ "$UNTESTED_COUNT" -gt 0 ]; then
+            PACKAGE_LIST=$(echo "$UNTESTED_PACKAGES" | tr ',' '\n' | head -20 | sed 's/^/- `/' | sed 's/$/`/')
+
+            TOTAL_PACKAGES=$(echo "$UNTESTED_PACKAGES" | tr ',' '\n' | wc -l)
+            ADDITIONAL_NOTE=""
+            if [ "$TOTAL_PACKAGES" -gt 20 ]; then
+              REMAINING=$((TOTAL_PACKAGES - 20))
+              ADDITIONAL_NOTE="... and $REMAINING more packages"
+            fi
+
+            {
+              echo "## ⚠️ Untested Packages Found"
+              echo ""
+              echo "The following packages modified in this PR are not currently tested by CI:"
+              echo ""
+              echo "$PACKAGE_LIST"
+              if [ -n "$ADDITIONAL_NOTE" ]; then
+                echo ""
+                echo "*$ADDITIONAL_NOTE*"
+              fi
+              echo ""
+              echo "**Summary:**"
+              echo "- **Modified packages analyzed**: $TOTAL_PACKAGES"
+              echo "- **Untested packages**: $UNTESTED_COUNT"
+              echo ""
+              echo "Consider adding CI configurations for these packages if they should be covered by automated testing."
+            } > /tmp/comment.md
+
+            gh pr comment ${{ inputs.pr }} --repo ${{ inputs.owner }}/${{ inputs.repo }} --body-file /tmp/comment.md
+          fi
+
+      - name: Upload analysis results
+        if: steps.modified_packages.outputs.modified_packages != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-analysis-results
+          path: ali-bot/analysis_results.json
+          retention-days: 30
+
+      - name: Summary
+        if: steps.modified_packages.outputs.modified_packages != ''
+        run: |
+          COUNT="${{ steps.analysis.outputs.untested_count }}"
+          {
+            echo "## Package Analysis Results"
+            echo "- Modified packages: $MODIFIED_PACKAGES"
+            echo "- Untested packages found: $COUNT"
+            if [ "$COUNT" -gt 0 ]; then
+              echo "- Status: ⚠️ Some modified packages are not tested by CI"
+              echo "- Untested packages: ${{ steps.analysis.outputs.untested_packages }}"
+            else
+              echo "- Status: ✅ All modified packages are covered by CI testing"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
