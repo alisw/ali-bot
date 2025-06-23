@@ -4,7 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = 'ali-bot'
-dynamic = ['readme', 'version']
+readme = "README.rst"
+dynamic = ['version']
 
 description = 'ALICE Multipurpose bot'
 authors = [
@@ -60,47 +61,49 @@ utils = [
 [project.urls]
 homepage = 'https://alisw.github.io/ali-bot'
 
-[scripts]
-# Continuous Integration
-set-github-status = {path = "set-github-status"}
-report-pr-errors = {path = "report-pr-errors"}
-list-branch-pr = {path = "list-branch-pr"}
-alidist-override-tags = {path = "alidist-override-tags"}
-# Analytics
-report-analytics = {path = "analytics/report-analytics"}
-report-metric-monalisa = {path = "analytics/report-metric-monalisa"}
-# Continuous Builders
-continuous-builder.sh = {path = "ci/continuous-builder.sh"}
-build-helpers.sh = {path = "ci/build-helpers.sh"}
-build-loop.sh = {path = "ci/build-loop.sh"}
-cleanup.py = {path = "ci/cleanup.py"}
-# S3 housekeeping
-repo-s3-cleanup = {path = "repo-s3-cleanup"}
-daily-tags.sh = {path = "daily-tags.sh"}
-build-any-ib.sh = {path = "build-any-ib.sh"}
-build-package = {path = "build-package"}
-# Wait for open Pull Requests before daily tags
-check-open-pr = {path = "ci/check-open-pr"}
-# Process PR permissions
-process-pull-request-http.py = {path = "ci/process-pull-request-http.py"}
-sync-egroups.py = {path = "ci/sync-egroups.py"}
-sync-mapusers.py = {path = "ci/sync-mapusers.py"}
-# S3 repo maintenance
-update-symlink-manifests = {path = "update-symlink-manifests"}
-# Helpers
-ci-status-overview = {path = "ci-status-overview"}
-bulk-change-pr-status = {path = "utils/bulk-change-pr-status"}
-bulk-change-pr-status-by-checker = {path = "utils/bulk-change-pr-status-by-checker"}
-ciqueues = {path = "utils/ciqueues"}
-ci-status-history = {path = "utils/ci-status-history"}
-duplicate-hash-tarballs = {path = "utils/duplicate-hash-tarballs"}
-logspecs = {path = "utils/logspecs"}
-logtimes = {path = "utils/logtimes"}
-nomad-diskfree = {path = "utils/nomad-diskfree"}
-pdci = {path = "utils/pdci"}
+[tool.setuptools]
+script-files = [
+  # Continuous Integration
+  "set-github-status",
+  "report-pr-errors",
+  "list-branch-pr",
+  "alidist-override-tags",
+  # Analytics
+  "analytics/report-analytics",
+  "analytics/report-metric-monalisa",
+  # Continuous Builders
+  "ci/continuous-builder.sh",
+  "ci/build-helpers.sh",
+  "ci/build-loop.sh",
+  "ci/cleanup.py",
+  # S3 housekeeping
+  "repo-s3-cleanup",
+  "daily-tags.sh",
+  "build-any-ib.sh",
+  "build-package",
+  # Wait for open Pull Requests before daily tags
+  "ci/check-open-pr",
+  # Process PR permissions
+  "ci/process-pull-request-http.py",
+  "ci/sync-egroups.py",
+  "ci/sync-mapusers.py",
+  # S3 repo maintenance
+  "update-symlink-manifests",
+  # Helpers
+  "ci-status-overview",
+  "utils/bulk-change-pr-status",
+  "utils/bulk-change-pr-status-by-checker",
+  "utils/ciqueues",
+  "utils/ci-status-history",
+  "utils/duplicate-hash-tarballs",
+  "utils/logspecs",
+  "utils/logtimes",
+  "utils/nomad-diskfree",
+  "utils/pdci",
+]
 
-[tool.setuptools.dynamic]
-readme = {file = "README.rst"}
+[tool.setuptools.packages.find]
+include = ["*"]
 
 [tool.setuptools_scm]
 # Configuration for setuptools_scm
