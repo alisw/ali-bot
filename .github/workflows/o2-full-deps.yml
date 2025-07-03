@@ -27,16 +27,16 @@ jobs:
         include:
           - el_version: el7
             container: centos:7
-            alibuild_tag: v1.17.18
+            alibuild_tag: v1.17.21
           - el_version: el8
             container: almalinux:8
-            alibuild_tag: v1.17.18
+            alibuild_tag: v1.17.21
           - el_version: el9
             container: almalinux:9
-            alibuild_tag: v1.17.18
+            alibuild_tag: v1.17.21
           - el_version: fedora
             container: fedora:40
-            alibuild_tag: v1.17.18
+            alibuild_tag: v1.17.21
 
     name: "RPM (${{ matrix.el_version }})"
     container: ${{ matrix.container }}
@@ -71,13 +71,14 @@ jobs:
         run: |
           set -ex
           rpmbuild -ba "rpms/o2-prereq-$DISTRO.spec"
+
+          # Build the alibuild RPM
           git clone -b "$ALIBUILD_TAG" https://github.com/alisw/alibuild
           cd alibuild
-          case "$DISTRO" in
-            el7) deps=python3,git,python3-PyYAML,python3-requests,python3-distro ;;
-            *)   deps=python3,git,python3-pyyaml,python3-requests,python3-distro ;;
-          esac
-          python3 setup.py bdist_rpm --requires "$deps"
+          python3 -m pip install build pyp2rpm
+          python3 -m build
+          pyp2rpm dist/alibuild-*.tar.gz > "alibuild-$(git describe --exact-match --tags).noarch.rpm"
+
           cp dist/alibuild-*.noarch.rpm ~/rpmbuild/RPMS/"$(uname -m)"/
           cd  ~/rpmbuild/RPMS/"$(uname -m)"/
           createrepo .
@@ -103,7 +104,7 @@ jobs:
     name: DEB (${{ matrix.ubuntu_codename }})
     container: ubuntu:${{ matrix.ubuntu_codename }}
     env:
-      ALIBUILD_TAG: v1.17.18
+      ALIBUILD_TAG: v1.17.21
       ALIBUILD_DISTRO: ${{ matrix.ubuntu_codename }}
       DEBIAN_FRONTEND: noninteractive
     steps:
