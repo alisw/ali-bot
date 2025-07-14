@@ -204,7 +204,7 @@ def build_package_manifest(s3c, bucket, package, read_only):
             LOG.debug("symlink already cached; not re-reading: %s", linkpath)
             continue
         target = read_object(s3c, bucket, linkpath).rstrip("\r\n")
-        LOG.log(LOG_TRACE, "read symlink: %s -> %s", link_key, target)
+        LOG.log(LOG_TRACE, "read symlink: %s -> %s", linkname, target)
         symlinks[linkname] = target
         have_changes = True
 
