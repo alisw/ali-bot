@@ -87,6 +87,7 @@ cat > $AFTER_REMOVE <<EOF
 true
 EOF
 
+DEBUG=1
 # We must put the full version in the package name to allow multiple versions
 # to be installed at the same time, see [1]
 # [1] http://www.rpm.org/wiki/PackagerDocs/MultipleVersions
@@ -94,6 +95,7 @@ pushd unpack_rpm
   fpm -s dir                           \
       -t rpm                           \
       --force                          \
+      ${DEBUG:+--debug --debug-workspace} \
       "${DEPS[@]}"                     \
       --prefix $INSTALLPREFIX/$FLAVOUR \
       --architecture $ARCHITECTURE     \
