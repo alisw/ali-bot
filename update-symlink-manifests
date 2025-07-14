@@ -168,6 +168,7 @@ def build_package_manifest(s3c, bucket, package, read_only):
     """Create a symlink manifest for a single package."""
     symlinks = {}
     manifest = package.rstrip("/") + PACKAGE_MANIFEST_EXT
+    link_key = None
 
     # First, fetch the existing manifest (if any) for this package.
     try:
