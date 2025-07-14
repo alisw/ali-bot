@@ -14,6 +14,7 @@ from tempfile import NamedTemporaryFile, mkdtemp
 from subprocess import Popen, PIPE, STDOUT, DEVNULL, getstatusoutput
 from smtplib import SMTP
 from xml.etree.ElementTree import ElementTree
+from urllib.parse import quote
 
 def format(s, **kwds):
   return s % kwds
@@ -734,12 +735,13 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
       symlinkUrl = format(getPackUrlTpl,
                           baseUrl=baseUrl.rstrip("/"),
                           basePrefix=basePrefix, arch=arch,
-                          pack=pack["name"], ver=pack["ver"])
+                          pack=pack["name"], ver=quote(pack["ver"], safe=''))
       pkgUrl = join(baseUrl,
                     requests.get(symlinkUrl,
                                  verify=connParams["http_ssl_verify"],
                                  timeout=connParams["conn_timeout_s"])
                             .text.rstrip().lstrip("./"))  # strip leading "../"
+      pkgUrl = quote(pkgUrl, safe=':/')
 
       # Here we can attempt the installation
       def prettyPrintPkgs(key):
