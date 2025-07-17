@@ -24,12 +24,14 @@ RPM_VERSION=1
 RPM_PACKAGE="alisw-%(package)s+%(version)s"
 RPM_PACKAGE="${RPM_PACKAGE//@/__}"
 RPM_PACKAGE="${RPM_PACKAGE//\#/___}"
+RPM_PACKAGE="${RPM_PACKAGE//,/____}"
 RPM_TAR_STRIP=2
 RPM_ROOT="%(package)s/%(version)s"
 RPM_UNPACK_DIR="%(package)s"
 for D in %(dependencies)s; do
   D="${D//@/__}"
   D="${D//\#/___}"
+  D="${D//,/____}"
   DEPS+=("--depends" "$D = 1-1.$FLAVOUR")
 done
 
