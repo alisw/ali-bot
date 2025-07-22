@@ -306,8 +306,8 @@ class RPM(object):
     stageDir = join(self._stageDir, arch)
     kw =  { "url"          : url,
             "package"      : pkgName,
-            "version"      : pkgVer.replace("@", "__").replace("#", "___").replace(",", "____"),
-            "version_rpm"  : pkgVer.replace("-", "_").replace("@", "__").replace("#", "___").replace(",", "____"),
+            "version"      : pkgVer,
+            "version_rpm"  : pkgVer.replace("-", "_"),
             "arch"         : arch,
             "dependencies" : deps,
             "repodir"      : stageDir,
@@ -319,6 +319,7 @@ class RPM(object):
     kw["rpm"] = ("alisw-%(package)s-%(version_rpm)s-1.%(arch)s.rpm"
                  if self._genUpdatableRpms else
                  "alisw-%(package)s+%(version)s-1-1.%(arch)s.rpm") % kw
+    kw["rpm"] = kw["rpm"].replace("@", "__").replace("#", "___").replace(",", "____")
     return kw
 
   def installed(self, arch, pkgName, pkgVer):
