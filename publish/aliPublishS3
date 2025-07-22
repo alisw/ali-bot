@@ -336,6 +336,7 @@ class RPM(object):
     kw = self._kw(None, arch, pkgName, pkgVer)
     debug("RPM: checking if %(rpm)s exists for %(package)s %(version)s on %(arch)s" % kw)
     s3_key = "{s3_path}/{arch}/{rpm}".format(s3_path=self._s3_path, **kw)
+    debug(f"{s3_key} in {self._remoteRpms[arch]}")
     return s3_key in self._remoteRpms[arch]
 
   def install(self, url, arch, pkgName, pkgVer, deps, allDeps):
