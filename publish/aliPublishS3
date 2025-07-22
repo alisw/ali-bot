@@ -306,7 +306,7 @@ class RPM(object):
     stageDir = join(self._stageDir, arch)
     kw =  { "url"          : url,
             "package"      : pkgName,
-            "version"      : pkgVer,
+            "version"      : pkgVer.replace("@", "__").replace("#", "___").replace(",", "____"),
             "version_rpm"  : pkgVer.replace("-", "_").replace("@", "__").replace("#", "___").replace(",", "____"),
             "arch"         : arch,
             "dependencies" : deps,
