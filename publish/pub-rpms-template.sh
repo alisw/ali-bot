@@ -93,7 +93,6 @@ cat > $AFTER_REMOVE <<EOF
 true
 EOF
 
-DEBUG=1
 # We must put the full version in the package name to allow multiple versions
 # to be installed at the same time, see [1]
 # [1] http://www.rpm.org/wiki/PackagerDocs/MultipleVersions
