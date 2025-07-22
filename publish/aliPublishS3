@@ -307,7 +307,7 @@ class RPM(object):
     kw =  { "url"          : url,
             "package"      : pkgName,
             "version"      : pkgVer,
-            "version_rpm"  : pkgVer.replace("-", "_"),
+            "version_rpm"  : pkgVer.replace("-", "_").replace("@", "__").replace("#", "___").replace(",", "____"),
             "arch"         : arch,
             "dependencies" : deps,
             "repodir"      : stageDir,
