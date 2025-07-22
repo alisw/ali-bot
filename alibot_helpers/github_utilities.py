@@ -207,7 +207,7 @@ class GithubCachedClient(object):
         the quota will be reset.
         """
         url = self.makeURL("/rate_limit")
-        response = requests.get(url=url, headers=self.baseHeaders())
+        response = requests.get(url=url, headers=self.baseHeaders(), timeout=10)
         limits = (-1, -1)
         if response.status_code == 200:
             headers = response.headers
@@ -248,7 +248,7 @@ class GithubCachedClient(object):
         headers = self.postHeaders(stable_api)
         url = self.makeURL(url, **kwds)
         data = json.dumps(data) if type(data) == dict else data
-        response = requests.post(url=url, data=data, headers=headers)
+        response = requests.post(url=url, data=data, headers=headers, timeout=10)
         sc = response.status_code
         if sc == 422:
             print("GitHub error: Unprocessable Entity", file=sys.stderr)
@@ -260,7 +260,7 @@ class GithubCachedClient(object):
         headers = self.postHeaders(stable_api)
         url = self.makeURL(url, **kwds)
         data = json.dumps(data) if type(data) == dict else data
-        response = requests.patch(url=url, data=data, headers=headers)
+        response = requests.patch(url=url, data=data, headers=headers, timeout=10)
         return response.status_code
 
     @trace
@@ -275,7 +275,7 @@ class GithubCachedClient(object):
 
         url = self.makeURL(url, **kwds)
         # final_url = "{s.api}{url}".format(s=self, url=url).format(**kwds)
-        r = requests.get(url=url, headers=headers)
+        r = requests.get(url=url, headers=headers, timeout=10)
 
         if r.status_code == 304:
             if type(cacheValue["payload"]) == list:
