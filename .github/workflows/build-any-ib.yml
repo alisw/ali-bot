@@ -57,8 +57,11 @@ jobs:
       - name: Launch the build-any-ib job in Jenkins and wait for completion
         run: |
           set -euo pipefail
+          set -x
+          # TODO: Install certificates from CERN CA for curl
+
           # Login against SSO
-          TOKEN="$(curl --location -X POST "$SSO_AUTH_URL" \
+          TOKEN="$(curl -k --location -X POST "$SSO_AUTH_URL" \
           --header 'Content-Type: application/x-www-form-urlencoded' \
           --data-urlencode 'grant_type=client_credentials' \
           --data-urlencode "client_id=$CLIENT_ID" \
@@ -66,7 +69,7 @@ jobs:
           --data-urlencode "audience=$TARGET_APP" | jq -r '.access_token')"
 
           # Trigger the Jenkins job and get the queue item location
-          QUEUE_URL=$(curl -w "%{redirect_url}" -s -o /dev/null "$JENKINS_URL/job/$JOB_NAME/buildWithParameters" \
+          QUEUE_URL=$(curl -k -w "%{redirect_url}" -s -o /dev/null "$JENKINS_URL/job/$JOB_NAME/buildWithParameters" \
               -H "Authorization: Bearer $TOKEN"                 \
               --data "PACKAGE_NAME=$PACKAGE_NAME"               \
               --data "ALIDIST_SLUG=$ALIDIST_SLUG"               \
@@ -80,7 +83,7 @@ jobs:
 
           # Poll the queue item until we get the actual job URL
           while true; do
-            QUEUE_RESPONSE=$(curl -L -s "$QUEUE_URL/api/json" -H "Authorization: Bearer $TOKEN")
+            QUEUE_RESPONSE=$(curl -k -L -s "$QUEUE_URL/api/json" -H "Authorization: Bearer $TOKEN")
             if echo "$QUEUE_RESPONSE" | jq -e '.executable.url' > /dev/null; then
               BUILD_URL=$(echo "$QUEUE_RESPONSE" | jq -r '.executable.url')
               break
@@ -94,7 +97,7 @@ jobs:
           BUILD_URL=${BUILD_URL//alijenkins/alijenkins-api}
 
           while true; do
-            JOB_STATUS=$(curl -s "$BUILD_URL/api/json" -H "Authorization: Bearer $TOKEN" | jq -r '.result')
+            JOB_STATUS=$(curl -k -s "$BUILD_URL/api/json" -H "Authorization: Bearer $TOKEN" | jq -r '.result')
             if [ "$JOB_STATUS" = "SUCCESS" ]; then
               echo "Job completed successfully!"
               exit 0
