@@ -49,7 +49,7 @@ services = [
   "python-ldap"
 ]
 ci = [
-  "gql",
+  "gql<4.0.0",
   "requests-toolbelt",  # for gql
   "typing-extensions==4.1.1; python_version == '3.6'",
 ]
