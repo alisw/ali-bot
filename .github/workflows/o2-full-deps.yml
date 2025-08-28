@@ -77,7 +77,7 @@ jobs:
           cd alibuild
           python3 -m pip install -U build pyp2rpm          
           python3 -m build --wheel --sdist
-          pyp2rpm dist/alibuild-*.whl > "alibuild-$(git describe --exact-match --tags).noarch.rpm"
+          pyp2rpm dist/alibuild-*.tar.gz > "alibuild-$(git describe --exact-match --tags).noarch.rpm"
 
           cp dist/alibuild-*.noarch.rpm ~/rpmbuild/RPMS/"$(uname -m)"/
           cd  ~/rpmbuild/RPMS/"$(uname -m)"/
