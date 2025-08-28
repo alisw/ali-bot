@@ -75,8 +75,8 @@ jobs:
           # Build the alibuild RPM
           git clone -b "$ALIBUILD_TAG" https://github.com/alisw/alibuild
           cd alibuild
-          python3 -m pip install build pyp2rpm
-          python3 -m build --wheel
+          python3 -m pip install -U build pyp2rpm          
+          python3 -m build --wheel --sdist
           pyp2rpm dist/alibuild-*.whl > "alibuild-$(git describe --exact-match --tags).noarch.rpm"
 
           cp dist/alibuild-*.noarch.rpm ~/rpmbuild/RPMS/"$(uname -m)"/
