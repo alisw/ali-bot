@@ -73,8 +73,12 @@ jobs:
           rpmbuild -ba "rpms/o2-prereq-$DISTRO.spec"
 
           # Build the alibuild RPM
-          python3 -m pip install -U build pyp2rpm          
-          pyp2rpm alibuild -v ${ALIBUILD_TAG} > "alibuild-${ALIBUILD_TAG}.noarch.rpm"
+          git clone -b "$ALIBUILD_TAG" https://github.com/alisw/alibuild
+          cd alibuild
+          case "$DISTRO" in
+            *)   deps=python3,git,python3-pyyaml,python3-requests,python3-distro ;;
+          esac
+          python3 setup.py bdist_rpm --requires "$deps"
 
           cp dist/alibuild-*.noarch.rpm ~/rpmbuild/RPMS/"$(uname -m)"/
           cd  ~/rpmbuild/RPMS/"$(uname -m)"/
