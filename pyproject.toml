@@ -11,12 +11,12 @@ description = 'ALICE Multipurpose bot'
 authors = [
   {name = 'Giulio Eulisse', email = 'giulio.eulisse@cern.ch'},
 ]
-license = {text = 'GPL'}
+license = "GPL-3.0-only"
+license-files = ["LICENSE[.]md"]
 classifiers = [
    'Development Status :: 4 - Beta',
    'Intended Audience :: Developers',
    'Topic :: Software Development :: Build Tools',
-   'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
 
    'Programming Language :: Python :: 3.6',
    'Programming Language :: Python :: 3.8',
