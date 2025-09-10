@@ -85,6 +85,10 @@ jobs:
           for file in $MODIFIED_FILES; do
             if [[ -f "$file" ]]; then
               PACKAGE=$(grep '^package:' "$file" | head -1 | cut -d: -f2 | tr -d ' ' || echo "")
+              if [[ "$PACKAGE" == defaults-* ]]; then
+                echo "Skipping defaults package: $PACKAGE"
+                continue
+              fi
               if [[ -n "$MODIFIED_PACKAGES" ]]; then
                 MODIFIED_PACKAGES="$MODIFIED_PACKAGES,$PACKAGE"
               else
