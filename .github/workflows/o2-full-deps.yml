@@ -68,12 +68,20 @@ jobs:
           esac
           python3 setup.py bdist_rpm --requires "$deps"
 
+          # Copy new alibuild RPM to preserve alongside existing versions
+          rclone --config /tmp/rclone.conf copy \
+                 "alibuild/dist/alibuild-*.noarch.rpm" \
+                 "rpms3:alibuild-repo/RPMS/o2-full-deps_$DISTRO.$(uname -m | tr _ -)/"
+
           cp dist/alibuild-*.noarch.rpm ~/rpmbuild/RPMS/"$(uname -m)"/
           cd  ~/rpmbuild/RPMS/"$(uname -m)"/
           createrepo .
           ls -la
+
+          # Sync o2-full-deps RPMs and repodata, but exclude alibuild RPMs from deletion
           rclone --config /tmp/rclone.conf --transfers=10 --progress --delete-before \
-                 sync local:./ "rpms3:alibuild-repo/RPMS/o2-full-deps_$DISTRO.$(uname -m | tr _ -)/"
+                 sync local:./ "rpms3:alibuild-repo/RPMS/o2-full-deps_$DISTRO.$(uname -m | tr _ -)/" \
+                 --exclude "alibuild-*.rpm"
 
   deb-ubuntu:
     runs-on: ubuntu-latest
