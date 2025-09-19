@@ -70,8 +70,9 @@ jobs:
 
           # Copy new alibuild RPM to preserve alongside existing versions
           rclone --config /tmp/rclone.conf copy \
-                 "alibuild/dist/alibuild-*.noarch.rpm" \
-                 "rpms3:alibuild-repo/RPMS/o2-full-deps_$DISTRO.$(uname -m | tr _ -)/"
+                 dist/ \
+                 "rpms3:alibuild-repo/RPMS/o2-full-deps_$DISTRO.$(uname -m | tr _ -)/" \
+                 --include "alibuild-*.noarch.rpm"
 
           cp dist/alibuild-*.noarch.rpm ~/rpmbuild/RPMS/"$(uname -m)"/
           cd  ~/rpmbuild/RPMS/"$(uname -m)"/
