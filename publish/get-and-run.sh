@@ -59,7 +59,7 @@ if [[ ! $NO_UPDATE ]]; then
   popd
 fi
 
-venv=${NOMAD_TASK_DIR-$PWD}/venv
+venv=${NOMAD_TASK_DIR-$PWD}/venv.$$
 rm -rf "$venv"
 python3 -m venv "$venv"
 . "$venv/bin/activate"
@@ -139,6 +139,8 @@ function notify_on_error() {
   || echo "0    $CONSECUTIVE_ERRORS" > $NOTIFICATION_STATE_FILE
 }
 
+deactivate
+rm -rf "$venv"
 if [[ $ERR ]]; then
   ERR=$(echo $ERR | sed -e 's/ /, /g')
   echo "Something went wrong while publishing: $ERR"
