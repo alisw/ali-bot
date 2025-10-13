@@ -26,13 +26,13 @@ jobs:
         include:
           - el_version: el8
             container: almalinux:8
-            alibuild_tag: v1.17.30
+            alibuild_tag: v1.17.31
           - el_version: el9
             container: almalinux:9
-            alibuild_tag: v1.17.30
+            alibuild_tag: v1.17.31
           - el_version: fedora
             container: fedora:40
-            alibuild_tag: v1.17.30
+            alibuild_tag: v1.17.31
 
     name: "RPM (${{ matrix.el_version }})"
     container: ${{ matrix.container }}
@@ -98,7 +98,7 @@ jobs:
     name: DEB (${{ matrix.ubuntu_codename }})
     container: ubuntu:${{ matrix.ubuntu_codename }}
     env:
-      ALIBUILD_TAG: v1.17.30
+      ALIBUILD_TAG: v1.17.31
       ALIBUILD_DISTRO: ${{ matrix.ubuntu_codename }}
       DEBIAN_FRONTEND: noninteractive
     steps:
