@@ -137,7 +137,7 @@ if [ -n "$HASHES" ]; then
     # number of requests we use is O(num_builds), so checking after every build
     # should be OK.
     (
-      set -eo pipefail   # For these metrics, abort uploading if anything fails.
+      set -eo pipefail +x   # For these metrics, abort uploading if anything fails.
       query() { echo "$limit" | jq -r "$1"; }
       limit=$(curl -fSsH 'Accept: application/vnd.github+json' \
                    -u "token:$GITHUB_TOKEN" 'https://api.github.com/rate_limit' |
@@ -150,7 +150,7 @@ if [ -n "$HASHES" ]; then
                       "remaining=$(query ".$res.remaining")"   \
                       "remaining_pct=$(query "100 * .$res.remaining / .$res.limit")"
       done
-    )
+    ) || echo "Warning: Failed to collect GitHub API rate limit metrics" >&2
   done
 fi
 
