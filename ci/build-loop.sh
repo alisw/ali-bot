@@ -10,9 +10,11 @@
 get_config
 
 PR_START_TIME=$(TZ=Europe/Zurich date +'%a %H:%M CET')
+# shellcheck disable=SC2034 # used in report-pr-errors
+PR_START_TIME_FULL=$(TZ=Europe/Zurich date +'%a %-d %b %Y, %H:%M:%S %Z')
 echo "$PR_START_TIME: Started building check $CHECK_NAME for $PR_REPO@$PR_HASH on $host_id"
 
-ensure_vars CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS PR_START_TIME
+ensure_vars CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS PR_START_TIME PR_START_TIME_FULL
 
 : "${WORKERS_POOL_SIZE:=1}" "${WORKER_INDEX:=0}" "${PR_REPO_CHECKOUT:=$(basename "$PR_REPO")}"
 

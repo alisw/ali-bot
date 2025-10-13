@@ -370,8 +370,8 @@ class Logs(object):
                                        self.fst_task_timeout or
                                        self.fst_failed_command),
                 'hostname': htmlescape(platform.node()),
-                'pr_start_time': os.getenv('PR_START_TIME', ''),
-                'finish_time': datetime.datetime.now().strftime('%a %-d %b %Y, %H:%M:%S %Z'),
+                'pr_start_time': os.getenv('PR_START_TIME_FULL', ''),
+                'finish_time': datetime.datetime.now().astimezone().strftime('%a %-d %b %Y, %H:%M:%S %Z'),
                 'repo': self.pr_built.repo_name,
                 'pr_id': self.pr_built.id,
                 'commit': self.pr_built.commit,
