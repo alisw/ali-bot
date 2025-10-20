@@ -1,4 +1,4 @@
-#!/bin/sh -e
+#!/bin/bash -e
 
 help () {
   cat <<EOF
@@ -22,7 +22,6 @@ die () {
 }
 
 quote () {
-  # Quote $1 and replace ' by '\'' inside it.
   echo "'$(echo "$1" | sed "s/'/'\\\\''/g")'"
 }
 
@@ -37,35 +36,35 @@ while getopts ':hanml' opt; do
 done
 shift $((OPTIND - 1))
 
-# If neither of -m -l is given, enable both.
 if [ -z "$run_linux$run_mac" ]; then
   run_linux=1 run_mac=1
 fi
 
-# Don't quote the first arg, so we can do e.g. `pdci 'ls *'`
 real_command=${1:?COMMAND is required$(die 'COMMAND is required')}
 shift
 for word in "$@"; do
   real_command="$real_command $(quote "$word")"
 done
 
-NOMAD_TOKEN=$(pass cern/ci/nomad-bootstrap-token | head -1)
-export NOMAD_TOKEN
-# List all CI jobs.
-nomad job status |
+run_on_alloc() {
+  alloc=$1
+  script='
+os=$(uname -s)
+if [ "$os" = "Linux" ] && [ -z "'$run_linux'" ]; then exit 0; fi
+if [ "$os" = "Darwin" ] && [ -z "'$run_mac'" ]; then exit 0; fi
+if echo | sed -u d 2>/dev/null; then alias sed="sed -u"; fi
+cd "$NOMAD_TASK_DIR"
+host=$(hostname -s)
+{ '"$real_command"' ; } 2>&1 | sed "s/^/$(printf \"%15s\" \"$host\"): '"$alloc"': /"
+'
+  nomad alloc exec "$alloc" bash -c "$script"
+}
+
+export -f run_on_alloc
+export run_linux run_mac real_command
+
+nomad job status 2>/dev/null |
   awk '/^ci-/ { print $1 }' |
-  # Get running job allocations.
-  xargs -rI '{}' nomad job status '{}' |
+  xargs -rI '{}' nomad job status '{}' 2>/dev/null |
   awk '($6 == "running" && $3 == "ci") { print $1 }' |
-  # Run command on each allocation, in parallel.
-  xargs -rI '{}' -P 64 nomad alloc exec '{}' bash -c "$(cat << EOF
-case \$(uname -s) in
-  Linux)  [ -n "$run_linux" ] || exit 0 ;;
-  Darwin) [ -n "$run_mac" ]   || exit 0 ;;
-esac
-# If sed understands -u, use it to avoid output being overly buffered.
-if sed -u d /dev/null 2>/dev/null; then sed () { command sed -u "\$@"; }; fi
-cd "\$NOMAD_TASK_DIR"
-{ $real_command ; } 2>&1 | sed "s|^|\$(printf '%15s' "\$(hostname -s)"): {}: |"
-EOF
-)"
+  xargs -rP 64 -I '{}' bash -c 'run_on_alloc "{}"'
