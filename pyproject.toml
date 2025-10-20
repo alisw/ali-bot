@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = 'ali-bot'
 readme = "README.rst"
 dynamic = ['version']
+requires-python = '>=3.7'
 
 description = 'ALICE Multipurpose bot'
 authors = [
@@ -16,15 +17,6 @@ classifiers = [
    'Development Status :: 4 - Beta',
    'Intended Audience :: Developers',
    'Topic :: Software Development :: Build Tools',
-   'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
-
-   'Programming Language :: Python :: 3.6',
-   'Programming Language :: Python :: 3.8',
-   'Programming Language :: Python :: 3.9',
-   'Programming Language :: Python :: 3.10',
-   'Programming Language :: Python :: 3.11',
-   'Programming Language :: Python :: 3.12',
-   'Programming Language :: Python :: 3.13',
 ]
 
 keywords=[
@@ -55,7 +47,9 @@ ci = [
 ]
 
 utils = [
-  "python-nomad"
+  "python-nomad",
+  "python-dotenv",
+  "pyfzf",
 ]
 
 [project.urls]
@@ -91,15 +85,10 @@ script-files = [
   "update-symlink-manifests",
   # Helpers
   "ci-status-overview",
-  "utils/bulk-change-pr-status",
-  "utils/bulk-change-pr-status-by-checker",
-  "utils/ciqueues",
-  "utils/ci-status-history",
-  "utils/duplicate-hash-tarballs",
-  "utils/logspecs",
-  "utils/logtimes",
+  "utils/cibuildhistory",
   "utils/nomad-diskfree",
-  "utils/pdci",
+  "utils/clean_pr",
+  "utils/worker_status"
 ]
 
 [tool.setuptools.packages.find]

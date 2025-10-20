@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+# Cleanup script to remove 'sw' directories from running Nomad CI jobs
+# Warning: Every ongoing build will be affected!
+
+set -euo pipefail
+
+for job in $(nomad job status 2>/dev/null | awk 'NR>1 && $1~/^ci-/ && $4=="running" {print $1}'); do
+  for alloc in $(nomad job allocs "$job" | awk 'NR>1 && $6=="running" {print $1}'); do
+    # shellcheck disable=SC2016
+    nomad alloc exec "$alloc" bash -c 'if [ -d /opt/build/alice-ci-workdir ]; then rm -rf /opt/build/alice-ci-workdir/*/sw; else rm -rf "$NOMAD_TASK_DIR"/*/sw; fi' &
+  done
+done
+
+wait

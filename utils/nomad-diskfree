@@ -2,15 +2,12 @@
 
 import collections
 import os
-import sys
+import warnings
+import nomad
 
-try:
-    import nomad
-except ImportError:
-    print('\nError: please install python-nomad!\n', file=sys.stderr)
-    raise
+warnings.filterwarnings('ignore')
 
-CI_ALLOC_REQUIREMENT = 300 * 1024**3  # 300 GiB
+CI_ALLOC_REQUIREMENT = 240 * 1024**3  # 240 GiB
 """This is how much space a single CI allocation needs."""
 BUFFER = 100 * 1024**2   # 100 MiB
 """This should avoid false positive warnings where almost all space is free."""
@@ -27,6 +24,28 @@ def to_iec(n_bytes: int | float) -> str:
 
 def main() -> None:
     """Script entry point."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description="Check available disk space on Nomad CI workers and identify hosts needing cleanup.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Environment Variables:
+  NOMAD_TOKEN  Nomad API token (required)
+  NOMAD_ADDR   Nomad server address (optional)
+
+Examples:
+  # Check disk space on all Nomad CI workers
+  nomad-diskfree
+  
+  # The tool will:
+  # - Report hosts with less than 240 GiB available
+  # - Show allocations on each low-space host
+  # - Provide cleanup commands for hosts needing intervention
+"""
+    )
+    parser.parse_args()
+    
     assert 'NOMAD_TOKEN' in os.environ, 'you must set the NOMAD_TOKEN variable'
     # If no arguments are given to nomad.Nomad, the client is configured from
     # the environment (NOMAD_ADDR, NOMAD_TOKEN, etc).
@@ -72,7 +91,8 @@ def main() -> None:
               *need_intervention, sep='\n\t- ')
         print('\nTo clean up, run the following commands:\n',
               *commands, sep='\n\t')
-
+    else:
+        print('No hosts need manual cleanup now.')
 
 if __name__ == '__main__':
     main()

@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+"""
+PR cleaning tool that selects repos, PRs, and checks to reset status
+Uses pyfzf for interactive selection and GitHub API for status updates
+"""
+
+import sys
+import os
+import requests
+from concurrent.futures import ThreadPoolExecutor
+from pyfzf import FzfPrompt
+
+from dotenv import load_dotenv
+load_dotenv()
+
+# Configuration
+REPOS = [
+    "alisw/alidist",
+    "AliceO2Group/O2Physics",
+    "AliceO2Group/AliceO2",
+    "alisw/aliphysics",
+    "AliceO2Group/QualityControl",
+    "AliceO2Group/O2CodeChecker",
+    "AliceO2Group/O2DPG",
+    "alisw/alibuild",
+]
+
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+
+if not GITHUB_TOKEN:
+    raise ValueError("Please set the GITHUB_TOKEN environment variable")
+
+def select_repo():
+    """Select a repository using pyfzf"""
+    fzf = FzfPrompt()
+    selected = fzf.prompt(REPOS)
+    return selected[0] if selected else None
+
+def get_prs_from_repo(repo, amount=50):
+    """Fetch PRs from GitHub GraphQL API"""
+    owner, name = repo.split("/")
+    headers = {"Authorization": f"Bearer {GITHUB_TOKEN}"}
+
+    query = f'''
+{{
+  repository(owner: "{owner}", name: "{name}") {{
+      pullRequests(first: {amount}, states: [OPEN], orderBy: {{field: UPDATED_AT, direction: DESC}}) {{
+      nodes {{
+        number
+        author {{
+          login
+        }}
+        title
+        updatedAt
+        isDraft
+        commits(last: 1) {{
+          nodes {{
+            commit {{
+              oid
+              statusCheckRollup {{
+                contexts(last: 100) {{
+                  nodes {{
+                    ... on CheckRun {{
+                      name
+                      status
+                      conclusion
+                    }}
+                    ... on StatusContext {{
+                      context
+                      state
+                      targetUrl
+                    }}
+                  }}
+                }}
+              }}
+            }}
+          }}
+        }}
+      }}
+    }}
+  }}
+}}
+    '''
+
+    response = requests.post('https://api.github.com/graphql',
+                           json={'query': query}, headers=headers)
+
+    if response.status_code != 200:
+        raise Exception(f"Query failed: {response.status_code}")
+
+    result = response.json()
+    prs = []
+
+    for pr in result.get("data", {}).get("repository", {}).get("pullRequests", {}).get("nodes", []):
+        last_commit = pr.get("commits", {}).get("nodes", [{}])[0] if pr.get("commits", {}).get("nodes") else {}
+        author = pr.get("author")
+        author_login = author.get("login") if author else "deleted-user"
+
+        output = {
+            "PR": pr.get("number", "unknown"),
+            "author": author_login,
+            "title": pr.get("title", "unknown"),
+            "update_time": pr.get("updatedAt", "unknown"),
+            "commit": last_commit.get("commit", {}).get("oid", "unknown") if last_commit else "unknown",
+            "draft": pr.get("isDraft", False),
+            "checks": []
+        }
+
+        if last_commit and last_commit.get("commit", {}).get("statusCheckRollup"):
+            statuscheckrollup = last_commit.get("commit", {}).get("statusCheckRollup", {})
+            for check in statuscheckrollup.get("contexts", {}).get("nodes", []):
+                extrainfo = {
+                    "name": check.get("name", check.get("context", None)),
+                    "status": check.get("status", None),
+                    "state": check.get("state", check.get("conclusion", None)),
+                    "detailsUrl": check.get("targetUrl", None)
+                }
+                # Avoid duplicates
+                if not any(d.get("name") == extrainfo.get("name") for d in output["checks"]):
+                    output["checks"].append({k: v for k, v in extrainfo.items() if v is not None})
+
+        prs.append(output)
+
+    return prs
+
+def select_pr(repo, prs):
+    """Select a PR using pyfzf with preview"""
+    fzf = FzfPrompt()
+
+    # Format PR options
+    pr_options = []
+    for pr in prs:
+        update_date = pr["update_time"].split("T")[0].replace("-", "/")
+        option = f"#{pr['PR']} @{pr['author']} ({update_date}): {pr['title']}"
+        pr_options.append(option)
+
+    if not pr_options:
+        return None
+
+    # Use fzf with preview (simplified since pyfzf doesn't support complex preview)
+    selected = fzf.prompt(pr_options, fzf_options="--preview-window=down:3:wrap")
+
+    if not selected:
+        return None
+
+    # Extract PR number
+    pr_num_str = selected[0].split()[0][1:]  # Remove '#' prefix
+    try:
+        pr_num = int(pr_num_str)
+        return next((pr for pr in prs if pr["PR"] == pr_num), None)
+    except ValueError:
+        return None
+
+def select_checks_to_clean(checks):
+    """Select checks to clean using pyfzf"""
+    if not checks:
+        print("No checks found for this PR")
+        return []
+
+    fzf = FzfPrompt()
+
+    # Format checks with status emojis
+    check_options = []
+    for check in checks:
+        state = check.get("state", "").upper()
+        if state in ["IN_PROGRESS", "PENDING"]:
+            emoji = "🔄"
+        elif state == "SUCCESS":
+            emoji = "✅"
+        elif state == "ERROR":
+            emoji = "❌"
+        elif state == "SKIPPED":
+            emoji = "🚫"
+        else:
+            emoji = "❓"
+
+        option = f"{emoji} {check['name']}"
+        check_options.append(option)
+
+    # Multi-select checks
+    selected = fzf.prompt(check_options, fzf_options="--multi")
+
+    if not selected:
+        return []
+
+    # Extract check names (remove emojis)
+    selected_names = []
+    for item in selected:
+        # Remove emoji and extra spaces
+        name = item.split(" ", 1)[1] if " " in item else item
+        selected_names.append(name)
+
+    return selected_names
+
+def get_commit_hash(repo, pr_number):
+    """Get commit hash for a PR"""
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "X-GitHub-Api-Version": "2022-11-28"
+    }
+
+    url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}"
+    response = requests.get(url, headers=headers)
+
+    if response.status_code == 200:
+        data = response.json()
+        return data.get("head", {}).get("sha")
+    else:
+        raise Exception(f"Failed to fetch PR data: {response.status_code}, {response.text}")
+
+def clean_check(repo, pr_number, check_name):
+    """Reset a check status to pending"""
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "X-GitHub-Api-Version": "2022-11-28"
+    }
+
+    try:
+        commit = get_commit_hash(repo, pr_number)
+        url = f"https://api.github.com/repos/{repo}/statuses/{commit}"
+        data = {
+            "state": "pending",
+            "context": check_name
+        }
+
+        response = requests.post(url, headers=headers, json=data)
+        return response
+    except Exception as e:
+        print(f"Error cleaning {check_name}: {e}")
+        return None
+
+def main():
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description="Interactive tool to reset GitHub PR check statuses using fuzzy selection.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Environment Variables:
+  GITHUB_TOKEN  GitHub API token (required)
+
+Examples:
+  # Run the interactive PR cleaner
+  clean_pr
+  
+  # The tool will guide you through:
+  # 1. Selecting a repository from the predefined list
+  # 2. Choosing a PR from recent open PRs
+  # 3. Selecting which checks to reset to pending status
+  
+  # Use arrow keys to navigate and enter to select
+  # Use tab to multi-select checks
+"""
+    )
+    parser.parse_args()
+    
+    try:
+        # Step 1: Select repository
+        print("Selecting repository...")
+        repo = select_repo()
+        if not repo:
+            print("No repository selected")
+            return 1
+
+        print(f"Selected repository: {repo}")
+
+        # Step 2: Get PRs
+        print("Fetching PRs...")
+        prs = get_prs_from_repo(repo)
+        if not prs:
+            print("No PRs found")
+            return 1
+
+        # Step 3: Select PR
+        print("Selecting PR...")
+        selected_pr = select_pr(repo, prs)
+        if not selected_pr:
+            print("No PR selected")
+            return 1
+
+        print(f"Selected PR #{selected_pr['PR']}: {selected_pr['title']}")
+
+        # Step 4: Select checks to clean
+        print("Selecting checks to clean...")
+        checks_to_clean = select_checks_to_clean(selected_pr["checks"])
+        if not checks_to_clean:
+            print("No checks selected")
+            return 1
+
+        print(f"Selected {len(checks_to_clean)} checks to clean")
+
+        # Step 5: Clean checks in parallel
+        print("Cleaning checks...")
+        with ThreadPoolExecutor() as executor:
+            futures = []
+            for check_name in checks_to_clean:
+                print(f"Cleaning {check_name}")
+                future = executor.submit(clean_check, repo, selected_pr["PR"], check_name)
+                futures.append((check_name, future))
+
+            # Wait for all to complete
+            for check_name, future in futures:
+                try:
+                    response = future.result()
+                    if response and response.status_code in [200, 201]:
+                        print(f"✅ Cleaned {check_name}")
+                    else:
+                        print(f"❌ Failed to clean {check_name}")
+                except Exception as e:
+                    print(f"❌ Error cleaning {check_name}: {e}")
+
+        print("Done!")
+        return 0
+
+    except KeyboardInterrupt:
+        print("\nCancelled by user")
+        return 1
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(main())
