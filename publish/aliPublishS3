@@ -128,44 +128,43 @@ class CvmfsServer(PlainFilesystem):
                      connParams, dryRun=False):
     super(CvmfsServer, self).__init__(modulefileTpl, pkgdirTpl,
                                       publishScriptTpl, connParams, dryRun)
-    self._inCvmfsTransaction = False
     self._repository         = repository
 
+  def _inTransaction(self):
+    lockfile = "/var/spool/cvmfs/%s/in_transaction.lock" % self._repository
+    return exists(lockfile)
+
   def transaction(self):
-    if self._inCvmfsTransaction:
+    if self._inTransaction():
       debug("%s: already in a transaction", self._repository)
       return True
     elif self._dryRun:
       info("%s: started transaction (dry run)", self._repository)
-      self._inCvmfsTransaction = True
       return True
     else:
       if execute([ "cvmfs_server", "transaction", self._repository ]) == 0:
         info("%s: started transaction", self._repository)
-        self._inCvmfsTransaction = True
         return True
       error("%s: cannot commence transaction: maybe another one is in progress?",
             self._repository)
       return False
 
   def abort(self, force=False):
-    if not self._inCvmfsTransaction and not force:
+    if not self._inTransaction() and not force:
       debug("%s: no transaction to abort", self._repository)
       return True
     if self._dryRun and not force:
       info("%s: transaction aborted (dry run)", self._repository)
-      self._inCvmfsTransaction = False
       return True
     rv = execute([ "cvmfs_server", "abort", "-f", self._repository ])
     if rv == 0:
       info("%s: transaction aborted", self._repository)
-      self._inCvmfsTransaction = False
       return True
     error("%s: cannot abort transaction", self._repository)
     return False
 
   def publish(self, architectures):
-    if not self._inCvmfsTransaction:
+    if not self._inTransaction():
       debug("%s: not in a transaction", self._repository)
       return True
     if not self._countChanges:
@@ -179,7 +178,6 @@ class CvmfsServer(PlainFilesystem):
     rv = execute([ "cvmfs_server", "publish", self._repository ])
     if rv == 0:
       info("%s: transaction published!", self._repository)
-      self._inCvmfsTransaction = False
       return True
     else:
       error("%s: cannot publish CVMFS transaction, aborting", self._repository)
@@ -1067,19 +1065,24 @@ def main():
                      for arch, maps in conf["architectures"].items()}
     architectures = {k: v for k, v in architectures.items() if v}
     debug("Architecture names mappings: %s", json.dumps(architectures, indent=2))
-    return int(not sync(pub=pub,
-                        architectures=architectures,
-                        s3Client=s3Client,
-                        bucket=conf["s3_bucket"],
-                        baseUrl=conf["base_url"],
-                        basePrefix=conf["base_prefix"],
-                        rules=rules,
-                        includeFirst=includeFirst,
-                        autoIncludeDeps=conf["auto_include_deps"],
-                        notifEmail=conf["notification_email"],
-                        dryRun=args.dryRun,
-                        connParams=connParams,
-                        publishLimit=conf["publish_max_packages"]))
+    try:
+      return int(not sync(pub=pub,
+                          architectures=architectures,
+                          s3Client=s3Client,
+                          bucket=conf["s3_bucket"],
+                          baseUrl=conf["base_url"],
+                          basePrefix=conf["base_prefix"],
+                          rules=rules,
+                          includeFirst=includeFirst,
+                          autoIncludeDeps=conf["auto_include_deps"],
+                          notifEmail=conf["notification_email"],
+                          dryRun=args.dryRun,
+                          connParams=connParams,
+                           publishLimit=conf["publish_max_packages"]))
+    finally:
+      if hasattr(pub, '_inTransaction') and pub._inTransaction():
+        warning("Transaction still open, aborting")
+        pub.abort(force=True)
   if args.action == "test-rules":
     testRules = {}
 
