@@ -19,6 +19,12 @@ LOG = logging.Logger(__name__)
 ALIEN_REWRITE_PREFIX = "alien:///alice/data/CCDB/"
 
 
+def in_transaction(repository: str) -> bool:
+    """Check if a CVMFS transaction is currently open."""
+    lockfile = pathlib.Path(f"/var/spool/cvmfs/{repository}/in_transaction.lock")
+    return lockfile.exists()
+
+
 def main(args: argparse.Namespace) -> int:
     """Script entry point."""
     LOG.setLevel(logging.DEBUG)
@@ -81,6 +87,10 @@ def main(args: argparse.Namespace) -> int:
         else:
             LOG.debug("publishing CVMFS transaction")
             check_call(("cvmfs_server", "publish", args.cvmfs_repository))
+    finally:
+        if in_transaction(args.cvmfs_repository):
+            LOG.warning("Transaction still open, aborting")
+            check_call(("cvmfs_server", "abort", "-f", args.cvmfs_repository))
     return 0 if ok else 1
 
 
