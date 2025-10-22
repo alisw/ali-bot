@@ -6,6 +6,8 @@
 # You can do that by running:
 #   env DRYRUN=1 FORCE=1 ./publish-data.sh
 
+SCRIPT_START=$(date +%s)
+
 dieabort() {
   cd /
   rm -rf $DEST
@@ -45,6 +47,9 @@ if [[ ! -d $DEST_PREFIX ]]; then
   mkdir -p $DEST_PREFIX
 fi
 
+echo "TIMING: setup phase took $(($(date +%s) - SCRIPT_START))s"
+SNAPSHOT_CHECK_START=$(date +%s)
+
 for ARCH_DIR in /cvmfs/$REPO/{el*,ubuntu*}; do
   ARCH_DIR=$ARCH_DIR/Modules/modulefiles/AliPhysics
   [[ -d $ARCH_DIR ]] || continue
@@ -80,6 +85,9 @@ for ARCH_DIR in /cvmfs/$REPO/{el*,ubuntu*}; do
   popd &> /dev/null
 done
 
+echo "TIMING: snapshot checking phase took $(($(date +%s) - SNAPSHOT_CHECK_START))s"
+SYNC_START=$(date +%s)
+
 # Take care of today's snapshot from EOS
 DEST=$DEST_PREFIX/$(TZ=Europe/Rome date +%Y/vAN-%Y%m%d)
 [[ -d $DEST && ! $FORCE ]] && { echo "Published already: $DEST"; cvmfs_lazy_publish; exit $?; } || true
@@ -107,5 +115,7 @@ if diff -x .cvmfscatalog --brief -r $SRC_YESTERDAY/ $DEST/ &> /dev/null; then
   rm -rf $DEST  # no final slash!
   ln -nfs $LINKDEST $DEST
 fi
+echo "TIMING: sync phase took $(($(date +%s) - SYNC_START))s"
 cvmfs_lazy_publish || dieabort
+echo "TIMING: TOTAL SCRIPT TIME: $(($(date +%s) - SCRIPT_START))s"
 echo "All OK"

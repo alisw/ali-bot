@@ -576,6 +576,8 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
   getPackUrlTpl    = ("%(baseUrl)s/%(basePrefix)s/%(arch)s/dist-direct/%(pack)s"
                       "/%(pack)s-%(ver)s/%(pack)s-%(ver)s.%(arch)s.tar.gz")
   newPackages = {}
+  
+  t_start = time()
 
   def listDir(path):
     """Look up the contents of path on S3."""
@@ -596,6 +598,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
   # Prepare the list of packages to install
   for arch in architectures:
     newPackages[arch] = []
+    t_arch_start = time()
     debug("Listing all available tarballs for architecture %s", arch)
     tarballs = frozenset(
       basename(item["Key"])
@@ -608,16 +611,20 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
       for item in page.get("Contents", ())
     )
     debug("Found %d tarballs in total for architecture", len(tarballs))
+    info("TIMING: %s: listing tarballs took %.1fs", arch, time() - t_arch_start)
 
     # Get valid package names for this architecture
+    t_packages_start = time()
     debug("Getting packages for architecture %s", arch)
     distPackages = sorted(
       (p["name"] for p in listDir(packNamesPathTpl % {"arch": arch})
        if p["type"] == "directory"),
       key=len, reverse=True)
     debug("Packages found: %s", ", ".join(distPackages))
+    info("TIMING: %s: listing packages took %.1fs", arch, time() - t_packages_start)
 
     # Packages to publish
+    t_filter_start = time()
     pubPackages = []
 
     # Get versions for all valid packages and filter them according to the rules
@@ -679,10 +686,13 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
             pubPackages.append({"name": depName, "ver": depVer})
 
     pubPackages.sort(key=lambda itm: itm["name"])
+    info("TIMING: %s: filtering packages took %.1fs", arch, time() - t_filter_start)
     debug("%s: %d package(s) candidate for publication: %s",
           arch, len(pubPackages), ", ".join(map(prettyPrintPkg, pubPackages)))
 
+    t_check_installed_start = time()
     pubPackages = list(iterUninstalled(pub, arch, architectures[arch], pubPackages))
+    info("TIMING: %s: checking installed packages took %.1fs", arch, time() - t_check_installed_start)
     debug("%s: %d package(s) will be published: %s",
           arch, len(pubPackages), ", ".join(map(prettyPrintPkg, pubPackages)))
 
@@ -707,6 +717,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
       pubPackages = pubPackages[:publishLimit]
 
     # Packages installation
+    t_install_start = time()
     for pack in pubPackages:
       # Get direct and indirect dependencies
       deps = {}
@@ -771,8 +782,12 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
       else:
         error("%s / %s / %s: publish script failed with %d",
               arch, pack["name"], pack["ver"], rv)
+    
+    info("TIMING: %s: installing packages took %.1fs", arch, time() - t_install_start)
+    info("TIMING: %s: total time %.1fs", arch, time() - t_arch_start)
 
   # Publish eventually
+  t_publish_start = time()
   if pub.publish(architectures.values()):
     totSuccess = 0
     totFail = 0
@@ -790,8 +805,11 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
       notify(notifEmail, architectures, newPackages, dryRun)
     else:
       debug("No email notification configured")
+    info("TIMING: publish phase took %.1fs", time() - t_publish_start)
+    info("TIMING: TOTAL EXECUTION TIME: %.1fs", time() - t_start)
     return totFail == 0 or totSuccess > 0
 
+  info("TIMING: TOTAL EXECUTION TIME: %.1fs", time() - t_start)
   return False
 
 def notify(conf, archs, pack, dryRun):
