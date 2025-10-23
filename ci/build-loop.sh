@@ -248,10 +248,7 @@ if clean_env long_timeout aliBuild build "$PACKAGE"          \
      -j "${JOBS:-$(nproc)}" -z "$build_identifier"           \
      --defaults "$ALIBUILD_DEFAULTS"                         \
      ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}         \
-     -e ALIBOT_CI_NAME="$CI_NAME"                            \
-     -e ALIBOT_CHECK_NAME="$CHECK_NAME"                      \
      -e ALIBOT_PR_REPO="$PR_REPO"                            \
-     -e ALIBOT_PR_BRANCH="$PR_BRANCH"                        \
      -e "ALIBUILD_O2_TESTS=$ALIBUILD_O2_TESTS"               \
      -e "ALIBUILD_O2PHYSICS_TESTS=$ALIBUILD_O2PHYSICS_TESTS" \
      -e "ALIBUILD_XJALIENFS_TESTS=$ALIBUILD_XJALIENFS_TESTS" \
