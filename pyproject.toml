@@ -39,7 +39,7 @@ dependencies = [
   'pytz',
   's3cmd',
   'pyyaml',
-  'boto3<1.36.0'
+  'boto3'
 ]
 
 [project.optional-dependencies]
