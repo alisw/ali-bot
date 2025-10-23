@@ -69,6 +69,7 @@ import tempfile
 import threading
 import boto3
 import botocore.exceptions
+from botocore.config import Config
 
 
 LOG = logging.getLogger(__name__)
@@ -388,8 +389,14 @@ def put_object(s3c, bucket, key, contents):
 
 def create_s3_client(endpoint_url):
     """Create a boto3 client for S3."""
+    config = Config(
+      request_checksum_calculation='WHEN_REQUIRED',
+      response_checksum_validation='WHEN_REQUIRED',
+    )
     return boto3.client(
-        "s3", endpoint_url=endpoint_url,
+        "s3",
+        config=config,
+        endpoint_url=endpoint_url,
         aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
         aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"])
 
