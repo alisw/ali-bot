@@ -15,15 +15,15 @@ fi
 case "$repo" in
   rsync://*)
     ssh -n alibuild01.cern.ch "rsync --list-only -R '$repo/TARS/$arch/store/??/*/*.tar.gz' | grep '\\.tar\\.gz\$'" |
-      uniq -Dw 40 -s $((61 + ${#arch})) ;;
+      guniq -Dw 40 -s $((61 + ${#arch})) ;;
 
   b3://*|s3://*)
     s3cmd ls -r "s3://${repo#?3://}/TARS/$arch/store/" |
-      uniq -Dw 40 -s $((47 + ${#arch} + ${#repo})) ;;
+      guniq -Dw 40 -s $((47 + ${#arch} + ${#repo})) ;;
 
   https://s3.cern.ch/*)
     curl -fsSL "$repo/?prefix=TARS/$arch/store/" |
-      uniq -Dw 40 -s $((15 + ${#arch})) ;;
+      guniq -Dw 40 -s $((15 + ${#arch})) ;;
 
   *)
     echo "$(basename "$0"): unknown repo URL: $repo" >&2

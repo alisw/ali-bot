@@ -1,0 +1,330 @@
+#!/usr/bin/env python3
+
+"""Query recent CI build completions and their durations from InfluxDB.
+
+This tool queries the InfluxDB analytics database to show recently completed
+CI builds, including their duration, success/failure status, and other metadata.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timedelta
+from typing import Optional
+from dotenv import load_dotenv
+load_dotenv()
+
+
+def query_influxdb_http(query: str, database: str, url: str) -> list[dict]:
+    try:
+        import requests
+        from urllib.parse import urlparse
+        
+        verify_ssl = True
+        if url.startswith('insecure_'):
+            verify_ssl = False
+            url = url.replace('insecure_', '', 1)
+        
+        parsed = urlparse(url)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        
+        auth = None
+        if parsed.username and parsed.password:
+            auth = (parsed.username, parsed.password)
+        
+        params = {'db': database, 'q': query, 'epoch': 'ms'}
+        response = requests.get(f"{base_url}/query", params=params, 
+                                auth=auth, verify=verify_ssl, timeout=30)
+        
+        if response.status_code != 200:
+            try:
+                error_data = response.json()
+                error_msg = error_data.get('error', response.text)
+            except:
+                error_msg = response.text
+            print(f"\nInfluxDB returned error ({response.status_code}): {error_msg}", file=sys.stderr)
+            
+            if response.status_code == 401:
+                print("\n⚠️  Authentication failed!", file=sys.stderr)
+                print(f"   Username used: {parsed.username if parsed.username else '(none)'}", file=sys.stderr)
+                print(f"   Database: {database}", file=sys.stderr)
+                print("\nCommon issues:", file=sys.stderr)
+                print("  1. Check username/password are correct", file=sys.stderr)
+                print("  2. Database name should be in query string (?db=name), NOT as username", file=sys.stderr)
+                print(f"  3. Correct format: insecure_https://USERNAME:PASSWORD@host:port/write?db={database}", file=sys.stderr)
+            elif 'measurement not found' in str(error_msg).lower() or 'prcheck' in str(error_msg).lower():
+                print("\nThe 'prcheck' measurement doesn't exist in your database.", file=sys.stderr)
+                print("This means either:", file=sys.stderr)
+                print("  1. No CI builds have completed yet (data hasn't been written)", file=sys.stderr)
+                print("  2. The measurement has a different name", file=sys.stderr)
+                print("\nTo check what measurements exist, run:", file=sys.stderr)
+                print(f"  curl -k -G '{base_url}/query' --data-urlencode 'db={database}' --data-urlencode 'q=SHOW MEASUREMENTS'", file=sys.stderr)
+            return []
+        
+        data = response.json()
+        
+        if not data.get('results'):
+            return []
+        
+        result = data['results'][0]
+        
+        if 'error' in result:
+            print(f"InfluxDB query error: {result['error']}", file=sys.stderr)
+            return []
+        
+        if not result.get('series'):
+            return []
+        
+        series = result['series'][0]
+        columns = series['columns']
+        rows = series['values']
+        
+        return [dict(zip(columns, row)) for row in rows]
+    except Exception as e:
+        print(f"Error querying InfluxDB via HTTP: {e}", file=sys.stderr)
+        return []
+
+
+def format_duration(seconds: float) -> str:
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    elif seconds < 3600:
+        mins = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{mins}m {secs}s"
+    else:
+        hours = int(seconds // 3600)
+        mins = int((seconds % 3600) // 60)
+        return f"{hours}h {mins}m"
+
+
+def parse_duration(duration_str: str) -> int:
+    import re
+    match = re.match(r'^(\d+)([smh])$', duration_str.lower())
+    if not match:
+        raise ValueError(f"Invalid duration format: {duration_str}. Use format like: 3s, 5m, 2h")
+    
+    value = int(match.group(1))
+    unit = match.group(2)
+    
+    if unit == 's':
+        return value
+    elif unit == 'm':
+        return value * 60
+    elif unit == 'h':
+        return value * 3600
+    
+    raise ValueError(f"Invalid duration unit: {unit}")
+
+
+def format_time_ago(timestamp_ms: int) -> str:
+    now = datetime.now()
+    then = datetime.fromtimestamp(timestamp_ms / 1000)
+    delta = now - then
+    
+    if delta < timedelta(minutes=1):
+        return "just now"
+    elif delta < timedelta(hours=1):
+        mins = int(delta.total_seconds() / 60)
+        return f"{mins}m ago"
+    elif delta < timedelta(days=1):
+        hours = int(delta.total_seconds() / 3600)
+        return f"{hours}h ago"
+    else:
+        days = delta.days
+        return f"{days}d ago"
+
+
+def print_table(results: list[dict], args: argparse.Namespace) -> None:
+    if not results:
+        print("No completed builds found in the specified time range.")
+        return
+    
+    if args.json:
+        print(json.dumps(results, indent=2))
+        return
+    
+    RED = '\033[91m'
+    GREEN = '\033[92m'
+    RESET = '\033[0m'
+    
+    print(f"\n{'Host':<30} {'Check':<50} {'PR Link':<60} {'Duration':<12} "
+          f"{'Status':<8} {'Completed':<12}")
+    print("=" * 170)
+    
+    for row in results:
+        host = row.get('host', 'unknown')
+        check = row.get('checkname', 'unknown')
+        
+        repo = row.get('repo', 'unknown')
+        prid = row.get('prid', '')
+        if prid:
+            pr_link = f"https://github.com/{repo}/pull/{prid}"
+        else:
+            pr_link = repo
+        
+        prtime = row.get('prtime')
+        duration = format_duration(prtime) if prtime else "N/A"
+        
+        prok = row.get('prok')
+        status = "✓" if prok == 1 else "✗" if prok == 0 else "?"
+        
+        timestamp = row.get('time')
+        completed = format_time_ago(timestamp) if timestamp else "unknown"
+        
+        color = GREEN if prok == 1 else RED if prok == 0 else ''
+        reset = RESET if color else ''
+        
+        print(f"{color}{host:<30} {check:<50} {pr_link:<60} {duration:<12} "
+              f"{status:<8} {completed:<12}{reset}")
+    
+    print(f"\nTotal: {len(results)} completed builds")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Environment Variables:
+  INFLUXDB_READ_URL    InfluxDB URL (default: http://localhost:8086)
+                       Supports: insecure_https://user:pass@host:port/write?db=dbname
+  INFLUXDB_DATABASE    Database name (default: ci_metrics)
+                       Auto-detected from URL if present
+
+Examples:
+  # Show builds from the last 24 hours
+  cibuildhistory
+
+  # Show builds from the last 6 hours for a specific check
+  cibuildhistory --hours 6 --check build/O2/o2
+
+  # Show builds for a specific worker
+  cibuildhistory --worker "build/O2/o2/0/10"
+
+  # Show builds for a specific host
+  cibuildhistory --host "aido2osx8"
+
+  # Show builds that took less than 5 minutes
+  cibuildhistory --max-duration 5m
+
+  # Show last 20 builds
+  cibuildhistory --limit 20
+
+  # Output as JSON
+  cibuildhistory --json
+  
+  # Use custom InfluxDB with authentication
+  export INFLUXDB_READ_URL="insecure_https://user:pass@host:8082/write?db=agile"
+  cibuildhistory
+"""
+    )
+    
+    parser.add_argument(
+        '--hours', type=float, default=24.0,
+        help='Show builds from the last N hours (default: 24)')
+    parser.add_argument(
+        '--limit', type=int, default=100,
+        help='Maximum number of results to show (default: 100)')
+    parser.add_argument(
+        '--check', dest='checkname',
+        help='Filter by check name (e.g., build/O2/o2)')
+    parser.add_argument(
+        '--repo',
+        help='Filter by repository (e.g., AliceO2Group/AliceO2)')
+    parser.add_argument(
+        '--worker',
+        help='Filter by worker identifier')
+    parser.add_argument(
+        '--host',
+        help='Filter by host name')
+    parser.add_argument(
+        '--max-duration',
+        help='Show only builds that took less than specified time (e.g., 30s, 5m, 2h)')
+    parser.add_argument(
+        '--success-only', action='store_true',
+        help='Show only successful builds')
+    parser.add_argument(
+        '--failed-only', action='store_true',
+        help='Show only failed builds')
+    parser.add_argument(
+        '--json', action='store_true',
+        help='Output results as JSON')
+    parser.add_argument(
+        '--url', dest='influxdb_url',
+        default=os.getenv('INFLUXDB_READ_URL', 'http://localhost:8086'),
+        help='InfluxDB URL (default: $INFLUXDB_READ_URL or http://localhost:8086)')
+    parser.add_argument(
+        '--database', dest='influxdb_db',
+        default=os.getenv('INFLUXDB_DATABASE', 'ci_metrics'),
+        help='InfluxDB database name (default: $INFLUXDB_DATABASE or ci_metrics)')
+    
+    args = parser.parse_args()
+    
+    if args.success_only and args.failed_only:
+        parser.error("--success-only and --failed-only are mutually exclusive")
+    
+    from urllib.parse import urlparse, parse_qs
+    parsed_url = urlparse(args.influxdb_url)
+    if parsed_url.query:
+        query_params = parse_qs(parsed_url.query)
+        if 'db' in query_params and not args.influxdb_db != 'ci_metrics':
+            args.influxdb_db = query_params['db'][0]
+    
+    # Convert hours to an integer or use minutes if needed
+    if args.hours % 1 == 0:
+        time_clause = f"time > now() - {int(args.hours)}h"
+    else:
+        # Convert to minutes for fractional hours
+        minutes = int(args.hours * 60)
+        time_clause = f"time > now() - {minutes}m"
+    
+    where_clauses = [
+        "state = 'pr_processing_done'",
+        time_clause
+    ]
+    
+    if args.checkname:
+        where_clauses.append(f"checkname = '{args.checkname}'")
+    if args.repo:
+        where_clauses.append(f"repo = '{args.repo}'")
+    if args.worker:
+        where_clauses.append(f"worker = '{args.worker}'")
+    if args.host:
+        where_clauses.append(f"host = '{args.host}'")
+    if args.max_duration:
+        try:
+            max_seconds = parse_duration(args.max_duration)
+            where_clauses.append(f"prtime < {max_seconds}")
+        except ValueError as e:
+            parser.error(str(e))
+    if args.success_only:
+        where_clauses.append("prok = 1")
+    elif args.failed_only:
+        where_clauses.append("prok = 0")
+    
+    where_clause = " AND ".join(where_clauses)
+    
+    query = f"""
+        SELECT time, repo, checkname, worker, prid, prtime, prok, host
+        FROM prcheck
+        WHERE {where_clause}
+        ORDER BY time DESC
+        LIMIT {args.limit}
+    """
+    
+    results = query_influxdb_http(query, args.influxdb_db, args.influxdb_url)
+    
+    if not results:
+        print("No data returned from InfluxDB. Make sure:", file=sys.stderr)
+        print(f"  - InfluxDB is accessible at {args.influxdb_url}", file=sys.stderr)
+        print(f"  - Database '{args.influxdb_db}' exists", file=sys.stderr)
+        sys.exit(1)
+    
+    print_table(results, args)
+
+
+if __name__ == "__main__":
+    main()
