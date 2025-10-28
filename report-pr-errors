@@ -392,9 +392,6 @@ class Logs(object):
         try:
             os.makedirs(dirname(join("copy-logs", target_file)))
         except OSError as err:
-            # Directory already exists. OSError is raised on python2 and
-            # FileExistsError on python3; the latter is a subclass of OSError,
-            # so this clause handles both.
             print("cannot create target dir:", err, file=sys.stderr)
 
         with open(join("copy-logs", target_file), "w", encoding="utf-8") as logf:
