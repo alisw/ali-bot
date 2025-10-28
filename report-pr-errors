@@ -11,6 +11,7 @@ import platform
 import shutil
 import sys
 import datetime
+import time
 
 from alibot_helpers.github_utilities import (
     calculateMessageHash, setGithubStatus, parseGithubRef, GithubCachedClient,
@@ -423,10 +424,12 @@ class Logs(object):
                       "See http://alisw.github.io/infrastructure-pr-testing for more instructions.",
                       sep="\n", file=logf)
             for log in self.all_logs:
-                print("## Begin", log, file=logf)
+                ti_c = os.path.getctime(log)
+                ti_m = os.path.getmtime(log)
+                print(f"## Begin {log} {time.ctime(ti_c)}", file=logf)
                 with open(log, encoding="utf-8", errors="replace") as sublogf:
                     logf.writelines(sublogf)
-                print("## End", log, file=logf)
+                print(f"## End {log} {time.ctime(ti_m)} ({ti_m - ti_c}s)", file=logf)
 
     def rsync(self, dest):
         err, out = getstatusoutput("cd copy-logs && rsync -av ./ %s" % dest)
