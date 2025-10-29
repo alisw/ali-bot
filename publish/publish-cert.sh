@@ -27,6 +27,13 @@ dieabort() {
   exit 1
 }
 
+cleanup_transaction() {
+  if [[ $CVMFS_IN_TRANSACTION ]]; then
+    echo "CVMFS transaction still active at script exit, aborting"
+    cvmfs_server abort -f "$REPO" || true
+  fi
+}
+
 cvmfs_lazy_transaction() {
   [[ $CVMFS_IN_TRANSACTION ]] && return 0
   for I in {0..7}; do
@@ -40,10 +47,12 @@ cvmfs_lazy_transaction() {
 
 cvmfs_lazy_publish() {
   [[ $CVMFS_IN_TRANSACTION ]] && { cvmfs_server publish "$REPO" || return $?; }
+  CVMFS_IN_TRANSACTION=
   return 0
 }
 
 CVMFS_IN_TRANSACTION=
+trap cleanup_transaction EXIT
 CERT_SRC="/etc/grid-security/certificates"
 CERT_ADDITIONAL_SRC="/cvmfs/$REPO/etc/grid-security/.additional_certificates"
 CERT_DST="/cvmfs/$REPO/etc/grid-security/certificates"
