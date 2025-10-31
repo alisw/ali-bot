@@ -2,6 +2,7 @@
 
 import logging, gzip, sys, json, yaml, errno, boto3, requests
 import botocore.exceptions
+from botocore.config import Config
 from concurrent.futures import ThreadPoolExecutor
 from glob import glob
 from argparse import ArgumentParser
@@ -903,6 +904,9 @@ def main():
                       help="Override configuration options in JSON format")
   args = parser.parse_args()
 
+  # Publisher instance to be used in finally block
+  pub = None
+
   overrideConf = {}
   try:
     for o in args.override if args.override else {}:
@@ -1011,150 +1015,155 @@ def main():
 
   debug("Per architecture include/exclude rules: %s", json.dumps(rules, indent=2))
 
-  if args.action in [ "sync-cvmfs", "sync-dir", "sync-alien", "sync-rpms" ]:
-    if args.pidFile:
-      try:
-        otherPid = int(open(args.pidFile, "r").read().strip())
-        kill(otherPid, 0)
-        runningFor = time() - getmtime(args.pidFile)
-        if runningFor > conf["kill_after_s"]:
-          kill(otherPid, 9)
-          error("aliPublish with PID %d in overtime (%ds): killed", otherPid, runningFor)
-          otherPid = 0
-      except (IOError, OSError, ValueError):
-        otherPid = runningFor = 0
-      if otherPid:
-        error("aliPublish already running with PID %d for %ds", otherPid, runningFor)
+  try:
+    if args.action in [ "sync-cvmfs", "sync-dir", "sync-alien", "sync-rpms" ]:
+      if args.pidFile:
+        try:
+          otherPid = int(open(args.pidFile, "r").read().strip())
+          kill(otherPid, 0)
+          runningFor = time() - getmtime(args.pidFile)
+          if runningFor > conf["kill_after_s"]:
+            kill(otherPid, 9)
+            error("aliPublish with PID %d in overtime (%ds): killed", otherPid, runningFor)
+            otherPid = 0
+        except (IOError, OSError, ValueError):
+          otherPid = runningFor = 0
+        if otherPid:
+          error("aliPublish already running with PID %d for %ds", otherPid, runningFor)
+          return 1
+        try:
+          with open(args.pidFile, "w") as f:
+            f.write(str(getpid()))
+        except IOError as e:
+          error("Cannot write pidfile %s, aborting", args.pidFile)
+          return 1
+      if args.action in ("sync-cvmfs", "sync-dir", "sync-alien"):
+        if not isinstance(conf["package_dir"], str):
+          error("[cvmfs_]package_dir must be a string")
+          doExit = True
+      if args.action in ("sync-cvmfs", "sync-dir"):
+        if not isinstance(conf["modulefile"], str):
+          error("[cvmfs_]modulefile must be a string")
+          doExit = True
+      if args.action in ("sync-cvmfs", "sync-alien"):
+        if not isinstance(conf.get("cvmfs_repository", None), str):
+          error("cvmfs_repository must be a string")
+          doExit = True
+      if doExit:
         return 1
-      try:
-        with open(args.pidFile, "w") as f:
-          f.write(str(getpid()))
-      except IOError as e:
-        error("Cannot write pidfile %s, aborting", args.pidFile)
-        return 1
-    if args.action in ("sync-cvmfs", "sync-dir", "sync-alien"):
-      if not isinstance(conf["package_dir"], str):
-        error("[cvmfs_]package_dir must be a string")
-        doExit = True
-    if args.action in ("sync-cvmfs", "sync-dir"):
-      if not isinstance(conf["modulefile"], str):
-        error("[cvmfs_]modulefile must be a string")
-        doExit = True
-    if args.action in ("sync-cvmfs", "sync-alien"):
-      if not isinstance(conf.get("cvmfs_repository", None), str):
-        error("cvmfs_repository must be a string")
-        doExit = True
-    if doExit:
-      return 1
 
-    from botocore.config import Config
-    s3_config = Config(max_pool_connections=50)
-    s3Client = boto3.client("s3", endpoint_url=conf["s3_endpoint_url"],
-                            aws_access_key_id=environ["AWS_ACCESS_KEY_ID"],
-                            aws_secret_access_key=environ["AWS_SECRET_ACCESS_KEY"],
-                            config=s3_config)
+      s3_config = Config(max_pool_connections=50)
+      s3Client = boto3.client("s3", endpoint_url=conf["s3_endpoint_url"],
+                              aws_access_key_id=environ["AWS_ACCESS_KEY_ID"],
+                              aws_secret_access_key=environ["AWS_SECRET_ACCESS_KEY"],
+                              config=s3_config)
 
-    if args.action == "sync-cvmfs":
-      archKey = "CVMFS"
-      pub = CvmfsServer(repository=conf["cvmfs_repository"],
-                        modulefileTpl=conf["modulefile"],
-                        pkgdirTpl=conf["package_dir"],
-                        publishScriptTpl=open(progDir+"/pub-file-template.sh").read(),
-                        connParams=connParams,
-                        dryRun=args.dryRun)
-    elif args.action == "sync-dir":
-      archKey = "dir"
-      pub = PlainFilesystem(modulefileTpl=conf["modulefile"],
-                            pkgdirTpl=conf["package_dir"],
-                            publishScriptTpl=open(progDir+"/pub-file-template.sh").read(),
-                            connParams=connParams,
-                            dryRun=args.dryRun)
-    elif args.action == "sync-alien":
-      archKey = "AliEn"
-      pub = AliEn(connParams=connParams,
-                  repository=conf["cvmfs_repository"],
-                  package_dir=conf["package_dir"],
+      if args.action == "sync-cvmfs":
+        archKey = "CVMFS"
+        pub = CvmfsServer(repository=conf["cvmfs_repository"],
+                          modulefileTpl=conf["modulefile"],
+                          pkgdirTpl=conf["package_dir"],
+                          publishScriptTpl=open(progDir+"/pub-file-template.sh").read(),
+                          connParams=connParams,
+                          dryRun=args.dryRun)
+      elif args.action == "sync-dir":
+        archKey = "dir"
+        pub = PlainFilesystem(modulefileTpl=conf["modulefile"],
+                              pkgdirTpl=conf["package_dir"],
+                              publishScriptTpl=open(progDir+"/pub-file-template.sh").read(),
+                              connParams=connParams,
+                              dryRun=args.dryRun)
+      elif args.action == "sync-alien":
+        archKey = "AliEn"
+        pub = AliEn(connParams=connParams,
+                    repository=conf["cvmfs_repository"],
+                    package_dir=conf["package_dir"],
+                    dryRun=args.dryRun)
+      else:
+        conf["rpm_updatable"] = conf.get("rpm_updatable", False)
+        archKey = "RPM"
+        template = "pub-updatable-rpms-template.sh" if conf["rpm_updatable"] \
+          else "pub-rpms-template.sh"
+        pub = RPM(publishScriptTpl=open(progDir + "/" + template).read(),
+                  connParams=connParams,
+                  genUpdatableRpms=conf["rpm_updatable"],
+                  baseUrl=conf["base_url"],
+                  s3Client=s3Client,
+                  s3Bucket=conf["s3_bucket"],
                   dryRun=args.dryRun)
+      if args.abort:
+        pub.abort(force=True)
+
+      architectures = {arch: maps.get(archKey, arch) if isinstance(maps, dict) else arch
+                       for arch, maps in conf["architectures"].items()}
+      architectures = {k: v for k, v in architectures.items() if v}
+      debug("Architecture names mappings: %s", json.dumps(architectures, indent=2))
+      return int(not sync(pub=pub,
+                          architectures=architectures,
+                          s3Client=s3Client,
+                          bucket=conf["s3_bucket"],
+                          baseUrl=conf["base_url"],
+                          basePrefix=conf["base_prefix"],
+                          rules=rules,
+                          includeFirst=includeFirst,
+                          autoIncludeDeps=conf["auto_include_deps"],
+                          notifEmail=conf["notification_email"],
+                          dryRun=args.dryRun,
+                          connParams=connParams,
+                          publishLimit=conf["publish_max_packages"]))
+    elif args.action == "test-rules":
+      testRules = {}
+
+      if args.pkgName and args.pkgVer and args.pkgArch:
+        # Test rules using command-line arguments
+        if args.testConf:
+          parser.error("cannot specify at the same time a test file and --pkg* arguments")
+        testRules = {args.pkgArch: {args.pkgName: {args.pkgVer: True}}}
+
+      else:
+        # Test rules by reading them from a configuration file
+        if args.pkgName or args.pkgVer or args.pkgArch:
+          parser.error("not all required --pkg* arguments were specified")
+
+        # Do we need to use a default test file?
+        if not args.testConf:
+          m = search(r"^aliPublish(|.*)\.conf$", args.configFile)
+          if m:
+            args.testConf = "test%s.yaml" % m.group(1)
+            debug("Using %s as default configuration file for tests", args.testConf)
+
+        try:
+          testRules = yaml.safe_load(open(args.testConf).read())
+        except (IOError, yaml.YAMLError) as e:
+          error("Cannot open rules to test: %s", e)
+          return 1
+
+      # At this point we have everything in testRules, let's test them
+      for arch in testRules:
+        for pkg in testRules[arch]:
+          for ver in testRules[arch][pkg]:
+            match = applyFilter(ver,
+                                rules["include"].get(arch, {}).get(pkg, None),
+                                rules["exclude"].get(arch, {}).get(pkg, None),
+                                includeFirst)
+            msg = ("%s: %s ver %s matches filters%s" if match else
+                   "%s: %s ver %s does NOT match filters%s")
+            if match != testRules[arch][pkg][ver]:
+              error(msg, arch, pkg, ver,
+                    " but it should not" if match else " but it should")
+              return 1
+            info(msg, arch, pkg, ver, "")
+      info("All rules%s tested with success",
+           " in "+args.testConf if args.testConf else "")
+      return 0
+
     else:
-      conf["rpm_updatable"] = conf.get("rpm_updatable", False)
-      archKey = "RPM"
-      template = "pub-updatable-rpms-template.sh" if conf["rpm_updatable"] \
-        else "pub-rpms-template.sh"
-      pub = RPM(publishScriptTpl=open(progDir + "/" + template).read(),
-                connParams=connParams,
-                genUpdatableRpms=conf["rpm_updatable"],
-                baseUrl=conf["base_url"],
-                s3Client=s3Client,
-                s3Bucket=conf["s3_bucket"],
-                dryRun=args.dryRun)
-    if args.abort:
+      parser.error("wrong action, see --help")
+  finally:
+    # Ensure any ongoing CVMFS transaction is aborted before exiting
+    if pub is not None and hasattr(pub, '_inCvmfsTransaction') and pub._inCvmfsTransaction:
+      warning("CVMFS transaction still active at script exit, aborting")
       pub.abort(force=True)
-
-    architectures = {arch: maps.get(archKey, arch) if isinstance(maps, dict) else arch
-                     for arch, maps in conf["architectures"].items()}
-    architectures = {k: v for k, v in architectures.items() if v}
-    debug("Architecture names mappings: %s", json.dumps(architectures, indent=2))
-    return int(not sync(pub=pub,
-                        architectures=architectures,
-                        s3Client=s3Client,
-                        bucket=conf["s3_bucket"],
-                        baseUrl=conf["base_url"],
-                        basePrefix=conf["base_prefix"],
-                        rules=rules,
-                        includeFirst=includeFirst,
-                        autoIncludeDeps=conf["auto_include_deps"],
-                        notifEmail=conf["notification_email"],
-                        dryRun=args.dryRun,
-                        connParams=connParams,
-                        publishLimit=conf["publish_max_packages"]))
-  if args.action == "test-rules":
-    testRules = {}
-
-    if args.pkgName and args.pkgVer and args.pkgArch:
-      # Test rules using command-line arguments
-      if args.testConf:
-        parser.error("cannot specify at the same time a test file and --pkg* arguments")
-      testRules = {args.pkgArch: {args.pkgName: {args.pkgVer: True}}}
-
-    else:
-      # Test rules by reading them from a configuration file
-      if args.pkgName or args.pkgVer or args.pkgArch:
-        parser.error("not all required --pkg* arguments were specified")
-
-      # Do we need to use a default test file?
-      if not args.testConf:
-        m = search(r"^aliPublish(|.*)\.conf$", args.configFile)
-        if m:
-          args.testConf = "test%s.yaml" % m.group(1)
-          debug("Using %s as default configuration file for tests", args.testConf)
-
-      try:
-        testRules = yaml.safe_load(open(args.testConf).read())
-      except (IOError, yaml.YAMLError) as e:
-        error("Cannot open rules to test: %s", e)
-        return 1
-
-    # At this point we have everything in testRules, let's test them
-    for arch in testRules:
-      for pkg in testRules[arch]:
-        for ver in testRules[arch][pkg]:
-          match = applyFilter(ver,
-                              rules["include"].get(arch, {}).get(pkg, None),
-                              rules["exclude"].get(arch, {}).get(pkg, None),
-                              includeFirst)
-          msg = ("%s: %s ver %s matches filters%s" if match else
-                 "%s: %s ver %s does NOT match filters%s")
-          if match != testRules[arch][pkg][ver]:
-            error(msg, arch, pkg, ver,
-                  " but it should not" if match else " but it should")
-            return 1
-          info(msg, arch, pkg, ver, "")
-    info("All rules%s tested with success",
-         " in "+args.testConf if args.testConf else "")
-    return 0
-
-  else:
-    parser.error("wrong action, see --help")
 
 if __name__ == "__main__":
   sys.exit(main())

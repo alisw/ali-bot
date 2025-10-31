@@ -15,6 +15,13 @@ dieabort() {
   exit 1
 }
 
+cleanup_transaction() {
+  if [[ $CVMFS_IN_TRANSACTION ]]; then
+    echo "CVMFS transaction still active at script exit, aborting"
+    cvmfs_server abort -f || true
+  fi
+}
+
 cvmfs_lazy_transaction() {
   [[ $CVMFS_IN_TRANSACTION ]] && return 0
   for I in {0..7}; do
@@ -27,10 +34,12 @@ cvmfs_lazy_transaction() {
 
 cvmfs_lazy_publish() {
   [[ $CVMFS_IN_TRANSACTION ]] && { cvmfs_server publish || return $?; }
+  CVMFS_IN_TRANSACTION=
   return 0
 }
 
 CVMFS_IN_TRANSACTION=
+trap cleanup_transaction EXIT
 export PATH=$HOME/opt/bin:$PATH
 [[ $DRYRUN ]] || { cvmfs_server &> /dev/null || [[ $? != 127 ]]; }
 sshpass &> /dev/null || [[ $? != 127 ]]
