@@ -3,6 +3,7 @@
 import logging, gzip, sys, json, yaml, errno, boto3, requests
 import botocore.exceptions
 from concurrent.futures import ThreadPoolExecutor
+from botocore.config import Config
 from glob import glob
 from argparse import ArgumentParser
 from datetime import datetime, timedelta, timezone
@@ -1047,8 +1048,11 @@ def main():
     if doExit:
       return 1
 
-    from botocore.config import Config
-    s3_config = Config(max_pool_connections=50)
+    s3_config = Config(
+        max_pool_connections=50,
+      request_checksum_calculation='WHEN_REQUIRED',
+      response_checksum_validation='WHEN_REQUIRED',
+    )
     s3Client = boto3.client("s3", endpoint_url=conf["s3_endpoint_url"],
                             aws_access_key_id=environ["AWS_ACCESS_KEY_ID"],
                             aws_secret_access_key=environ["AWS_SECRET_ACCESS_KEY"],

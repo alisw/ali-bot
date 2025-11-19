@@ -30,6 +30,7 @@ from collections.abc import Iterable, Set
 from datetime import datetime, timezone, timedelta
 from itertools import chain, groupby
 from boto3 import client
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 START_TIME: datetime = datetime.now(timezone(timedelta(0), 'UTC'))
@@ -154,7 +155,13 @@ def main(args: Namespace) -> int:
         s3c = MockS3Client(args.repo_listing)
     else:
         try:
-            s3c = client('s3', endpoint_url=args.endpoint_url,
+            config = Config(
+              request_checksum_calculation='WHEN_REQUIRED',
+              response_checksum_validation='WHEN_REQUIRED',
+            )
+            s3c = client('s3',
+                         config=config,
+                         endpoint_url=args.endpoint_url,
                          aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
                          aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'])
         except KeyError as err:

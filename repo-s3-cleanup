@@ -25,6 +25,7 @@ from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from fnmatch import fnmatchcase
 from boto3 import client
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 if typing.TYPE_CHECKING:
@@ -43,7 +44,13 @@ def main(args: Namespace) -> int:
     log = logging.getLogger(__name__)
 
     try:
-        s3c = client('s3', endpoint_url=args.endpoint_url,
+        config = Config(
+          request_checksum_calculation='WHEN_REQUIRED',
+          response_checksum_validation='WHEN_REQUIRED',
+        )
+        s3c = client('s3',
+                     config=config,
+                     endpoint_url=args.endpoint_url,
                      aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
                      aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'])
     except KeyError as err:
