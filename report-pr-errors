@@ -439,15 +439,22 @@ class Logs(object):
         m = re.compile("^s3://([^.]+)[.](.*)").match(dest)
         bucket_name = m.group(1)
         server = m.group(2)
-        config = Config(
-          request_checksum_calculation='WHEN_REQUIRED',
-          response_checksum_validation='WHEN_REQUIRED',
-        )
-        s3_client = boto3.client('s3',
-                                 config=config,
-                                 aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-                                 aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-                                 endpoint_url="https://%s" % (server))
+        try:
+          config = Config(
+            request_checksum_calculation='WHEN_REQUIRED',
+            response_checksum_validation='WHEN_REQUIRED',
+          )
+          s3_client = boto3.client('s3',
+                                   config=config,
+                                   aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+                                   aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+                                   endpoint_url="https://%s" % (server))
+        except Exception:
+          s3_client = boto3.client('s3',
+                                    aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+                                    aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+                                    endpoint_url="https://%s" % (server))
+
         s3_client.list_buckets()
         transfer = S3Transfer(s3_client)
         matches = []
