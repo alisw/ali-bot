@@ -311,7 +311,7 @@ Examples:
         SELECT time, repo, checkname, worker, prid, prtime, prok, host
         FROM prcheck
         WHERE {where_clause}
-        ORDER BY time DESC
+        ORDER BY time ASC
         LIMIT {args.limit}
     """
     
