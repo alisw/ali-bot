@@ -44,6 +44,8 @@ O2CHECKCODE_RE = re.compile(r'^=+ List of errors found =+$')
 FST_TASK_TIMEOUT_RE = re.compile(r'task timeout reached')
 FST_LOGFILE_RE = re.compile(r'Detected critical problem in logfile')
 FST_FAILED_CMD_RE = re.compile(r'^command .* had nonzero exit code [0-9]+$')
+# xjalienfs error messages
+XJALIENFS_EXCEPTION_RE = re.compile(r'Exception encountered')
 # For the comment previewing error messages, if any
 ALL_ERROR_MSG_RE = re.compile('|'.join(regex.pattern for regex in (
     ERRORS_RE,
@@ -53,6 +55,7 @@ ALL_ERROR_MSG_RE = re.compile('|'.join(regex.pattern for regex in (
     FST_TASK_TIMEOUT_RE,
     FST_LOGFILE_RE,
     FST_FAILED_CMD_RE,
+    XJALIENFS_EXCEPTION_RE,
     # Excluding WARNINGS_RE (unwanted in preview comment) and O2CHECKCODE_RE
     # (not useful without context, so it's handled specially).
 )))
@@ -286,6 +289,8 @@ class Logs(object):
             FST_LOGFILE_RE, context_before=0, context_after=20)
         self.fst_failed_command = self.grep_logs(
             FST_FAILED_CMD_RE, context_before=0, context_after=float('inf'))
+        self.xjalienfs_exceptions = self.grep_logs(
+            XJALIENFS_EXCEPTION_RE, context_before=3, context_after=5)
 
         # The o2checkcode log can contain spurious errors before the
         # "=== List of errors found ===" line, so treat it specially.
@@ -360,10 +365,12 @@ class Logs(object):
                 'cmake': htmlescape(self.cmake_errors),
                 'cmake_display': display(self.cmake_errors),
                 'killed_display': display(self.compiler_killed),
+                'xjalienfs': htmlescape(self.xjalienfs_exceptions),
+                'xjalienfs_display': display(self.xjalienfs_exceptions),
                 'noerrors_display': display(not any((
                     self.o2checkcode_messages, self.failed_unit_tests,
                     self.errors_log, self.warnings_log, self.compiler_killed,
-                    self.cmake_errors, fetch_log,
+                    self.cmake_errors, fetch_log, self.xjalienfs_exceptions,
                 ))),
                 'fst_logfile': htmlescape(self.full_system_test),
                 'fst_timeout': htmlescape(self.fst_task_timeout),
@@ -594,6 +601,7 @@ PRETTY_LOG_TEMPLATE = '''\
    #warnings, #warnings-toc { display: %(warn_display)s; }
    #cmake, #cmake-toc { display: %(cmake_display)s; }
    #fullsystest, #fullsystest-toc { display: %(fst_display)s; }
+   #xjalienfs, #xjalienfs-toc { display: %(xjalienfs_display)s; }
   </style>
 </head>
 <body class="%(status)s">
@@ -628,6 +636,7 @@ PRETTY_LOG_TEMPLATE = '''\
     <li id="o2checkcode-toc"><a href="#o2checkcode"><code>o2checkcode</code> results</a></li>
     <li id="tests-toc"><a href="#tests">Unit test results</a></li>
     <li id="fullsystest-toc"><a href="#fullsystest">O2 full system test</a></li>
+    <li id="xjalienfs-toc"><a href="#xjalienfs">XjalienFS exceptions</a></li>
     <li id="errors-toc"><a href="#errors">Error messages</a></li>
     <li id="warnings-toc"><a href="#warnings">Compiler warnings</a></li>
   </ol></nav></p>
@@ -661,6 +670,10 @@ PRETTY_LOG_TEMPLATE = '''\
     <p><pre><code>%(fst_timeout)s</code></pre></p>
     <p><pre><code>%(fst_logfile)s</code></pre></p>
     <p><pre><code>%(fst_failedcmd)s</code></pre></p>
+  </section>
+  <section id="xjalienfs">
+    <h2>XjalienFS exceptions</h2>
+    <p><pre><code>%(xjalienfs)s</code></pre></p>
   </section>
   <section id="cmake">
     <h2>CMake errors</h2>
