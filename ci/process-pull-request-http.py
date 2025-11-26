@@ -174,7 +174,6 @@ class State(object):
     self.action_approval_required(git, pr, perms, tests)
 
   def action_approval_required(self, git, pr, perms, tests):
-    pull = git.get_pull(pr, cached=True)
     self.action_approval_pending(git, pr, perms, tests)
     if self.approvers() is not True:
       info("%s: approval required by: %s" % (self.sha, self.approvers))
