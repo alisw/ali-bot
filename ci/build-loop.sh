@@ -256,10 +256,6 @@ if clean_env long_timeout aliBuild build "$PACKAGE"          \
      -e "ALIBUILD_BASE_HASH=$base_hash"                      \
      ${jalien_token_cert:+-e "JALIEN_TOKEN_CERT=$jalien_token_cert"} \
      ${jalien_token_key:+-e "JALIEN_TOKEN_KEY=$jalien_token_key"} \
-     ${use_docker:+-e GIT_CONFIG_COUNT=1}                    \
-     ${use_docker:+-e GIT_CONFIG_KEY_0=credential.helper}    \
-     ${use_docker:+-e GIT_CONFIG_VALUE_0='store --file /.git-creds'} \
-     ${use_docker:+-v "$HOME/.git-creds:/.git-creds:ro"}     \
      ${use_docker:+--architecture "$ARCHITECTURE"}           \
      ${use_docker:+--docker-image "$CONTAINER_IMAGE"}        \
      ${use_docker:+--docker-extra-args="$DOCKER_EXTRA_ARGS"} \
