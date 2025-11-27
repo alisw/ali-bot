@@ -56,6 +56,8 @@ jobs:
         run: |
           cd ali-bot/alidist
           gh pr checkout ${{ inputs.pr }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v6
@@ -121,6 +123,8 @@ jobs:
 
       - name: Comment on PR
         if: steps.analysis.outputs.untested_count > 0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           UNTESTED_PACKAGES="${{ steps.analysis.outputs.untested_packages }}"
           UNTESTED_COUNT="${{ steps.analysis.outputs.untested_count }}"
