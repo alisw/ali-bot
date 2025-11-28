@@ -223,7 +223,7 @@ case "$REMOTE_STORE" in
     export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
     set -x ;;
 esac
-aliBuild --remote-store "$REMOTE_STORE" "${alibuild_args[@]}" || {
+nice -n -10 aliBuild --remote-store "$REMOTE_STORE" "${alibuild_args[@]}" || {
   builderr=$?
   echo "Exiting with an error ($builderr), not tagging"
   exit $builderr
