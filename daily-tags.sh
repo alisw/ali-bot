@@ -119,6 +119,7 @@ alibuild_args=(
   ${ARCHITECTURE:+--architecture "$ARCHITECTURE"}
   ${ALIBUILD_DISABLE:+--disable "$ALIBUILD_DISABLE"}
   ${DEFAULTS:+--defaults "$DEFAULTS"}
+  --fetch-repos
   build "$main_pkg"
 )
 
