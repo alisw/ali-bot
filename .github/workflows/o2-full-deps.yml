@@ -11,17 +11,11 @@ permissions: {}
 
 jobs:
   rpm:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs_on || 'ubuntu-latest' }}
     strategy:
       # Keep running jobs for other CentOS/Alma/Fedora versions, even if one fails.
       fail-fast: false
       matrix:
-        # For every entry in el_version:, add an {el_version, container, alibuild_tag} entry to include:!
-        el_version:
-          - el8
-          - el9
-          - fedora
-
         # The include: key extends the matrix specified above with extra variables.
         include:
           - el_version: el8
@@ -33,8 +27,13 @@ jobs:
           - el_version: fedora
             container: fedora:40
             alibuild_tag: v1.17.33
+          # aarch64 build on native ARM runner
+          - el_version: el9
+            container: almalinux:9
+            alibuild_tag: v1.17.33
+            runs_on: ubuntu-24.04-arm
 
-    name: "RPM (${{ matrix.el_version }})"
+    name: "RPM (${{ matrix.el_version }} ${{ matrix.runs_on || 'x86_64' }})"
     container: ${{ matrix.container }}
     env:
       ALIBUILD_TAG: ${{ matrix.alibuild_tag }}
