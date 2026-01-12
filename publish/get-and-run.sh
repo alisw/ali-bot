@@ -38,6 +38,9 @@ elif [[ -d /cvmfs/alice.cern.ch ]]; then
   PUB_DATA=1
   PUB_CERT=1
   export PATH=$HOME/opt/bin:$PATH
+elif [[ -d /cvmfs/sft-nightlies-test.cern.ch ]]; then
+  CONF=/home/cvsft-nightlies-test/lcgBitsPublish-test.conf
+  CMD=sync-cvmfs
 elif [[ -d /cvmfs ]]; then
   CMD=sync-cvmfs
 else
