@@ -20,6 +20,13 @@ ensure_vars CI_NAME CHECK_NAME PR_REPO PR_BRANCH PACKAGE ALIBUILD_DEFAULTS PR_ST
 
 host_id=${NOMAD_SHORT_ALLOC_ID:-$(hostname -f)}
 
+# Use bits instead of aliBuild if the check name contains "bits"
+if [[ $CHECK_NAME == *bits* ]]; then
+  BUILD_CMD=bits
+else
+  BUILD_CMD=aliBuild
+fi
+
 # Update all PRs in the queue with their number before we start building.
 echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead btype num hash envf; do
   # Run this in a subshell as report_pr_errors uses $PR_REPO but we don't want
@@ -94,7 +101,7 @@ find separate_logs/ -type f -mtime +5 -delete || true
 find separate_logs/ -type d -empty -delete || true
 
 # Run preliminary cleanup command
-aliBuild clean --debug
+$BUILD_CMD clean --debug
 
 # We are looping over several build hashes here. We will have one log per build.
 mkdir -p "separate_logs/$(date -u +%Y%m%d-%H%M%S)-$PR_NUMBER-$PR_HASH"
@@ -202,13 +209,13 @@ if cgroup=$(sed -rn '/:freezer:/{s/.*:freezer:(.*)/\1/p;q}' "/proc/$$/cgroup"); 
   esac
 fi
 
-if ! clean_env short_timeout aliDoctor --defaults "$ALIBUILD_DEFAULTS" "$PACKAGE" \
+if ! clean_env short_timeout $BUILD_CMD doctor --defaults "$ALIBUILD_DEFAULTS" "$PACKAGE" \
      ${use_docker:+--architecture "$ARCHITECTURE" --docker-image "$CONTAINER_IMAGE"}
 then
   # We do not want to kill the system is github is not working
   # so we ignore the result code for now
-  short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/error" -m 'aliDoctor error' ||
-    short_timeout report-analytics exception --desc 'set-github-status fail on aliDoctor error'
+  short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/error" -m "$BUILD_CMD doctor error" ||
+    short_timeout report-analytics exception --desc "set-github-status fail on $BUILD_CMD doctor error"
   # If doctor fails, we can move on to the next PR, since we know it will not work.
   # We do not report aliDoctor being ok, because that's really a granted.
   exit 1
@@ -244,7 +251,7 @@ build_identifier=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
 # report-pr-errors looks for errors in it.
 # --docker-extra-args=... uses an equals sign as its arg can start with "--",
 # --which would confuse argparse if passed as a separate argument.
-if clean_env long_timeout aliBuild build "$PACKAGE"          \
+if clean_env long_timeout $BUILD_CMD build "$PACKAGE"          \
      -j "${JOBS:-$(nproc)}" -z "$build_identifier"           \
      --defaults "$ALIBUILD_DEFAULTS"                         \
      ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}         \
