@@ -22,16 +22,6 @@ elif [[ -x /home/monalisa/bin/alien ]]; then
   export PATH="/home/monalisa/bin:$PATH"
   CMD=sync-alien
   OVERRIDE='{"notification_email":{}}'
-elif [[ -d /cvmfs/alice-test.cern.ch ]]; then
-  CONF=aliPublish-test.conf
-  CMD=sync-cvmfs
-elif [[ -d /cvmfs/alice-nightlies.cern.ch ]]; then
-  CONF=aliPublish-nightlies.conf
-  CMD=sync-cvmfs
-  PUB_CCDB=1
-  PUB_DATA=1
-  PUB_CERT=1
-  export PATH=$HOME/opt/bin:$PATH
 elif [[ -d /cvmfs/alice.cern.ch ]]; then
   CMD=sync-cvmfs
   PUB_CCDB=1
@@ -105,7 +95,7 @@ pushd $DEST/publish
                ${OVERRIDE:+--override "$OVERRIDE"} \
                --cache-deps-dir "$cachedir"        \
                --pidfile /tmp/aliPublish.pid       \
-                $CMD                                \
+                $CMD                               \
                 2>&1 | tee -a $LOG.error
   [[ ${PIPESTATUS[0]} == 0 ]] || ERR="$ERR packages"
   echo "TIMING: Package publisher took $(($(date +%s) - PKG_START))s"
@@ -166,7 +156,7 @@ function notify_on_error() {
   cp "$ATTACHMENT" "$TD/log.txt"
   echo "$1" | \
   mailx -s "[AliBuild${REPO}] An error occurred"                \
-        -r 'ALICE Builder <alibot@cern.ch>'                     \
+        -r 'ALICE Builder <ali-bot@cern.ch>'                    \
         -a "$TD/log.txt"                                        \
         alibuild@cern.ch                                        \
   && echo "$NOW $CONSECUTIVE_ERRORS" > $NOTIFICATION_STATE_FILE \
