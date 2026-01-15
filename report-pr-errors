@@ -33,8 +33,9 @@ ERRORS_RE = re.compile(
     '^ERROR: | !!! \x1b\\[[0-9;]+mError - | -> FAILED|'
     r'ninja: build stopped: |make.*: \*\*\*|\[(ERROR|FATAL)\]')
 WARNINGS_RE = re.compile(
-    ': warning:|^Warning: (?!Unused direct dependencies:$)|'
+    '^Warning: (?!Unused direct dependencies:$)|'
     '  !  \x1b\\[[0-9;]+mWarning - ')
+COMPILER_WARNINGS_RE = re.compile(': warning:')
 FAILED_UNIT_TEST_RE = re.compile(
     r'Test *#[0-9]*: .*\*\*\*(Failed|Timeout|Exception)|% tests passed')
 KILLED_RE = re.compile(r'fatal error: Killed signal terminated program')
@@ -275,6 +276,11 @@ class Logs(object):
             ERRORS_RE, ignore_log_files=['*/o2checkcode-latest*/log'])
         self.warnings_log = self.grep_logs(
             WARNINGS_RE, main_packages_only=True)
+        # Filter out duplicate warnings, as e.g. warnings in headers might be
+        # repeated many times.
+        self.compiler_warnings_log = '\n'.join(sorted(set(self.grep_logs(
+            COMPILER_WARNINGS_RE, main_packages_only=True,
+            context_before=0, context_after=0).split('\n'))))
         self.o2checkcode_messages = self.grep_logs(
             O2CHECKCODE_RE, context_before=0, context_after=float('inf'))
         self.failed_unit_tests = self.grep_logs(
@@ -362,6 +368,8 @@ class Logs(object):
                 'err_display': display(self.errors_log),
                 'warnings': htmlescape(self.warnings_log),
                 'warn_display': display(self.warnings_log),
+                'compiler_warnings': htmlescape(self.compiler_warnings_log),
+                'cmpwarn_display': display(self.compiler_warnings_log),
                 'cmake': htmlescape(self.cmake_errors),
                 'cmake_display': display(self.cmake_errors),
                 'killed_display': display(self.compiler_killed),
@@ -599,6 +607,7 @@ PRETTY_LOG_TEMPLATE = '''\
    #tests, #tests-toc { display: %(unit_display)s; }
    #errors, #errors-toc { display: %(err_display)s; }
    #warnings, #warnings-toc { display: %(warn_display)s; }
+   #compiler-warnings, #compiler-warnings-toc { display: %(cmpwarn_display)s; }
    #cmake, #cmake-toc { display: %(cmake_display)s; }
    #fullsystest, #fullsystest-toc { display: %(fst_display)s; }
    #xjalienfs, #xjalienfs-toc { display: %(xjalienfs_display)s; }
@@ -638,7 +647,8 @@ PRETTY_LOG_TEMPLATE = '''\
     <li id="fullsystest-toc"><a href="#fullsystest">O2 full system test</a></li>
     <li id="xjalienfs-toc"><a href="#xjalienfs">XjalienFS exceptions</a></li>
     <li id="errors-toc"><a href="#errors">Error messages</a></li>
-    <li id="warnings-toc"><a href="#warnings">Compiler warnings</a></li>
+    <li id="warnings-toc"><a href="#warnings">CMake and other warnings</a></li>
+    <li id="compiler-warnings-toc"><a href="#warnings">Compiler warnings</a></li>
   </ol></nav></p>
   <section id="noerrors">
     <h2>No errors found</h2>
@@ -685,9 +695,14 @@ PRETTY_LOG_TEMPLATE = '''\
     <p><pre><code>%(errors)s</code></pre></p>
   </section>
   <section id="warnings">
-    <h2>Compiler warnings</h2>
+    <h2>CMake and other warnings</h2>
     <p>Note that the following list may include false positives! Check the sections above first.</p>
     <p><pre><code>%(warnings)s</code></pre></p>
+  </section>
+  <section id="compiler_warnings">
+    <h2>Compiler warnings</h2>
+    <p>Note that the following list may include false positives! Check the sections above first.</p>
+    <p><pre><code>%(compiler_warnings)s</code></pre></p>
   </section>
 </body>
 '''
