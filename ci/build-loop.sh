@@ -261,6 +261,7 @@ if clean_env long_timeout $BUILD_CMD build "$PACKAGE"          \
      -e "ALIBUILD_XJALIENFS_TESTS=$ALIBUILD_XJALIENFS_TESTS" \
      -e "ALIBUILD_HEAD_HASH=$PR_HASH"                        \
      -e "ALIBUILD_BASE_HASH=$base_hash"                      \
+     ${USE_RECC:+-e "USE_RECC=1"}                            \
      ${jalien_token_cert:+-e "JALIEN_TOKEN_CERT=$jalien_token_cert"} \
      ${jalien_token_key:+-e "JALIEN_TOKEN_KEY=$jalien_token_key"} \
      ${use_docker:+--architecture "$ARCHITECTURE"}           \
