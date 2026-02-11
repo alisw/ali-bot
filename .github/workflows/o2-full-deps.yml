@@ -97,7 +97,7 @@ jobs:
     name: DEB (${{ matrix.ubuntu_codename }})
     container: ubuntu:${{ matrix.ubuntu_codename }}
     env:
-      ALIBUILD_TAG: v1.17.33
+      ALIBUILD_TAG: v1.17.40
       ALIBUILD_DISTRO: ${{ matrix.ubuntu_codename }}
       DEBIAN_FRONTEND: noninteractive
     steps:
