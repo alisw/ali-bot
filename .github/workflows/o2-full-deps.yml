@@ -20,17 +20,17 @@ jobs:
         include:
           - el_version: el8
             container: almalinux:8
-            alibuild_tag: v1.17.33
+            alibuild_tag: v1.17.40
           - el_version: el9
             container: almalinux:9
-            alibuild_tag: v1.17.33
+            alibuild_tag: v1.17.40
           - el_version: fedora
             container: fedora:40
-            alibuild_tag: v1.17.33
+            alibuild_tag: v1.17.40
           # aarch64 build on native ARM runner
           - el_version: el9
             container: almalinux:9
-            alibuild_tag: v1.17.33
+            alibuild_tag: v1.17.40
             runs_on: ubuntu-24.04-arm
 
     name: "RPM (${{ matrix.el_version }} ${{ matrix.runs_on || 'x86_64' }})"
