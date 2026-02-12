@@ -35,8 +35,6 @@ formats.
     [AliEn](http://alimonitor.cern.ch/packages/).
   - **Directory.** Just unpacks packages under a certain directory structures.
     Used in production on
-    [Titan at Oak Ridge](https://www.olcf.ornl.gov/titan/) where CVMFS is not
-    available.
   - **Yum repository.** Generates consistent RPMs out of the tarballs and
     creates a Yum repository with `createrepo`.
 
@@ -158,8 +156,9 @@ For the ALICE supported use cases we keep all configurations in this repository
 under different names:
 
   - `aliPublish.conf`: used centrally on CVMFS and AliEn
-  - `aliPublish-titan.conf`: packages published on Titan
-  - `aliPublish-nightlies.conf`: configuration for publishing test releases
+  - `aliPublish-noarch.conf`: used for async reconstruction
+  - `aliPublish-rpms-cc9.conf`: used for RPM publishing for AlmaLinux 9
+  - `aliPublish-s3-updatable-rpms.conf`: used for publishing GenTopo as an updatable RPM
 
 We then have a `get-and-run.sh` script that automatically performs the
 repository update (which contains both aliPublish and its configuration). Your
@@ -194,33 +193,3 @@ through the `get-and-run.sh` script then the best way to publish new packages is
 to open a pull request to this repository. Once the pull request is merged the
 next aliPublish run will pick up the new configuration and apply it
 automatically.
-
-
-How to unpublish existing packages
-----------------------------------
-
-The utility `aliUnpublish` is used to clean up published packages available on
-CVMFS and AliEn. You need to run it on a machine with CVMFS enabled, and as a
-result it will produce two shell scripts, one to be run on the CVMFS publisher
-node, one to be run on the AliEn publisher node.
-
-You can run:
-
-    aliUnpublish
-
-without any parameter. As said, this will create two scripts for the actual
-cleanup but it will not delete anything. It applies the default policy:
-
-  - Only `vAN-` packages are considered, using `AliPhysics` as package name.
-  - Packages older than 60 days will be condemned, except the first package for
-    each month (forever kept).
-  - Packages on CVMFS will be archived and not deleted.
-
-A testfile to pass to `aliPublish test-rules` will also be created (instructions
-will be printed) to test if your `aliPublish.conf` contains the correct rules:
-unpublished packages should be excluded in that configuration file for
-preventing them from reappearing unwantedly.
-
-To see more options, run:
-
-    aliUnpublish --help
