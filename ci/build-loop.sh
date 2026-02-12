@@ -257,6 +257,7 @@ if clean_env long_timeout $BUILD_CMD build "$PACKAGE"          \
      ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}         \
      -e ALIBOT_PR_REPO="$PR_REPO"                            \
      -e "ALIBUILD_O2_TESTS=$ALIBUILD_O2_TESTS"               \
+     -e "ALIBUILD_O2_FORCE_GPU=$ALIBUILD_O2_FORCE_GPU"       \
      -e "ALIBUILD_O2PHYSICS_TESTS=$ALIBUILD_O2PHYSICS_TESTS" \
      -e "ALIBUILD_XJALIENFS_TESTS=$ALIBUILD_XJALIENFS_TESTS" \
      -e "ALIBUILD_HEAD_HASH=$PR_HASH"                        \
