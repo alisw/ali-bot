@@ -301,9 +301,15 @@ alien="AliEn"
 
 # We cannot cross-pick pacakages among different platforms but we have to
 # pick all packages consistently from a certain platform tree. When listing
-# packages we show them all, when we load a package e define a priority list and
+# packages we show them all, when we load a package we define a priority list and
 # we always have a fallback for backward compatibility.
 PLATFORM_PRIORITY="el9-$uname_m el7-$uname_m el6-$uname_m el5-$uname_m el8-$uname_m"
+
+# The above priority is a general search priority. However, given a platform, we should actually 
+# start searching for software matching this precise platform and only later fall back to other
+# platforms. This prevents loading el9 or el7 software, when I am actually on el8 (and el8 software is available).
+PLATFORM_PRIORITY="${platform}-$uname_m ${PLATFORM_PRIORITY//${platform}-$uname_m/}"
+
 ARGS=("$@")
 PACKAGES=
 EXPECT_PACKAGES=
