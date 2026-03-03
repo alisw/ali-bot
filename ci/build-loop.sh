@@ -259,6 +259,7 @@ if clean_env long_timeout $BUILD_CMD build "$PACKAGE"          \
      -e "ALIBUILD_O2_TESTS=$ALIBUILD_O2_TESTS"               \
      -e "ALIBUILD_O2_FORCE_GPU=$ALIBUILD_O2_FORCE_GPU"       \
      ${USE_RECC:+-e "USE_RECC=$USE_RECC"}                    \
+     ${RECC_LOG_LEVEL:+-e "RECC_LOG_LEVEL=$RECC_LOG_LEVEL"}  \
      -e "ALIBUILD_O2PHYSICS_TESTS=$ALIBUILD_O2PHYSICS_TESTS" \
      -e "ALIBUILD_XJALIENFS_TESTS=$ALIBUILD_XJALIENFS_TESTS" \
      -e "ALIBUILD_HEAD_HASH=$PR_HASH"                        \
