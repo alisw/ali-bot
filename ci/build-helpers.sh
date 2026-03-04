@@ -4,6 +4,7 @@
 # while the builder is running.
 
 function influxdb_push () {
+  set +x
   # Usage: influxdb_push TABLE TAG=V TAG=V -- FIELD=V FIELD=V
   # Turn args into an InfluxDB string like "table,tag=v,tag=v field=v,field=v time".
   local data=$1; shift
@@ -14,7 +15,6 @@ function influxdb_push () {
     esac
   done
   data="$data $(date +%s)000000000"
-  set +x
   case "$INFLUXDB_WRITE_URL" in
     '') ;;
     # If INFLUXDB_WRITE_URL starts with insecure_https://, then strip
