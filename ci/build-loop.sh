@@ -169,6 +169,8 @@ if pushd "$PR_REPO_CHECKOUT"; then
     # so we ignore the result code for now
     short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/error" -m 'Please resolve merge conflicts' ||
       short_timeout report-analytics exception --desc 'set-github-status fail on cannot merge'
+    PR_OK=0
+    report_state pr_processing_done
     exit 1
   fi
 
@@ -179,6 +181,8 @@ if pushd "$PR_REPO_CHECKOUT"; then
       short_timeout report-analytics exception --desc 'set-github-status fail on merge too big'
     report_pr_errors -m 'Your pull request exceeded the allowed size. If you need to commit large files, [have a look here](http://alisw.github.io/git-advanced/#how-to-use-large-data-files-for-analysis).' ||
       short_timeout report-analytics exception --desc 'report-pr-errors fail on merge diff too big'
+    PR_OK=0
+    report_state pr_processing_done
     exit 1
   fi
 
@@ -196,6 +200,8 @@ then
   short_timeout set-github-status ${SILENT:+-n} -c "$PR_REPO@$PR_HASH" \
                 -s "$CHECK_NAME/success" -m 'skipped; no relevant changes' ||
     short_timeout report-analytics exception --desc 'set-github-status failed on skip'
+  PR_OK=1
+  report_state pr_processing_done
   exit 0
 fi
 
@@ -218,6 +224,8 @@ then
     short_timeout report-analytics exception --desc "set-github-status fail on $BUILD_CMD doctor error"
   # If doctor fails, we can move on to the next PR, since we know it will not work.
   # We do not report aliDoctor being ok, because that's really a granted.
+  PR_OK=0
+  report_state pr_processing_done
   exit 1
 fi
 
