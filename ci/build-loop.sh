@@ -202,7 +202,7 @@ fi
 # Nomad runs this script inside a cgroup managed by it, so it can clean up
 # properly when we exit (or are killed), and it can track CPU/RAM usage.
 # Run our Docker builds inside the same cgroup so they're included too.
-if cgroup=$(sed -rn '/:freezer:/{s/.*:freezer:(.*)/\1/p;q}' "/proc/$$/cgroup"); then
+if cgroup=$(sed -rn '/:freezer:/{s/.*:freezer:(.*)/\1/p;q}; /^0::/{s/^0::(.*)/\1/p;q}' "/proc/$$/cgroup"); then
   case $cgroup in
     /) DOCKER_EXTRA_ARGS="$DOCKER_EXTRA_ARGS ${NOMAD_PARENT_CGROUP:+--cgroup-parent=$NOMAD_PARENT_CGROUP}" ;;
     *) DOCKER_EXTRA_ARGS="$DOCKER_EXTRA_ARGS ${cgroup:+--cgroup-parent=$cgroup}" ;;
