@@ -95,5 +95,3 @@ script-files = [
 include = ["*"]
 
 [tool.setuptools_scm]
-# Configuration for setuptools_scm
-write_to = "ali_bot_version.py"
