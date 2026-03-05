@@ -212,8 +212,17 @@ if cgroup=$(sed -rn '/:freezer:/{s/.*:freezer:(.*)/\1/p;q}; /^0::/{s/^0::(.*)/\1
   # Docker (systemd cgroup driver) requires --cgroup-parent to be a .slice,
   # not a .scope. If we're inside a .scope, use its parent .slice instead.
   [[ $cgroup == *.scope ]] && cgroup=${cgroup%/*}
+  if [[ $cgroup == /* && $cgroup == *".slice"* ]]; then
+    cgroup=${cgroup#/}
+    cgroup=${cgroup%/*.scope}
+    cgroup=${cgroup//\//-}
+    cgroup=${cgroup//.slice-/-}
+    prefix=${cgroup%%-*}
+    [[ -n $prefix && $cgroup == "$prefix-$prefix-"* ]] && cgroup=${cgroup#"$prefix-"}
+    [[ $cgroup == *.slice ]] || cgroup=""
+  fi
   case $cgroup in
-    /) DOCKER_EXTRA_ARGS="$DOCKER_EXTRA_ARGS ${NOMAD_PARENT_CGROUP:+--cgroup-parent=$NOMAD_PARENT_CGROUP}" ;;
+    /|"") DOCKER_EXTRA_ARGS="$DOCKER_EXTRA_ARGS ${NOMAD_PARENT_CGROUP:+--cgroup-parent=$NOMAD_PARENT_CGROUP}" ;;
     *) DOCKER_EXTRA_ARGS="$DOCKER_EXTRA_ARGS ${cgroup:+--cgroup-parent=$cgroup}" ;;
   esac
 fi
