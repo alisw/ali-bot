@@ -544,12 +544,14 @@ class RPM(object):
     rmrf(self._stageDir)
     return True
 
-def nameVerFromTar(tar, arch, validPacks):
+def nameVerFromTar(tar, arch, validPacks, validPairs=None):
   for pkgName in validPacks:
     vre = format(r"^(%(pack)s)-(.*?)(\.%(arch)s\.tar\.gz)?$", pack=escape(pkgName), arch=arch)
     vm = search(vre, tar)
     if vm:
-      return { "name": vm.group(1), "ver": vm.group(2) }
+      nv = { "name": vm.group(1), "ver": vm.group(2) }
+      if validPairs is None or (nv["name"], nv["ver"]) in validPairs:
+        return nv
   return None
 
 def prettyPrintPkg(pkg):
@@ -629,6 +631,25 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
     t_filter_start = time()
     pubPackages = []
 
+    # Pre-scan version directories for all packages to:
+    # 1. Build distVersions (known (name, ver) pairs) so nameVerFromTar can
+    #    skip ambiguous matches, e.g. ninja@fortran-123 vs ninja-fortran@123.
+    # 2. Cache listings so process_package reuses them without extra S3 calls.
+    def scan_pkg_versions(pkgName):
+      return [pkgTar for pkgTar in listDir(format(verPathTpl, arch=arch, pack=pkgName))
+              if pkgTar["type"] == "directory"]
+    t_versions_start = time()
+    with ThreadPoolExecutor(max_workers=20) as executor:
+      pkgVerDirs = dict(zip(distPackages, executor.map(scan_pkg_versions, distPackages)))
+    info("TIMING: %s: scanning version dirs took %.1fs", arch, time() - t_versions_start)
+    distVersions = frozenset(
+        (nv["name"], nv["ver"])
+        for pkgName, pkgTars in pkgVerDirs.items()
+        for pkgTar in pkgTars
+        for nv in [nameVerFromTar(pkgTar["name"], arch, [pkgName])]
+        if nv
+    )
+
     # Get versions for all valid packages and filter them according to the rules
     def process_package(pkgName):
       result = []
@@ -636,9 +657,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
         return result
       if not includeFirst and rules["exclude"][arch].get(pkgName) == True:
         return result
-      for pkgTar in listDir(format(verPathTpl, arch=arch, pack=pkgName)):
-        if pkgTar["type"] != "directory":
-          continue
+      for pkgTar in pkgVerDirs[pkgName]:
         nameVer = nameVerFromTar(pkgTar["name"], arch, [pkgName])
         if nameVer is None:
           continue
@@ -676,7 +695,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
         for depTar in runtimeDeps:
           if depTar["type"] != "file":
             continue
-          depNameVer = nameVerFromTar(depTar["name"], arch, distPackages)
+          depNameVer = nameVerFromTar(depTar["name"], arch, distPackages, distVersions)
           if depNameVer is None:
             continue
           depName = depNameVer["name"]
@@ -739,7 +758,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
             "name": pack["name"], "ver": pack["ver"], "success": False})
           depFail = True
           break
-        deps[key] = [nameVerFromTar(x["name"], arch, distPackages)
+        deps[key] = [nameVerFromTar(x["name"], arch, distPackages, distVersions)
                      for x in jdeps if x["type"] == "file"]
         deps[key] = [x for x in deps[key]
                      if x is not None and x["name"] != pack["name"]]
