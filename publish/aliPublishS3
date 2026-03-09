@@ -545,11 +545,11 @@ class RPM(object):
     return True
 
 def nameVerFromTar(tar, arch, validPacks):
-  for pkgName in validPacks:
+  for pkgName in sorted(validPacks, key=len, reverse=True):
     vre = format(r"^(%(pack)s)-(.*?)(\.%(arch)s\.tar\.gz)?$", pack=escape(pkgName), arch=arch)
     vm = search(vre, tar)
     if vm:
-      return { "name": vm.group(1), "ver": vm.group(2) }
+      return {"name": vm.group(1), "ver": vm.group(2)}
   return None
 
 def prettyPrintPkg(pkg):
