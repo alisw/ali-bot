@@ -114,7 +114,6 @@ notification_email:
 
 # What packages to publish
 auto_include_deps: True        # automatically include all dependencies
-filter_order: include,exclude  # include directives are processed before exclude
 
 # Avoid connection flooding and retry
 conn_retries: 10

@@ -18,9 +18,6 @@ from smtplib import SMTP
 from xml.etree.ElementTree import ElementTree
 from urllib.parse import quote
 
-def format(s, **kwds):
-  return s % kwds
-
 def rmrf(path):
   err, out = getstatusoutput("rm -fr %s" % path)
   if err:
@@ -31,13 +28,8 @@ def searchMany(name, exprs):
     return any(search(e, name) for e in exprs)
   return exprs == True
 
-def applyFilter(name, includeRules, excludeRules, includeFirst):
-  if includeFirst:
-    return searchMany(name, includeRules) and not searchMany(name, excludeRules)
-  if searchMany(name, excludeRules):
-    return False
-  # process exclude first, and no explicit include rule: keep it
-  return includeRules is None or searchMany(name, includeRules)
+def applyFilter(name, includeRules, excludeRules):
+  return searchMany(name, includeRules) and not searchMany(name, excludeRules)
 
 def runInstallScript(script, dryRun, **kwsub):
   if dryRun:
@@ -546,7 +538,7 @@ class RPM(object):
 
 def nameVerFromTar(tar, arch, validPacks, validPairs=None):
   for pkgName in validPacks:
-    vre = format(r"^(%(pack)s)-(.*?)(\.%(arch)s\.tar\.gz)?$", pack=escape(pkgName), arch=arch)
+    vre = rf"^({escape(pkgName)})-(.*?)(\.{arch}\.tar\.gz)?$"
     vm = search(vre, tar)
     if vm:
       nv = { "name": vm.group(1), "ver": vm.group(2) }
@@ -570,15 +562,9 @@ def iterUninstalled(publisher, arch, archName, pubPackages):
 
 
 def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
-         includeFirst, autoIncludeDeps, notifEmail, dryRun, connParams,
+         autoIncludeDeps, notifEmail, dryRun, connParams,
          publishLimit):
 
-  # Template URLs
-  packNamesPathTpl = "%(arch)s/dist-direct"
-  distPathTpl      = "%(arch)s/%(dist)s/%(pack)s/%(pack)s-%(ver)s"
-  verPathTpl       = "%(arch)s/dist-direct/%(pack)s"
-  getPackUrlTpl    = ("%(baseUrl)s/%(basePrefix)s/%(arch)s/dist-direct/%(pack)s"
-                      "/%(pack)s-%(ver)s/%(pack)s-%(ver)s.%(arch)s.tar.gz")
   newPackages = {}
   
   t_start = time()
@@ -621,7 +607,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
     t_packages_start = time()
     debug("Getting packages for architecture %s", arch)
     distPackages = sorted(
-      (p["name"] for p in listDir(packNamesPathTpl % {"arch": arch})
+      (p["name"] for p in listDir(f"{arch}/dist-direct")
        if p["type"] == "directory"),
       key=len, reverse=True)
     debug("Packages found: %s", ", ".join(distPackages))
@@ -636,7 +622,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
     #    skip ambiguous matches, e.g. ninja@fortran-123 vs ninja-fortran@123.
     # 2. Cache listings so process_package reuses them without extra S3 calls.
     def scan_pkg_versions(pkgName):
-      return [pkgTar for pkgTar in listDir(format(verPathTpl, arch=arch, pack=pkgName))
+      return [pkgTar for pkgTar in listDir(f"{arch}/dist-direct/{pkgName}")
               if pkgTar["type"] == "directory"]
     t_versions_start = time()
     with ThreadPoolExecutor(max_workers=20) as executor:
@@ -653,9 +639,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
     # Get versions for all valid packages and filter them according to the rules
     def process_package(pkgName):
       result = []
-      if includeFirst and pkgName not in rules["include"][arch]:
-        return result
-      if not includeFirst and rules["exclude"][arch].get(pkgName) == True:
+      if pkgName not in rules["include"][arch]:
         return result
       for pkgTar in pkgVerDirs[pkgName]:
         nameVer = nameVerFromTar(pkgTar["name"], arch, [pkgName])
@@ -665,8 +649,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
         # Here we decide whether to include/exclude it
         if not applyFilter(pkgVer,
                            rules["include"][arch].get(pkgName, None),
-                           rules["exclude"][arch].get(pkgName, None),
-                           includeFirst):
+                           rules["exclude"][arch].get(pkgName, None)):
           debug("%s / %s / %s: excluded", arch, pkgName, pkgVer)
           continue
 
@@ -683,8 +666,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
 
         # At this point we have filtered in the package: let's see its dependencies!
         # Note that a package always depends on itself (list cannot be empty).
-        distPath = format(distPathTpl, dist="dist-runtime",
-                          arch=arch, pack=pkgName, ver=pkgVer)
+        distPath = f"{arch}/dist-runtime/{pkgName}/{pkgName}-{pkgVer}"
         runtimeDeps = list(listDir(distPath))
         if not runtimeDeps:
           error("%s / %s / %s: cannot list dependencies from %s: skipping",
@@ -749,8 +731,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
       deps = {}
       depFail = False
       for key in ("dist", "dist-direct", "dist-runtime"):
-        jdeps = list(listDir(format(distPathTpl, dist=key, arch=arch,
-                                    pack=pack["name"], ver=pack["ver"])))
+        jdeps = list(listDir(f"{arch}/{key}/{pack['name']}/{pack['name']}-{pack['ver']}"))
         if not jdeps:
           error("%s / %s / %s: cannot get %s dependencies: skipping",
                 arch, pack["name"], pack["ver"], key)
@@ -770,10 +751,10 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
         if any(x["name"] == y["name"] for y in deps["dist-runtime"])
       ]
 
-      symlinkUrl = format(getPackUrlTpl,
-                          baseUrl=baseUrl.rstrip("/"),
-                          basePrefix=basePrefix, arch=arch,
-                          pack=pack["name"], ver=quote(pack["ver"], safe=''))
+      _pack = pack["name"]
+      _ver = quote(pack["ver"], safe='')
+      symlinkUrl = (f"{baseUrl.rstrip('/')}/{basePrefix}/{arch}/dist-direct/{_pack}"
+                    f"/{_pack}-{_ver}/{_pack}-{_ver}.{arch}.tar.gz")
       pkgUrl = join(baseUrl,
                     requests.get(symlinkUrl,
                                  verify=connParams["http_ssl_verify"],
@@ -849,21 +830,18 @@ def notify(conf, archs, pack, dryRun):
   for arch, packs in pack.items():
     for p in packs:
       key = "success" if p["success"] else "failure"
-      deps_fmt = "".join(format(conf.get("package_format", "%(package)s %(version)s "),
-                                package=x["name"],
-                                version=x["ver"],
-                                arch=archs[arch]) for x in p.get("alldeps", []))
+      deps_fmt = "".join(
+        conf.get("package_format", "%(package)s %(version)s ") % {"package": x["name"], "version": x["ver"], "arch": archs[arch]}
+        for x in p.get("alldeps", []))
       kw = {
         "package": p["name"],
         "version": p["ver"],
         "arch": archs[arch],
         "dependencies_fmt": "".join(
-          format(conf.get("package_format", "%(package)s %(version)s "),
-                 package=x["name"], version=x["ver"], arch=archs[arch])
+          conf.get("package_format", "%(package)s %(version)s ") % {"package": x["name"], "version": x["ver"], "arch": archs[arch]}
           for x in p.get("deps", [])),
         "alldependencies_fmt": "".join(
-          format(conf.get("package_format", "%(package)s %(version)s "),
-                 package=x["name"], version=x["ver"], arch=archs[arch])
+          conf.get("package_format", "%(package)s %(version)s ") % {"package": x["name"], "version": x["ver"], "arch": archs[arch]}
           for x in p.get("alldeps", [])),
       }
 
@@ -998,12 +976,6 @@ def main():
   if doExit: exit(1)
 
   debug("Configuration: %s", json.dumps(conf, indent=2))
-  incexc = conf.get("filter_order", "include,exclude")
-  if incexc == "include,exclude": includeFirst = True
-  elif incexc == "exclude,include": includeFirst = False
-  else:
-    error("filter_order can be include,exclude or exclude,include")
-    return 1
 
   rules = { "include": {}, "exclude": {} }
   for arch,maps in conf["architectures"].items():
@@ -1124,7 +1096,6 @@ def main():
                         baseUrl=conf["base_url"],
                         basePrefix=conf["base_prefix"],
                         rules=rules,
-                        includeFirst=includeFirst,
                         autoIncludeDeps=conf["auto_include_deps"],
                         notifEmail=conf["notification_email"],
                         dryRun=args.dryRun,
@@ -1163,8 +1134,7 @@ def main():
         for ver in testRules[arch][pkg]:
           match = applyFilter(ver,
                               rules["include"].get(arch, {}).get(pkg, None),
-                              rules["exclude"].get(arch, {}).get(pkg, None),
-                              includeFirst)
+                              rules["exclude"].get(arch, {}).get(pkg, None))
           msg = ("%s: %s ver %s matches filters%s" if match else
                  "%s: %s ver %s does NOT match filters%s")
           if match != testRules[arch][pkg][ver]:
