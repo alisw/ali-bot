@@ -705,7 +705,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
           arch, len(pubPackages), ", ".join(map(prettyPrintPkg, pubPackages)))
 
     if publishLimit and len(pubPackages) > publishLimit:
-      error("Too many packages to publish (%d); limiting to %d to avoid "
+      info("Too many packages to publish (%d); limiting to %d to avoid "
             "running out of temporary disk space",
             len(pubPackages), publishLimit)
       # We make sure that if we split, O2Physics, O2 and other toplevel packages
