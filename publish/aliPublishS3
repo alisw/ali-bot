@@ -636,6 +636,24 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
         if nv
     )
 
+    # Bulk-list all dist-runtime entries upfront to avoid one S3 call per
+    # package version in process_package below.
+    t_runtime_start = time()
+    _rt_prefix = "%s/%s/dist-runtime/" % (basePrefix, arch)
+    _rt_prefix_len = len(_rt_prefix)
+    runtimeDepsCache: dict = {}
+    for _page in s3Client.get_paginator("list_objects_v2").paginate(
+        Bucket=bucket, Prefix=_rt_prefix,
+    ):
+      for _item in _page.get("Contents", ()):
+        if _item["Key"].endswith("/"):
+          continue
+        _pkg, _ver_dir, _dep_file = _item["Key"][_rt_prefix_len:].split("/", 2)
+        runtimeDepsCache.setdefault((_pkg, _ver_dir), []).append(
+            {"name": _dep_file, "type": "file"}
+        )
+    info("TIMING: %s: bulk-listing dist-runtime took %.1fs", arch, time() - t_runtime_start)
+
     # Get versions for all valid packages and filter them according to the rules
     def process_package(pkgName):
       result = []
@@ -666,14 +684,13 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
 
         # At this point we have filtered in the package: let's see its dependencies!
         # Note that a package always depends on itself (list cannot be empty).
-        distPath = f"{arch}/dist-runtime/{pkgName}/{pkgName}-{pkgVer}"
-        runtimeDeps = list(listDir(distPath))
+        runtimeDeps = runtimeDepsCache.get((pkgName, f"{pkgName}-{pkgVer}"), [])
         if not runtimeDeps:
-          error("%s / %s / %s: cannot list dependencies from %s: skipping",
-                arch, pkgName, pkgVer, distPath)
+          error("%s / %s / %s: cannot list dependencies from dist-runtime: skipping",
+                arch, pkgName, pkgVer)
           continue
-        debug("%s / %s / %s: listing all dependencies under %s",
-              arch, pkgName, pkgVer, distPath)
+        debug("%s / %s / %s: listing all dependencies from dist-runtime cache",
+              arch, pkgName, pkgVer)
         for depTar in runtimeDeps:
           if depTar["type"] != "file":
             continue
