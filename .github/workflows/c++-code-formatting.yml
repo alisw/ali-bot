@@ -51,6 +51,8 @@ jobs:
             clang-format /usr/bin/clang-format-20 100
           sudo update-alternatives --install /usr/bin/git-clang-format \
             git-clang-format /usr/bin/git-clang-format-20 100
+          sudo update-alternatives --set clang-format /usr/bin/clang-format-20
+          sudo update-alternatives --set git-clang-format /usr/bin/git-clang-format-20
 
       # We need to fetch the PR's head commit to base our cleanup commit on.
       - name: Fetch PR branch
