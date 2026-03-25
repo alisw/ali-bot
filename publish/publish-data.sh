@@ -54,6 +54,7 @@ for ARCH_DIR in /cvmfs/$REPO/{el*,ubuntu*}; do
   ARCH_DIR=$ARCH_DIR/Modules/modulefiles/AliPhysics
   [[ -d $ARCH_DIR ]] || continue
   pushd $ARCH_DIR &> /dev/null
+    set +x
     for ALIPHYSICS in *; do
       [[ -e $ALIPHYSICS ]] || continue  # deal with * not expanded
       [[ $ALIPHYSICS != vAN-* ]] || continue  # exclude AN tags
