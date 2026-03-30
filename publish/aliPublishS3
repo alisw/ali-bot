@@ -636,61 +636,60 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
         if nv
     )
 
-    # Get versions for all valid packages and filter them according to the rules
-    def process_package(pkgName):
-      result = []
+    def process_pkg_ver(pkgName_pkgTar):
+      pkgName, pkgTar = pkgName_pkgTar
       if pkgName not in rules["include"][arch]:
-        return result
-      for pkgTar in pkgVerDirs[pkgName]:
-        nameVer = nameVerFromTar(pkgTar["name"], arch, [pkgName])
-        if nameVer is None:
-          continue
-        pkgVer = nameVer["ver"]
-        # Here we decide whether to include/exclude it
-        if not applyFilter(pkgVer,
-                           rules["include"][arch].get(pkgName, None),
-                           rules["exclude"][arch].get(pkgName, None)):
-          debug("%s / %s / %s: excluded", arch, pkgName, pkgVer)
-          continue
+        return []
+      nameVer = nameVerFromTar(pkgTar["name"], arch, [pkgName])
+      if nameVer is None:
+        return []
+      pkgVer = nameVer["ver"]
+      if not applyFilter(pkgVer,
+                         rules["include"][arch].get(pkgName, None),
+                         rules["exclude"][arch].get(pkgName, None)):
+        debug("%s / %s / %s: excluded", arch, pkgName, pkgVer)
+        return []
 
-        if "%s-%s.%s.tar.gz" % (pkgName, pkgVer, arch) not in tarballs:
-          debug("%s / %s / %s: excluded because matching tarball not found",
-                arch, pkgName, pkgVer)
-          continue
+      if "%s-%s.%s.tar.gz" % (pkgName, pkgVer, arch) not in tarballs:
+        debug("%s / %s / %s: excluded because matching tarball not found",
+              arch, pkgName, pkgVer)
+        return []
 
-        if not autoIncludeDeps:
-          # Not automatically including dependencies, add this package only.
-          # Not checking for dups because we can't have any
-          result.append({ "name": pkgName, "ver": pkgVer })
-          continue
+      if not autoIncludeDeps:
+        return [{"name": pkgName, "ver": pkgVer}]
 
-        # At this point we have filtered in the package: let's see its dependencies!
-        # Note that a package always depends on itself (list cannot be empty).
-        distPath = f"{arch}/dist-runtime/{pkgName}/{pkgName}-{pkgVer}"
-        runtimeDeps = list(listDir(distPath))
-        if not runtimeDeps:
-          error("%s / %s / %s: cannot list dependencies from %s: skipping",
-                arch, pkgName, pkgVer, distPath)
-          continue
-        debug("%s / %s / %s: listing all dependencies under %s",
+      # At this point we have filtered in the package: let's see its dependencies!
+      # Note that a package always depends on itself (list cannot be empty).
+      distPath = f"{arch}/dist-runtime/{pkgName}/{pkgName}-{pkgVer}"
+      runtimeDeps = list(listDir(distPath))
+      if not runtimeDeps:
+        error("%s / %s / %s: cannot list dependencies from %s: skipping",
               arch, pkgName, pkgVer, distPath)
-        for depTar in runtimeDeps:
-          if depTar["type"] != "file":
-            continue
-          depNameVer = nameVerFromTar(depTar["name"], arch, distPackages, distVersions)
-          if depNameVer is None:
-            continue
-          depName = depNameVer["name"]
-          depVer = depNameVer["ver"]
-          result.append({"name": depName, "ver": depVer})
+        return []
+      debug("%s / %s / %s: listing all dependencies under %s",
+            arch, pkgName, pkgVer, distPath)
+      result = []
+      for depTar in runtimeDeps:
+        if depTar["type"] != "file":
+          continue
+        depNameVer = nameVerFromTar(depTar["name"], arch, distPackages, distVersions)
+        if depNameVer is None:
+          continue
+        result.append({"name": depNameVer["name"], "ver": depNameVer["ver"]})
       return result
 
+    _all_pkg_ver_pairs = [
+        (pkgName, pkgTar)
+        for pkgName in distPackages
+        for pkgTar in pkgVerDirs[pkgName]
+    ]
+    _seen_packages: set = set()
     with ThreadPoolExecutor(max_workers=20) as executor:
-      for packages in executor.map(process_package, distPackages):
+      for packages in executor.map(process_pkg_ver, _all_pkg_ver_pairs):
         for pkg in packages:
-          # Append only if it does not exist yet
-          if not any(p["name"] == pkg["name"] and p["ver"] == pkg["ver"]
-                     for p in pubPackages):
+          key = (pkg["name"], pkg["ver"])
+          if key not in _seen_packages:
+            _seen_packages.add(key)
             pubPackages.append(pkg)
 
     pubPackages.sort(key=lambda itm: itm["name"])
