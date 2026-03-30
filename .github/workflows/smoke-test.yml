@@ -1,4 +1,4 @@
-name: Test PIP Installation
+name: Test installation
 
 on:
   pull_request:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   smoke-test:
-    runs-on: ubuntu-24.04 # Required for Python 3.6
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
@@ -19,16 +19,16 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
+    - uses: astral-sh/setup-uv@v5
 
-    - name: Run smoke test - pip install ali-bot[ci]
+    - name: Install ali-bot and alibuild
+      run: >-
+        uv tool install
+        --python ${{ matrix.python-version }}
+        'ali-bot[ci] @ git+https://github.com/alisw/ali-bot@${{ github.sha }}'
+        --with alibuild
+
+    - name: Verify installation
       run: |
-        set -e
-        python -m venv venv
-        source venv/bin/activate
-        python -m pip install --upgrade pip
-        python -m pip install 'ali-bot[ci] @ git+https://github.com/alisw/ali-bot@${{ github.sha }}' alibuild
+        set-github-status --help
+        alibuild version
