@@ -35,13 +35,13 @@ jobs:
 
     steps:
       - name: Checkout ali-bot
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: alisw/ali-bot
           path: ali-bot
 
       - name: Checkout target repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ inputs.owner }}/${{ inputs.repo }}
           path: ali-bot/alidist

@@ -41,7 +41,7 @@ jobs:
 
     steps:
       # For rpms/*.spec
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: "Install prerequisites"
         run: |
