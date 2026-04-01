@@ -24,6 +24,9 @@ jobs:
           - el_version: el9
             container: almalinux:9
             alibuild_tag: v1.17.42
+          - el_version: el10
+            container: almalinux:10
+            alibuild_tag: v1.17.42
           - el_version: fedora
             container: fedora:40
             alibuild_tag: v1.17.42
