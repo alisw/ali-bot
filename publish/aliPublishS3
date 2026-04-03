@@ -3,6 +3,7 @@
 import logging, gzip, sys, json, yaml, errno, boto3, requests
 import botocore.exceptions
 from concurrent.futures import ThreadPoolExecutor
+from functools import cache
 from botocore.config import Config
 from glob import glob
 from argparse import ArgumentParser
@@ -672,11 +673,15 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
       for depTar in runtimeDeps:
         if depTar["type"] != "file":
           continue
-        depNameVer = nameVerFromTar(depTar["name"], arch, distPackages, distVersions)
+        depNameVer = nameVerFromTarCached(depTar["name"])
         if depNameVer is None:
           continue
         result.append({"name": depNameVer["name"], "ver": depNameVer["ver"]})
       return result
+
+    @cache
+    def nameVerFromTarCached(tar):
+      return nameVerFromTar(tar, arch, distPackages, distVersions)
 
     _all_pkg_ver_pairs = [
         (pkgName, pkgTar)
