@@ -78,8 +78,6 @@ timeout 300 python3 -m pip install -U "$(realpath "$DEST")"
 echo "TIMING: Pip install took $(($(date +%s) - PIP_START))s"
 
 ln -nfs "$(basename "$LOG.error")" "$logdir/latest"
-cachedir=${NOMAD_TASK_DIR-$PWD}/cache
-mkdir -p "$cachedir"
 pushd $DEST/publish
 
   echo "Running version $(pip list --format freeze | grep ali-bot)"
@@ -93,7 +91,6 @@ pushd $DEST/publish
                ${NO_NOTIF:+--no-notification}      \
                ${CONF:+--config "$CONF"}           \
                ${OVERRIDE:+--override "$OVERRIDE"} \
-               --cache-deps-dir "$cachedir"        \
                --pidfile /tmp/aliPublish.pid       \
                 $CMD                               \
                 2>&1 | tee -a $LOG.error
