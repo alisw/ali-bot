@@ -471,8 +471,17 @@ class Logs(object):
         for src in matches:
             try:
                 dst = re.compile('^copy-logs/').sub('', src)
+                content_type = 'text/plain'
+                if src.endswith('.html'):
+                    content_type = 'text/html'
+                elif src.endswith('.root'):
+                    content_type = 'application/octet-stream'
+                elif src.endswith('.png'):
+                    content_type = 'image/png'
+                elif src.endswith('.json'):
+                    content_type = 'application/json'
                 transfer.upload_file(src, bucket_name, dst, extra_args={
-                    'ContentType': 'text/html' if src.endswith('.html') else 'text/plain',
+                    'ContentType': content_type,
                     'ContentDisposition': 'inline'})
             except Exception as e:
                 print("Failed to upload %s to %s in bucket %s.%s" % (src, dst, bucket_name, server))
