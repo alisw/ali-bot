@@ -165,10 +165,12 @@ class Logs(object):
 
     def parse(self):
         self.find()
+        self.find_extra_files()
         self.grep()
         self.get_versions()
         self.cat(self.full_log)
         self.generate_pretty_log()
+        self.copy_extra_files()
         if self.is_branch:
             self.cat(self.full_log_latest, no_delete=True)
         if self.dest.startswith("rsync:"):
@@ -207,6 +209,36 @@ class Logs(object):
                                        if dirname(x).endswith(suffix))
         self.important_logs.sort(key=getmtime)
         print("Important:", *self.important_logs, sep="\n", file=sys.stderr)
+
+    def find_extra_files(self):
+        """Find additional files in the artifacts directory next to each build log."""
+        extra_files = []
+        for log in self.all_logs:
+            artifacts_dir = join(dirname(log), "artifacts")
+            search_path = join(artifacts_dir, "**", "*")
+            extra_files.extend(x for x in glob(search_path, recursive=True)
+                               if os.path.isfile(x))
+        self.extra_files = sorted(set(extra_files))
+        print("Extra files found:", *self.extra_files, sep="\n", file=sys.stderr)
+
+    def copy_extra_files(self):
+        """Copy extra log/histogram files into copy-logs for upload."""
+        self.extra_file_urls = []
+        base_dir = dirname(join("copy-logs", self.full_log))
+        artifacts_dir = join(base_dir, "artifacts")
+        for src in self.extra_files:
+            # Preserve the path relative to work_dir
+            rel = os.path.relpath(src, self.work_dir)
+            dst = join(artifacts_dir, rel)
+            try:
+                os.makedirs(dirname(dst), exist_ok=True)
+                shutil.copy2(src, dst)
+                # Build the URL relative to the log base URL
+                url_rel = os.path.relpath(dst, "copy-logs")
+                self.extra_file_urls.append((os.path.basename(src), rel,
+                                             join(self.url.rsplit('/', 1)[0], "artifacts", rel)))
+            except OSError as err:
+                print("Could not copy extra file %s: %s" % (src, err), file=sys.stderr)
 
     def grep_logs(self, regex, context_before=3, context_after=3,
                   main_packages_only=False, ignore_log_files=()):
@@ -348,6 +380,19 @@ class Logs(object):
         except OSError:
             fetch_log = ''
 
+        # Build the extra files list HTML
+        artifacts_base_url = self.url.rsplit('/', 1)[0] + '/artifacts'
+        if self.extra_files:
+            extra_items = []
+            for src in self.extra_files:
+                rel = os.path.relpath(src, self.work_dir)
+                url = artifacts_base_url + '/' + rel
+                extra_items.append('      <li><a href="%s">%s</a></li>' %
+                                   (htmlescape(url), htmlescape(rel)))
+            extra_files_html = '\n'.join(extra_items)
+        else:
+            extra_files_html = ''
+
         with open(join('copy-logs', self.pretty_log), 'w', encoding='utf-8') as out_f:
             out_f.write(PRETTY_LOG_TEMPLATE % {
                 'status': 'succeeded' if self.build_successful else 'failed',
@@ -389,6 +434,8 @@ class Logs(object):
                                                   os.getenv('NOMAD_ALLOC_ID', '(no Nomad ID)')),
                 'alibuild_version': self.alibuild_version,
                 'alidist_version': self.alidist_version,
+                'extra_files': extra_files_html,
+                'extra_display': display(extra_files_html),
             })
 
     def cat(self, target_file, no_delete=False):
@@ -611,6 +658,7 @@ PRETTY_LOG_TEMPLATE = '''\
    #cmake, #cmake-toc { display: %(cmake_display)s; }
    #fullsystest, #fullsystest-toc { display: %(fst_display)s; }
    #xjalienfs, #xjalienfs-toc { display: %(xjalienfs_display)s; }
+   #extra-files, #extra-files-toc { display: %(extra_display)s; }
   </style>
 </head>
 <body class="%(status)s">
@@ -648,6 +696,7 @@ PRETTY_LOG_TEMPLATE = '''\
     <li id="xjalienfs-toc"><a href="#xjalienfs">XjalienFS exceptions</a></li>
     <li id="errors-toc"><a href="#errors">Error messages</a></li>
     <li id="warnings-toc"><a href="#warnings">Compiler warnings</a></li>
+    <li id="extra-files-toc"><a href="#extra-files">Additional logs and histograms</a></li>
   </ol></nav></p>
   <section id="noerrors">
     <h2>No errors found</h2>
@@ -697,6 +746,13 @@ PRETTY_LOG_TEMPLATE = '''\
     <h2>Compiler warnings</h2>
     <p>Note that the following list may include false positives! Check the sections above first.</p>
     <p><pre><code>%(warnings)s</code></pre></p>
+  </section>
+  <section id="extra-files">
+    <h2>Additional logs and histograms</h2>
+    <p>The following additional files were found in the build directory:</p>
+    <ul>
+%(extra_files)s
+    </ul>
   </section>
 </body>
 '''
