@@ -88,14 +88,22 @@ jobs:
           # Abort now if invalid file extensions found.
           [ -z "$have_invalid_extension" ]
 
-          if patch=$(git-clang-format --commit "$base_commit" --diff \
-                                      --style file "${commit_files[@]}")
-          then
+          # Fix header include format in O2Physics.
+          if [[ "${{ github.event.repository.name }}" == 'O2Physics' ]]; then
+            formatting_script="Scripts/format_includes.awk"
+            git checkout "origin/$BASE_BRANCH" -- "$formatting_script"
+            printf "%s\n" "${commit_files[@]}" | xargs -r -P 0 -I{} sh -c "awk -f \"$formatting_script\" \"{}\" > \"{}.tmp\" && mv \"{}.tmp\" \"{}\""
+            git restore --staged --worktree "$formatting_script"
+            git add -u
+          fi
+
+          git-clang-format --commit "$base_commit" --style file "${commit_files[@]}" || git add -u
+
+          if git diff --staged --exit-code; then
             echo cleanup_commit= >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "$patch" | patch -p1
           git commit -am 'Please consider the following formatting changes'
           cat << EOF >> "$GITHUB_STEP_SUMMARY"
           # clang-format failed
