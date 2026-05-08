@@ -268,8 +268,7 @@ build_identifier=${NO_ASSUME_CONSISTENT_EXTERNALS:+${PR_NUMBER//-/_}}
 # Mount the RECC config directory inside the container if using Docker.
 if [[ -n "$USE_RECC" && -n "$RECC_CONFIG_DIRECTORY" ]]; then
   if [[ -n "$use_docker" ]]; then
-    path_in_container="/recc"
-    recc_config=(-e "RECC_CONFIG_DIRECTORY=$path_in_container" -v "$RECC_CONFIG_DIRECTORY:$path_in_container:ro")
+    recc_config=(-e "RECC_CONFIG_DIRECTORY=/recc" -v "$RECC_CONFIG_DIRECTORY:/recc:ro")
   else
     recc_config=(-e "RECC_CONFIG_DIRECTORY=$RECC_CONFIG_DIRECTORY")
   fi
@@ -290,7 +289,7 @@ if clean_env long_timeout $BUILD_CMD build "$PACKAGE"          \
      -e "ALIBUILD_O2_FORCE_GPU=$ALIBUILD_O2_FORCE_GPU"       \
      ${USE_RECC:+-e "USE_RECC=$USE_RECC"}                    \
      ${RECC_LOG_LEVEL:+-e "RECC_LOG_LEVEL=$RECC_LOG_LEVEL"}  \
-     "${recc_config:+${recc_config[@]}}"                     \
+     ${recc_config:+"${recc_config[@]}"}                     \
      -e "ALIBUILD_O2PHYSICS_TESTS=$ALIBUILD_O2PHYSICS_TESTS" \
      -e "ALIBUILD_XJALIENFS_TESTS=$ALIBUILD_XJALIENFS_TESTS" \
      -e "ALIBUILD_HEAD_HASH=$PR_HASH"                        \
