@@ -26,7 +26,7 @@ from argparse import ArgumentParser, Namespace
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from gql import Client, gql
+from gql import Client, gql, GraphQLRequest
 from gql.transport.requests import RequestsHTTPTransport
 from alibot_helpers.utilities import parse_env_file
 from alibot_helpers.github_utilities import \
@@ -38,21 +38,32 @@ DEFAULTENV_NAME = "DEFAULTS.env"
 @functools.lru_cache(maxsize=None)
 def query_repo_info(session, org, repo, base_branch, include_base_branch=False):
     """Query the given repo to get pull request statuses."""
-    return session.execute(QUERY, {
-        "repoOwner": org,
-        "repoName": repo,
-        "baseBranch": base_branch,
-        "includeBaseBranch": include_base_branch,
-    }, "statuses")["repository"]
+    return session.execute(GraphQLRequest(
+        QUERY.document,
+        variable_values={
+            "repoOwner": org,
+            "repoName": repo,
+            "baseBranch": base_branch,
+            "includeBaseBranch": include_base_branch,
+        },
+        operation_name="statuses",
+    ))["repository"]
 
 
 @functools.lru_cache(maxsize=None)
 def query_team_members(session, org, team_slug):
     """Fetch the logins of the members of the given team."""
-    return frozenset(member["login"] for member in session.execute(QUERY, {
-        "repoOwner": org,
-        "teamSlug": team_slug,
-    }, "team")["organization"]["team"]["members"]["nodes"])
+    return frozenset(
+        member["login"]
+        for member in session.execute(GraphQLRequest(
+            QUERY.document,
+            variable_values={
+                "repoOwner": org,
+                "teamSlug": team_slug,
+            },
+            operation_name="team",
+        ))["organization"]["team"]["members"]["nodes"]
+    )
 
 
 class RepoConfig:

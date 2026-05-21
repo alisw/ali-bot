@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = 'ali-bot'
 readme = "README.rst"
 dynamic = ['version']
-requires-python = '>=3.7'
+requires-python = '>=3.8.1'
 
 description = 'ALICE Multipurpose bot'
 authors = [
@@ -41,8 +41,8 @@ services = [
   "python-ldap"
 ]
 ci = [
-  "gql<4.0.0",
-  "requests-toolbelt",  # for gql
+  "gql>=4.0.0",
+  "requests-toolbelt",
   "typing-extensions==4.1.1; python_version == '3.6'",
 ]
 
