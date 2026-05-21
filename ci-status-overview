@@ -21,9 +21,8 @@ from datetime import datetime, timedelta
 from textwrap import dedent
 from typing import Optional, Union, Literal, Final, TypedDict, TextIO
 
-from gql import Client, gql
+from gql import Client, gql, GraphQLRequest
 from gql.transport.requests import RequestsHTTPTransport
-from graphql.language.ast import DocumentNode
 from alibot_helpers.utilities import parse_env_file
 
 
@@ -32,7 +31,7 @@ TIMEFORMAT: Final[str] = '%Y-%m-%dT%H:%M:%SZ'
 NOW: Final[datetime] = datetime.now()
 PR_URL_FMT: Final[str] = 'https://github.com/{repo}/pull/{pr}'
 API_URL: Final[str] = 'https://api.github.com/graphql'
-GET_PR_STATUSES_GRAPHQL: Final[DocumentNode] = gql('''\
+GET_PR_STATUSES_GRAPHQL: Final[GraphQLRequest] = gql('''\
 query statuses($repoOwner: String!, $repoName: String!, $baseBranch: String!) {
   repository(owner: $repoOwner, name: $repoName) {
     pullRequests(last: 100, baseRefName: $baseBranch, states: OPEN) {
@@ -97,9 +96,12 @@ def get_check_statuses(client, repo: str, branch: str, checks: list[str]) \
     if not is_valid:
         raise ValueError('repository name must contain a slash')
     statuses: defaultdict[str, list[Check]] = defaultdict(list)
-    response = client.execute(GET_PR_STATUSES_GRAPHQL, {
-        'repoOwner': owner, 'repoName': repo_name, 'baseBranch': branch,
-    })
+    response = client.execute(GraphQLRequest(
+        GET_PR_STATUSES_GRAPHQL.document,
+        variable_values={
+            'repoOwner': owner, 'repoName': repo_name, 'baseBranch': branch,
+        },
+    ))
     for pull in response['repository']['pullRequests']['nodes']:
         if pull['isDraft'] or pull['title'].startswith('[WIP]'):
             continue
