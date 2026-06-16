@@ -60,6 +60,9 @@ ALL_ERROR_MSG_RE = re.compile('|'.join(regex.pattern for regex in (
     # (not useful without context, so it's handled specially).
 )))
 
+# Skip uploading individual extra files larger than this (in bytes).
+MAX_EXTRA_FILE_SIZE = 100 * 1024 * 1024
+
 
 def parse_args():
     parser = ArgumentParser()
@@ -216,8 +219,15 @@ class Logs(object):
         for log in self.all_logs:
             artifacts_dir = join(dirname(log), "artifacts")
             search_path = join(artifacts_dir, "**", "*")
-            extra_files.extend(x for x in glob(search_path, recursive=True)
-                               if os.path.isfile(x))
+            for x in glob(search_path, recursive=True):
+                if not os.path.isfile(x):
+                    continue
+                if os.path.getsize(x) > MAX_EXTRA_FILE_SIZE:
+                    print("Skipping extra file %s: larger than %d MB" %
+                          (x, MAX_EXTRA_FILE_SIZE // (1024 * 1024)),
+                          file=sys.stderr)
+                    continue
+                extra_files.append(x)
         self.extra_files = sorted(set(extra_files))
         print("Extra files found:", *self.extra_files, sep="\n", file=sys.stderr)
 
