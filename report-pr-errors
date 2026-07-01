@@ -40,6 +40,7 @@ FAILED_UNIT_TEST_RE = re.compile(
 KILLED_RE = re.compile(r'fatal error: Killed signal terminated program')
 CMAKE_ERROR_RE = re.compile(r'^CMake Error')
 O2CHECKCODE_RE = re.compile(r'^=+ List of errors found =+$')
+O2PCHECKCODE_RE = re.compile(r'^=+ List of issues found =+$')
 # Messages from the full system test
 FST_TASK_TIMEOUT_RE = re.compile(r'task timeout reached')
 FST_LOGFILE_RE = re.compile(r'Detected critical problem in logfile')
@@ -314,11 +315,13 @@ class Logs(object):
         # o2checkcode_messages as well, so don't report them twice. The general
         # logs also contain false positives, so o2checkcode_messages is better.
         self.errors_log = self.grep_logs(
-            ERRORS_RE, ignore_log_files=['*/o2checkcode-latest*/log'])
+            ERRORS_RE, ignore_log_files=['*/o2checkcode-latest*/log', '*/O2Physics-code-check-latest*/log'])
         self.warnings_log = self.grep_logs(
             WARNINGS_RE, main_packages_only=True)
         self.o2checkcode_messages = self.grep_logs(
             O2CHECKCODE_RE, context_before=0, context_after=float('inf'))
+        self.o2pcheckcode_messages = self.grep_logs(
+            O2PCHECKCODE_RE, context_before=0, context_after=float('inf'))
         self.failed_unit_tests = self.grep_logs(
             FAILED_UNIT_TEST_RE, context_before=0, context_after=0)
         self.compiler_killed = self.grep_logs(KILLED_RE)
@@ -338,8 +341,9 @@ class Logs(object):
         # "=== List of errors found ===" line, so treat it specially.
         error_log = self.grep_logs(
             ALL_ERROR_MSG_RE, context_before=0, context_after=0,
-            ignore_log_files=['*/o2checkcode-latest*/log'])
+            ignore_log_files=['*/o2checkcode-latest*/log', '*/O2Physics-code-check-latest*/log'])
         error_log += self.o2checkcode_messages
+        error_log += self.o2pcheckcode_messages
         if error_log:
             # Get the first recognised error messages from the error log.
             error_log_lines = error_log.split('\n')
@@ -411,6 +415,8 @@ class Logs(object):
                 'fetch_display': display(fetch_log),
                 'o2checkcode': htmlescape(self.o2checkcode_messages),
                 'o2c_display': display(self.o2checkcode_messages),
+                'o2pcheckcode': htmlescape(self.o2pcheckcode_messages),
+                'o2pc_display': display(self.o2pcheckcode_messages),
                 'unittests': htmlescape(self.failed_unit_tests),
                 'unit_display': display(self.failed_unit_tests),
                 'errors': htmlescape(self.errors_log),
@@ -423,7 +429,7 @@ class Logs(object):
                 'xjalienfs': htmlescape(self.xjalienfs_exceptions),
                 'xjalienfs_display': display(self.xjalienfs_exceptions),
                 'noerrors_display': display(not any((
-                    self.o2checkcode_messages, self.failed_unit_tests,
+                    self.o2checkcode_messages, self.o2pcheckcode_messages, self.failed_unit_tests,
                     self.errors_log, self.warnings_log, self.compiler_killed,
                     self.cmake_errors, fetch_log, self.xjalienfs_exceptions,
                 ))),
@@ -662,6 +668,7 @@ PRETTY_LOG_TEMPLATE = '''\
    #fetch, #fetch-toc { display: %(fetch_display)s; }
    #compiler-killed, #compiler-killed-toc { display: %(killed_display)s; }
    #o2checkcode, #o2checkcode-toc { display: %(o2c_display)s; }
+   #o2pcheckcode, #o2pcheckcode-toc { display: %(o2pc_display)s; }
    #tests, #tests-toc { display: %(unit_display)s; }
    #errors, #errors-toc { display: %(err_display)s; }
    #warnings, #warnings-toc { display: %(warn_display)s; }
@@ -701,6 +708,7 @@ PRETTY_LOG_TEMPLATE = '''\
     <li id="compiler-killed-toc"><a href="#compiler-killed">Error: the compiler process was killed</a></li>
     <li id="cmake-toc"><a href="#cmake">CMake errors and warnings</a></li>
     <li id="o2checkcode-toc"><a href="#o2checkcode"><code>o2checkcode</code> results</a></li>
+    <li id="o2pcheckcode-toc"><a href="#o2pcheckcode"><code>O2Physics-code-check</code> results</a></li>
     <li id="tests-toc"><a href="#tests">Unit test results</a></li>
     <li id="fullsystest-toc"><a href="#fullsystest">O2 full system test</a></li>
     <li id="xjalienfs-toc"><a href="#xjalienfs">XjalienFS exceptions</a></li>
@@ -728,6 +736,10 @@ PRETTY_LOG_TEMPLATE = '''\
   <section id="o2checkcode">
     <h2><code>o2checkcode</code> results</h2>
     <p><pre><code>%(o2checkcode)s</code></pre></p>
+  </section>
+  <section id="o2pcheckcode">
+    <h2><code>O2Physics-code-check</code> results</h2>
+    <p><pre><code>%(o2pcheckcode)s</code></pre></p>
   </section>
   <section id="tests">
     <h2>Unit test results</h2>
