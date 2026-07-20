@@ -40,6 +40,7 @@ jobs:
           # PR diverged. We're fetching everything here, as we don't know how
           # many commits back that point is.
           fetch-depth: 0
+          allow-unsafe-pr-checkout: true # needed for pull_request_target
 
       - name: Install prerequisites
         env:
@@ -166,6 +167,7 @@ jobs:
           # PR diverged. We're fetching everything here, as we don't know how
           # many commits back that point is.
           fetch-depth: 0
+          allow-unsafe-pr-checkout: true # needed for pull_request_target
 
       # Fetch the PR's base branch to find the common ancestor.
       - name: Update PR branch
@@ -260,6 +262,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
+          allow-unsafe-pr-checkout: true # needed for pull_request_target
 
       - name: Check for incorrect line endings
         run: |
@@ -320,6 +323,7 @@ jobs:
           # PR diverged. We're fetching everything here, as we don't know how
           # many commits back that point is.
           fetch-depth: 0
+          allow-unsafe-pr-checkout: true # needed for pull_request_target
 
       # Fetch the PR's base branch to find the common ancestor.
       - name: Update PR branch
@@ -403,6 +407,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
+          allow-unsafe-pr-checkout: true # needed for pull_request_target
 
       - name: Run pragma check
         run: |
