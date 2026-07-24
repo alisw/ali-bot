@@ -1,0 +1,19 @@
+{
+  "cert": "/usr/local/etc/security-proxy/usercert.pem",
+  "key": "/usr/local/etc/security-proxy/userkey.pem",
+  "cafile": "/usr/local/etc/security-proxy/cern-ca-bundle.pem",
+
+  "agent_socket": "/usr/local/var/run/security-proxy/agent/agent.sock",
+  "ingest_socket": "/usr/local/var/run/security-proxy/ingest/ingest.sock",
+  "agent_socket_group": "_securityproxy_clients",
+  "ingest_socket_group": "_securityproxy_provisioners",
+
+  "secret_rotation_seconds": 86400,
+
+  "routes": [
+    {"prefix": "/ccdb/", "upstream": "https://alice-ccdb.cern.ch"},
+    {"prefix": "/", "name": "nomad", "upstream": "https://alinomad.cern.ch",
+     "websocket": true, "auth_header": "X-Nomad-Token",
+     "inject_headers": {"X-Nomad-Token": {"ingest": "nomad"}}}
+  ]
+}

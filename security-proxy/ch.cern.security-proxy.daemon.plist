@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LaunchDaemon variant: runs as a dedicated user, at boot, before any login.
+     Install to /Library/LaunchDaemons/ (owned root:wheel, mode 644) and load with:
+       sudo launchctl bootstrap system /Library/LaunchDaemons/ch.cern.security-proxy.plist
+     The code + venv must live somewhere the daemon user can read (NOT a user home,
+     which is 0700) -- e.g. /usr/local/lib/security-proxy. See README "Run as a
+     separate user". -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ch.cern.security-proxy</string>
+
+    <key>UserName</key>
+    <string>_securityproxy</string>
+    <key>GroupName</key>
+    <string>_securityproxy</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/lib/security-proxy/venv/bin/python</string>
+        <string>/usr/local/lib/security-proxy/security_proxy.py</string>
+        <string>--config</string>
+        <string>/usr/local/etc/security-proxy/config.json</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>Umask</key>
+    <integer>63</integer>
+
+    <key>StandardOutPath</key>
+    <string>/usr/local/var/log/security-proxy.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/usr/local/var/log/security-proxy.err.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>/usr/local/lib/security-proxy</string>
+</dict>
+</plist>
