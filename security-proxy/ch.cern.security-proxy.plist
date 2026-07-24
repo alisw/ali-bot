@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ch.cern.security-proxy</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__HOME__/src/ali-bot/security-proxy/venv/bin/python</string>
+        <string>__HOME__/src/ali-bot/security-proxy/security_proxy.py</string>
+        <string>--config</string>
+        <string>__HOME__/.security-proxy.json</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/security-proxy.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/security-proxy.stderr.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>__HOME__/src/ali-bot/security-proxy</string>
+</dict>
+</plist>

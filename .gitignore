@@ -17,3 +17,4 @@ ali_bot.egg-info/
 .cached_github_client_cache
 .envrc
 build/
+*.egg-info
