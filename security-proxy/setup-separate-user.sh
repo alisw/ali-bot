@@ -231,6 +231,13 @@ install -m 0644 "$CAFILE_SRC" "$ETC/cern-ca-bundle.pem"
 _assert_path "$ETC/cern-ca-bundle.pem" file root wheel 0644
 
 echo "==> config (root-owned; cert+secrets are pushed at runtime, not stored here)"
+# "attended_slots" lists slots that bootstrap must NOT fill: high-privilege secrets
+# that only enter the proxy when you run `security-proxy-unlock <slot>` and answer a
+# Keychain password / Touch ID prompt, and that the proxy then drops after the window
+# below. Add an entry per privileged slot, e.g.
+#     "attended_slots": {"vault-admin": {"ttl": 300, "max_uses": 1}},
+# and a matching source under "attended" in ~/.security-proxy-bootstrap.json pointing
+# at a *locked* keychain (an unlocked one would defeat the prompt).
 CONFIG_TMP=$(mktemp "$ETC/config.json.XXXXXX")
 cat > "$CONFIG_TMP" <<JSON
 {
@@ -241,6 +248,7 @@ cat > "$CONFIG_TMP" <<JSON
   "agent_socket_group": "$CLIENT_GROUP",
   "ingest_socket_group": "$PROVISION_GROUP",
   "secret_rotation_seconds": 86400,
+  "attended_slots": {"github-token-rw": {"ttl": 900}},
   "routes": [
     {"prefix": "/ccdb/", "upstream": "https://alice-ccdb.cern.ch"},
     {"prefix": "/hyperloop/", "upstream": "https://alimonitor.cern.ch/hyperloop"},
@@ -248,6 +256,10 @@ cat > "$CONFIG_TMP" <<JSON
     {"prefix": "/alimonitor/", "upstream": "https://alimonitor.cern.ch"},
     {"prefix": "/alihyperloop-data/", "upstream": "https://alimonitor.cern.ch/alihyperloop-data"},
     {"prefix": "/bookkeeping/", "upstream": "https://ali-bookkeeping.cern.ch"},
+    {"name": "github", "prefix": "/github/", "upstream": "https://api.github.com",
+     "inject_headers": {"Authorization": {"ingest": "github-token"}}},
+    {"name": "github-rw", "prefix": "/github-rw/", "upstream": "https://api.github.com",
+     "inject_headers": {"Authorization": {"ingest": "github-token-rw"}}},
     {"name": "nomad", "upstream": "https://alinomad.cern.ch", "websocket": true,
      "auth_header": "X-Nomad-Token", "inject_headers": {"X-Nomad-Token": {"ingest": "nomad"}}},
     {"name": "consul", "upstream": "https://aliconsul.cern.ch",

@@ -97,6 +97,63 @@ The `command` source makes any secret store pluggable (1Password, vault, a file,
 a one-time interactive SSO capture that caches its result). Because the proxy never
 touches the Keychain itself, it works headless and as a separate user.
 
+## Attended slots (high-privilege secrets)
+
+Everything above is designed to run unattended: bootstrap once, and any process
+running as you can use the routes until restart. For secrets where that is exactly
+what you *don't* want — admin tokens, signing keys — mark the slot **attended**:
+
+```json
+"attended_slots": {"vault-admin": {"ttl": 300, "max_uses": 1}}
+```
+
+An attended slot is skipped by `security-proxy-bootstrap` and its routes answer
+**403** (not 503 — a different fault with a different fix) until you run:
+
+```bash
+security-proxy-unlock vault-admin        # prompts; then 300s / 1 request
+security-proxy-unlock vault-admin --lock # close the window early
+```
+
+The source for an attended slot lives under `"attended"` in the bootstrap config and
+must point at a **locked** keychain — that is what makes the unlock cost a password
+or Touch ID prompt:
+
+```json
+{"slots": {"nomad": {"keychain": {"service": "security-proxy", "account": "alinomad.cern.ch"}}},
+ "attended": {"vault-admin": {"keychain": {
+    "service": "vault-admin", "account": "me",
+    "keychain": "~/Library/Keychains/security-proxy.keychain-db"}}}}
+```
+
+Create that keychain with its own password and a short auto-lock, and keep it out of
+the default search list so nothing else touches it:
+
+```bash
+security create-keychain -P security-proxy.keychain
+security set-keychain-settings -l -u -t 120 ~/Library/Keychains/security-proxy.keychain-db
+./add-keychain-secret.sh -s vault-admin -k ~/Library/Keychains/security-proxy.keychain-db
+```
+
+`add-keychain-secret.sh` passes the subcommand to `security -i` on stdin, so the
+secret never reaches argv (where `ps` would show it) — the shell counterpart of
+`keychain_set_token()` in `security_proxy.py`. Add `-p 'Bearer '` when the slot
+backs an `inject_headers` entry, which needs the full header value.
+
+Why this shape: an agent (or any process) running as your uid can invoke
+`security-proxy-unlock` exactly as you can — same user, same sockets, so no file
+mode or socket permission can tell you apart. What it cannot do is answer the
+Keychain prompt. The secret is therefore *absent* from the proxy outside a window a
+human opened deliberately, and the proxy wipes it again after `ttl` seconds or
+`max_uses` requests, whichever comes first (a sweeper drops it on time even if
+nobody uses it). Setting neither `ttl` nor `max_uses` is rejected: a window that
+never closes is not attended.
+
+The gate is only as strong as the prompt — a GUI password dialog is in principle
+spoofable by other code running as you. A Secure Enclave helper (a slot source that
+signs a challenge under `.biometryCurrentSet`) would close that gap; the
+`security-proxy-unlock` front door is unchanged if you swap one in later.
+
 ## S3 buckets (s3cmd)
 
 S3 upstreams authenticate by *signing* each request, not by sending a bearer token,
