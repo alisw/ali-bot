@@ -89,6 +89,20 @@ WS_GATE_SUBPROTOCOL_PREFIX = "security-proxy-token."
 SLOTS: dict[str, str] = {}
 DEFAULT_INGEST_SOCKET = "~/.security-proxy/ingest.sock"
 
+# Attended slots hold high-privilege secrets that must never sit resident in memory:
+# they are deliberately NOT filled by `security-proxy-bootstrap`, so their routes stay
+# closed until the human runs `security-proxy-unlock <slot>`. That command sources the
+# value from a *locked* Keychain, so filling the slot costs a password/Touch ID prompt
+# nobody can answer unattended -- an agent running as the same uid can invoke the
+# command but cannot satisfy the prompt, which is the only asymmetry that survives
+# same-uid access. Once armed the value expires after `ttl` seconds and/or `max_uses`
+# requests, so an approved window cannot be ridden indefinitely.
+# Config: {"attended_slots": {"<slot>": {"ttl": 300, "max_uses": 1}}}
+ATTENDED: dict[str, dict] = {}
+SLOT_STATE: dict[str, dict] = {}  # armed attended slot -> {"expires", "uses_left"}
+DEFAULT_ATTENDED_TTL = 300
+ATTENDED_SWEEP_SECONDS = 15
+
 # When set (config "agent_socket_group" / "ingest_socket_group"), sockets are
 # created group-accessible (0660 + that gid) for separate-user daemon deployments.
 # Legacy "socket_group" still applies to both sockets when the split keys are absent.
@@ -263,6 +277,90 @@ class SlotUnavailable(Exception):
     def __init__(self, slot: str):
         super().__init__(slot)
         self.slot = slot
+        self.attended = slot in ATTENDED
+
+    @property
+    def status(self) -> int:
+        """403 for a locked attended slot (the human must approve), 503 for a plain
+        unprovisioned one (bootstrap was not run) -- different faults, different fixes."""
+        return 403 if self.attended else 503
+
+    @property
+    def detail(self) -> str:
+        return slot_unavailable_detail(self.slot)
+
+
+def slot_unavailable_detail(slot: str) -> str:
+    """Client-facing explanation for a slot that cannot be served right now."""
+    if slot in ATTENDED:
+        return (f"attended route: slot '{slot}' is locked. Run "
+                f"`security-proxy-unlock {slot}` -- it needs your password or Touch ID, "
+                f"and cannot be completed unattended.")
+    return f"route not provisioned: slot '{slot}'"
+
+
+def slot_wipe(slot: str, why: str = "") -> None:
+    """Drop an attended slot's value from memory, closing its window."""
+    had = SLOTS.pop(slot, None) is not None
+    SLOT_STATE.pop(slot, None)
+    if had:
+        print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - attended slot '{slot}' locked"
+              f"{' (' + why + ')' if why else ''}", flush=True)
+
+
+def slot_arm(slot: str) -> dict | None:
+    """Start an attended slot's window on push. Returns the window for the ack."""
+    policy = ATTENDED.get(slot)
+    if policy is None:
+        return None
+    ttl = policy.get("ttl")
+    uses = policy.get("max_uses")
+    SLOT_STATE[slot] = {"expires": (time.monotonic() + ttl) if ttl else None,
+                        "uses_left": uses}
+    print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - attended slot '{slot}' unlocked "
+          f"(ttl {ttl or 'none'}s, uses {uses or 'unlimited'})", flush=True)
+    return {"ttl": ttl, "max_uses": uses}
+
+
+def slot_get(slot: str | None, consume: bool = True) -> str | None:
+    """Read a slot's value, enforcing the attended window.
+
+    Plain slots are a dict lookup. An attended slot is served only inside the window
+    opened by `security-proxy-unlock`: past its TTL or its use budget the value is
+    wiped, so the next request fails closed and needs a fresh human approval. Pass
+    consume=False for reads that are not a request against the credential (rebuilding
+    the TLS context), so they do not burn the budget."""
+    if not slot:
+        return None
+    value = SLOTS.get(slot)
+    if value is None or slot not in ATTENDED:
+        return value
+    state = SLOT_STATE.get(slot)
+    if state is None:  # armed before the policy existed, or already spent
+        slot_wipe(slot, "no window")
+        return None
+    if state["expires"] is not None and time.monotonic() >= state["expires"]:
+        slot_wipe(slot, "ttl expired")
+        return None
+    if consume and state["uses_left"] is not None:
+        state["uses_left"] -= 1
+        if state["uses_left"] <= 0:
+            # Serve this request, then close the window before the next one.
+            slot_wipe(slot, "use budget spent")
+    return value
+
+
+def sweep_attended_slots() -> None:
+    """Wipe expired attended slots even if nothing has asked for them.
+
+    slot_get() already fails closed on expiry, but a secret nobody reads would
+    otherwise linger in memory past its window -- the point of an attended slot is
+    that it is *absent* outside one."""
+    now = time.monotonic()
+    for slot in list(SLOT_STATE):
+        expires = SLOT_STATE[slot]["expires"]
+        if expires is not None and now >= expires:
+            slot_wipe(slot, "ttl expired")
 
 
 def resolve_ingest_headers(route: Route) -> dict:
@@ -271,7 +369,7 @@ def resolve_ingest_headers(route: Route) -> dict:
     Raises SlotUnavailable if a required slot has not been pushed in yet."""
     out = {}
     for header, slot in (route.ingest_headers or {}).items():
-        value = SLOTS.get(slot)
+        value = slot_get(slot)
         if value is None:
             raise SlotUnavailable(slot)
         out[header] = value
@@ -291,6 +389,12 @@ def build_upstream_headers(request: Request, route: Route) -> dict:
     drop.update(h.lower() for h in inject)
     headers = {k: v for k, v in request.headers.items() if k.lower() not in drop}
     headers.update(inject)
+    # Negotiate content-encoding on the client's behalf, not httpx's. We stream the
+    # upstream body back raw (aiter_raw), so whatever encoding upstream picks reaches
+    # the client verbatim -- and httpx defaults to "gzip, deflate" when the request
+    # carries no accept-encoding. A client that sent none (curl, wiff) would then get
+    # a gzipped body it never asked for and fail to parse it. Ask for identity instead.
+    headers.setdefault("accept-encoding", "identity")
     return headers
 
 
@@ -394,15 +498,19 @@ def _extract_token(pasted: str, param: str) -> str:
     )
 
 
-def keychain_get_token(service: str, account: str) -> str | None:
+def keychain_get_token(service: str, account: str, keychain: str | None = None) -> str | None:
     """Read a generic-password token from the macOS Keychain (None if absent).
 
     `-w` takes no argument here (it prints the password to stdout), so only the
-    non-secret service/account appear in argv; the secret never does."""
-    result = subprocess.run(
-        ["security", "find-generic-password", "-s", service, "-a", account, "-w"],
-        capture_output=True, text=True,
-    )
+    non-secret service/account appear in argv; the secret never does.
+
+    `keychain` names an explicit keychain file rather than searching the default list.
+    Attended slots use that to live in a locked, out-of-search-list keychain, so
+    reading them raises the macOS unlock prompt instead of succeeding silently."""
+    cmd = ["security", "find-generic-password", "-s", service, "-a", account, "-w"]
+    if keychain:
+        cmd.append(str(Path(keychain).expanduser()))
+    result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         return None
     return result.stdout.strip() or None
@@ -662,10 +770,12 @@ def build_ssl_context(args) -> ssl.SSLContext:
         ssl_ctx.load_verify_locations(cafile=args.cafile)
 
     if CERT_SLOT:
-        cert_pem = SLOTS.get(CERT_SLOT)
+        # Building the TLS context is not a request against the credential, so it must
+        # not burn an attended slot's use budget.
+        cert_pem = slot_get(CERT_SLOT, consume=False)
         if cert_pem is None:
             raise SlotUnavailable(CERT_SLOT)
-        key_pem = SLOTS.get(KEY_SLOT) if KEY_SLOT else None
+        key_pem = slot_get(KEY_SLOT, consume=False) if KEY_SLOT else None
         if KEY_SLOT and key_pem is None:
             raise SlotUnavailable(KEY_SLOT)
         _load_pem_into_context(ssl_ctx, cert_pem, key_pem)
@@ -861,7 +971,7 @@ async def ws_proxy(ws: WebSocket, path: str):
     try:
         ingest_headers = resolve_ingest_headers(route)
     except SlotUnavailable as e:
-        raise WebSocketDisconnect(code=4003, reason=f"slot '{e.slot}' not provisioned")
+        raise WebSocketDisconnect(code=4003, reason=e.detail[:120])
 
     # Header-matched routes forward the full path; prefix routes strip their prefix
     upstream_path = path if route.auth_header else path[len(route.prefix.lstrip("/")):]
@@ -925,12 +1035,13 @@ async def proxy_s3(path: str, request: Request, route: Route) -> Response:
     if keypair is None:
         raise HTTPException(status_code=404,
                             detail=f"no S3 credentials configured for bucket '{bucket}'")
-    access_key = SLOTS.get(keypair["access_slot"])
-    secret_key = SLOTS.get(keypair["secret_slot"])
-    if access_key is None:
-        raise HTTPException(status_code=503, detail=f"route not provisioned: slot '{keypair['access_slot']}'")
-    if secret_key is None:
-        raise HTTPException(status_code=503, detail=f"route not provisioned: slot '{keypair['secret_slot']}'")
+    # Both halves are one credential, so both spend a use and expire together.
+    access_key = slot_get(keypair["access_slot"])
+    secret_key = slot_get(keypair["secret_slot"])
+    for role, value in (("access_slot", access_key), ("secret_slot", secret_key)):
+        if value is None:
+            exc = SlotUnavailable(keypair[role])
+            raise HTTPException(status_code=exc.status, detail=exc.detail)
 
     upstream = urlsplit(route.upstream)
     host = upstream.netloc
@@ -1007,7 +1118,7 @@ def _oauth_current_refresh(account: dict) -> str | None:
         persisted = _file_get_token(Path(store).expanduser())
         if persisted:
             return persisted
-    return SLOTS.get(account["refresh_slot"])
+    return slot_get(account["refresh_slot"])
 
 
 async def proxy_oauth(path: str, request: Request, route: Route) -> Response:
@@ -1034,14 +1145,14 @@ async def proxy_oauth(path: str, request: Request, route: Route) -> Response:
     # Microsoft device-code flow) has none, and the refresh POST omits it.
     client_secret = None
     if account["secret_slot"]:
-        client_secret = SLOTS.get(account["secret_slot"])
+        client_secret = slot_get(account["secret_slot"])
         if client_secret is None:
-            raise HTTPException(status_code=503,
-                                detail=f"route not provisioned: slot '{account['secret_slot']}'")
+            exc = SlotUnavailable(account["secret_slot"])
+            raise HTTPException(status_code=exc.status, detail=exc.detail)
     refresh_token = _oauth_current_refresh(account)
     if not refresh_token:
-        raise HTTPException(status_code=503,
-                            detail=f"route not provisioned: slot '{account['refresh_slot']}'")
+        exc = SlotUnavailable(account["refresh_slot"])
+        raise HTTPException(status_code=exc.status, detail=exc.detail)
 
     form = {
         "grant_type": "refresh_token",
@@ -1086,10 +1197,10 @@ def _sign_load_key(route: Route):
     from cryptography.hazmat.primitives.asymmetric import ed25519
     from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-    seed_b64 = SLOTS.get(route.sign["key_slot"])
+    seed_b64 = slot_get(route.sign["key_slot"])
     if seed_b64 is None:
-        raise HTTPException(status_code=503,
-                            detail=f"route not provisioned: slot '{route.sign['key_slot']}'")
+        exc = SlotUnavailable(route.sign["key_slot"])
+        raise HTTPException(status_code=exc.status, detail=exc.detail)
     try:
         seed = base64.b64decode(seed_b64, validate=True)
     except (ValueError, base64.binascii.Error):
@@ -1156,7 +1267,7 @@ async def proxy(path: str, request: Request):
     try:
         headers = build_upstream_headers(request, route)
     except SlotUnavailable as e:
-        raise HTTPException(status_code=503, detail=f"route not provisioned: slot '{e.slot}'")
+        raise HTTPException(status_code=e.status, detail=e.detail)
 
     body = await request.body()
     url = f"{route.upstream}/{upstream_path}"
@@ -1271,9 +1382,18 @@ async def run_ingest(socket_path: Path, socket_gid: int | None = None):
         try:
             msg = json.loads((await reader.readline()).decode() or "{}")
             slot, value = msg.get("slot"), msg.get("value")
-            if isinstance(slot, str) and slot and isinstance(value, str):
+            if isinstance(slot, str) and slot and msg.get("clear") is True:
+                # `security-proxy-unlock --lock`: close an attended window early. Anyone
+                # who can reach this socket can already overwrite a slot, so allowing an
+                # explicit wipe adds no exposure and makes locking up cheap.
+                slot_wipe(slot, "locked on request")
+                resp = {"ok": True, "slot": slot, "cleared": True}
+            elif isinstance(slot, str) and slot and isinstance(value, str):
                 SLOTS[slot] = value
                 resp = {"ok": True, "slot": slot}
+                window = slot_arm(slot)
+                if window:
+                    resp["attended"] = window
                 if slot in (CERT_SLOT, KEY_SLOT):  # (re)build TLS when the cert arrives
                     try:
                         resp["tls"] = "ready" if await rebuild_tls() else "incomplete"
@@ -1352,8 +1472,15 @@ async def serve(args, log_config, agent_path: Path, ingest_path: Path, rotation:
         if r.sign:
             slots.add(r.sign["key_slot"])
     slots |= {s for s in (CERT_SLOT, KEY_SLOT) if s}
-    if slots:
-        print(f"  secret slots awaiting provisioning: {sorted(slots)}", flush=True)
+    if slots - set(ATTENDED):
+        print(f"  secret slots awaiting provisioning: {sorted(slots - set(ATTENDED))}", flush=True)
+    for slot in sorted(slots & set(ATTENDED)):
+        pol = ATTENDED[slot]
+        print(f"  attended slot (locked until `security-proxy-unlock {slot}`): "
+              f"ttl {pol.get('ttl') or 'none'}s, uses {pol.get('max_uses') or 'unlimited'}",
+              flush=True)
+    for slot in sorted(set(ATTENDED) - slots):
+        print(f"  warning: attended_slots lists '{slot}', which no route uses", flush=True)
 
     async def rotate_loop():
         while True:
@@ -1362,6 +1489,15 @@ async def serve(args, log_config, agent_path: Path, ingest_path: Path, rotation:
             print(f"{time.strftime('%Y-%m-%d %H:%M')} - rotated gate secret", flush=True)
 
     rot = asyncio.create_task(rotate_loop())
+
+    # Expire attended windows on a timer, not just on access, so an unlocked secret
+    # nobody happened to use still leaves memory when its window closes.
+    async def attended_sweep_loop():
+        while True:
+            await asyncio.sleep(ATTENDED_SWEEP_SECONDS)
+            sweep_attended_slots()
+
+    sweeper = asyncio.create_task(attended_sweep_loop()) if ATTENDED else None
 
     # JAliEn tokens are short-lived, so re-mint well before expiry. rebuild_tls() keeps
     # the previous token in place if minting fails, so a transient outage is harmless.
@@ -1391,6 +1527,8 @@ async def serve(args, log_config, agent_path: Path, ingest_path: Path, rotation:
         await server.serve(sockets=[sock])
     finally:
         rot.cancel()
+        if sweeper is not None:
+            sweeper.cancel()
         if alien is not None:
             alien.cancel()
         _cleanup_sockets()
@@ -1619,15 +1757,18 @@ def device_authorize_main(argv=None) -> None:
     sys.exit("device code expired before authorization completed")
 
 
-def push_slot(socket_path: Path, slot: str, value: str) -> dict:
-    """Push one secret value to a named slot over the write-only ingest socket."""
+def push_slot(socket_path: Path, slot: str, value: str | None, clear: bool = False) -> dict:
+    """Push one secret value to a named slot over the write-only ingest socket.
+
+    With clear=True, wipe the slot instead (used to close an attended window early)."""
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
         s.connect(str(socket_path))
     except OSError as e:
         sys.exit(f"cannot reach ingest socket at {socket_path}: {e}\nIs the proxy running?")
     try:
-        s.sendall((json.dumps({"slot": slot, "value": value}) + "\n").encode())
+        msg = {"slot": slot, "clear": True} if clear else {"slot": slot, "value": value}
+        s.sendall((json.dumps(msg) + "\n").encode())
         buf = b""
         while b"\n" not in buf:
             chunk = s.recv(4096)
@@ -1704,7 +1845,8 @@ def _resolve_source(source: dict) -> str | None:
         kc = source["keychain"]
         if isinstance(kc, str):
             kc = {"account": kc}
-        return keychain_get_token(kc.get("service", "security-proxy"), kc["account"])
+        return keychain_get_token(kc.get("service", "security-proxy"), kc["account"],
+                                  kc.get("keychain"))
     if "keychain_identity" in source:
         return _export_identity_pem(source["keychain_identity"])
     if "command" in source:
@@ -1745,7 +1887,10 @@ def bootstrap_main(argv=None) -> None:
     ok = 0
     total = 0
     for slot, source in slots.items():
-        if slot == "ingest_socket" or not isinstance(source, dict):
+        # "attended" holds the on-demand sources for attended slots -- deliberately not
+        # provisioned here, since the point is that they only enter the proxy when the
+        # human runs `security-proxy-unlock`.
+        if slot in ("ingest_socket", "attended") or not isinstance(source, dict):
             continue
         total += 1
         try:
@@ -1764,11 +1909,84 @@ def bootstrap_main(argv=None) -> None:
         else:
             print(f"[{slot}] push failed: {resp.get('error')}")
     print(f"provisioned {ok}/{total} slot(s) from {cfg_path}")
+    attended = cfg.get("attended") or {}
+    if attended:
+        print(f"attended slot(s) left locked: {', '.join(sorted(attended))} "
+              f"(security-proxy-unlock <slot>)")
+
+
+def unlock_main(argv=None) -> None:
+    """`security-proxy-unlock` -- open an attended slot's window (or close it).
+
+    The slot's source lives under "attended" in the bootstrap config and should point
+    at a *locked* keychain, so resolving it raises the macOS password/Touch ID prompt.
+    That prompt is the whole control: an agent running as this same user can invoke
+    this command, but cannot answer the prompt, so it cannot open the window."""
+    ap = argparse.ArgumentParser(
+        prog="security-proxy-unlock",
+        description="Provision a high-privilege 'attended' slot for a limited window. "
+                    "Requires the human at the keyboard: the source keychain is locked, "
+                    "so macOS prompts for your password or Touch ID.")
+    ap.add_argument("slot", nargs="?", help="attended slot to unlock (omit to list them)")
+    ap.add_argument("--lock", action="store_true",
+                    help="wipe the slot now instead, closing its window early")
+    ap.add_argument("--config", default="~/.security-proxy-bootstrap.json",
+                    help="bootstrap config holding the 'attended' sources")
+    ap.add_argument("--socket", default=None, help=f"ingest socket (default {DEFAULT_INGEST_SOCKET})")
+    a = ap.parse_args(argv)
+
+    cfg_path = Path(a.config).expanduser()
+    try:
+        cfg = json.load(open(cfg_path))
+    except OSError as e:
+        sys.exit(f"cannot read bootstrap config {cfg_path}: {e}")
+    attended = cfg.get("attended") or {}
+    socket_path = Path(a.socket or cfg.get("ingest_socket") or DEFAULT_INGEST_SOCKET).expanduser()
+
+    if not a.slot:
+        if not attended:
+            sys.exit(f'no "attended" slots configured in {cfg_path}')
+        print("attended slots:")
+        for slot in sorted(attended):
+            print(f"  {slot}")
+        return
+    if a.slot not in attended:
+        sys.exit(f'no attended source for {a.slot!r} in {cfg_path} '
+                 f'(known: {", ".join(sorted(attended)) or "none"})')
+
+    if a.lock:
+        resp = push_slot(socket_path, a.slot, None, clear=True)
+        print(f"[{a.slot}] locked" if resp.get("ok") else f"[{a.slot}] failed: {resp.get('error')}")
+        return
+
+    try:
+        value = _resolve_source(attended[a.slot])
+    except Exception as e:
+        sys.exit(f"[{a.slot}] source error: {e}")
+    if not value:
+        # A cancelled/failed Keychain prompt lands here: `security` exits non-zero and
+        # keychain_get_token returns None. Say so, rather than a bare "no value".
+        sys.exit(f"[{a.slot}] no value from source -- was the Keychain prompt cancelled?")
+    resp = push_slot(socket_path, a.slot, value)
+    if not resp.get("ok"):
+        sys.exit(f"[{a.slot}] push failed: {resp.get('error')}")
+    window = resp.get("attended")
+    if not window:
+        # The proxy does not consider this slot attended -- the window is not enforced.
+        sys.exit(f"[{a.slot}] provisioned, but the proxy has no attended_slots policy for "
+                 f"it: it will stay resident until restart. Add one to the deployed config.")
+    limits = []
+    if window.get("ttl"):
+        limits.append(f"{window['ttl']}s")
+    if window.get("max_uses"):
+        limits.append(f"{window['max_uses']} use(s)")
+    print(f"[{a.slot}] unlocked ({', '.join(limits)})")
 
 
 def main():
     dispatch = {"token": token_main, "push": push_main, "bootstrap": bootstrap_main,
-                "mail-token": mail_token_main, "device-authorize": device_authorize_main}
+                "unlock": unlock_main, "mail-token": mail_token_main,
+                "device-authorize": device_authorize_main}
     if len(sys.argv) > 1 and sys.argv[1] in dispatch:
         return dispatch[sys.argv[1]](sys.argv[2:])
 
@@ -1936,8 +2154,23 @@ The bootstrap config (~/.security-proxy-bootstrap.json) maps each slot to a sour
    "grid-cert": {"keychain_identity": "My Grid Cert"},
    "other":     {"command": "op read op://vault/item/field"}}
 Sources: "keychain" (generic password), "keychain_identity" (a cert identity, pushed
-as combined cert+key PEM), or "command" (its stdout is the value).
+as combined cert+key PEM), or "command" (its stdout is the value). A "keychain"
+source may name an explicit keychain file:
+  {"keychain": {"service": "s", "account": "a",
+                "keychain": "~/Library/Keychains/security-proxy.keychain-db"}}
 Slots live only in memory, so re-run provisioning after each proxy (re)start.
+
+Attended slots -- high-privilege secrets that must not sit resident:
+  "attended_slots": {"vault-admin": {"ttl": 300, "max_uses": 1}}
+Such a slot is skipped by bootstrap and its routes answer 403 until the human runs
+`security-proxy-unlock vault-admin`, whose source (under "attended" in the bootstrap
+config) should point at a *locked* keychain so macOS prompts for a password or Touch
+ID. The proxy then wipes the value after "ttl" seconds and/or "max_uses" requests,
+whichever comes first, so nothing unattended can use it. Close a window early with
+`security-proxy-unlock <slot> --lock`. Bootstrap config:
+  {"slots": {...},
+   "attended": {"vault-admin": {"keychain": {"service": "vault-admin", "account": "me",
+                "keychain": "~/Library/Keychains/security-proxy.keychain-db"}}}}
 
 Routes without auth_header are matched by URL path prefix (longest first) -- for
 browser/curl access. Header-matched routes take precedence over prefix routes.
@@ -2218,6 +2451,24 @@ browser/curl access. Header-matched routes take precedence over prefix routes.
         if not isinstance(refresh, int) or refresh <= 0:
             parser.error("alien_token['refresh_seconds'] must be a positive integer")
         ALIEN_TOKEN = {"endpoint": endpoint, "refresh_seconds": refresh}
+
+    attended_cfg = config.get("attended_slots")
+    if attended_cfg is not None:
+        if not isinstance(attended_cfg, dict):
+            parser.error("'attended_slots' must be an object mapping slot -> policy")
+        for slot, policy in attended_cfg.items():
+            if not isinstance(policy, dict):
+                parser.error(f"attended_slots['{slot}'] must be an object")
+            ttl = policy.get("ttl", DEFAULT_ATTENDED_TTL)
+            uses = policy.get("max_uses")
+            if ttl is not None and (not isinstance(ttl, int) or ttl <= 0):
+                parser.error(f"attended_slots['{slot}']['ttl'] must be a positive integer or null")
+            if uses is not None and (not isinstance(uses, int) or uses <= 0):
+                parser.error(f"attended_slots['{slot}']['max_uses'] must be a positive integer or null")
+            if ttl is None and uses is None:
+                parser.error(f"attended_slots['{slot}'] must set 'ttl' or 'max_uses': a window "
+                             "that never closes is not attended")
+            ATTENDED[slot] = {"ttl": ttl, "max_uses": uses}
 
     rotate_master()  # seed the initial gate secret before serving
     agent_path = Path(config.get("agent_socket", DEFAULT_AGENT_SOCKET)).expanduser()

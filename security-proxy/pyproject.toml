@@ -11,10 +11,18 @@ dependencies = [
     "websockets==16.0",
 ]
 
+[tool.setuptools]
+# The package is a single top-level module. Say so explicitly: setuptools'
+# auto-discovery does not find a flat py-module under a src-less layout, and an
+# editable install then registers *nothing* -- the console scripts import-error at
+# runtime while `pip install` reports success.
+py-modules = ["security_proxy"]
+
 [project.scripts]
 security-proxy = "security_proxy:main"
 security-proxy-token = "security_proxy:token_main"
 security-proxy-push = "security_proxy:push_main"
 security-proxy-bootstrap = "security_proxy:bootstrap_main"
+security-proxy-unlock = "security_proxy:unlock_main"
 security-proxy-mail-token = "security_proxy:mail_token_main"
 security-proxy-device-authorize = "security_proxy:device_authorize_main"
