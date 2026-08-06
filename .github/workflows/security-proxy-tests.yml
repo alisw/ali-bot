@@ -1,0 +1,56 @@
+---
+# Run the security-proxy test suite: route path scoping, attended-slot windows and the
+# declarative bootstrap sources. These pin security-relevant behaviour, so a red run
+# here means a credential boundary moved, not that a refactor needs tidying.
+name: Test security-proxy
+
+'on':
+  push:
+    paths:
+      - 'security-proxy/**'
+      - '.github/workflows/security-proxy-tests.yml'
+  pull_request:
+    paths:
+      - 'security-proxy/**'
+      - '.github/workflows/security-proxy-tests.yml'
+
+permissions: {}
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 is the real floor: the module uses PEP 604 (`str | None`) in runtime
+        # annotations, which 3.9 evaluates and rejects at import.
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: security-proxy/pyproject.toml
+
+      # An editable install is what the deployment does, so this covers packaging too:
+      # a missing `py-modules` once made pip report success while registering nothing,
+      # leaving every console script import-broken at runtime.
+      - name: Install the proxy
+        run: python -m pip install -e ./security-proxy
+
+      - name: Console scripts resolve
+        run: |
+          set -e
+          security-proxy-token --help > /dev/null
+          security-proxy-push --help > /dev/null
+          security-proxy-bootstrap --help > /dev/null
+          security-proxy-unlock --help > /dev/null
+          security-proxy --help > /dev/null
+
+      - name: Run the test suite
+        run: python security-proxy/tests/run_all.py

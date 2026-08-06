@@ -38,6 +38,8 @@ from contextlib import asynccontextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 import posixpath
+import urllib.error
+import urllib.request
 from urllib.parse import (urlparse, parse_qs, parse_qsl, quote, unquote, urlencode,
                           urlsplit, urlunsplit)
 import httpx
@@ -1716,19 +1718,76 @@ def _post_form(url: str, form: dict) -> tuple[int, dict]:
             return e.code, {}
 
 
+def device_authorize(provider: str, client_id: str, scope: str, tenant: str | None = None,
+                     account: str | None = None, cache: str | None = None,
+                     no_cache: bool = False, force: bool = False,
+                     devicecode_url: str | None = None, token_url: str | None = None) -> str:
+    """Run the OAuth2 device-code flow and return the refresh token.
+
+    Shared by the `device-authorize` CLI and the `device_authorize` bootstrap source.
+    The user prompt goes to stderr so it stays visible while bootstrap waits; the
+    token is cached (0600) and reused, so re-bootstrapping never re-prompts."""
+    preset = DEVICE_PROVIDERS[provider]
+    tenant = tenant or preset["default_tenant"] or "common"
+    devicecode_url = devicecode_url or preset["devicecode"].format(tenant=tenant)
+    token_url = token_url or preset["token"].format(tenant=tenant)
+
+    cache_path = None
+    if not no_cache:
+        label = account or client_id
+        cache_path = Path(cache).expanduser() if cache else \
+            Path("~/.config/security-proxy").expanduser() / f"{label}.refresh.json"
+        if not force:
+            cached = _file_get_token(cache_path)
+            if cached:
+                return cached
+
+    # 1. Ask for a device + user code
+    status, dc = _post_form(devicecode_url, {"client_id": client_id, "scope": scope})
+    if status != 200 or "device_code" not in dc:
+        raise RuntimeError(f"device-code request failed ({status}): "
+                           f"{dc.get('error_description', dc)}")
+    prompt = dc.get("message") or (
+        f"To authorize, visit {dc.get('verification_uri', dc.get('verification_url'))} "
+        f"and enter code: {dc['user_code']}")
+    print(prompt, file=sys.stderr, flush=True)
+
+    # 2. Poll the token endpoint until the user approves (or it expires)
+    interval = int(dc.get("interval", 5))
+    deadline = time.monotonic() + int(dc.get("expires_in", 900))
+    while time.monotonic() < deadline:
+        time.sleep(interval)
+        status, tok = _post_form(token_url, {
+            "grant_type": DEVICE_GRANT, "client_id": client_id, "device_code": dc["device_code"],
+        })
+        if status == 200 and tok.get("refresh_token"):
+            rt = tok["refresh_token"]
+            if cache_path is not None:
+                _file_set_token(cache_path, rt, token_url)
+            return rt
+        err = tok.get("error")
+        if err == "authorization_pending":
+            continue
+        if err == "slow_down":
+            interval += 5
+            continue
+        raise RuntimeError(f"authorization failed: {tok.get('error_description', err or tok)}")
+    raise RuntimeError("device code expired before authorization completed")
+
+
 def device_authorize_main(argv=None) -> None:
     """`security-proxy device-authorize <provider>` -- run the OAuth2 device-code flow
     and print the resulting refresh token to stdout (prompts go to stderr).
 
-    Intended as a `command` bootstrap source for an oauth route's refresh-token slot,
-    so the one-time browser consent happens at provisioning time -- no oama needed.
-    Caches the token (default ~/.config/security-proxy/<account>.refresh.json, 0600) and
-    reuses it on later runs, so re-bootstrapping never re-prompts; pass --force to
-    re-authorize. Device-code flow is for public clients, so no client_secret."""
+    Usually not run by hand: a `device_authorize` bootstrap source calls the same code,
+    so the one-time browser consent happens during `security-proxy-bootstrap` -- no
+    oama needed. Caches the token (default ~/.config/security-proxy/<account>.refresh.json,
+    0600) and reuses it on later runs; pass --force to re-authorize. Device-code flow is
+    for public clients, so no client_secret."""
     ap = argparse.ArgumentParser(
         prog="security-proxy device-authorize",
         description="Run the OAuth2 device-code flow and print the refresh token to "
-                    "stdout (for use as a 'command' bootstrap source).")
+                    "stdout (the 'device_authorize' bootstrap source calls the same code).")
     ap.add_argument("provider", choices=sorted(DEVICE_PROVIDERS),
                     help="OAuth provider preset (sets the device-code/token endpoints)")
     ap.add_argument("--client-id", required=True, help="public OAuth client id")
@@ -1743,53 +1802,13 @@ def device_authorize_main(argv=None) -> None:
     ap.add_argument("--force", action="store_true", help="ignore any cached token and re-authorize")
     a = ap.parse_args(argv)
 
-    preset = DEVICE_PROVIDERS[a.provider]
-    tenant = a.tenant or preset["default_tenant"] or "common"
-    devicecode_url = a.devicecode_url or preset["devicecode"].format(tenant=tenant)
-    token_url = a.token_url or preset["token"].format(tenant=tenant)
-
-    cache_path = None
-    if not a.no_cache:
-        label = a.account or a.client_id
-        cache_path = Path(a.cache).expanduser() if a.cache else \
-            Path("~/.config/security-proxy").expanduser() / f"{label}.refresh.json"
-        if not a.force:
-            cached = _file_get_token(cache_path)
-            if cached:
-                print(cached)
-                return
-
-    # 1. Ask for a device + user code
-    status, dc = _post_form(devicecode_url, {"client_id": a.client_id, "scope": a.scope})
-    if status != 200 or "device_code" not in dc:
-        sys.exit(f"device-code request failed ({status}): {dc.get('error_description', dc)}")
-    prompt = dc.get("message") or (
-        f"To authorize, visit {dc.get('verification_uri', dc.get('verification_url'))} "
-        f"and enter code: {dc['user_code']}")
-    print(prompt, file=sys.stderr, flush=True)
-
-    # 2. Poll the token endpoint until the user approves (or it expires)
-    interval = int(dc.get("interval", 5))
-    deadline = time.monotonic() + int(dc.get("expires_in", 900))
-    while time.monotonic() < deadline:
-        time.sleep(interval)
-        status, tok = _post_form(token_url, {
-            "grant_type": DEVICE_GRANT, "client_id": a.client_id, "device_code": dc["device_code"],
-        })
-        if status == 200 and tok.get("refresh_token"):
-            rt = tok["refresh_token"]
-            if cache_path is not None:
-                _file_set_token(cache_path, rt, token_url)
-            print(rt)
-            return
-        err = tok.get("error")
-        if err == "authorization_pending":
-            continue
-        if err == "slow_down":
-            interval += 5
-            continue
-        sys.exit(f"authorization failed: {tok.get('error_description', err or tok)}")
-    sys.exit("device code expired before authorization completed")
+    try:
+        print(device_authorize(a.provider, a.client_id, a.scope, tenant=a.tenant,
+                               account=a.account, cache=a.cache, no_cache=a.no_cache,
+                               force=a.force, devicecode_url=a.devicecode_url,
+                               token_url=a.token_url))
+    except RuntimeError as exc:
+        sys.exit(str(exc))
 
 
 def push_slot(socket_path: Path, slot: str, value: str | None, clear: bool = False) -> dict:
@@ -1870,37 +1889,92 @@ def _export_identity_pem(identity: str) -> str:
     return pem.decode()
 
 
-def _resolve_source(source: dict) -> str | None:
+SOURCE_KINDS = ("keychain", "keychain_identity", "file", "vault", "device_authorize")
+
+
+def _vault_get(spec: dict, agent_socket: Path) -> str | None:
+    """Read one field of a Vault secret *through the proxy's own vault route*.
+
+    So the bootstrap tool needs no Vault token of its own: it presents the rotating
+    gate token, and the proxy swaps in the real one. Reads KV v2 (`data.data.<field>`)
+    and falls back to the KV v1 shape."""
+    path = spec["path"].strip("/")
+    field = spec["field"]
+    route = spec.get("route", "vault")
+    reply = fetch_from_agent(agent_socket, route)
+    if "token" not in reply:
+        raise RuntimeError(f"no gate token for the '{route}' route: {reply.get('error', reply)}")
+    url = f"http://127.0.0.1:{reply['port']}/v1/{path}"
+    req = urllib.request.Request(url, headers={"X-Vault-Token": reply["token"]})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode()[:200]
+        raise RuntimeError(f"vault read {path} failed ({exc.code}): {detail}") from None
+    except OSError as exc:
+        raise RuntimeError(f"cannot reach the proxy's vault route: {exc}") from None
+    data = body.get("data") or {}
+    values = data.get("data") if isinstance(data.get("data"), dict) else data  # v2, else v1
+    if field not in values:
+        raise RuntimeError(f"vault secret {path} has no field {field!r} "
+                           f"(has: {', '.join(sorted(values)) or 'nothing'})")
+    return values[field]
+
+
+def _resolve_source(source: dict, agent_socket: Path | None = None) -> str | None:
     """Resolve a bootstrap source descriptor to a secret value.
 
-    {"keychain": "<account>"} or {"keychain": {"service","account"}} (a generic
-    password), {"keychain_identity": "<name>"} (a cert identity -> combined PEM), or
-    {"command": "<shell>"} (its stdout is the value)."""
-    if "keychain" in source:
+    Every kind is *declarative*: the bootstrap config names what to read, never how.
+    There is deliberately no shell/command kind -- this file is writable by anything
+    running as the user, so an arbitrary-command source would be arbitrary code
+    execution as the user at the next bootstrap.
+
+      {"keychain": "<account>"}                       a generic password, default service
+      {"keychain": {"service","account","keychain"}}  ... explicit item / keychain file
+      {"keychain_identity": "<name>"}                 a cert identity -> combined PEM
+      {"file": "<path>"} or {"file": [paths...]}      file contents, concatenated
+      {"vault": {"path","field","route"}}             a Vault field, via the proxy
+      {"device_authorize": {provider, client_id, scope, tenant, account}}
+    """
+    kinds = [k for k in SOURCE_KINDS if k in source]
+    if len(kinds) != 1:
+        if "command" in source:
+            raise ValueError(
+                'the "command" source was removed: it ran arbitrary shell as you at '
+                'bootstrap time, from a file any process running as you can edit. Use '
+                '"file" (was: cat), "device_authorize" (was: security-proxy '
+                'device-authorize) or "vault" instead.')
+        raise ValueError(f"source must have exactly one of: {', '.join(SOURCE_KINDS)}")
+    kind = kinds[0]
+
+    if kind == "keychain":
         kc = source["keychain"]
         if isinstance(kc, str):
             kc = {"account": kc}
         return keychain_get_token(kc.get("service", "security-proxy"), kc["account"],
                                   kc.get("keychain"))
-    if "keychain_identity" in source:
+    if kind == "keychain_identity":
         return _export_identity_pem(source["keychain_identity"])
-    if "command" in source:
-        # Capture stdout (the value) but let stderr pass through to the terminal, so an
-        # interactive source -- e.g. `security-proxy device-authorize`, which prints its
-        # "visit this URL and enter this code" prompt to stderr -- is visible while
-        # bootstrap waits for it.
-        out = subprocess.run(source["command"], shell=True, stdout=subprocess.PIPE, text=True)
-        if out.returncode != 0:
-            raise RuntimeError(f"command exited {out.returncode}")
-        return out.stdout.strip()
-    raise ValueError('source must have "keychain", "keychain_identity", or "command"')
+    if kind == "file":
+        paths = source["file"]
+        if isinstance(paths, str):
+            paths = [paths]
+        return "".join(Path(p).expanduser().read_text() for p in paths)
+    if kind == "vault":
+        if agent_socket is None:
+            raise RuntimeError('a "vault" source needs "agent_socket" in the bootstrap config')
+        return _vault_get(source["vault"], agent_socket)
+    da = dict(source["device_authorize"])
+    return device_authorize(da.pop("provider"), da.pop("client_id"), da.pop("scope"), **da)
 
 
 def bootstrap_main(argv=None) -> None:
     """`security-proxy-bootstrap` -- fill the proxy's slots from a bootstrap config.
 
     The config (default ~/.security-proxy-bootstrap.json) maps each slot to a
-    source: {"keychain": {...}} or {"command": "<shell>"}. Re-run after each proxy
+    source: {"keychain": {...}}, {"file": ...}, {"vault": {...}} or
+    {"device_authorize": {...}}. Re-run after each proxy
     restart, since slots live only in the proxy's memory."""
     ap = argparse.ArgumentParser(
         prog="security-proxy-bootstrap",
@@ -1918,18 +1992,24 @@ def bootstrap_main(argv=None) -> None:
         sys.exit(f"cannot read bootstrap config {cfg_path}: {e}")
     slots = cfg.get("slots", cfg)  # accept {"slots": {...}} or a bare slot->source map
     socket_path = Path(a.socket or cfg.get("ingest_socket") or DEFAULT_INGEST_SOCKET).expanduser()
+    agent_socket = Path(cfg.get("agent_socket", DEFAULT_AGENT_SOCKET)).expanduser()
+
+    # "attended" holds the on-demand sources for attended slots -- deliberately not
+    # provisioned here, since the point is that they only enter the proxy when the human
+    # runs `security-proxy-unlock`.
+    pending = [(slot, src) for slot, src in slots.items()
+               if slot not in ("ingest_socket", "agent_socket", "attended")
+               and isinstance(src, dict)]
+    # A "vault" source reads *through* the proxy, so the slot backing the vault route has
+    # to be filled first -- do the local sources in one pass, then the vault-backed ones.
+    pending.sort(key=lambda item: "vault" in item[1])
 
     ok = 0
     total = 0
-    for slot, source in slots.items():
-        # "attended" holds the on-demand sources for attended slots -- deliberately not
-        # provisioned here, since the point is that they only enter the proxy when the
-        # human runs `security-proxy-unlock`.
-        if slot in ("ingest_socket", "attended") or not isinstance(source, dict):
-            continue
+    for slot, source in pending:
         total += 1
         try:
-            value = _resolve_source(source)
+            value = _resolve_source(source, agent_socket)
         except Exception as e:
             print(f"[{slot}] source error: {e}")
             continue
@@ -1994,8 +2074,31 @@ def unlock_main(argv=None) -> None:
         print(f"[{a.slot}] locked" if resp.get("ok") else f"[{a.slot}] failed: {resp.get('error')}")
         return
 
+    # An attended slot is only as good as the prompt guarding its source. This config
+    # file is writable by anything running as this user, so refuse any source that could
+    # be swapped in to make the unlock silent -- only an explicit keychain FILE (which is
+    # locked, hence prompts) counts. Rewriting the entry then breaks the unlock loudly
+    # instead of quietly removing the human from the loop.
+    source = attended[a.slot]
+    kc = source.get("keychain")
+    if not isinstance(kc, dict) or not kc.get("keychain"):
+        sys.exit(f'[{a.slot}] refusing to unlock: an attended source must be '
+                 f'{{"keychain": {{..., "keychain": "<path to a locked keychain>"}}}}, '
+                 f'so that reading it prompts. Got: {", ".join(source) or "nothing"}.')
+
+    # Lock the keychain before reading it. Otherwise the guarantee silently depends on
+    # ambient state: a keychain still unlocked from an earlier use (or with auto-lock
+    # unset) hands the secret over with no prompt at all, so an agent could unlock an
+    # attended slot unattended. Locking first makes the prompt unconditional.
+    kc_path = Path(kc["keychain"]).expanduser()
+    locked = subprocess.run(["security", "lock-keychain", str(kc_path)],
+                            capture_output=True, text=True)
+    if locked.returncode != 0:
+        sys.exit(f"[{a.slot}] refusing to unlock: could not lock {kc_path} first, so the "
+                 f"prompt cannot be guaranteed: {locked.stderr.strip()}")
+
     try:
-        value = _resolve_source(attended[a.slot])
+        value = _resolve_source(source, Path(cfg.get("agent_socket", DEFAULT_AGENT_SOCKET)).expanduser())
     except Exception as e:
         sys.exit(f"[{a.slot}] source error: {e}")
     if not value:
@@ -2187,9 +2290,15 @@ slot is filled. Push secrets in with either:
 The bootstrap config (~/.security-proxy-bootstrap.json) maps each slot to a source:
   {"nomad":     {"keychain": {"service": "security-proxy", "account": "alinomad.cern.ch"}},
    "grid-cert": {"keychain_identity": "My Grid Cert"},
-   "other":     {"command": "op read op://vault/item/field"}}
+   "gitlab":    {"vault": {"path": "kv/data/ci", "field": "gitlab_pass"}},
+   "mail":      {"device_authorize": {"provider": "microsoft", "client_id": "...",
+                                      "scope": "... offline_access", "account": "me@x"}}}
 Sources: "keychain" (generic password), "keychain_identity" (a cert identity, pushed
-as combined cert+key PEM), or "command" (its stdout is the value). A "keychain"
+as combined cert+key PEM), "file" (contents of one path or several concatenated),
+"vault" (one field of a Vault secret, read through the proxy's own vault route, so
+bootstrap needs no Vault token) or "device_authorize" (OAuth2 device-code flow). There
+is deliberately NO shell/command source: the bootstrap config is writable by anything
+running as you, so one would be arbitrary code execution as you. A "keychain"
 source may name an explicit keychain file:
   {"keychain": {"service": "s", "account": "a",
                 "keychain": "~/Library/Keychains/security-proxy.keychain-db"}}
