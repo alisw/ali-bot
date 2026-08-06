@@ -1273,7 +1273,11 @@ async def proxy_sign(path: str, request: Request, route: Route) -> Response:
     raise HTTPException(status_code=404, detail="unknown sign endpoint")
 
 
-@app.api_route("/{path:path}", methods=["GET", "HEAD", "POST", "PUT", "DELETE"])
+# PATCH matters for REST APIs that use it for partial updates -- GitHub edits a
+# review comment with PATCH, and without it the client gets FastAPI's own 405
+# ({"detail": ...}) rather than anything the upstream said, which reads as a
+# baffling parse error on the client side.
+@app.api_route("/{path:path}", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"])
 async def proxy(path: str, request: Request):
     route = match_route(path, request.headers)
     if route is None:
