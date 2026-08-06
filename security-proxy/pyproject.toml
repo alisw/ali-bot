@@ -2,7 +2,9 @@
 name = "security-proxy"
 version = "0.1.0"
 description = "Credential proxy for ALICE services (grid cert / CERN SSO / Nomad)"
-requires-python = ">=3.9"
+# PEP 604 unions (`str | None`) are used in runtime annotations, which 3.9 evaluates
+# and rejects at import time -- 3.10 is the real floor, despite what this said before.
+requires-python = ">=3.10"
 dependencies = [
     "fastapi==0.138.0",
     "uvicorn==0.49.0",

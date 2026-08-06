@@ -30,6 +30,29 @@ This installs four commands into the venv: `security-proxy` (the daemon),
 `security-proxy-token` (read a gate token), `security-proxy-push` (push one secret
 from stdin), and `security-proxy-bootstrap` (push all secrets from a config).
 
+## Tests
+
+```bash
+./venv/bin/python tests/run_all.py      # everything
+./venv/bin/python tests/test_paths.py   # or one module
+```
+
+No pytest, no dependencies beyond the proxy's own venv; each module exits non-zero on
+failure. They pin the security-relevant behaviour rather than the plumbing:
+
+- `test_paths.py` — a route's upstream path is a *scope*, and `..` (raw, percent-encoded
+  or backslash-separated) must not escape it and reach the rest of that host with the
+  proxy's credential attached.
+- `test_attended.py` — an attended secret is absent outside a window a human opened: use
+  budget, TTL, the sweeper that drops an untouched value on time, and the 403-vs-503
+  split that tells a caller which fault it hit.
+- `test_sources.py` — bootstrap sources stay declarative; the removed `command` kind
+  stays rejected, with a hint pointing at `file` / `vault` / `device_authorize`.
+
+`test_sources.py` also checks `~/.security-proxy-bootstrap.json` when there is one —
+that every slot resolves to exactly one known kind and every attended slot is sourced
+from an explicit locked keychain. It skips that part on a machine without the file.
+
 ## Configuration
 
 Routes and credentials live in `~/.security-proxy.json` (run `security-proxy --help`
@@ -84,18 +107,28 @@ printf %s "$TOKEN" | security-proxy-push nomad
 ```
 
 `security-proxy-bootstrap` reads `~/.security-proxy-bootstrap.json`, which maps each
-slot to a **source** — either the macOS Keychain or an arbitrary command:
+slot to a **source**. Every kind is declarative — it names *what* to read, never a
+command to run:
 
 ```json
 {
   "nomad": {"keychain": {"service": "security-proxy", "account": "alinomad.cern.ch"}},
-  "other": {"command": "op read op://vault/item/field"}
+  "grid-cert": {"file": ["~/.globus/usercert.pem", "~/.globus/userkey.pem"]},
+  "gitlab": {"vault": {"path": "kv/data/ci", "field": "gitlab_pass"}}
 }
 ```
 
-The `command` source makes any secret store pluggable (1Password, vault, a file, or
-a one-time interactive SSO capture that caches its result). Because the proxy never
-touches the Keychain itself, it works headless and as a separate user.
+Kinds: `keychain` (a generic password; add `"keychain": "<path>"` to read a specific,
+locked keychain file), `keychain_identity` (a cert identity as combined PEM), `file`
+(one path, or several concatenated), `vault` (one field of a Vault secret, read
+*through the proxy's own vault route*, so bootstrap needs no Vault token of its own)
+and `device_authorize` (the OAuth2 device-code flow, cached after the first consent).
+
+There is deliberately **no shell/command source**. This file is writable by anything
+running as you, so a command source would be arbitrary code execution as you at the
+next bootstrap — the same-uid problem that attended slots exist to contain, arriving
+through a door they do not cover. Because the proxy never touches the Keychain itself,
+it still works headless and as a separate user.
 
 ## Attended slots (high-privilege secrets)
 
@@ -239,7 +272,9 @@ during `security-proxy-bootstrap`), caches the result, and emits the refresh tok
 stdout:
 
 ```json
-{"mail-refresh": {"command": "security-proxy device-authorize microsoft --tenant <tenant> --client-id <public-client-id> --scope 'https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access' --account me@example.com"}}
+{"mail-refresh": {"device_authorize": {"provider": "microsoft", "tenant": "<tenant>",
+  "client_id": "<public-client-id>", "account": "me@example.com",
+  "scope": "https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access"}}}
 ```
 
 **Client side.** A tiny helper prints a fresh access token; point each mail client's
@@ -385,7 +420,7 @@ paths), then add a bootstrap slot for it. Either export it from the Keychain:
 {"grid-cert": {"keychain_identity": "My Grid Cert"}}
 ```
 
-or, if your cert lives as PEM files, `{"grid-cert": {"command": "cat ~/.globus/usercert.pem ~/.globus/userkey.pem"}}`.
+or, if your cert lives as PEM files, `{"grid-cert": {"file": ["~/.globus/usercert.pem", "~/.globus/userkey.pem"]}}`.
 
 mTLS routes return `503` until it is pushed; the key is only ever briefly
 materialised to a `0600` temp file while loading, never persisted.
