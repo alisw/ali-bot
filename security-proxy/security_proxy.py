@@ -37,7 +37,9 @@ import webbrowser
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from dataclasses import dataclass
-from urllib.parse import urlparse, parse_qs, parse_qsl, quote, urlencode, urlsplit, urlunsplit
+import posixpath
+from urllib.parse import (urlparse, parse_qs, parse_qsl, quote, unquote, urlencode,
+                          urlsplit, urlunsplit)
 import httpx
 import websockets
 from pathlib import Path
@@ -270,6 +272,33 @@ def validate_absolute_url(parser: argparse.ArgumentParser, value, where: str,
     if parts.fragment:
         parser.error(f"{where} must not include a URL fragment")
     return value
+
+
+class PathTraversal(Exception):
+    """Raised when a client path would escape its route's prefix via `..`."""
+    def __init__(self, path: str):
+        super().__init__(path)
+        self.path = path
+
+
+def upstream_url_for(route: Route, upstream_path: str) -> str:
+    """Join the client's path onto the route's upstream, refusing scope escapes.
+
+    A route whose upstream carries a path (`https://alimonitor.cern.ch/hyperloop`) uses
+    that path as a *scope*: the gate token for `hyperloop` must not reach the rest of
+    the host with the proxy's credential attached. `..` would do exactly that -- the
+    URL is normalised downstream (httpx does it before the request goes out), so the
+    check has to happen here, over the percent-decoded path as well, since `..%2f`
+    decodes to the same segments.
+
+    Upstreams with no path (`https://api.github.com`) have no scope to escape and the
+    host can never change, so `..` there is harmless and left alone."""
+    scope = urlsplit(route.upstream).path.rstrip("/") + "/"
+    for candidate in (upstream_path, unquote(upstream_path)):
+        resolved = posixpath.normpath(scope + candidate.replace("\\", "/"))
+        if resolved != scope.rstrip("/") and not resolved.startswith(scope):
+            raise PathTraversal(upstream_path)
+    return f"{route.upstream}/{upstream_path}" if upstream_path else route.upstream
 
 
 class SlotUnavailable(Exception):
@@ -976,7 +1005,10 @@ async def ws_proxy(ws: WebSocket, path: str):
     # Header-matched routes forward the full path; prefix routes strip their prefix
     upstream_path = path if route.auth_header else path[len(route.prefix.lstrip("/")):]
     upstream_path = upstream_path.lstrip("/")
-    upstream_url = f"{route.upstream}/{upstream_path}" if upstream_path else route.upstream
+    try:
+        upstream_url = upstream_url_for(route, upstream_path)
+    except PathTraversal:
+        raise WebSocketDisconnect(code=4005, reason="path escapes the route's prefix")
     # Forward query params, but drop the proxy's own auth "token" so it never leaks upstream
     fwd = [(k, v) for k, v in parse_qsl(ws.url.query, keep_blank_values=True) if k != "token"]
     if fwd:
@@ -1270,7 +1302,10 @@ async def proxy(path: str, request: Request):
         raise HTTPException(status_code=e.status, detail=e.detail)
 
     body = await request.body()
-    url = f"{route.upstream}/{upstream_path}"
+    try:
+        url = upstream_url_for(route, upstream_path)
+    except PathTraversal:
+        raise HTTPException(status_code=400, detail="path escapes the route's prefix")
     if request.url.query:
         url = f"{url}?{request.url.query}"
 
