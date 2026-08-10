@@ -333,14 +333,19 @@ cat <<EOF
 Done. The daemon is running but UNPROVISIONED (mTLS routes 503 until you push the
 cert + tokens).
 
-NOTE: there is no macOS Keychain here -- every slot in
-~/.security-proxy-bootstrap.json must use a "command" source, e.g.
+NOTE: there is no macOS Keychain here, and bootstrap sources are declarative (a
+source names what to read, never a command to run), so every slot in
+~/.security-proxy-bootstrap.json must use "file" or "vault", e.g.
   {"ingest_socket": "$INGEST_RUN/ingest.sock",
+   "agent_socket": "$AGENT_RUN/agent.sock",
    "slots": {
-     "nomad":     {"command": "pass show cern/nomad"},
-     "grid-cert": {"command": "cat ~/.globus/usercert.pem ~/.globus/userkey.pem"},
-     "s3-access": {"command": "secret-tool lookup service s3.cern.ch key access"},
-     "s3-secret": {"command": "secret-tool lookup service s3.cern.ch key secret"}}}
+     "vault":     {"file": "~/.vault-token"},
+     "grid-cert": {"file": ["~/.globus/usercert.pem", "~/.globus/userkey.pem"]},
+     "nomad":     {"vault": {"path": "kv/data/ci", "field": "nomad_token"}},
+     "s3-access": {"vault": {"path": "kv/data/ci", "field": "s3_access_key"}},
+     "s3-secret": {"vault": {"path": "kv/data/ci", "field": "s3_secret_key"}}}}
+A "vault" source is read through the proxy's own vault route, so the "vault" slot
+itself has to come from a file (or be pushed by hand) and agent_socket must be set.
 
 Next, as $ADMIN_USER (NOT root):
   1. Start a NEW login session so your new '$CLIENT_GROUP' and

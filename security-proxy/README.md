@@ -76,6 +76,13 @@ A route's `inject_headers` value is a slot reference (`{"ingest": "<slot>"}`) �
 config never contains a secret. The named slot is filled at runtime (see
 *Provisioning secrets* below); until it is, that route returns `503`.
 
+Several routes may share one `auth_header`, which is how a CLI that sends a single
+fixed header gets more than one privilege level (read-only `nomad` and attended
+`nomad-rw` both read `X-Nomad-Token`, since the Nomad CLI sends nothing else). Such
+routes are told apart by the gate token, which is per-route; a token that matches no
+candidate falls back to the first one listed, so list the least-privileged route first
+— it is the one that will answer `401`. The daemon logs any shared header at startup.
+
 **Least privilege — give the AI the bare minimum.** Any same-uid process that can
 reach the sockets, **including an AI assistant**, can fetch a gate token and exercise
 whatever a route exposes. So each route widens what such an agent can do through the
