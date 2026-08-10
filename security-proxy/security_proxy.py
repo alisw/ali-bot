@@ -175,9 +175,17 @@ def match_route(path: str, headers) -> Route | None:
             if route.s3_sign:
                 return route
     # 1) header-matched services (the HashiCorp CLIs, all at /v1/...)
-    for route in ROUTES:
-        if route.auth_header and headers.get(route.auth_header):
+    # Several routes may share one auth header -- e.g. read-only `nomad` and attended
+    # `nomad-rw`, both fed from NOMAD_TOKEN because the CLI sends no other header. The
+    # gate token is per-route (HMAC(master, route.name)), so it disambiguates them.
+    # Fall back to the first candidate when nothing validates, so an unknown token
+    # still gets that route's 401 rather than a confusing "no route matches".
+    candidates = [r for r in ROUTES if r.auth_header and headers.get(r.auth_header)]
+    for route in candidates:
+        if gate_ok(headers.get(route.auth_header, ""), route.name):
             return route
+    if candidates:
+        return candidates[0]
     # 2) local Ed25519 signing routes: prefix-matched, but the sign endpoint is hit at
     # the *bare* prefix (no trailing slash) while /pubkey is a sub-path, so match both.
     for route in ROUTES:
@@ -1500,6 +1508,16 @@ async def serve(args, log_config, agent_path: Path, ingest_path: Path, rotation:
     print(f"Proxy on http://{args.host}:{PROXY_PORT} (random port)", flush=True)
     print(f"  agent socket:  {agent_path}   (security-proxy-token <service>)", flush=True)
     print(f"  ingest socket: {ingest_path}   (security-proxy-bootstrap)", flush=True)
+    # Sharing an auth header is legitimate (nomad / nomad-rw), but then the gate token
+    # is the only thing telling the routes apart -- say so rather than leave it implicit.
+    shared_headers: dict[str, list[str]] = {}
+    for r in ROUTES:
+        if r.auth_header:
+            shared_headers.setdefault(r.auth_header.lower(), []).append(r.name)
+    for header, names in sorted(shared_headers.items()):
+        if len(names) > 1:
+            print(f"  {header} is shared by routes {names}: matched by gate token, "
+                  f"'{names[0]}' answers an unrecognised one", flush=True)
     slots = {s for r in ROUTES for s in (r.ingest_headers or {}).values()}
     for r in ROUTES:
         if r.s3_sign:

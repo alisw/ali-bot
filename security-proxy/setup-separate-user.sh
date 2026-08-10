@@ -248,7 +248,7 @@ cat > "$CONFIG_TMP" <<JSON
   "agent_socket_group": "$CLIENT_GROUP",
   "ingest_socket_group": "$PROVISION_GROUP",
   "secret_rotation_seconds": 86400,
-  "attended_slots": {"github-token-rw": {"ttl": 900}},
+  "attended_slots": {"github-token-rw": {"ttl": 900}, "nomad-rw": {"ttl": 900}},
   "routes": [
     {"prefix": "/ccdb/", "upstream": "https://alice-ccdb.cern.ch"},
     {"prefix": "/hyperloop/", "upstream": "https://alimonitor.cern.ch/hyperloop"},
@@ -262,6 +262,8 @@ cat > "$CONFIG_TMP" <<JSON
      "inject_headers": {"Authorization": {"ingest": "github-token-rw"}}},
     {"name": "nomad", "upstream": "https://alinomad.cern.ch", "websocket": true,
      "auth_header": "X-Nomad-Token", "inject_headers": {"X-Nomad-Token": {"ingest": "nomad"}}},
+    {"name": "nomad-rw", "upstream": "https://alinomad.cern.ch", "websocket": true,
+     "auth_header": "X-Nomad-Token", "inject_headers": {"X-Nomad-Token": {"ingest": "nomad-rw"}}},
     {"name": "consul", "upstream": "https://aliconsul.cern.ch",
      "auth_header": "X-Consul-Token", "inject_headers": {"X-Consul-Token": {"ingest": "consul"}}},
     {"name": "vault", "upstream": "https://alivault.cern.ch",
