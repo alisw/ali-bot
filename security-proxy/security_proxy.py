@@ -1100,7 +1100,6 @@ async def proxy_s3(path: str, request: Request, route: Route) -> Response:
     raw = request.scope.get("raw_path")
     canonical_uri = raw.decode("latin-1") if raw else "/" + quote(path, safe="/-_.~")
     query = request.url.query
-    body = await request.body()
 
     amz_date = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     datestamp = amz_date[:8]
@@ -1126,13 +1125,17 @@ async def proxy_s3(path: str, request: Request, route: Route) -> Response:
     out_headers["x-amz-date"] = amz_date
     out_headers["x-amz-content-sha256"] = payload_hash
     out_headers["authorization"] = auth
+    # Restore the length `drop` removed: without it httpx would frame the streamed
+    # body as chunked, which S3 rejects for PutObject. Not covered by the signature.
+    if "content-length" in request.headers:
+        out_headers["content-length"] = request.headers["content-length"]
 
     url = f"{upstream.scheme}://{host}{canonical_uri}"
     if query:
         url = f"{url}?{query}"
 
     req = http_client.build_request(method=request.method, url=url,
-                                    headers=out_headers, content=body)
+                                    headers=out_headers, content=request.stream())
     resp = await http_client.send(req, stream=True, follow_redirects=False)
 
     excluded = {"transfer-encoding", "connection", "keep-alive"}
@@ -1315,7 +1318,6 @@ async def proxy(path: str, request: Request):
     except SlotUnavailable as e:
         raise HTTPException(status_code=e.status, detail=e.detail)
 
-    body = await request.body()
     try:
         url = upstream_url_for(route, upstream_path)
     except PathTraversal:
@@ -1339,7 +1341,7 @@ async def proxy(path: str, request: Request):
         method=request.method,
         url=url,
         headers=headers,
-        content=body,
+        content=request.stream(),
     )
     resp = await http_client.send(req, stream=True, follow_redirects=False)
 
