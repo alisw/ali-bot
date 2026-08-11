@@ -1,3 +1,14 @@
+# Declared explicitly rather than relying on pip's legacy fallback. Python 3.12
+# venvs no longer ship setuptools (ensurepip stopped installing it), so with no
+# [build-system] table `pip install .` fails with "Cannot import
+# 'setuptools.build_meta'" unless the environment happens to provide it -- as the
+# hash-checked lock does, by listing setuptools. Naming the requirement here lets
+# pip's build isolation fetch the backend itself, so a bare `pip install .` works
+# in a fresh venv and the container image does not have to work around it.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "security-proxy"
 version = "0.1.0"
