@@ -71,7 +71,7 @@ class RepoConfig:
 
     def __init__(self, build_config, definitions_dir,
                  mesos_role, container_name, config_suffix,
-                 worker_index, worker_pool_size):
+                 worker_index, worker_pool_size, set_status=True):
         self.build_config = build_config
         self.check_name = ""
         self.repo_name = ""
@@ -81,6 +81,7 @@ class RepoConfig:
         self.trusted_author_associations = {"OWNER", "MEMBER", "COLLABORATOR"}
         self.worker_index = worker_index
         self.worker_pool_size = worker_pool_size
+        self.set_status = set_status
 
         # Parse .env files for this build config to initialise above variables.
         mesos, docker = mesos_role, container_name + config_suffix
@@ -172,7 +173,7 @@ class RepoConfig:
                 session, self.repo_name.split("/")[0], self.trusted_team_slug
             )
         )
-        if not trusted:
+        if not trusted and self.set_status:
             setGithubStatus(cgh, Namespace(
                 commit="{repo}#{pr}@{commit}".format(
                     repo=self.repo_name,
@@ -270,7 +271,8 @@ def main(args):
                     repo = RepoConfig(env_file_name[:-4],
                                       args.definitions_dir, args.mesos_role,
                                       args.container_name, args.config_suffix,
-                                      args.worker_index, args.worker_pool_size)
+                                      args.worker_index, args.worker_pool_size,
+                                      set_status=not args.no_status)
                 except ValueError as err:
                     print(env_file_name, err, sep=": ", file=sys.stderr)
                 else:
@@ -294,7 +296,7 @@ def main(args):
         # pr["waiting_since"] can apparently be None sometimes, which breaks
         # sorting, so default to the empty string if so.
         for pull in sorted(prs, key=lambda pr: pr["waiting_since"] or ""):
-            if group == "untested":
+            if group == "untested" or args.all_groups:
                 commit_timestr = pull["waiting_since"]
                 commit_time = datetime.fromisoformat(commit_timestr.replace("Z", "+00:00")) \
                     if commit_timestr else datetime.now(timezone.utc)
@@ -307,7 +309,13 @@ def main(args):
             print(group, pull["number"], pull["sha"], pull["build_config"],
                   waiting_since, sep="\t")
 
-    if grouped["untested"]:
+    if args.all_groups:
+        # Report the whole queue, skipping the "build untested first, else
+        # rebuild one older PR" selection below. This is for monitoring, where
+        # we want to know how much work is outstanding, not what to build next.
+        for group in ("untested", "failed", "succeeded"):
+            print_prs(group)
+    elif grouped["untested"]:
         # If there are untested PRs waiting, build all of them first.
         print_prs("untested")
     elif grouped["failed"] and (not grouped["succeeded"] or random.random() < 0.7):
@@ -364,6 +372,17 @@ def parse_args():
         "-b", "--show-base-branch", action="store_true",
         help=("Also consider checks on the latest commit of each repo's base "
               "branch."))
+
+    parser.add_argument(
+        "--all-groups", action="store_true",
+        help=("Print every PR we could build, grouped by build type, instead "
+              "of only those we would build next. Implies that the caller is "
+              "monitoring the queue rather than building from it."))
+
+    parser.add_argument(
+        "--no-status", action="store_true",
+        help=("Never create or update GitHub statuses. Use this for read-only "
+              "consumers, so that they cannot interfere with the builders."))
 
     add_env_arg("-i", "--worker-index", "WORKER_INDEX", vtype=int,
                 help="Index for the current worker")
