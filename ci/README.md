@@ -23,6 +23,45 @@ Tools details
 =============
 
 
+queue-metrics.sh
+----------------
+
+Reports how much work is queued for one pool of builders, without building
+anything. Run it as a single service per `MESOS_ROLE`/`CUR_CONTAINER` pair,
+alongside the builders of that pool.
+
+It exists because the builders cannot measure this themselves. Each one sees
+only its own shard of the pull requests (the hash partitioning described above),
+and when that shard is empty it falls back to rebuilding an already-tested PR
+rather than idling — so a busy builder tells us nothing about whether real work
+is waiting.
+
+Parameters (as environment variables):
+
+* `GITHUB_TOKEN`, `INFLUXDB_WRITE_URL`, `MESOS_ROLE`: as for
+  `continuous-builder.sh`.
+* `CUR_CONTAINER`: short container name, e.g. `slc9`. Derived from
+  `CONTAINER_IMAGE` if unset, exactly as `continuous-builder.sh` does it, so the
+  job can be given the same variables as the pool it watches.
+* `QUEUE_METRICS_INTERVAL`: seconds between polls (default 300). Can be
+  overridden at runtime through `config/queue-metrics-interval`.
+
+Two InfluxDB measurements are written:
+
+* `ci_queue`, one point per check, tagged with `checkname` and `repo`, with
+  fields `untested`, `failed`, `succeeded`, `total` and
+  `oldest_untested_wait_secs`. Checks whose queue is empty report zeroes, so
+  that "no work" and "no data" can be told apart.
+* `ci_queue_poll`, with a single `ok` field, recording whether GitHub could be
+  reached. When it could not, no `ci_queue` points are written at all — an
+  outage must not look like an empty queue to anything scaling off these
+  numbers.
+
+The collector is strictly read-only with respect to GitHub: it passes
+`--no-status` to `list-branch-pr`, so it cannot interfere with the statuses set
+by the builders.
+
+
 process-pull-requests
 ---------------------
 
