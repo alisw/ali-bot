@@ -30,7 +30,8 @@ from gql import Client, gql, GraphQLRequest
 from gql.transport.requests import RequestsHTTPTransport
 from alibot_helpers.utilities import parse_env_file
 from alibot_helpers.github_utilities import \
-    github_token, GithubCachedClient, setGithubStatus
+    DEFAULT_GITHUB_API, github_api_url, github_token, GithubCachedClient, \
+    setGithubStatus
 
 DEFAULTENV_NAME = "DEFAULTS.env"
 
@@ -258,8 +259,19 @@ def main(args):
         args.definitions_dir, args.mesos_role,
         args.container_name + args.config_suffix, "*.env",
     ))
-    transport = RequestsHTTPTransport(url="https://api.github.com/graphql",
-                                      auth=("bearer", github_token()))
+    api_url = github_api_url()
+    if api_url == DEFAULT_GITHUB_API:
+        # Talking to GitHub directly: keep the historical form untouched. The
+        # auth= tuple is turned into HTTP Basic by requests, which GitHub
+        # accepts, and this is the path every builder uses -- so it stays as it
+        # was rather than being "corrected" underneath them.
+        auth_args = {"auth": ("bearer", github_token())}
+    else:
+        # Pointed at a credential broker instead. It reads the token to swap
+        # out of an Authorization: Bearer header, which is also the form GitHub
+        # documents for the GraphQL API.
+        auth_args = {"headers": {"Authorization": "Bearer " + github_token()}}
+    transport = RequestsHTTPTransport(url=api_url + "/graphql", **auth_args)
     with GithubCachedClient() as cgh:
         with Client(transport=transport) as session:
             for env_file in env_files:
