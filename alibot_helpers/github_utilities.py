@@ -76,6 +76,19 @@ def github_token():
         raise RuntimeError("GITHUB_TOKEN env var not found, please set it")
 
 
+DEFAULT_GITHUB_API = "https://api.github.com"
+
+
+def github_api_url():
+    """Base URL of the GitHub API, without a trailing slash.
+
+    Overridable so that we can be pointed at a credential broker (which holds
+    the real token and swaps it in on the way out) instead of talking to GitHub
+    directly. GITHUB_API_URL is the name GitHub Actions uses for this.
+    """
+    return os.environ.get("GITHUB_API_URL", DEFAULT_GITHUB_API).rstrip("/")
+
+
 def generateCacheId(entries):
     h = sha1()
     for k, v in entries:
@@ -182,9 +195,11 @@ class PickledCache(object):
 
 
 class GithubCachedClient(object):
-    def __init__(self, token=None, cache=None, api="https://api.github.com"):
+    def __init__(self, token=None, cache=None, api=None):
         if token is None:
             token = github_token()
+        if api is None:
+            api = github_api_url()
         if cache is None:
             cache = PickledCache()
         self.token = token
