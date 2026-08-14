@@ -27,8 +27,11 @@ queue-metrics.sh
 ----------------
 
 Reports how much work is queued for one pool of builders, without building
-anything. Run it as a single service per `MESOS_ROLE`/`CUR_CONTAINER` pair,
-alongside the builders of that pool.
+anything. One invocation covers one `MESOS_ROLE`/`CUR_CONTAINER` pair; it is
+deployed as `queue-metrics.nomad` in the [ci-jobs][] repository, a *single*
+allocation that discovers the pools from `repo-config/` and runs one round per
+pool, so the GitHub API cost does not grow with the number of pools or
+builders. It need not run on the machines it reports about.
 
 It exists because the builders cannot measure this themselves. Each one sees
 only its own shard of the pull requests (the hash partitioning described above),
@@ -45,6 +48,13 @@ Parameters (as environment variables):
   job can be given the same variables as the pool it watches.
 * `QUEUE_METRICS_INTERVAL`: seconds between polls (default 300). Can be
   overridden at runtime through `config/queue-metrics-interval`.
+
+Pass `--once` to report a single round and exit rather than looping. The Nomad
+job uses this because it holds a credential that expires -- a gate token from
+the security-proxy -- and must re-resolve it every round: the script's own
+re-exec would inherit the environment and keep using a stale one.
+
+[ci-jobs]: https://github.com/alisw/ci-jobs
 
 Two InfluxDB measurements are written:
 

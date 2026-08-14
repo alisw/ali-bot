@@ -15,7 +15,62 @@
 
 . build-helpers.sh
 
-if [ "$1" != --skip-setup ]; then
+# A deliberate near-copy of influxdb_push from build-helpers.sh. DO NOT refactor
+# the two together: influxdb_push is on the builders' hot path and is left
+# exactly as it is, so deploying this collector changes nothing about how they
+# reach InfluxDB. This copy differs in two ways:
+#
+#   * it can send the credential in an Authorization header rather than
+#     embedded in the URL, which is what lets it write through the
+#     security-proxy (with INFLUXDB_WRITE_TOKEN unset it behaves identically,
+#     so the script still runs by hand outside Nomad);
+#   * it does not honour the "insecure_" prefix. The proxy verifies the
+#     upstream properly, so there is nothing to skip.
+function queue_metrics_push () {
+  set +x   # never trace the URL or the token
+  # Usage: queue_metrics_push TABLE TAG=V TAG=V -- FIELD=V FIELD=V
+  local data=$1; shift
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --) data="$data $2"; shift 2;;
+      *)  data="$data,$1"; shift;;
+    esac
+  done
+  data="$data $(date +%s)000000000"
+  # An empty array expands to no arguments at all, including under the bash 3.2
+  # that ships with macOS.
+  local auth=()
+  if [ -n "$INFLUXDB_WRITE_TOKEN" ]; then
+    auth=(-H "Authorization: Bearer $INFLUXDB_WRITE_TOKEN")
+  fi
+  case "$INFLUXDB_WRITE_URL" in
+    '') ;;
+    # Complain rather than POSTing to a URL starting with "insecure_https://"
+    # and having the error swallowed below. The builders' URL does carry that
+    # prefix, so this is the likely mistake when running the script by hand.
+    insecure_*)
+      echo "$(basename "$0"): error: INFLUXDB_WRITE_URL must not use the insecure_ prefix" >&2;;
+    *)
+      curl -fSs --max-time 20 -XPOST --data-binary "$data" "${auth[@]}" "$INFLUXDB_WRITE_URL" || :;;
+  esac
+  set -x
+}
+
+# --skip-setup: we are a re-exec of ourselves, or our caller did the setup.
+# --once:       report one round and exit, instead of looping forever. Use this
+#               when the caller holds credentials that expire (e.g. gate tokens
+#               from a credential broker) and must re-resolve them per round: our
+#               own re-exec keeps the environment, so it would carry a stale one.
+skip_setup='' once=''
+for arg in "$@"; do
+  case $arg in
+    --skip-setup) skip_setup=true ;;
+    --once) once=true ;;
+    *) echo "$0: error: unrecognised argument: $arg" >&2; exit 1 ;;
+  esac
+done
+
+if [ -z "$skip_setup" ]; then
   if [ -r ~/.continuous-builder ]; then
     # Tell ShellCheck not to check the sourced file here. Assume the .env files are fine.
     # shellcheck source=/dev/null
@@ -90,8 +145,8 @@ fi
 
 # Report whether we can see the queue at all, separately from how deep it is,
 # so that a blind collector is distinguishable from an idle pool.
-influxdb_push ci_queue_poll "host=$(hostname -s)" "role=$MESOS_ROLE" \
-              "container=$CUR_CONTAINER$ALIBOT_CONFIG_SUFFIX" -- "ok=$poll_ok"
+queue_metrics_push ci_queue_poll "host=$(hostname -s)" "role=$MESOS_ROLE" \
+                   "container=$CUR_CONTAINER$ALIBOT_CONFIG_SUFFIX" -- "ok=$poll_ok"
 
 # Aggregate per check: how many PRs in each state, and how long the oldest
 # untested one has been waiting. Only untested PRs carry a meaningful
@@ -119,7 +174,7 @@ influxdb_push ci_queue_poll "host=$(hostname -s)" "role=$MESOS_ROLE" \
     # Run in a subshell: the *.env files define arbitrary variables, and one
     # check's definitions must not leak into the next one's.
     source_env_files "$env_name"
-    influxdb_push ci_queue "host=$(hostname -s)"                        \
+    queue_metrics_push ci_queue "host=$(hostname -s)"                        \
                   "role=$MESOS_ROLE"                                    \
                   "container=$CUR_CONTAINER$ALIBOT_CONFIG_SUFFIX"       \
                   "checkname=${CHECK_NAME:?}" "repo=${PR_REPO:?}"       \
@@ -128,6 +183,9 @@ influxdb_push ci_queue_poll "host=$(hostname -s)" "role=$MESOS_ROLE" \
                   "total=$((untested + failed + succeeded))"            \
                   "oldest_untested_wait_secs=$oldest_wait"
   ); done
+
+# One round only: the caller owns the pacing, and presumably the credentials too.
+[ -n "$once" ] && exit 0
 
 # Wait out the rest of the interval, so we poll GitHub at a predictable rate
 # whether or not the query above was slow.
