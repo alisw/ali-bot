@@ -41,8 +41,12 @@ is waiting.
 
 Parameters (as environment variables):
 
-* `GITHUB_TOKEN`, `INFLUXDB_WRITE_URL`, `MESOS_ROLE`: as for
-  `continuous-builder.sh`.
+* `GITHUB_TOKEN`, `MESOS_ROLE`: as for `continuous-builder.sh`.
+* `OTLP_METRICS_URL`: where to POST metrics, e.g.
+  `https://monit-otlp.cern.ch:4319/v1/metrics`. Unset means "do not report",
+  which is what makes the script safe to run by hand.
+* `OTLP_WRITE_TOKEN`: sent as `Authorization: Bearer`. Through the
+  security-proxy this is a rotating gate token, not the real credential.
 * `CUR_CONTAINER`: short container name, e.g. `slc9`. Derived from
   `CONTAINER_IMAGE` if unset, exactly as `continuous-builder.sh` does it, so the
   job can be given the same variables as the pool it watches.
@@ -56,16 +60,25 @@ re-exec would inherit the environment and keep using a stale one.
 
 [ci-jobs]: https://github.com/alisw/ci-jobs
 
-Two InfluxDB measurements are written:
+Metrics go to [Mimir][], MONIT's Prometheus-compatible store, over OTLP —
+not to InfluxDB, which DBOD stops and deletes on 2027-01-01. `otlp-push.py`
+does the translation: an InfluxDB point carries several named fields, a
+Prometheus series carries one value, so each field becomes its own gauge.
 
-* `ci_queue`, one point per check, tagged with `checkname` and `repo`, with
-  fields `untested`, `failed`, `succeeded`, `total` and
-  `oldest_untested_wait_secs`. Checks whose queue is empty report zeroes, so
-  that "no work" and "no data" can be told apart.
-* `ci_queue_poll`, with a single `ok` field, recording whether GitHub could be
-  reached. When it could not, no `ci_queue` points are written at all — an
-  outage must not look like an empty queue to anything scaling off these
-  numbers.
+* `ci_queue_untested`, `ci_queue_failed`, `ci_queue_succeeded` and
+  `ci_queue_oldest_untested_wait_seconds`, labelled with `role`, `container`,
+  `checkname` and `repo`. Checks whose queue is empty report zero, so that "no
+  work" and "no data" can be told apart.
+* `ci_queue_poll_ok`, recording whether GitHub could be reached. When it could
+  not, no `ci_queue_*` samples are written at all — an outage must not look
+  like an empty queue to anything scaling off these numbers.
+
+There is deliberately no `total` (it is the sum of the other three, and a
+`_total` suffix means a counter in Prometheus) and no `host` label (it
+describes the collector, which moves between nodes, and would start a fresh
+series for every check on every reschedule).
+
+[Mimir]: https://monit.docs.cern.ch/metrics/otlp/
 
 The collector is strictly read-only with respect to GitHub: it passes
 `--no-status` to `list-branch-pr`, so it cannot interfere with the statuses set

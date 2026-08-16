@@ -10,49 +10,27 @@
 # to rebuilding an already-tested PR when its shard is empty. So a busy builder
 # tells us nothing about whether there is real work waiting.
 #
-# Metrics are pushed to InfluxDB as the "ci_queue" measurement, one point per
-# check, every $QUEUE_METRICS_INTERVAL seconds.
+# Metrics go to Mimir, MONIT's Prometheus-compatible store, as ci_queue_* and
+# ci_queue_poll_ok gauges, every $QUEUE_METRICS_INTERVAL seconds.
 
 . build-helpers.sh
 
-# A deliberate near-copy of influxdb_push from build-helpers.sh. DO NOT refactor
-# the two together: influxdb_push is on the builders' hot path and is left
-# exactly as it is, so deploying this collector changes nothing about how they
-# reach InfluxDB. This copy differs in two ways:
+# Metrics go to Mimir, MONIT's Prometheus-compatible store, over OTLP -- not to
+# InfluxDB, which DBOD stops and deletes on 2027-01-01. The builders still use
+# influxdb_push from build-helpers.sh and are untouched by this; nothing here is
+# shared with them.
 #
-#   * it can send the credential in an Authorization header rather than
-#     embedded in the URL, which is what lets it write through the
-#     security-proxy (with INFLUXDB_WRITE_TOKEN unset it behaves identically,
-#     so the script still runs by hand outside Nomad);
-#   * it does not honour the "insecure_" prefix. The proxy verifies the
-#     upstream properly, so there is nothing to skip.
+# The call signature deliberately matches influxdb_push, so the call sites below
+# read the same. otlp-push.py does the part that genuinely differs: an InfluxDB
+# point carries several named fields, a Prometheus series carries one value, so
+# each FIELD becomes its own metric named <NAME>_<FIELD>.
+#
+# Errors are reported but never fatal -- a metrics push failing must not stop
+# the collector -- and the push is untraced so the endpoint and gate token stay
+# out of the logs.
 function queue_metrics_push () {
-  set +x   # never trace the URL or the token
-  # Usage: queue_metrics_push TABLE TAG=V TAG=V -- FIELD=V FIELD=V
-  local data=$1; shift
-  while [ $# -gt 0 ]; do
-    case $1 in
-      --) data="$data $2"; shift 2;;
-      *)  data="$data,$1"; shift;;
-    esac
-  done
-  data="$data $(date +%s)000000000"
-  # An empty array expands to no arguments at all, including under the bash 3.2
-  # that ships with macOS.
-  local auth=()
-  if [ -n "$INFLUXDB_WRITE_TOKEN" ]; then
-    auth=(-H "Authorization: Bearer $INFLUXDB_WRITE_TOKEN")
-  fi
-  case "$INFLUXDB_WRITE_URL" in
-    '') ;;
-    # Complain rather than POSTing to a URL starting with "insecure_https://"
-    # and having the error swallowed below. The builders' URL does carry that
-    # prefix, so this is the likely mistake when running the script by hand.
-    insecure_*)
-      echo "$(basename "$0"): error: INFLUXDB_WRITE_URL must not use the insecure_ prefix" >&2;;
-    *)
-      curl -fSs --max-time 20 -XPOST --data-binary "$data" "${auth[@]}" "$INFLUXDB_WRITE_URL" || :;;
-  esac
+  set +x
+  otlp-push.py "$@" || :
   set -x
 }
 
@@ -77,7 +55,9 @@ if [ -z "$skip_setup" ]; then
     . ~/.continuous-builder
   fi
 
-  ensure_vars GITHUB_TOKEN INFLUXDB_WRITE_URL MESOS_ROLE
+  # OTLP_METRICS_URL is deliberately not required: unset means "do not
+  # report", which is what makes the script safe to run by hand.
+  ensure_vars GITHUB_TOKEN MESOS_ROLE
   # These can be empty or unspecified (in which case they default to empty).
   export ALIBOT_CONFIG_SUFFIX
 
@@ -145,7 +125,7 @@ fi
 
 # Report whether we can see the queue at all, separately from how deep it is,
 # so that a blind collector is distinguishable from an idle pool.
-queue_metrics_push ci_queue_poll "host=$(hostname -s)" "role=$MESOS_ROLE" \
+queue_metrics_push ci_queue_poll "role=$MESOS_ROLE" \
                    "container=$CUR_CONTAINER$ALIBOT_CONFIG_SUFFIX" -- "ok=$poll_ok"
 
 # Aggregate per check: how many PRs in each state, and how long the oldest
@@ -174,14 +154,21 @@ queue_metrics_push ci_queue_poll "host=$(hostname -s)" "role=$MESOS_ROLE" \
     # Run in a subshell: the *.env files define arbitrary variables, and one
     # check's definitions must not leak into the next one's.
     source_env_files "$env_name"
-    queue_metrics_push ci_queue "host=$(hostname -s)"                        \
-                  "role=$MESOS_ROLE"                                    \
+    # No "host" label. It describes the collector, not the queue, and the
+    # collector moves between nodes -- which in Prometheus would start a fresh
+    # series for every check on every reschedule, breaking the very graphs this
+    # exists to draw. Where it ran is a property of the allocation, not of how
+    # many PRs are waiting.
+    #
+    # No "total" either: it is untested+failed+succeeded, which PromQL adds for
+    # free, and a "_total" suffix means a counter in Prometheus -- so exporting
+    # a gauge under that name would actively mislead.
+    queue_metrics_push ci_queue "role=$MESOS_ROLE"                      \
                   "container=$CUR_CONTAINER$ALIBOT_CONFIG_SUFFIX"       \
                   "checkname=${CHECK_NAME:?}" "repo=${PR_REPO:?}"       \
                   -- "untested=$untested" "failed=$failed"              \
                   "succeeded=$succeeded"                                \
-                  "total=$((untested + failed + succeeded))"            \
-                  "oldest_untested_wait_secs=$oldest_wait"
+                  "oldest_untested_wait_seconds=$oldest_wait"
   ); done
 
 # One round only: the caller owns the pacing, and presumably the credentials too.
