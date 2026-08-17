@@ -35,6 +35,12 @@ from alibot_helpers.github_utilities import \
 
 DEFAULTENV_NAME = "DEFAULTS.env"
 
+# A pull request carrying this label is built before everything else, oldest
+# first among such PRs. It is a tier, not a weight: any weighting scheme
+# multiplies how long a PR has waited, and an urgent PR has by definition just
+# arrived, so no sane multiplier would move it to the front.
+PRIORITY_LABEL = "ci-priority"
+
 
 @functools.lru_cache(maxsize=None)
 def query_repo_info(session, org, repo, base_branch, include_base_branch=False):
@@ -188,7 +194,7 @@ class RepoConfig:
         return trusted
 
     def process_single_pr(self, pull_number, last_commit, pr_created,
-                          is_draft=False, is_trusted=False):
+                          is_draft=False, is_trusted=False, is_urgent=False):
         """Decide whether to queue this PR (or branch) for testing.
 
         If it should be queued, return an object describing the PR, else,
@@ -226,6 +232,7 @@ class RepoConfig:
             "sha": commit_hash,
             "build_config": self.build_config,
             "waiting_since": waiting_since,
+            "urgent": is_urgent,
         })
 
     def process_pulls(self, cgh, session, repo_info, show_base_branch=False):
@@ -236,11 +243,14 @@ class RepoConfig:
                 pull["createdAt"],
                 is_draft=pull["isDraft"] or pull["title"].startswith("[WIP]"),
                 is_trusted=self.trust_pr(cgh, session, pull),
+                is_urgent=any(label["name"] == PRIORITY_LABEL
+                              for label in pull["labels"]["nodes"]),
             )
             if item is not None:
                 yield item
 
         if show_base_branch:
+            # A branch head is not a pull request, so it carries no labels.
             item = self.process_single_pr(self.branch_ref, repo_info["object"],
                                           pull["createdAt"])
             if item is not None:
@@ -302,12 +312,16 @@ def main(args):
         prs = grouped[group]
         if number is not None and number <= len(prs):
             prs = random.sample(prs, number)
-        # Sort by PR number so that older PRs are built first. Don't use
-        # .sort() here as it modifies the list in-place, and that list might
-        # also be used elsewhere.
+        # Labelled PRs first, then oldest first. Don't use .sort() here as it
+        # modifies the list in-place, and that list might also be used
+        # elsewhere.
         # pr["waiting_since"] can apparently be None sometimes, which breaks
         # sorting, so default to the empty string if so.
-        for pull in sorted(prs, key=lambda pr: pr["waiting_since"] or ""):
+        # NB: this changes the ORDER only, never the set, and it is a no-op
+        # when nothing carries the label -- which is why it is safe to land
+        # ahead of everything else in ci/SCALING_PLAN.md.
+        for pull in sorted(prs, key=lambda pr: (not pr.get("urgent"),
+                                                pr["waiting_since"] or "")):
             if group == "untested" or args.all_groups:
                 commit_timestr = pull["waiting_since"]
                 commit_time = datetime.fromisoformat(commit_timestr.replace("Z", "+00:00")) \
@@ -444,6 +458,14 @@ query statuses(
         isDraft
         createdAt
         authorAssociation
+        # Cheap: same node as the fields above, so no extra request. Only the
+        # presence of PRIORITY_LABEL matters, but names are not filterable
+        # server-side, so fetch the (few) labels a PR carries and check here.
+        labels(first: 20) {
+          nodes {
+            name
+          }
+        }
         author {
           login
         }
