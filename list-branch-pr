@@ -7,11 +7,20 @@ Requires a GITHUB_TOKEN in the environment.
 This script's output is one commit to be built per line, with the following
 fields separated by tab characters:
 
-1. The pull request number where progress should be reported.
-2. The commit hash to be checked out and built.
-3. The type of build for this PR (i.e. whether it has been built before).
+1. The type of build for this PR (i.e. whether it has been built before):
+   one of untested, failed, succeeded.
+2. The pull request number where progress should be reported.
+3. The commit hash to be checked out and built.
 4. The name of an *.env file, without the .env suffix, of the repository that
    this commit belongs to.
+5. For untested PRs, how long the PR has been waiting, as a UNIX timestamp;
+   empty for the other types, whose commit date says nothing about waiting.
+
+KEEP THIS LIST HONEST. Consumers read the output positionally in shell, where
+`read` folds every surplus field into its last variable -- so a field appended
+here without a matching variable there is absorbed silently, with no error.
+That is exactly how the queued-status loop in build-loop.sh broke when field 5
+was added while this list still described four.
 """
 
 import functools
