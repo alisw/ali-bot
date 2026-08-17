@@ -1,0 +1,79 @@
+---
+# Run the unit tests under test/. These pin what the CI builders depend on --
+# above all what list-branch-pr prints and in what order, since every builder
+# runs it to decide what to build. A red run here means the behaviour of the
+# whole CI changed, not that a refactor needs tidying.
+name: Test CI helpers
+
+'on':
+  push:
+    paths:
+      - 'list-branch-pr'
+      - 'alibot_helpers/**'
+      - 'ci/**'
+      - 'test/**'
+      - '.github/workflows/ci-tests.yml'
+  pull_request:
+    paths:
+      - 'list-branch-pr'
+      - 'alibot_helpers/**'
+      - 'ci/**'
+      - 'test/**'
+      - '.github/workflows/ci-tests.yml'
+
+permissions: {}
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # The builders install ali-bot into whatever Python the container has,
+        # so the floor is what the oldest builder image ships rather than a
+        # preference.
+        python-version: ['3.9', '3.11', '3.13']
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      # The [ci] extra brings gql, which list-branch-pr imports at module
+      # level -- the tests stub the network, not the import.
+      - name: Install ali-bot
+        run: python -m pip install -e '.[ci]'
+
+      - name: Run the tests
+        run: |
+          # [toml] pulls tomli, which coverage needs to read its
+          # configuration from pyproject.toml on Python < 3.11, where
+          # tomllib is not yet in the standard library. A no-op on 3.11+.
+          python -m pip install 'coverage[toml]'
+          python -m coverage run -m unittest discover -s test -v
+
+      # Reported, not gated. With characterisation tests the percentage is a
+      # weak signal; the useful output is which lines are missing, so that a
+      # change adding an untested branch is visible in review.
+      - name: Coverage
+        run: python -m coverage report
+
+      # Cheap, and it catches the failure mode that actually bites: a script
+      # that parses on the developer's Python but not on a builder's.
+      - name: Shell scripts parse
+        run: |
+          set -e
+          for script in ci/*.sh; do
+            bash -n "$script"
+          done
+
+      - name: Shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck -x ci/*.sh

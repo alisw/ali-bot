@@ -97,3 +97,31 @@ script-files = [
 include = ["*"]
 
 [tool.setuptools_scm]
+
+[tool.coverage.run]
+# Scope it: a bare source = ["."] drags in every module in the repo, most of
+# which this suite has no business exercising, so the headline number would be
+# noise rather than signal. list-branch-pr has no .py extension; coverage
+# traces it anyway, because it is named explicitly here.
+source = ["."]
+
+[tool.coverage.report]
+# Services and one-shot utilities with no unit tests of their own. Listing them
+# is a statement that they are out of scope, not that they are covered.
+# `source` takes packages and directories, so the extensionless list-branch-pr
+# cannot be named there -- it is selected here instead, by pattern.
+include = ["list-branch-pr", "alibot_helpers/*", "ci/*"]
+omit = [
+  "*/process-pull-request-http.py",
+  "*/tested_pkgs.py",
+  "*/sync-egroups.py",
+  "*/sync-mapusers.py",
+  "*/missing-persons.py",
+]
+exclude_also = [
+  "if __name__ == .__main__.:",
+  # argparse declarations: exercising them tests argparse, not us. The tests
+  # build a Namespace directly, which is also what keeps them readable.
+  "def parse_args",
+]
+show_missing = true
