@@ -52,7 +52,7 @@ echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead bt
       # API request quota too quickly.
       succeeded) ;;
     esac
-  ) < /dev/null  # Stop commands from slurping hashes, just in case.
+  ) & wait  # Stop commands from slurping hashes; make "trap" work.
 done
 
 case "$BUILD_TYPE" in

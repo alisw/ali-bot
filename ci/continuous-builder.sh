@@ -6,6 +6,10 @@
 
 . build-helpers.sh
 
+# Make sure we exit cleanly and don't leave leftover processes running when
+# killed. Bash doesn't do this automatically, unfortunately.
+trap trap_handler INT TERM
+
 if [ "$1" != --skip-setup ]; then
   if [ -r ~/.continuous-builder ]; then
     # Tell ShellCheck not to check the sourced file here. Assume the .env files are fine.
@@ -105,9 +109,12 @@ if [ -n "$HASHES" ]; then
       # Run the build
       . build-loop.sh
 
-      # Something inside this subshell is reading stdin, which causes some hashes
-      # from above to be ignored. It shouldn't, so redirect from /dev/null.
-    ) < /dev/null
+      # Something inside this subshell is reading stdin, which used to cause
+      # some hashes from above to be ignored. Let "&" redirect from /dev/null.
+      # Additionally, use "& wait" so that the trap set above can run properly.
+      # If we just ran the subshell normally, bash would wait for it to exit
+      # before invoking the trap handler, which would take too long.
+    ) & wait
 
     # Outside subshell; we're back in the parent directory.
     # Delete builds older than 2 days, then keep deleting until we've got at
@@ -160,7 +167,9 @@ run_duration=$(($(date +%s) - run_start_time))
 # shellcheck disable=SC2031  # TIMEOUT was modified in a subshell; that's fine.
 timeout=$(get_config_value timeout "${TIMEOUT:-120}")
 if [ "$run_duration" -lt "$timeout" ]; then
-  sleep $((timeout - run_duration)) || :
+  # Wrap this in short_timeout so that sleep gets killed properly when the outer
+  # script is killed.
+  TIMEOUT=$timeout short_timeout sleep $((timeout - run_duration))
 fi
 
 # Re-exec ourselves. This lets us update pick up updates to this script, e.g.
