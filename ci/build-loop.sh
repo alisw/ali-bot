@@ -28,7 +28,14 @@ else
 fi
 
 # Update all PRs in the queue with their number before we start building.
-echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead btype num hash envf; do
+# NB: `cat -n` prepends the line number, so each line here has SIX fields --
+# one more than list-branch-pr printed. `read` folds every surplus field into
+# its last variable, so the trailing waiting_since must be read into a variable
+# of its own; without it, envf silently becomes "<env>\t<waiting_since>", no
+# *.env file matches, and the queued status is posted with an empty CHECK_NAME.
+# It only ever showed up for untested PRs, the one case this loop exists for,
+# because they are the only rows whose waiting_since is not empty.
+echo "$HASHES" | tail -n "+$((BUILD_SEQ + 1))" | cat -n | while read -r ahead btype num hash envf _waiting; do
   # Run this in a subshell as report_pr_errors uses $PR_REPO but we don't want
   # to overwrite the outer for loop's variables, as they are needed for the
   # subsequent build.
