@@ -343,6 +343,18 @@ class ListBranchPRTestCase(unittest.TestCase):
         rows, _ = self.run_script([make_pr(1, "01")])
         self.assertEqual([row[1] for row in rows], ["1"])
 
+    def test_priority_label_jumps_the_queue(self):
+        pulls = [make_pr(1, "01"), make_pr(2, "02"),
+                 make_pr(3, "03", labels=(self.script.PRIORITY_LABEL,))]
+        rows, _ = self.run_script(pulls)
+        self.assertEqual([row[1] for row in rows], ["3", "1", "2"])
+
+    def test_without_the_label_order_is_unchanged(self):
+        pulls = [make_pr(1, "01"), make_pr(2, "02"),
+                 make_pr(3, "03", labels=("bug", "enhancement"))]
+        rows, _ = self.run_script(pulls)
+        self.assertEqual([row[1] for row in rows], ["1", "2", "3"])
+
 
 if __name__ == "__main__":
     unittest.main()
