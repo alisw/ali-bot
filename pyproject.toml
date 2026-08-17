@@ -72,6 +72,9 @@ script-files = [
   "ci/cleanup.py",
   "ci/queue-metrics.sh",
   "ci/otlp-push.py",
+  "ci/claims.sh",
+  "ci/claim-builder.sh",
+  "ci/build-one.sh",
   # S3 housekeeping
   "repo-s3-cleanup",
   "daily-tags.sh",
