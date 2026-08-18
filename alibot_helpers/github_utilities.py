@@ -241,9 +241,25 @@ class GithubCachedClient(object):
     def baseHeaders(self, stable_api=True):
         stableAPI = "application/vnd.github.v3+json"
         unstableAPI = "application/vnd.github.shadow-cat-preview+json"
+        # "token <x>" against GitHub itself, "Bearer <x>" against a credential
+        # broker -- the same split list-branch-pr already makes for GraphQL.
+        #
+        # GitHub accepts both spellings, so the direct path keeps the historical
+        # form rather than being "corrected" underneath every builder that uses
+        # it. A broker does not: it matches an Authorization: Bearer header to
+        # know which gate token to swap out, and answers 401 to anything else.
+        #
+        # Without this, every REST call from a proxied builder fails -- and it
+        # fails as NotImplementedError(401) from handle_pr_id() rather than as
+        # anything mentioning authentication, which is why reporting has stayed
+        # dry-run on slc10.
+        if github_api_url() == DEFAULT_GITHUB_API:
+            authorization = "token %s" % self.token.strip()
+        else:
+            authorization = "Bearer %s" % self.token.strip()
         headers = {
             "Accept": stableAPI if stable_api else unstableAPI,
-            "Authorization": "token %s" % self.token.strip()
+            "Authorization": authorization,
         }
         return headers
 
