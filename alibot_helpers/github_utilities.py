@@ -8,6 +8,7 @@ import json
 import pickle
 import re
 import sys
+from urllib.parse import urlsplit
 
 import requests
 
@@ -112,11 +113,33 @@ def parseLinks(linkString):
             return sanitized
 
 
+def relativeLink(link):
+    """Reduce an absolute pagination link to something makeURL() can join.
+
+    GitHub puts the UPSTREAM host in its Link header -- api.github.com -- even
+    when we reached it through a credential broker. Stripping our own api base
+    therefore matches nothing, the follow-up request goes straight to GitHub
+    carrying a gate token it will not accept, and self.get() returns None.
+
+    Taking path and query instead works for either destination. The leading
+    slash has to go as well: makeURL() uses os.path.join(), which throws the
+    base away when the second argument is absolute -- so the old
+    `.replace(api, "")` produced a bare "/repos/..." that was broken even
+    talking to GitHub directly. Only commits with enough statuses to paginate
+    ever reach this, which is how it survived.
+    """
+    _, _, path, query, _ = urlsplit(link)
+    return path.lstrip("/") + ("?" + query if query else "")
+
+
 def pagination(cache_item, nextLink, api, self, stable_api):
     for x in cache_item["payload"]:
         yield x
     if nextLink:
-        for x in self.get(nextLink.replace(api, ""), stable_api):
+        # `or ()` because get() returns None on a failed or 304 response, and
+        # iterating that raises TypeError from deep inside setGithubStatus,
+        # where it looks nothing like a pagination problem.
+        for x in self.get(relativeLink(nextLink), stable_api) or ():
             yield x
 
 
