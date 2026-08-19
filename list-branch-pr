@@ -211,6 +211,7 @@ class RepoConfig:
         """
         commit_hash = last_commit["oid"]
         reviewed = tested = success = False
+        last_built = ""
         if last_commit["status"] is not None:
             for ctx in last_commit["status"]["contexts"]:
                 context, cstate = ctx["context"], ctx["state"]
@@ -220,6 +221,7 @@ class RepoConfig:
                    cstate in ("SUCCESS", "ERROR", "FAILURE"):
                     tested = True
                     success = cstate == "SUCCESS"
+                    last_built = ctx.get("createdAt") or ""
         if self.should_process(commit_hash) and not is_draft and (reviewed or is_trusted):
             state = "untested" if not tested else \
                 ("succeeded" if success else "failed")
@@ -242,6 +244,7 @@ class RepoConfig:
             "build_config": self.build_config,
             "waiting_since": waiting_since,
             "urgent": is_urgent,
+            "last_built": last_built,
         })
 
     def process_pulls(self, cgh, session, repo_info, show_base_branch=False):
@@ -316,6 +319,26 @@ def main(args):
                                                           args.show_base_branch):
                         grouped[state].append(item)
 
+    def emit_pr(group, pull):
+        """One output line: TYPE, PR, SHA, ENV, WAITING_SINCE (tab separated).
+
+        Exactly five fields, always. continuous-builder.sh reads six names from
+        `cat -n | while read`, and `read` folds any extra field into the last
+        variable -- so appending a column here would silently corrupt
+        WAITING_SINCE on every production builder."""
+        if group == "untested" or args.all_groups:
+            commit_timestr = pull["waiting_since"]
+            commit_time = datetime.fromisoformat(commit_timestr.replace("Z", "+00:00")) \
+                if commit_timestr else datetime.now(timezone.utc)
+            waiting_since = str(int(commit_time.timestamp()))
+        else:
+            # If this PR has been built before, the commit time is a bit
+            # meaningless -- the PR hasn't actually been waiting since then
+            # for this check.
+            waiting_since = ""
+        print(group, pull["number"], pull["sha"], pull["build_config"],
+              waiting_since, sep="\t")
+
     def print_prs(group, number=None):
         """Print N randomly chosen PRs from group on stdout."""
         prs = grouped[group]
@@ -331,25 +354,32 @@ def main(args):
         # ahead of everything else in ci/SCALING_PLAN.md.
         for pull in sorted(prs, key=lambda pr: (not pr.get("urgent"),
                                                 pr["waiting_since"] or "")):
-            if group == "untested" or args.all_groups:
-                commit_timestr = pull["waiting_since"]
-                commit_time = datetime.fromisoformat(commit_timestr.replace("Z", "+00:00")) \
-                    if commit_timestr else datetime.now(timezone.utc)
-                waiting_since = str(int(commit_time.timestamp()))
-            else:
-                # If this PR has been built before, the commit time is a bit
-                # meaningless -- the PR hasn't actually been waiting since
-                # then for this check.
-                waiting_since = ""
-            print(group, pull["number"], pull["sha"], pull["build_config"],
-                  waiting_since, sep="\t")
+            emit_pr(group, pull)
 
     if args.all_groups:
-        # Report the whole queue, skipping the "build untested first, else
-        # rebuild one older PR" selection below. This is for monitoring, where
-        # we want to know how much work is outstanding, not what to build next.
-        for group in ("untested", "failed", "succeeded"):
-            print_prs(group)
+        # The whole queue, in the order a worker should walk it: real work
+        # first, then rebuild candidates. A worker takes the first entry it can
+        # claim, so this ordering IS the scheduling policy; monitoring consumers
+        # simply read every line.
+        #
+        # Untested first, oldest first -- those are PRs nobody has ever built.
+        print_prs("untested")
+        # Then failed and succeeded TOGETHER, stalest first. Merging them is the
+        # point: ordering by how long ago each was last built means a green PR
+        # untouched for days outranks a red one rebuilt minutes ago. That
+        # replaces the 70/30 coin flip below, which existed so "a single red PR
+        # can't stop all green PRs from being rebuilt occasionally" -- the same
+        # goal, without a magic constant, and it maximises how fresh the overall
+        # picture is rather than randomising it.
+        #
+        # An empty last_built sorts first: we do not know when it ran, so treat
+        # it as maximally stale rather than silently never picking it.
+        rebuilds = [("failed", pull) for pull in grouped["failed"]] + \
+                   [("succeeded", pull) for pull in grouped["succeeded"]]
+        for group, pull in sorted(rebuilds,
+                                  key=lambda item: (not item[1].get("urgent"),
+                                                    item[1].get("last_built") or "")):
+            emit_pr(group, pull)
     elif grouped["untested"]:
         # If there are untested PRs waiting, build all of them first.
         print_prs("untested")
@@ -505,6 +535,10 @@ fragment commitInfo on Commit {
     contexts {
       context
       state
+      # When this check last ran on this commit. Rebuild candidates are ordered
+      # stalest-first on it, so a green PR untouched for days outranks a red one
+      # just rebuilt. Same node as the rest, so it costs no extra API call.
+      createdAt
     }
   }
 }
