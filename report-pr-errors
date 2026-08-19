@@ -509,6 +509,19 @@ class Logs(object):
         m = re.compile("^s3://([^.]+)[.](.*)").match(dest)
         bucket_name = m.group(1)
         server = m.group(2)
+        # The endpoint normally follows from the destination, but a builder that
+        # reaches S3 through a credential broker has to send its requests to the
+        # broker instead -- on loopback, over HTTP, with the gate token as the
+        # access key. Hardcoding https://<server> makes that impossible, and the
+        # failure is opaque: the first call is list_buckets(), so it surfaces as
+        # ClientError(InvalidArgument) rather than as anything about endpoints,
+        # and it happens BEFORE the status is set, so a green build never gets
+        # its verdict posted.
+        #
+        # Unset everywhere else, so builders talking to S3 directly are
+        # unaffected.
+        endpoint_url = os.environ.get("ALIBOT_S3_ENDPOINT_URL",
+                                      "https://%s" % (server,))
         try:
           config = Config(
             request_checksum_calculation='WHEN_REQUIRED',
@@ -518,12 +531,12 @@ class Logs(object):
                                    config=config,
                                    aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
                                    aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-                                   endpoint_url="https://%s" % (server))
+                                   endpoint_url=endpoint_url)
         except Exception:
           s3_client = boto3.client('s3',
                                     aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
                                     aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-                                    endpoint_url="https://%s" % (server))
+                                    endpoint_url=endpoint_url)
 
         s3_client.list_buckets()
         transfer = S3Transfer(s3_client)
