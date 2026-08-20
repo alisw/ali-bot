@@ -38,6 +38,16 @@ unset HASHES
 # Skip quietly if the check disappeared from repo-config between the listing
 # and now -- it is not an error, there is simply nothing to build.
 source_env_files "$env_name" || exit 0
+
+# A candidate ali-bot under test wins over the *.env pin. Applied HERE, after
+# the env files, rather than by making repo-config/DEFAULTS.env respect a
+# pre-set INSTALL_ALIBOT: that file is read by continuous-builder.sh too, in a
+# long-lived shell that exports these and serves several checks in turn, so a
+# ${VAR:-default} there would let the first check's pin stick to every later
+# one. Overriding in this process, which builds exactly one PR and exits, cannot
+# leak anywhere.
+[ -n "$ALIBOT_OVERRIDE" ] && INSTALL_ALIBOT=$ALIBOT_OVERRIDE
+
 export INSTALL_ALIBUILD INSTALL_ALIBOT INSTALL_ALIDIST
 
 # A work area per check, inside whatever directory we were started in. The
