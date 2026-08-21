@@ -78,11 +78,14 @@ class CountingRestClient:
 
 def make_pr(number, committed_day, state=None, built_day=None, labels=(),
             draft=False, title="a pull request", association="MEMBER",
-            approved=True, reviewed=True):
+            approved=True, reviewed=True, broken=0):
     """One node shaped like the GraphQL query's pullRequests.nodes entries.
 
     state=None means this check has never run on the commit (untested);
     "SUCCESS"/"FAILURE" mean it has, and built_day says when.
+
+    broken=N adds N unrelated checks, all red, which is what the queue
+    ordering reads to decide how much this PR is worth building.
     """
     # A passing "review" context is one of the two ways a PR becomes
     # buildable: process_single_pr requires `reviewed or is_trusted`, so a PR
@@ -90,6 +93,10 @@ def make_pr(number, committed_day, state=None, built_day=None, labels=(),
     contexts = [{"context": "review",
                  "state": "SUCCESS" if reviewed else "PENDING",
                  "createdAt": "2024-01-01T00:00:00Z"}]
+    contexts.extend({"context": "build/other-%d" % i,
+                     "state": "ERROR" if i % 2 else "FAILURE",
+                     "createdAt": "2024-01-01T00:00:00Z"}
+                    for i in range(broken))
     if state is not None:
         contexts.append({"context": CHECK_NAME, "state": state,
                          "createdAt": "2024-02-%sT00:00:00Z" % (built_day or "01")})
@@ -354,6 +361,51 @@ class ListBranchPRTestCase(unittest.TestCase):
                  make_pr(3, "03", labels=("bug", "enhancement"))]
         rows, _ = self.run_script(pulls)
         self.assertEqual([row[1] for row in rows], ["1", "2", "3"])
+
+    def test_least_broken_prs_are_built_first(self):
+        """A PR already red everywhere else is the least useful thing to build:
+        its failure would say nothing about this platform, and the red we post
+        lands on someone's PR for nothing."""
+        pulls = [make_pr(1, "01", broken=9), make_pr(2, "02", broken=0),
+                 make_pr(3, "03", broken=3)]
+        rows, _ = self.run_script(pulls)
+        self.assertEqual([row[1] for row in rows], ["2", "3", "1"])
+
+    def test_the_priority_label_still_beats_a_clean_pr(self):
+        """Ordering by breakage must not override an explicit human decision."""
+        pulls = [make_pr(1, "01", broken=0),
+                 make_pr(2, "02", broken=9, labels=(self.script.PRIORITY_LABEL,))]
+        rows, _ = self.run_script(pulls)
+        self.assertEqual([row[1] for row in rows], ["2", "1"])
+
+    def test_our_own_red_does_not_push_a_pr_down_the_queue(self):
+        """The check's own verdict is excluded from the count. Were it included,
+        a PR this check failed would sink a little further every round and never
+        be retried -- and the group already carries that verdict anyway."""
+        pulls = [make_pr(11, "01", "FAILURE", "10"),
+                 make_pr(12, "02", "SUCCESS", "20")]
+        rows, _ = self.run_script(pulls, all_groups=True)
+        self.assertEqual([row[1] for row in rows], ["11", "12"])
+
+    def test_equally_broken_prs_keep_the_old_order(self):
+        """Breakage that is repo-wide (alidist has two such checks) is a
+        constant offset, so it cancels out and oldest-first still decides."""
+        pulls = [make_pr(1, "03", broken=2), make_pr(2, "01", broken=2),
+                 make_pr(3, "02", broken=2)]
+        rows, _ = self.run_script(pulls)
+        self.assertEqual([row[1] for row in rows], ["2", "3", "1"])
+
+    def test_all_groups_orders_rebuilds_stalest_first(self):
+        """Merged across failed and succeeded, so a stale green PR outranks a
+        freshly rebuilt red one -- what replaced the 70/30 coin flip."""
+        pulls = [
+            make_pr(11, "01", "FAILURE", "10"),
+            make_pr(12, "02", "FAILURE", "20"),
+            make_pr(13, "03", "SUCCESS", "05"),   # stalest of all
+            make_pr(14, "04", "SUCCESS", "25"),   # freshest of all
+        ]
+        rows, _ = self.run_script(pulls, all_groups=True)
+        self.assertEqual([row[1] for row in rows], ["13", "11", "12", "14"])
 
 
 if __name__ == "__main__":

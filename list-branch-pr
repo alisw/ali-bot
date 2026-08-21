@@ -211,15 +211,26 @@ class RepoConfig:
         """
         commit_hash = last_commit["oid"]
         reviewed = tested = success = False
+        last_built = ""
+        broken = 0
         if last_commit["status"] is not None:
             for ctx in last_commit["status"]["contexts"]:
                 context, cstate = ctx["context"], ctx["state"]
                 if context == "review" and cstate == "SUCCESS":
                     reviewed = True
+                # How broken this commit already is elsewhere, used only to
+                # order the queue. Our own check is excluded: the group above
+                # already carries that verdict, and counting it here too would
+                # push a PR we failed further down every round, so it would
+                # never be retried. A check red for everyone (alidist has two)
+                # is a constant offset and cancels out of a ranking.
+                if context != self.check_name and cstate in ("ERROR", "FAILURE"):
+                    broken += 1
                 if context == self.check_name and \
                    cstate in ("SUCCESS", "ERROR", "FAILURE"):
                     tested = True
                     success = cstate == "SUCCESS"
+                    last_built = ctx.get("createdAt") or ""
         if self.should_process(commit_hash) and not is_draft and (reviewed or is_trusted):
             state = "untested" if not tested else \
                 ("succeeded" if success else "failed")
@@ -235,13 +246,16 @@ class RepoConfig:
         waiting_since = max(pr_created, last_commit["committedDate"])
         print(f"pr: {pull_number:6d}@{commit_hash:.7s}: wait={waiting_since} "
               f"revd={reviewed:d} trust={is_trusted:d} tested={tested:d} "
-              f"success={success:d} => state={state}", file=sys.stderr)
+              f"success={success:d} broken={broken:d} => state={state}",
+              file=sys.stderr)
         return None if state == "skip" else (state, {
             "number": pull_number,
             "sha": commit_hash,
             "build_config": self.build_config,
             "waiting_since": waiting_since,
             "urgent": is_urgent,
+            "last_built": last_built,
+            "broken": broken,
         })
 
     def process_pulls(self, cgh, session, repo_info, show_base_branch=False):
@@ -316,40 +330,75 @@ def main(args):
                                                           args.show_base_branch):
                         grouped[state].append(item)
 
+    def emit_pr(group, pull):
+        """One output line: TYPE, PR, SHA, ENV, WAITING_SINCE (tab separated).
+
+        Exactly five fields, always. continuous-builder.sh reads six names from
+        `cat -n | while read`, and `read` folds any extra field into the last
+        variable -- so appending a column here would silently corrupt
+        WAITING_SINCE on every production builder."""
+        if group == "untested" or args.all_groups:
+            commit_timestr = pull["waiting_since"]
+            commit_time = datetime.fromisoformat(commit_timestr.replace("Z", "+00:00")) \
+                if commit_timestr else datetime.now(timezone.utc)
+            waiting_since = str(int(commit_time.timestamp()))
+        else:
+            # If this PR has been built before, the commit time is a bit
+            # meaningless -- the PR hasn't actually been waiting since then
+            # for this check.
+            waiting_since = ""
+        print(group, pull["number"], pull["sha"], pull["build_config"],
+              waiting_since, sep="\t")
+
     def print_prs(group, number=None):
         """Print N randomly chosen PRs from group on stdout."""
         prs = grouped[group]
         if number is not None and number <= len(prs):
             prs = random.sample(prs, number)
-        # Labelled PRs first, then oldest first. Don't use .sort() here as it
-        # modifies the list in-place, and that list might also be used
-        # elsewhere.
+        # Labelled PRs first, then least-broken first, then oldest first. Don't
+        # use .sort() here as it modifies the list in-place, and that list might
+        # also be used elsewhere.
         # pr["waiting_since"] can apparently be None sometimes, which breaks
         # sorting, so default to the empty string if so.
         # NB: this changes the ORDER only, never the set, and it is a no-op
         # when nothing carries the label -- which is why it is safe to land
         # ahead of everything else in ci/SCALING_PLAN.md.
+        # The same goes for "broken": a queue where every PR is equally red (or
+        # equally green) scores identically and keeps the old oldest-first
+        # order. Where it does discriminate, it spends the worker on the PR
+        # whose failure would actually mean something -- a PR already red in ten
+        # other checks tells us nothing about this platform, and the red we add
+        # lands on someone's PR for no gain.
         for pull in sorted(prs, key=lambda pr: (not pr.get("urgent"),
+                                                pr.get("broken", 0),
                                                 pr["waiting_since"] or "")):
-            if group == "untested" or args.all_groups:
-                commit_timestr = pull["waiting_since"]
-                commit_time = datetime.fromisoformat(commit_timestr.replace("Z", "+00:00")) \
-                    if commit_timestr else datetime.now(timezone.utc)
-                waiting_since = str(int(commit_time.timestamp()))
-            else:
-                # If this PR has been built before, the commit time is a bit
-                # meaningless -- the PR hasn't actually been waiting since
-                # then for this check.
-                waiting_since = ""
-            print(group, pull["number"], pull["sha"], pull["build_config"],
-                  waiting_since, sep="\t")
+            emit_pr(group, pull)
 
     if args.all_groups:
-        # Report the whole queue, skipping the "build untested first, else
-        # rebuild one older PR" selection below. This is for monitoring, where
-        # we want to know how much work is outstanding, not what to build next.
-        for group in ("untested", "failed", "succeeded"):
-            print_prs(group)
+        # The whole queue, in the order a worker should walk it: real work
+        # first, then rebuild candidates. A worker takes the first entry it can
+        # claim, so this ordering IS the scheduling policy; monitoring consumers
+        # simply read every line.
+        #
+        # Untested first, oldest first -- those are PRs nobody has ever built.
+        print_prs("untested")
+        # Then failed and succeeded TOGETHER, stalest first. Merging them is the
+        # point: ordering by how long ago each was last built means a green PR
+        # untouched for days outranks a red one rebuilt minutes ago. That
+        # replaces the 70/30 coin flip below, which existed so "a single red PR
+        # can't stop all green PRs from being rebuilt occasionally" -- the same
+        # goal, without a magic constant, and it maximises how fresh the overall
+        # picture is rather than randomising it.
+        #
+        # An empty last_built sorts first: we do not know when it ran, so treat
+        # it as maximally stale rather than silently never picking it.
+        rebuilds = [("failed", pull) for pull in grouped["failed"]] + \
+                   [("succeeded", pull) for pull in grouped["succeeded"]]
+        for group, pull in sorted(rebuilds,
+                                  key=lambda item: (not item[1].get("urgent"),
+                                                    item[1].get("broken", 0),
+                                                    item[1].get("last_built") or "")):
+            emit_pr(group, pull)
     elif grouped["untested"]:
         # If there are untested PRs waiting, build all of them first.
         print_prs("untested")
@@ -505,6 +554,10 @@ fragment commitInfo on Commit {
     contexts {
       context
       state
+      # When this check last ran on this commit. Rebuild candidates are ordered
+      # stalest-first on it, so a green PR untouched for days outranks a red one
+      # just rebuilt. Same node as the rest, so it costs no extra API call.
+      createdAt
     }
   }
 }
