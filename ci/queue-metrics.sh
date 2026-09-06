@@ -163,8 +163,24 @@ queue_metrics_push ci_queue_poll "role=$MESOS_ROLE" \
     # No "total" either: it is untested+failed+succeeded, which PromQL adds for
     # free, and a "_total" suffix means a counter in Prometheus -- so exporting
     # a gauge under that name would actively mislead.
+    # "pool": WHICH MACHINES CAN DRAIN THIS QUEUE. Without it the only way to
+    # slice these metrics is by container, and that conflates queues no single
+    # set of workers serves: the slc10 container carries both the ordinary x86
+    # checks and the GPU one, but only the gpu-pool machines can ever take the
+    # latter. Summing them produces a "queue depth" nothing can act on -- a
+    # backlog on the GPU pool looks like an x86 backlog, and adding x86 workers
+    # does not move it.
+    #
+    # REQUIRES_POOL is exactly that constraint, and claim-builder.sh already
+    # enforces it as a hard filter, so this label reports the partition the
+    # scheduler is really using rather than inventing a second taxonomy. Checks
+    # without one are servable by any worker of that (role, container), which is
+    # what "any" means here -- deliberately a real value and not an empty label,
+    # since an empty label vanishes in PromQL and would silently rejoin the
+    # series it is meant to separate.
     queue_metrics_push ci_queue "role=$MESOS_ROLE"                      \
                   "container=$CUR_CONTAINER$ALIBOT_CONFIG_SUFFIX"       \
+                  "pool=${REQUIRES_POOL:-any}"                          \
                   "checkname=${CHECK_NAME:?}" "repo=${PR_REPO:?}"       \
                   -- "untested=$untested" "failed=$failed"              \
                   "succeeded=$succeeded"                                \
