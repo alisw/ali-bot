@@ -382,22 +382,35 @@ def scope_lines(lines, since, round_):
 
     `round_` wins over `since`: it is exact where a timestamp is a guess.
     """
-    if round_:
+    if round_ and round_ != "all":
         rounds = find_rounds(lines)
         if not rounds:
-            return lines, 0, ("round=%s asked for, but no ci-round: banner is in "
-                              "the window -- an old build-loop.sh, or the round "
-                              "started further back than window_mb reaches"
-                              % round_)
+            note = ("no ci-round: banner is in the window -- an old "
+                    "build-loop.sh, or the round started further back than "
+                    "window_mb reaches")
+            # round=last is the DEFAULT, so a missing banner is not the caller
+            # getting it wrong. Fall back to the whole window (what they would
+            # have got before) and say so, rather than refusing to answer.
+            if round_ == "last":
+                return lines, 0, "whole window; " + note
+            return lines, 0, "round=%s asked for, but %s" % (round_, note)
         if round_ == "last":
-            picked = rounds[-1]
+            index = len(rounds) - 1
         else:
             try:
-                picked = rounds[int(round_) - 1]
+                index = int(round_) - 1
+                if not 0 <= index < len(rounds):
+                    raise IndexError(round_)
             except (ValueError, IndexError):
                 return lines, 0, ("round=%s not found; %d round(s) in the window"
                                   % (round_, len(rounds)))
-        return lines[picked[0]:], picked[0], "round: " + describe_round(picked)
+        picked = rounds[index]
+        # Stop at the NEXT round, not at the end of the log. Slicing only the
+        # front leaves every later round in scope, so round=5 also answered for
+        # round 6 -- the exact misattribution `round` exists to prevent. For
+        # round=last the two are the same, which is why it went unnoticed.
+        stop = rounds[index + 1][0] if index + 1 < len(rounds) else len(lines)
+        return lines[picked[0]:stop], picked[0], "round: " + describe_round(picked)
     parsed = parse_since(since, lines)
     if parsed is None:
         return lines, 0, ""
@@ -623,7 +636,7 @@ def ci_workers() -> str:
 
 @mcp.tool()
 def ci_build_errors(alloc: str, task: str = "ci", max_errors: int = 12,
-                    since: str = "", round: str = "",
+                    since: str = "", round: str = "last",
                     window_mb: int = 0) -> str:
     """Why this build failed: the distinct errors in its log, deduplicated.
 
@@ -728,7 +741,7 @@ def ci_build_errors(alloc: str, task: str = "ci", max_errors: int = 12,
 
 @mcp.tool()
 def ci_log_search(alloc: str, pattern: str, task: str = "ci",
-                  max_matches: int = 20, since: str = "", round: str = "",
+                  max_matches: int = 20, since: str = "", round: str = "last",
                   context: int = 0, oldest_first: bool = False,
                   window_mb: int = 0) -> str:
     """Search one allocation's log, returning counts and a capped sample.
@@ -737,11 +750,14 @@ def ci_log_search(alloc: str, pattern: str, task: str = "ci",
     most max_matches of them, clipped. Ask a broad question here without the
     answer arriving as several hundred kilobytes.
 
-    Shows the LAST matches, not the first. On a claim-based worker the log
-    spans many rounds and PRs, so the earliest matches are the stalest ones --
-    reporting those as the current state has caused real mistakes. Pass
-    oldest_first=True for the old behaviour, and prefer `since` (see
-    ci_build_errors) to pin the round outright.
+    SCOPED TO THE LAST ROUND BY DEFAULT. A claim-based worker's log holds many
+    rounds for many PRs and several checks, and matches from a finished round
+    read exactly like the running one: a stale `--threads 4` and a stale
+    "[1249/1255]" were once reported as the current build's state when they
+    belonged to the previous round, which had already failed. Pass round="all"
+    to search the whole window, or a number from ci_rounds for a specific one.
+
+    Shows the LAST matches, not the first; pass oldest_first=True to flip that.
 
     `context` adds that many lines either side of each match, like grep -C:
     the fatal line is often a compiler warning cascade above a terse make
