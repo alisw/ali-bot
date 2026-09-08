@@ -355,6 +355,18 @@ class ListBranchPRTestCase(unittest.TestCase):
         rows, _ = self.run_script(pulls)
         self.assertEqual([row[1] for row in rows], ["1", "2", "3"])
 
+    def test_all_groups_orders_rebuilds_stalest_first(self):
+        """Merged across failed and succeeded, so a stale green PR outranks a
+        freshly rebuilt red one -- what replaced the 70/30 coin flip."""
+        pulls = [
+            make_pr(11, "01", "FAILURE", "10"),
+            make_pr(12, "02", "FAILURE", "20"),
+            make_pr(13, "03", "SUCCESS", "05"),   # stalest of all
+            make_pr(14, "04", "SUCCESS", "25"),   # freshest of all
+        ]
+        rows, _ = self.run_script(pulls, all_groups=True)
+        self.assertEqual([row[1] for row in rows], ["13", "11", "12", "14"])
+
 
 if __name__ == "__main__":
     unittest.main()
