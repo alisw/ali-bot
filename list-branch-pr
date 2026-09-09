@@ -444,10 +444,7 @@ def main(args):
 
         rebuilds = [("failed", pull) for pull in grouped["failed"]] + \
                    [("succeeded", pull) for pull in grouped["succeeded"]]
-        for group, pull in sorted(rebuilds,
-                                  key=lambda item: (not item[1].get("urgent"),
-                                                    item[1].get("broken", 0),
-                                                    item[1].get("last_built") or "")):
+        for group, pull in sorted(rebuilds, key=_rebuild_key):
             emit_pr(group, pull)
     elif grouped["untested"]:
         # If there are untested PRs waiting, build all of them first.
