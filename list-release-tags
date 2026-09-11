@@ -1,0 +1,256 @@
+#!/bin/bash -e
+# List tagged releases waiting to be built, in the format claim-builder.sh reads.
+#
+# The drop-in counterpart of list-branch-pr: same five-column output, same
+# contract, different notion of "a unit of work". Where that one asks GitHub for
+# pull requests, this one asks whether today's release tag exists and has not
+# been built yet. Point claim-builder.sh at it with
+#
+#   LISTER='list-release-tags'
+#
+# and everything downstream -- ordering, claiming, build-one.sh, the status
+# reporting -- is unchanged, because none of it cares what the sha refers to.
+#
+# WHY A TAG IS "UNTESTED". build-loop.sh turns that build type into a *pending*
+# GitHub status carrying the start time and a link to the Nomad allocation, and
+# then into success/error when the build ends. On a release tag that reads as
+# "this release is building / built / failed", which is the reporting we want
+# and costs nothing extra.
+#
+# WHAT A RELEASE CHECK LOOKS LIKE. One *.env per release, in the same layered
+# repo-config tree the builders already use, found via $ALIBOT_CONFIG_SUFFIX so
+# that list-branch-pr never globs it:
+#
+#   repo-config/$MESOS_ROLE/$CUR_CONTAINER$ALIBOT_CONFIG_SUFFIX/<name>.env
+#     TAG_REGEX='^O2PDPSuite-daily-%(date)-(?P<time>[0-9]{4})_TEST$'
+#     CHECK_NAME=release/O2PDPSuite/daily-slc10-x86
+#     PR_REPO=alisw/alidist
+#
+# ONE regex describes the tag, and it does both jobs: this script uses it to
+# decide which tags to offer, and build-one.sh uses the same string to pull the
+# named groups out of the tag it was handed. Describing the shape twice -- once
+# to match, once to parse -- is how the two drift.
+#
+# QUOTE IT. The value contains parentheses, which are a syntax error in an
+# unquoted assignment -- and because the *.env files are sourced, that failure
+# is silent: the check is simply never offered.
+#
+# %(date), or %(date +FMT), is REQUIRED. A release is identified by the day it
+# is cut for, so the regex must say which day it means; without it we would
+# match every daily tag ever cut -- alidist carries >10000 -- and build
+# whichever sorted last. A regex missing it is skipped and says so.
+#
+# GitHub is asked for the leading LITERAL run of the expanded regex -- one cheap
+# matching-refs call -- and the regex then decides among what comes back. That
+# is what makes "today's tag, but only the _TEST cut" expressible: the real
+# names are O2PDPSuite-daily-20260825-0000 and ...-1100_TEST, so the part that
+# varies sits between the date and the suffix, where no prefix can separate
+# them.
+
+. build-helpers.sh
+
+container=
+while [ $# -gt 0 ]; do
+  case $1 in
+    -c|--container-name) container=$2; shift 2;;
+    # Accept and ignore the flags list-branch-pr takes, so the two are
+    # interchangeable in $LISTER without the caller special-casing either.
+    --all-groups|--no-status|-b|--show-base-branch) shift;;
+    *) shift;;
+  esac
+done
+: "${container:=$CUR_CONTAINER}"
+# The glob below keys off $container, but source_env_files keys off
+# $CUR_CONTAINER (see build-helpers.sh). Same directory template, two different
+# variables -- so a caller that iterates containers, as claim-builder.sh does
+# for $CUR_CONTAINERS, would DISCOVER a check under one container and try to
+# READ it under whichever container the environment happened to pin. The check
+# file is then missing, source_env_files ends on a failed `[ -e ] &&` and
+# returns non-zero, and the `|| exit 0` below drops the check without a word --
+# earlier than the "not a release check" guard, so not even that reaches stderr.
+# That is how ci-linux-x86-release listed slc10 -- its name matched the pinned
+# CUR_CONTAINER -- while ubuntu2204 returned nothing every round and its check
+# was never once offered.
+#
+# One variable from here on. The comment below is right that the two paths must
+# not diverge; this is the same argument applied to what fills them in.
+CUR_CONTAINER=$container
+
+# Hardcoded, and deliberately the same literal source_env_files uses: the glob
+# below decides which checks EXIST and source_env_files decides what they SAY,
+# so two configurable paths could disagree and a check would be discovered but
+# read from somewhere else.
+definitions_dir=ali-bot/ci/repo-config
+
+# Today only. Raise it to also offer the previous N days, which is what you
+# want after a worker has been down for a while -- but the default is 0 because
+# "the release for today" is the thing this loop exists to build, and silently
+# picking up a backlog is a surprise rather than a service.
+: "${RELEASE_LOOKBACK_DAYS:=0}"
+
+# Ask GitHub through whatever the environment points at -- on a claim-based
+# worker that is the security-proxy, which swaps in the real credential. Bearer
+# is what the broker reads and what GitHub documents; the historical Basic form
+# is only used when talking to github.com directly.
+api=${GITHUB_API_URL:-https://api.github.com}
+gh () { curl -fsS -H "Authorization: Bearer $GITHUB_TOKEN" "$api$1"; }
+
+for envf in "$definitions_dir/$MESOS_ROLE/$container$ALIBOT_CONFIG_SUFFIX"/*.env; do
+  [ -e "$envf" ] || continue
+  env_name=$(basename "$envf" .env)
+  [ "$env_name" != DEFAULTS ] || continue
+
+  # In a subshell: these files set dozens of variables and we want none of them
+  # leaking into the next iteration, exactly as check_env_for does.
+  (
+    source_env_files "$env_name" > /dev/null 2>&1 || exit 0
+    [ -n "$TAG_REGEX" ] || exit 0          # not a release check; skip quietly
+    [ -n "$CHECK_NAME" ] && [ -n "$PR_REPO" ] || {
+      echo "$env_name: TAG_REGEX needs CHECK_NAME and PR_REPO too" >&2; exit 0; }
+    case $TAG_REGEX in
+      *'%(date'*) : ;;
+      *) echo "$env_name: TAG_REGEX has no %(date), refusing to match every" \
+              "day's tag: $TAG_REGEX" >&2; exit 0 ;;
+    esac
+
+    day=0
+    while [ "$day" -le "$RELEASE_LOOKBACK_DAYS" ]; do
+      regex=$(expand_date_spec "$TAG_REGEX" "$day") || { day=$((day + 1)); continue; }
+      day=$((day + 1))
+
+      # Everything before the first regex metacharacter, minus a trailing
+      # character that a quantifier could make optional. Purely an optimisation:
+      # it decides how much GitHub filters for us, never what matches.
+      prefix=$(python3 -c '
+import re, sys
+r = sys.argv[1]
+r = r[1:] if r.startswith("^") else r
+out = []
+for i, ch in enumerate(r):
+    if ch in ".^$*+?()[]{}|\\":
+        if ch in "*?{" and out:
+            out.pop()          # the quantifier applies to the char before it
+        break
+    out.append(ch)
+print("".join(out))
+' "$regex")
+
+      # An empty prefix means the regex starts with a metacharacter, and asking
+      # GitHub for "" returns EVERY ref -- ~5 MB and 10514 tags for alidist, on
+      # every round of every check. Anchor the regex with a literal instead.
+      if [ -z "$prefix" ]; then
+        echo "$env_name: TAG_REGEX has no leading literal, so the whole tag list" \
+             "would be fetched every round; anchor it: $regex" >&2
+        continue
+      fi
+
+      found=$(gh "/repos/$PR_REPO/git/matching-refs/tags/$prefix" 2>/dev/null |
+              python3 -c '
+import json, re, sys
+try:
+    refs = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+rx = re.compile(sys.argv[1])
+# Last match wins: when a day has more than one cut, a re-cut supersedes the
+# one before it rather than being ignored.
+best = None
+for r in sorted(refs if isinstance(refs, list) else [], key=lambda r: r.get("ref", "")):
+    name = r.get("ref", "").rsplit("/", 1)[-1]
+    if rx.match(name):
+        obj = r.get("object") or {}
+        # An annotated tag points at a tag object; the status has to go on the
+        # commit, so the caller dereferences it when the type says so.
+        best = (name, obj.get("sha", ""), obj.get("type", ""))
+if best:
+    print(*best)
+' "$regex") || continue
+      [ -n "$found" ] || continue
+      set -- $found
+      tag=$1; sha=$2; objtype=${3:-commit}
+
+      if [ "$objtype" = tag ]; then
+        sha=$(gh "/repos/$PR_REPO/git/tags/$sha" |
+                python3 -c 'import json,sys; print((json.load(sys.stdin).get("object") or {}).get("sha",""))') || continue
+        [ -n "$sha" ] || continue
+      fi
+
+      # What the tag's own status says about this check, which is the only
+      # record that survives a worker restart or a lapsed claim.
+      #
+      #   (none)          nobody has touched it   -> untested
+      #   pending         somebody is building it -> skip. This is what stops a
+      #                   second round starting the release the first is still
+      #                   working on, hours after the claim TTL lapsed.
+      #   success         done                    -> skip
+      #   error/failure   tried and failed        -> offer again, as "failed"
+      #
+      # Re-offering failures matches what list-branch-pr does for pull requests,
+      # and for the same reason: a release that failed on a store hiccup or a
+      # dead node should be retried once the cause is gone, not stay broken
+      # until somebody cuts a new tag. It cannot spin, because claim-builder.sh
+      # records every (check, sha) it has attempted and will not take the same
+      # one twice in a session.
+      state=$(gh "/repos/$PR_REPO/commits/$sha/status" |
+                python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+want = sys.argv[1]
+for s in d.get("statuses") or []:
+    if s.get("context") == want:
+        print(s.get("state", ""))
+        break
+' "$CHECK_NAME") || continue
+      # REBUILD_TAGS forces a tag that is already green to be offered again,
+      # as a whitespace- or comma-separated list of tag names or globs. This is
+      # cheap on purpose: a rebuild finds its tarballs in the store and fetches
+      # them, so re-running a release costs minutes, not a rebuild.
+      #
+      # It exists because the "already built" record is the commit's GitHub
+      # status, and a status is keyed on the COMMIT while a release is
+      # identified by its TAG -- so re-cutting a tag on the same commit, or two
+      # release tags legitimately pointing at one commit, otherwise look done.
+      #
+      # Being a *.env knob, turning it on and off again is a push picked up at
+      # the top of the next round, with no restart.
+      force=
+      for _pat in ${REBUILD_TAGS//,/ }; do
+        # shellcheck disable=SC2254  # $_pat is a glob on purpose
+        case $tag in $_pat) force=1; break ;; esac
+      done
+
+      case $state in
+        "")              build_type=untested ;;
+        error|failure)   build_type=failed ;;
+        success)         [ -n "$force" ] || continue
+                         # succeeded, not failed: build-loop.sh leaves a green
+                         # check's status alone, so a forced rebuild does not
+                         # paint the release red while it re-runs.
+                         build_type=succeeded ;;
+        *)               # pending. Normally somebody is building it right now
+                         # and we must not start a second one -- the claim only
+                         # covers its own TTL, so this status is the long-lived
+                         # guard. But a pending status also survives a build
+                         # that was KILLED rather than finished, and then it
+                         # strands the tag for ever: nothing ever clears it.
+                         #
+                         # REBUILD_TAGS is a human saying "I know what that
+                         # pending is", so it overrides here too. Unforced
+                         # behaviour is unchanged.
+                         [ -n "$force" ] || continue
+                         build_type=failed ;;
+      esac
+
+      # waiting_since: when the tag was cut, so the queue metrics measure the
+      # delay a release actually saw rather than when we noticed it.
+      since=$(gh "/repos/$PR_REPO/commits/$sha" |
+                python3 -c '
+import json, sys, calendar, time
+d = json.load(sys.stdin)
+ts = (((d.get("commit") or {}).get("committer") or {}).get("date"))
+print(calendar.timegm(time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")) if ts else "")
+') || since=
+      printf '%s %s %s %s %s\n' "$build_type" "$tag" "$sha" "$env_name" "$since"
+    done
+  )
+done

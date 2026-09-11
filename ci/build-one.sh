@@ -38,13 +38,80 @@ unset HASHES
 # Skip quietly if the check disappeared from repo-config between the listing
 # and now -- it is not an error, there is simply nothing to build.
 source_env_files "$env_name" || exit 0
+
+# A release tag carries its own metadata -- which suite, which day, which cut,
+# whether it is a test one -- and TAG_REGEX, the SAME regex list-release-tags
+# matched it with, pulls it back out: every named group becomes TAG_<NAME> in
+# the environment. For
+#
+#   TAG_REGEX='^(?P<suite>[^-]+)-daily-%(date)-(?P<time>[0-9]{4})(?P<variant>_.+)?$'
+#
+# the tag O2PDPSuite-daily-20260825-1100_TEST yields TAG_SUITE=O2PDPSuite,
+# TAG_TIME=1100, TAG_VARIANT=_TEST. One regex, so what selects a release and
+# what describes it cannot disagree.
+#
+# The %(date) is expanded over the same window the lister offered, because a
+# worker may be building yesterday's tag when RELEASE_LOOKBACK_DAYS allows it.
+#
+# Unset for pull-request checks, where $PR_NUMBER is a number and there is
+# nothing to parse, so this is a no-op for every existing builder.
+#
+# A regex that matches nothing in the window is FATAL rather than skipped: the
+# point is to name what gets published, and publishing a release under values
+# guessed because the name was not what we expected is worse than not
+# publishing.
+if [ -n "$TAG_REGEX" ]; then
+  tag_env=
+  _day=0
+  while [ "$_day" -le "${RELEASE_LOOKBACK_DAYS:-0}" ]; do
+    _regex=$(expand_date_spec "$TAG_REGEX" "$_day") || break
+    _day=$((_day + 1))
+    tag_env=$(python3 -c '
+import re, shlex, sys
+m = re.match(sys.argv[1], sys.argv[2])
+if not m:
+    sys.exit(1)
+for name, value in (m.groupdict() or {}).items():
+    if not name.isidentifier():
+        sys.exit("TAG_REGEX group %r is not a usable variable name" % name)
+    print("TAG_%s=%s" % (name.upper(), shlex.quote(value or "")))
+' "$_regex" "$PR_NUMBER") && break
+    tag_env=
+  done
+  [ -n "$tag_env" ] || {
+    echo "$env_name: TAG_REGEX matches no day in the window for tag" \
+         "$PR_NUMBER, refusing to build it" >&2
+    exit 1
+  }
+  # eval, but only over shlex.quote()d values whose names we validated above.
+  eval "$tag_env"
+  # shellcheck disable=SC2046  # deliberate: export the names we just set
+  export $(printf '%s\n' "$tag_env" | cut -d= -f1)
+  unset _day _regex tag_env
+fi
+
+# A candidate ali-bot under test wins over the *.env pin. Applied HERE, after
+# the env files, rather than by making repo-config/DEFAULTS.env respect a
+# pre-set INSTALL_ALIBOT: that file is read by continuous-builder.sh too, in a
+# long-lived shell that exports these and serves several checks in turn, so a
+# ${VAR:-default} there would let the first check's pin stick to every later
+# one. Overriding in this process, which builds exactly one PR and exits, cannot
+# leak anywhere.
+[ -n "$ALIBOT_OVERRIDE" ] && INSTALL_ALIBOT=$ALIBOT_OVERRIDE
+
 export INSTALL_ALIBUILD INSTALL_ALIBOT INSTALL_ALIDIST
 
 # A work area per check, inside whatever directory we were started in. The
 # caller owns that: for a long-lived worker it is the allocation's sticky disk,
 # which is what keeps sw/ and the checkouts warm between builds.
-mkdir -p "$env_name"
-cd "$env_name" || exit 10
+#
+# Qualified by container, because the *.env name alone is not unique: o2-alidist
+# exists under slc10 and ubuntu2204 both. They share nothing that could safely
+# live in one directory -- sw/BUILD/<pkg>-latest and the merged PR checkout are
+# not architecture-namespaced, so two containers in one work area would each
+# clobber the other's tree and report-pr-errors would upload whichever log won.
+mkdir -p "${CUR_CONTAINER:?}/$env_name"
+cd "$CUR_CONTAINER/$env_name" || exit 10
 
 # At the versions this check pins, which is how slc10 gets aliBuild 2.0 while
 # every other check stays on the release in repo-config/DEFAULTS.env.

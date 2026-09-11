@@ -94,6 +94,31 @@ case $(uname -s) in
     use_docker=true;;
 esac
 
+# recc is only usable if the image we are about to build IN actually ships it:
+# slc9-builder and slc10-builder install it, ubuntu2204-builder does not. With
+# USE_RECC set but no recc present, alidist sets CMAKE_CXX_COMPILER_LAUNCHER=recc
+# and every compile in the container invokes something that is not there.
+#
+# The check belongs HERE and not in the Nomad round-setup, which is where it was
+# first written: that runs before a check is claimed, so the only CONTAINER_IMAGE
+# it can see is the job-level fallback -- and it would happily certify slc10 for
+# a round that then builds in the ubuntu2204 image. By this point the check's own
+# DEFAULTS.env has been sourced and $CONTAINER_IMAGE is the real one.
+#
+# --entrypoint=/bin/sh explicitly: the builder images declare Entrypoint=[""],
+# so relying on the default can exec the empty string.
+if [ -n "$use_docker" ]; then
+  if docker run --rm --entrypoint=/bin/sh "$CONTAINER_IMAGE" \
+         -c 'command -v recc' >/dev/null 2>&1
+  then USE_RECC=${USE_RECC:-1}
+  else USE_RECC=
+  fi
+elif ! command -v recc >/dev/null 2>&1; then
+  USE_RECC=
+fi
+export USE_RECC
+echo "build-loop: USE_RECC=${USE_RECC:-<unset>} for $CONTAINER_IMAGE"
+
 # Get dependency development packages
 if [ -n "$DEVEL_PKGS" ]; then
   echo "$DEVEL_PKGS" | while read -r gh_url branch checkout_name; do
@@ -139,7 +164,14 @@ done
 # Get a temporary JAliEn token certificate and key, to give anything we build
 # below access. Do this before the `report_state pr_processing` line so we have
 # instant feedback in monitoring of whether a token is available for the build.
-if jalien_token=$(short_timeout alien.py token -v 1); then
+if [ -n "$JALIEN_TOKEN_CERT" ] && [ -n "$JALIEN_TOKEN_KEY" ]; then
+  # Already minted for us: on the claim-based workers the security-proxy
+  # sidecar hands one out (round-setup.sh), as alien.py is not installed
+  # there and the grid cert is not readable.
+  jalien_token_cert=$JALIEN_TOKEN_CERT
+  jalien_token_key=$JALIEN_TOKEN_KEY
+  HAVE_JALIEN_TOKEN=1
+elif jalien_token=$(short_timeout alien.py token -v 1); then
   jalien_token_cert=$(echo "$jalien_token" | sed -n '/^-----BEGIN CERTIFICATE-----$/,/^-----END CERTIFICATE-----$/p')
   jalien_token_key=$(echo "$jalien_token" | sed -n '/^-----BEGIN RSA PRIVATE KEY-----$/,/^-----END RSA PRIVATE KEY-----$/p')
   HAVE_JALIEN_TOKEN=1
@@ -151,8 +183,36 @@ unset certdir jalien_token
 report_state pr_processing
 
 NUM_BASE_COMMITS=-1
+
+# A tagged release is built AS TAGGED: fetch the tag, check out exactly that
+# commit, and do not merge anything. TAG_REGEX is what marks a check as building
+# tags (see list-release-tags); it is unset for every pull-request and branch
+# builder, so the block below is untouched for them.
+#
+# The distinction is not cosmetic. The path below resets to $PR_BRANCH and
+# merges $PR_HASH into it -- and a release tag is normally an ANCESTOR of that
+# branch, so the merge succeeds as a no-op, the build produces the BRANCH rather
+# than the release, and publishes it under the release's name. Nothing in that
+# sequence reports an error, which is exactly why it is worth guarding.
+if [ -n "$TAG_REGEX" ]; then
+  # Clone/reset $PR_REPO first. The PR path gets this for free because
+  # DEVEL_PKGS lists $PR_REPO and the loop above checks it out; a release check
+  # need not set DEVEL_PKGS at all, so without this there is no checkout to
+  # pushd into -- and `pushd` failing merely short-circuits the &&, so the tag
+  # is never checked out and the build silently proceeds on whatever is there.
+  reset_git_repository "$PR_REPO_CHECKOUT" "https://github.com/$PR_REPO"
+  pushd "$PR_REPO_CHECKOUT" || exit 1
+  short_timeout git fetch -f origin "+refs/tags/$PR_NUMBER:refs/tags/$PR_NUMBER"
+  git checkout -f "$PR_HASH"      # detached at exactly what was tagged
+  git clean -fxd
+  # No merge, so nothing split off from anything: the release IS the base.
+  base_hash=$PR_HASH
+  NUM_BASE_COMMITS=$(git rev-list --count HEAD)
+  popd || exit 1
+fi
+
 # Fetch the PR's changes to the git repository.
-if pushd "$PR_REPO_CHECKOUT"; then
+if [ -z "$TAG_REGEX" ] && pushd "$PR_REPO_CHECKOUT"; then
   git config --add remote.origin.fetch '+refs/pull/*/head:refs/remotes/origin/pr/*'
   # Only fetch destination branch for PRs (for merging), and the PR we are checking now
   short_timeout git fetch origin "+$PR_BRANCH:refs/remotes/origin/$PR_BRANCH"
@@ -226,7 +286,13 @@ fi
 # shellcheck disable=SC2086  # $ONLY_RUN_WHEN_CHANGED must be split by the shell
 # We cannot use an array for $ONLY_RUN_WHEN_CHANGED as *.env files are parsed by
 # Python's shlex, which doesn't parse bash array syntax properly.
-if (cd "$PR_REPO_CHECKOUT" &&
+# ...but never for a tagged release. This filter asks "did the PR touch
+# anything we care about", and for a tag there is no "the PR": the tag path sets
+# base_hash=$PR_HASH, so the diff is empty by construction and every release
+# would be marked SUCCESS in twenty seconds having built nothing at all. A green
+# release that produced no tarball is worse than a red one.
+if [ -z "$TAG_REGEX" ] &&
+   (cd "$PR_REPO_CHECKOUT" &&
       git diff --quiet "$base_hash...$PR_HASH" -- $ONLY_RUN_WHEN_CHANGED)
 then
   # Exit code 0 from git diff means that nothing has changed and we should skip
@@ -261,6 +327,27 @@ if cgroup=$(sed -rn '/:freezer:/{s/.*:freezer:(.*)/\1/p;q}; /^0::/{s/^0::(.*)/\1
   esac
 fi
 
+# State the memory budget to Docker as well, rather than relying only on the
+# cgroup above. That block is best-effort by construction: the sed can find no
+# cgroup, or it can fall through to a NOMAD_PARENT_CGROUP that is empty, and
+# both cases leave the containers unbounded while looking like they worked.
+#
+# The failure mode when they are unbounded is not a failed build, it is a dead
+# node. On alimetal08 on 2026-08-27 Nomad put its whole allocation utilisation
+# at 1.3 GiB while the host sat at 236 GiB of 251 GiB with ~0% user and ~90%
+# system CPU, and two builders stopped mid-ninja for the better part of an hour
+# -- a reclaim storm, not a compile. Nothing in that reports an error.
+#
+# Derived from the reservation so the limit and the budget cannot drift, less
+# headroom for this script, docker itself and aliBuild outside the container.
+# Equal --memory-swap disables swap for the container: swapping is precisely
+# what turns an overrun into a silent stall instead of a clean OOM kill, and a
+# clean kill is what makes it a failed build we can read.
+if [[ ${NOMAD_MEMORY_LIMIT:-} =~ ^[0-9]+$ ]] && [ "$NOMAD_MEMORY_LIMIT" -gt 4096 ]; then
+  container_mem=$((NOMAD_MEMORY_LIMIT - 4096))
+  DOCKER_EXTRA_ARGS="$DOCKER_EXTRA_ARGS --memory=${container_mem}m --memory-swap=${container_mem}m"
+fi
+
 if ! clean_env short_timeout $BUILD_CMD doctor --defaults "$ALIBUILD_DEFAULTS" "$PACKAGE" \
      ${use_docker:+--architecture "$ARCHITECTURE" --docker-image "$CONTAINER_IMAGE"}
 then
@@ -286,6 +373,12 @@ find sw/BUILD/ -maxdepth 4 -name coverage.info -delete
 # aliBuild should also delete this file, but make *really* sure there are no
 # leftovers from previous invocations.
 rm -f sw/MIRROR/fetch-log.txt
+# Per-package peak memory, appended by aliBuild's build_template.sh. Truncated
+# HERE rather than after publishing, so a build that dies still leaves behind
+# what it measured before it died -- which is exactly the build you want the
+# numbers for. The work area is sticky, so without this it would accumulate
+# across rounds.
+rm -f sw/peak-memory.tsv
 
 # Only publish packages to remote store when we build the master branch. For
 # PRs, PR_NUMBER will be numeric; in that case, only write to the regular
@@ -314,13 +407,120 @@ fi
 # report-pr-errors looks for errors in it.
 # --docker-extra-args=... uses an equals sign as its arg can start with "--",
 # --which would confuse argparse if passed as a separate argument.
-if clean_env long_timeout $BUILD_CMD build "$PACKAGE"          \
+# The ALICEO2_CCDB_* variables have to be forwarded explicitly: aliBuild builds
+# the container environment from scratch, so an exported variable does not reach
+# the tests. Unset outside the slc10 pool, where the -e is then not passed at
+# all. ALICEO2_CCDB_AUTH_TOKENS is a table, "<url>=<tok>;<url>=<tok>", because
+# the writable and production endpoints sit behind different broker routes and a
+# broker mints its gate tokens per route.
+# The SINGULAR ALICEO2_CCDB_AUTH_TOKEN is still forwarded, but nothing sets it
+# any more: the shim that derived it from the table was removed once alidist
+# o2.sh moved to daily-20260828-0000, which reads the table
+# (ALICEO2_CCDB_AUTH_TOKENS) and has no getenv for the singular at all. It stays
+# as an escape hatch, because a REBUILD of a release cut before AliceO2#15724
+# merged checks out that release's alidist as-tagged, and so still pins an O2
+# that only understands the singular. Setting it by hand in the environment is
+# then all that is needed; ${VAR:+...} means it costs nothing when unset.
+# ALIBUILD_EXTRA_ARGS is deliberately UNQUOTED so it word-splits into separate
+# flags -- it is a list of arguments, not one argument, unlike
+# --docker-extra-args above which aliBuild shlex.split()s itself. Empty for
+# every existing check.
+
+# Migrate the reusable part of this build's closure into the CAS/AC store first,
+# when the check asks for it. Off unless MIGRATE_REUSABLE is set, so every other
+# builder is untouched.
+#
+# Why this exists: a package that only ever existed as a pre-2.0 legacy tarball
+# has no Action Cache entry, so is_published() is false for it forever, while
+# upload_symlinks_and_tarball sees its tarball already in the legacy store and
+# returns early without writing one. aliBuild bounds that now (it dies naming the
+# package instead of rebuilding it in a loop), but the actual repair is to give
+# the package an AC entry, which is what `aliBuild migrate` does.
+#
+# Incremental on purpose: only this build's closure, and migrate skips anything
+# already done (the per-package link it writes LAST doubles as the completion
+# marker), so successive daily builds converge the tree instead of demanding one
+# big migration up front.
+#
+# Non-destructive: migrate has no --legacy-links-store, so it writes the blob,
+# the recipe, the AC entry and its own link into the CAS/AC buckets only. The
+# tarballs in the old store are read and left alone -- which is what keeps
+# readers older than v1.17.44 working, since they cannot follow a redirect stub.
+#
+# Revisions cannot drift: migrate carries the old store's version-revision
+# through into the AC entry rather than assigning a new one, and revision
+# ASSIGNMENT here reads the legacy tree, which migrate never writes to.
+if [ -n "$MIGRATE_REUSABLE" ]; then
+  # The plan MUST resolve with the same arguments as the build below, or the two
+  # disagree about hashes and this migrates revisions the build never asks for.
+  # Only the hash-affecting ones are repeated: -e values are not tracked unless a
+  # recipe lists them in track_env, and --fetch-repos/--debug do not enter a hash.
+  migrate_plan=$(clean_env short_timeout $BUILD_CMD build "$PACKAGE" --plan  \
+       -z "$build_identifier" --defaults "$ALIBUILD_DEFAULTS"                \
+       ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}                       \
+       ${use_docker:+--architecture "$ARCHITECTURE"}                         \
+       ${use_docker:+--docker-image "$CONTAINER_IMAGE"}                      \
+       ${ALIBUILD_EXTRA_ARGS:+$ALIBUILD_EXTRA_ARGS} 2>/dev/null) || migrate_plan=
+  # stdout only: --plan puts the machine-readable lines there and its summary on
+  # stderr, precisely so this pipe gets clean data.
+  migrate_specs=$(printf '%s\n' "$migrate_plan" | awk '$1 == "reuse" { print $2 }')
+
+  if [ -z "$migrate_specs" ]; then
+    echo "migrate: nothing reusable to migrate for $PACKAGE" >&2
+  else
+    # migrate takes only FOUR of the store flags (--remote-store, --ac-store,
+    # --insecure, --architecture); it has no --no-system, --legacy-links-store,
+    # --cas-public-url or --sign-*, so passing $ALIBUILD_EXTRA_ARGS wholesale
+    # makes it exit on an unrecognised argument. Pick out what it understands.
+    migrate_store_args=()
+    read -r -a _extra <<< "$ALIBUILD_EXTRA_ARGS"
+    _i=0
+    while [ "$_i" -lt "${#_extra[@]}" ]; do
+      # ::rw is stripped: finaliseArgs only normalises that suffix for build and
+      # doctor (see args.py), so migrate hands "alibuild-cas::rw" to boto3 as a
+      # bucket name and dies on ParamValidationError. migrate writes regardless --
+      # doMigrate passes its --remote-store as BOTH read and write store -- so
+      # dropping the marker costs nothing.
+      case ${_extra[$_i]} in
+        --ac-store) migrate_store_args+=("${_extra[$_i]}" "${_extra[$((_i + 1))]%::rw}"); _i=$((_i + 2)) ;;
+        --ac-store=*) migrate_store_args+=("${_extra[$_i]%::rw}"); _i=$((_i + 1)) ;;
+        --insecure) migrate_store_args+=("${_extra[$_i]}"); _i=$((_i + 1)) ;;
+        *) _i=$((_i + 1)) ;;
+      esac
+    done
+    # Not xargs: macOS xargs has no -r, and this script is shared with the mac
+    # builders even though no mac check sets MIGRATE_REUSABLE today.
+    # shellcheck disable=SC2086  # deliberate word splitting, one arg per spec
+    clean_env long_timeout $BUILD_CMD migrate $migrate_specs                  \
+       --architecture "$ARCHITECTURE"                                         \
+       ${REMOTE_STORE:+--remote-store "${REMOTE_STORE%::rw}"}                 \
+       ${migrate_store_args[@]+"${migrate_store_args[@]}"}                    \
+       --read-store "${MIGRATE_READ_STORE:-https://s3.cern.ch/swift/v1/alibuild-repo}" \
+       --alidist "$PWD/alidist" -j "${JOBS:-$(nproc)}"                        \
+       ${MIGRATE_STORAGE:+--storage "$MIGRATE_STORAGE"} ||
+      # Not fatal: an un-migrated package makes the build below die with a clear
+      # message naming it, which beats failing here with less context.
+      echo "migrate: failed; the build will report which package still needs it" >&2
+  fi
+  unset migrate_plan migrate_specs migrate_store_args _extra _i
+fi
+
+# xtrace is on for this script, and it expands the whole command line into the
+# builder's log -- including JALIEN_TOKEN_KEY, which is a live credential and
+# which `nomad alloc logs` hands to anyone holding a read-only cluster token.
+# Off for the invocation only; aliBuild's own log is unaffected, and the trace
+# resumes immediately after.
+set +x
+build_rc=0
+clean_env long_timeout $BUILD_CMD build "$PACKAGE"             \
      -j "${JOBS:-$(nproc)}" -z "$build_identifier"           \
      --defaults "$ALIBUILD_DEFAULTS"                         \
      ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}         \
      -e ALIBOT_PR_REPO="$PR_REPO"                            \
      -e "ALIBUILD_O2_TESTS=$ALIBUILD_O2_TESTS"               \
      -e "ALIBUILD_O2_FORCE_GPU=$ALIBUILD_O2_FORCE_GPU"       \
+     ${ALIBUILD_O2_FORCE_GPU_CUDA_ARCH:+-e "ALIBUILD_O2_FORCE_GPU_CUDA_ARCH=$ALIBUILD_O2_FORCE_GPU_CUDA_ARCH"} \
+     ${ALIBUILD_O2_FORCE_GPU_HIP_ARCH:+-e "ALIBUILD_O2_FORCE_GPU_HIP_ARCH=$ALIBUILD_O2_FORCE_GPU_HIP_ARCH"} \
      ${USE_RECC:+-e "USE_RECC=$USE_RECC"}                    \
      ${USE_PERF:+-e "USE_PERF=$USE_PERF"}                    \
      ${RECC_LOG_LEVEL:+-e "RECC_LOG_LEVEL=$RECC_LOG_LEVEL"}  \
@@ -331,10 +531,18 @@ if clean_env long_timeout $BUILD_CMD build "$PACKAGE"          \
      -e "ALIBUILD_BASE_HASH=$base_hash"                      \
      ${jalien_token_cert:+-e "JALIEN_TOKEN_CERT=$jalien_token_cert"} \
      ${jalien_token_key:+-e "JALIEN_TOKEN_KEY=$jalien_token_key"} \
+     ${ALICEO2_CCDB_HOST:+-e "ALICEO2_CCDB_HOST=$ALICEO2_CCDB_HOST"} \
+     ${ALICEO2_CCDB_PRODUCTION_HOST:+-e "ALICEO2_CCDB_PRODUCTION_HOST=$ALICEO2_CCDB_PRODUCTION_HOST"} \
+     ${ALICEO2_CCDB_AUTH_TOKENS:+-e "ALICEO2_CCDB_AUTH_TOKENS=$ALICEO2_CCDB_AUTH_TOKENS"} \
+     ${ALICEO2_CCDB_AUTH_TOKEN:+-e "ALICEO2_CCDB_AUTH_TOKEN=$ALICEO2_CCDB_AUTH_TOKEN"} \
+     ${DPL_CONDITION_BACKEND:+-e "DPL_CONDITION_BACKEND=$DPL_CONDITION_BACKEND"} \
      ${use_docker:+--architecture "$ARCHITECTURE"}           \
      ${use_docker:+--docker-image "$CONTAINER_IMAGE"}        \
      ${use_docker:+--docker-extra-args="$DOCKER_EXTRA_ARGS"} \
-     --fetch-repos --debug --no-auto-cleanup
+     ${ALIBUILD_EXTRA_ARGS:+$ALIBUILD_EXTRA_ARGS}            \
+     --fetch-repos --debug --no-auto-cleanup || build_rc=$?
+set -x
+if [ "$build_rc" -eq 0 ]
 then
   if is_numeric "$PR_NUMBER"; then
     # This is a PR. Use the error function (with --success) to still provide logs
@@ -349,6 +557,34 @@ else
   report_pr_errors ${DONT_USE_COMMENTS:+--no-comments} ||
     short_timeout report-analytics exception --desc 'report-pr-errors fail on build error'
   PR_OK=0
+fi
+
+# Peak RSS per package, as measured from the build container's own cgroup. The
+# point of this is ANALYSIS_COMPILE_MEMORY_MB: O2Physics sizes its `analysis`
+# ninja pool by dividing the cgroup limit by an assumed 8 GiB per job, taken
+# from the worst producers, and the pool is what paces the whole build. These
+# numbers say what the jobs really used, so the assumption can be checked
+# instead of argued about.
+#
+# Guarded on the URL like report_state, so a job opts in by exporting
+# OTLP_METRICS_URL and every other builder is untouched. Gauges, not counters:
+# a dashboard must not rate() them.
+if [ -n "$OTLP_METRICS_URL" ] && [ -r sw/peak-memory.tsv ]; then
+  while IFS=$'\t' read -r mem_pkg mem_peak mem_limit; do
+    [ -n "$mem_peak" ] || continue
+    # 0 is how build_template.sh spells "could not read the limit"; a series
+    # of zeroes would look like a real limit that collapsed.
+    mem_fields=("peak_mib=$mem_peak")
+    case $mem_limit in
+      ''|0|*[!0-9]*) ;;
+      *) mem_fields+=("limit_mib=$mem_limit") ;;
+    esac
+    otlp-push.py buildmem "repo=$PR_REPO" "checkname=$CHECK_NAME"   \
+                 "arch=${ARCHITECTURE:-unknown}" "package=$mem_pkg" \
+                 -- "${mem_fields[@]}" ||
+      echo "build-loop: OTLP push failed for $mem_pkg, continuing" >&2
+  done < sw/peak-memory.tsv
+  unset mem_pkg mem_peak mem_limit mem_fields
 fi
 
 (
