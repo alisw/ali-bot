@@ -328,7 +328,13 @@ cat > "$CONFIG_TMP" <<JSON
          "refresh_token": {"ingest": "mail-refresh"},
          "refresh_store": "/usr/local/var/lib/security-proxy/mail-giulio.refresh.json"}}}},
     {"name": "alibuild-ac-sign", "prefix": "/sign/alibuild-ac",
-     "sign": {"key": {"ingest": "alibuild-ac-sign-key"}}}
+     "sign": {"key": {"ingest": "alibuild-ac-sign-key"}}},
+    {"name": "mimir", "prefix": "/mimir/",
+     "upstream": "https://monit-grafana.cern.ch/api/datasources",
+     "inject_headers": {"Authorization": {"ingest": "mimir-read"}}},
+    {"name": "grafana-annotate", "prefix": "/grafana/",
+     "upstream": "https://monit-grafana.cern.ch",
+     "inject_headers": {"Authorization": {"ingest": "grafana-annotate-token"}}}
   ]
 }
 JSON
