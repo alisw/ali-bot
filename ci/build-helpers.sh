@@ -202,7 +202,13 @@ function short_timeout () { general_timeout "$TIMEOUT" "$@"; }
 function long_timeout () { general_timeout "$LONG_TIMEOUT" "$@"; }
 function general_timeout () {
   local ret=0 short_cmd
-  $timeout_exec -s9 "$@" || ret=$?
+  # Beware: backgrounding $timeout_exec means that it cannot read stdin!
+  $timeout_exec -s9 "$@" &
+  # `timeout` makes a new process group. If we're killed now, also kill it.
+  # shellcheck disable=SC2064   # expanding $! now is intentional
+  trap "kill $!; trap_handler" INT TERM
+  wait || ret=$?
+  trap trap_handler INT TERM    # reset traps once `timeout` has exited
   # 124 if command times out; 137 if command is killed (including by timeout itself)
   if [ $ret -eq 124 ] || [ $ret -eq 137 ]; then
     # BASH_{SOURCE,LINENO}[0] is where we're being called from, which is inside
@@ -218,4 +224,17 @@ function general_timeout () {
                   -- "timeout=$1"
   fi
   return $ret
+}
+
+# Set this function to be invoked when killed using `trap trap_handler INT TERM`.
+# When killed, make sure we exit cleanly by killing all subshells and processes
+# in our process group. Long-running commands need special handling as commands
+# are invoked by bash in their own process group; see the general_timeout
+# function for details.
+function trap_handler () {
+  # Reset trap handler so we don't recurse forever when killing ourselves below.
+  trap - INT TERM
+  # Kill everything in our process group (i.e. subshells that bash spawned).
+  # This does *not* include subprocesses run by bash, only subshells.
+  kill -- -$$
 }
