@@ -58,6 +58,23 @@ PRIORITY_LABEL = "ci-priority"
 _CACHE_TTL = 0
 _CACHE_DIR = None
 
+#: Set from --rate-limit-file.
+_RATE_LIMIT_FILE = None
+
+
+def _record_rate_limit(rate):
+    """Leave the budget somewhere a metrics collector can read it."""
+    if not (_RATE_LIMIT_FILE and rate):
+        return
+    try:
+        tmp = "%s.%d.tmp" % (_RATE_LIMIT_FILE, os.getpid())
+        with open(tmp, "w") as out:
+            print(rate.get("remaining"), rate.get("limit"), rate.get("resetAt"),
+                  file=out)
+        os.replace(tmp, _RATE_LIMIT_FILE)
+    except OSError:
+        pass
+
 
 def _cache_file(org, repo, base_branch, include_base_branch):
     """Path holding the cached answer for one (repo, branch)."""
@@ -112,6 +129,7 @@ def query_repo_info(session, org, repo, base_branch, include_base_branch=False):
         },
         operation_name="statuses",
     ))
+    _record_rate_limit(result.get("rateLimit"))
     if _CACHE_TTL > 0:
         _cache_write(path, result)
     return result["repository"]
@@ -324,8 +342,10 @@ def main(args):
     """Script entry point."""
     # getattr: the tests call main() with a hand-built Namespace.
     global _CACHE_TTL, _CACHE_DIR
+    global _RATE_LIMIT_FILE
     _CACHE_TTL = getattr(args, "cache_ttl", 0) or 0
     _CACHE_DIR = getattr(args, "cache_dir", None)
+    _RATE_LIMIT_FILE = getattr(args, "rate_limit_file", None)
 
     grouped = defaultdict(list)
     # Find .env files for this worker, parse them and find PRs to process for
@@ -509,6 +529,13 @@ def parse_args():
                              "list-branch-pr-cache-%d" % os.getuid()),
         help="Where --cache-ttl keeps its answers (default %(default)s).")
 
+    parser.add_argument(
+        "--rate-limit-file", metavar="PATH",
+        help=("Write \"remaining limit resetAt\" to %(metavar)s after each"
+              " query, for something else to turn into a metric. The shared"
+              " GraphQL budget is otherwise only visible in a log, after it has"
+              " already run out."))
+
     return parser.parse_args()
 
 
@@ -519,6 +546,12 @@ query statuses(
   $baseBranch: String!
   $includeBaseBranch: Boolean!
 ) {
+  # Not billed, and rides in the query we already send.
+  rateLimit {
+    limit
+    remaining
+    resetAt
+  }
   repository(owner: $repoOwner, name: $repoName) {
     # Fetch status for the latest commit on the base branch too, if requested.
     object(expression: $baseBranch) @include(if: $includeBaseBranch) {
