@@ -115,9 +115,13 @@ done
 # pairs. Just under QUEUE_METRICS_INTERVAL, so each cycle starts cold and a
 # reading is never older than one interval. Read-only here (--no-status); a
 # builder must not pick work from a stale listing.
+# Where the lister leaves the GraphQL budget for us to publish. Under the work
+# directory, so it does not collide with another pool's collector.
+graphql_budget=$PWD/.graphql-budget
 if queue=$(WORKER_INDEX=0 WORKERS_POOL_SIZE=1 \
            short_timeout list-branch-pr --all-groups --no-status \
-                         --cache-ttl "${QUEUE_METRICS_CACHE_TTL:-110}")
+                         --cache-ttl "${QUEUE_METRICS_CACHE_TTL:-110}" \
+                         --rate-limit-file "$graphql_budget")
 then
   poll_ok=1
 else
@@ -133,6 +137,26 @@ fi
 # so that a blind collector is distinguishable from an idle pool.
 queue_metrics_push ci_queue_poll "role=$MESOS_ROLE" \
                    "container=$CUR_CONTAINER$ALIBOT_CONFIG_SUFFIX" -- "ok=$poll_ok"
+
+# The shared GraphQL budget. NO role or container label: this describes one
+# GitHub account that the whole fleet draws on, so labelling it per pool would
+# give fifteen identical series a cycle and make any sum meaningless.
+#
+# Every claim worker spends from this, and when it empties they cannot list work
+# at all -- on 2026-09-26 that idled two builders for seven hours. Until now it
+# was visible only by grepping a worker's log after the fact.
+if [ -s "$graphql_budget" ]; then
+  # resetAt discarded: the gauge is a level, and Prometheus knows when it saw it.
+  read -r gql_remaining gql_limit _ < "$graphql_budget"
+  # Each field checked on its own: concatenating them lets a missing limit
+  # through, because "1062" is still all digits.
+  gql_ok=1
+  case "$gql_remaining" in ''|*[!0-9]*) gql_ok=0 ;; esac
+  case "$gql_limit"     in ''|*[!0-9]*) gql_ok=0 ;; esac
+  [ "$gql_ok" = 1 ] && queue_metrics_push ci_github_api -- \
+      "graphql_remaining=$gql_remaining" "graphql_limit=$gql_limit"
+  unset gql_remaining gql_limit gql_ok
+fi
 
 # Aggregate per check: how many PRs in each state, and how long the oldest
 # untested one has been waiting. Only untested PRs carry a meaningful
