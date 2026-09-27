@@ -94,9 +94,58 @@ function get_config () {
 
 function reset_git_repository () {
   # Reset the specified git repository to its original, remote state.
+  #
+  # Called with no ref, this behaves exactly as it always has: fetch whatever
+  # branch the checkout is on and hard-reset to it, leaving a detached HEAD
+  # alone. Every caller except DEVEL_PKGS uses that form.
+  #
+  # Called with --branch REF, the ref is now honoured on an EXISTING checkout
+  # too, not only when cloning. It used to be a clone-time argument only, so
+  # pointing a check at a different alidist did nothing at all on any worker
+  # that had already built once: the directory was there, the argument was
+  # ignored, and the checkout kept resetting to the branch it was created on.
+  # Silently -- which is the worst way for a pin to fail.
+  #
+  # REF may be a branch, a tag, or a pull request written as pull/N/head. The
+  # last needs an explicit refspec: refs/pull/* is outside the default one, so
+  # neither clone nor fetch brings it down by itself.
+  #
+  # The result is always a detached HEAD, so nothing later drags the checkout
+  # back to a branch -- and the ref is re-fetched every round, so a pinned PR
+  # follows its own pushes rather than freezing at whatever it pointed to when
+  # the work area was made.
   local repodir=$1
-  shift   # $@ now contains args for git checkout
+  shift   # $@ now contains args for git clone
+
+  local ref= prev= arg
+  for arg in "$@"; do
+    case $prev in
+      --branch|-b) ref=$arg ;;
+    esac
+    prev=$arg
+  done
+
+  # pull/N/head and refs/pull/N/head both mean pull request N.
+  local pr_number= src=$ref
+  case $ref in
+    pull/*/head|refs/pull/*/head)
+      pr_number=${ref#refs/}
+      pr_number=${pr_number#pull/}
+      pr_number=${pr_number%/head}
+      src=refs/pull/$pr_number/head
+      ;;
+  esac
+
   if pushd "$repodir"; then
+    if [ -n "$ref" ]; then
+      # One refspec covers all three cases: git resolves the source side on the
+      # remote, so a branch, a tag and refs/pull/N/head all land in refs/pinned.
+      short_timeout git fetch -f origin "+${src}:refs/pinned" &&
+        git checkout -f --detach refs/pinned &&
+        git clean -fxd
+      popd || return 10
+      return
+    fi
     # The repo already exists.
     local local_branch
     local_branch=$(git rev-parse --abbrev-ref HEAD)
@@ -114,8 +163,26 @@ function reset_git_repository () {
   else
     # Directory doesn't exist or we can't read it; clone the repo from scratch.
     rm -rf "$repodir"
-    # Sometimes the clone gets stuck on large repos, so we need the timeout.
-    short_timeout git clone "$@" "$repodir"
+    if [ -n "$pr_number" ]; then
+      # git clone --branch cannot take a PR ref, so clone plain and fetch it
+      # afterwards. Branches and tags are left on the original path below, which
+      # already handles both, rather than being rerouted through new code.
+      local clone_args=() skip_next=
+      for arg in "$@"; do
+        if [ -n "$skip_next" ]; then skip_next=; continue; fi
+        case $arg in
+          --branch|-b) skip_next=1; continue ;;
+        esac
+        clone_args+=("$arg")
+      done
+      short_timeout git clone "${clone_args[@]}" "$repodir" &&
+        ( cd "$repodir" &&
+          short_timeout git fetch -f origin "+${src}:refs/pinned" &&
+          git checkout -f --detach refs/pinned )
+    else
+      # Sometimes the clone gets stuck on large repos, so we need the timeout.
+      short_timeout git clone "$@" "$repodir"
+    fi
   fi
 }
 
