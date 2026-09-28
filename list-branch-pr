@@ -39,6 +39,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 from gql import Client, gql, GraphQLRequest
+from gql.transport.exceptions import TransportQueryError
 from gql.transport.requests import RequestsHTTPTransport
 from alibot_helpers.utilities import parse_env_file
 from alibot_helpers.github_utilities import \
@@ -55,6 +56,22 @@ PRIORITY_LABEL = "ci-priority"
 
 
 #: Set from --cache-ttl / --cache-dir; off unless a caller asks for it.
+#: Stop querying below this many GraphQL points, leaving a reserve for the
+#: things that cannot back off. Every claim worker shares one budget.
+RATE_LIMIT_FLOOR = int(os.environ.get("GITHUB_RATE_LIMIT_FLOOR", "250"))
+
+#: EX_TEMPFAIL, so a caller can tell a spent budget from a real failure and back
+#: off instead of retrying. claim-builder.sh keys its backoff on this.
+EX_TEMPFAIL = 75
+
+
+class RateLimitLow(Exception):
+    """Raised when the shared GraphQL budget is nearly spent."""
+
+
+#: Last rateLimit block seen, for the one-line report at exit.
+_LAST_RATE_LIMIT = {}
+
 _CACHE_TTL = 0
 _CACHE_DIR = None
 
@@ -129,7 +146,20 @@ def query_repo_info(session, org, repo, base_branch, include_base_branch=False):
         },
         operation_name="statuses",
     ))
+    # Recorded BEFORE the floor check: a low reading is exactly the one worth
+    # publishing, and raising first would drop it.
     _record_rate_limit(result.get("rateLimit"))
+    # After the query, not before: remaining is only knowable by asking.
+    rate = result.get("rateLimit") or {}
+    if rate:
+        _LAST_RATE_LIMIT.update(rate)
+        if rate.get("remaining", RATE_LIMIT_FLOOR) < RATE_LIMIT_FLOOR:
+            raise RateLimitLow(
+                "%s/%s GraphQL points left (floor %s), resets at %s" % (
+                    rate.get("remaining"), rate.get("limit"),
+                    RATE_LIMIT_FLOOR, rate.get("resetAt")))
+    # Stored after the floor check, so a cached answer cannot revive a budget
+    # reading that was already too low to act on.
     if _CACHE_TTL > 0:
         _cache_write(path, result)
     return result["repository"]
@@ -520,10 +550,7 @@ def main(args):
 
         rebuilds = [("failed", pull) for pull in grouped["failed"]] + \
                    [("succeeded", pull) for pull in grouped["succeeded"]]
-        for group, pull in sorted(rebuilds,
-                                  key=lambda item: (not item[1].get("urgent"),
-                                                    item[1].get("broken", 0),
-                                                    item[1].get("last_built") or "")):
+        for group, pull in sorted(rebuilds, key=_rebuild_key):
             emit_pr(group, pull)
     elif grouped["untested"]:
         # If there are untested PRs waiting, build all of them first.
@@ -729,5 +756,35 @@ query team($repoOwner: String!, $teamSlug: String!) {
 """)
 
 
+def _report_budget():
+    """One line on stderr saying what the budget looked like. Cheap, and the
+    only record of who spent it -- the log of a worker that went quiet is
+    otherwise indistinguishable from one with no work to do."""
+    if _LAST_RATE_LIMIT:
+        print("github graphql budget: %s/%s left, resets %s" % (
+            _LAST_RATE_LIMIT.get("remaining"), _LAST_RATE_LIMIT.get("limit"),
+            _LAST_RATE_LIMIT.get("resetAt")), file=sys.stderr)
+
+
 if __name__ == "__main__":
-    main(parse_args())
+    try:
+        main(parse_args())
+    except RateLimitLow as err:
+        # NOT an error: the budget is shared and nearly gone, so the right move
+        # is to stop asking. Distinct exit status so the caller backs off
+        # instead of retrying on its normal idle interval -- retrying into an
+        # empty budget is what turned a transient overshoot into a seven-hour
+        # outage on 2026-09-26.
+        print("refusing to list:", err, file=sys.stderr)
+        _report_budget()
+        sys.exit(EX_TEMPFAIL)
+    except TransportQueryError as err:
+        # The budget was ALREADY gone before we looked -- GitHub answers with a
+        # RATE_LIMIT error rather than a rateLimit block, so the floor above
+        # never gets a chance. Same treatment: tell the caller to wait.
+        if "RATE_LIMIT" in str(err) or "rate limit" in str(err).lower():
+            print("rate limited by github:", err, file=sys.stderr)
+            sys.exit(EX_TEMPFAIL)
+        raise
+    else:
+        _report_budget()

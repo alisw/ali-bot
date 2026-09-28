@@ -135,8 +135,35 @@ APP_ARGS = None
 # not the long-lived cert -- is then what the proxy presents on mTLS upstream legs
 # (e.g. CCDB). Config: {"endpoint": "wss://...", "refresh_seconds": N}.
 ALIEN_TOKEN: dict | None = None
+#: (tokencert_pem, tokenkey_pem) of the most recent successful mint, handed out
+#: by the agent as service "jalien-token". Only the SHORT-LIVED token; the
+#: source certificate never leaves the proxy.
+ALIEN_TOKEN_PEMS: tuple[str, str] | None = None
 DEFAULT_ALIEN_ENDPOINT = "wss://alice-jcentral.cern.ch:8097/websocket/json"
 DEFAULT_ALIEN_REFRESH_SECONDS = 43200  # 12h; tokens are typically valid ~24h
+#: Retry bounds for when there is NO token yet. A failed refresh is harmless --
+#: the previous token stays in place -- but a failed FIRST mint leaves the proxy
+#: with nothing, and the worker refuses to start. Retry quickly until we hold a
+#: token, then fall back to the long refresh interval.
+ALIEN_RETRY_MIN_SECONDS = 5
+ALIEN_RETRY_MAX_SECONDS = 300
+
+
+def alien_wait_for(have_token: bool, interval: int, backoff: int) -> int:
+    """How long to sleep before the next mint attempt. Pure, so it can be tested.
+
+    Holding a token: wait the full refresh interval -- a failure then is harmless
+    because the existing token stays in place. Holding none: wait the (short)
+    backoff, because until we mint, every worker on this node refuses to start.
+    """
+    return interval if have_token else backoff
+
+
+def alien_backoff_after(ok: bool, backoff: int) -> int:
+    """Next backoff after an attempt. Pure, so it can be tested."""
+    if ok:
+        return ALIEN_RETRY_MIN_SECONDS
+    return min(backoff * 2, ALIEN_RETRY_MAX_SECONDS)
 
 
 def rotate_master() -> None:
@@ -969,6 +996,8 @@ async def rebuild_tls() -> bool:
             token_ctx.load_verify_locations(cafile=APP_ARGS.cafile)
         _load_pem_into_context(token_ctx, cert_pem, key_pem)
         new_ctx = token_ctx
+        global ALIEN_TOKEN_PEMS
+        ALIEN_TOKEN_PEMS = (cert_pem, key_pem)
         print(f"{time.strftime('%Y-%m-%d %H:%M')} - minted JAliEn token certificate", flush=True)
     old = http_client
     ssl_ctx = new_ctx
@@ -990,6 +1019,21 @@ def rewrite_url(value: str, upstream: str, proxy_base: str, prefix: str) -> str:
     """Rewrite URLs pointing to the upstream server to point to the proxy instead."""
     if value.startswith(upstream):
         return proxy_base + "/" + prefix + value[len(upstream):]
+    # A ROOT-RELATIVE target needs the prefix too. CCDB answers an object GET with
+    # `Location: /Task/Detector/.../<uuid>` -- no host -- and the client resolves it
+    # against the PROXY base, which has no /ccdb/ on it, so it lands on no route and
+    # 404s. Every object fetch redirects to its blob, so without this only the
+    # non-redirecting calls (/browse/) work and every actual download fails with
+    # "Unable to find CCDB object".
+    #
+    # Only for an UNSCOPED upstream. When the upstream carries a path
+    # (https://alimonitor.cern.ch/hyperloop) that path is the route's scope, and a
+    # root-relative target is by definition outside it -- re-prefixing would smuggle
+    # it back in with the proxy's credential attached, which upstream_url_for()
+    # refuses for exactly this reason. Leave those alone.
+    if prefix and value.startswith("/") and not value.startswith("//"):
+        if not urlsplit(upstream).path.strip("/"):
+            return proxy_base + "/" + prefix + value
     return value
 
 
@@ -1574,6 +1618,32 @@ async def run_ingest(socket_path: Path, socket_gid: int | None = None):
     return server
 
 
+#: Reserved agent service: returns the JAliEn token the proxy mints for its own
+#: upstream mTLS (mint_alien_token), so a worker needs neither alienpy nor a
+#: readable grid certificate to give its builds JALIEN_TOKEN_CERT/KEY. Not a
+#: route -- routes proxy HTTP, this returns a credential -- and answered before
+#: the route table so a route of the same name cannot shadow it.
+JALIEN_TOKEN_SERVICE = "jalien-token"
+
+
+def agent_response(service: str, known: set[str]) -> dict:
+    """One agent request -> one JSON-able reply. Pure, so it can be tested."""
+    if service == JALIEN_TOKEN_SERVICE:
+        if not ALIEN_TOKEN_PEMS:
+            # Before the first mint, or alien_token not configured. An error the
+            # caller can branch on, never empty PEMs that would be forwarded as a
+            # valid-looking credential.
+            return {"error": "jalien token not available"}
+        cert_pem, key_pem = ALIEN_TOKEN_PEMS
+        return {"tokencert": cert_pem, "tokenkey": key_pem}
+    if not service:
+        return {"port": PROXY_PORT, "host": PROXY_HOST}
+    if service in known:
+        return {"port": PROXY_PORT, "host": PROXY_HOST,
+                "service": service, "token": service_token(service)}
+    return {"error": f"unknown service {service!r}", "services": sorted(known)}
+
+
 async def run_agent(socket_path: Path, socket_gid: int | None = None):
     """Serve {port, per-service token} over a 0600 per-user UNIX socket."""
     _prepare_socket_dir(socket_path, socket_gid)
@@ -1583,13 +1653,7 @@ async def run_agent(socket_path: Path, socket_gid: int | None = None):
     async def handle(reader, writer):
         try:
             service = (await reader.readline()).decode().strip()
-            if not service:
-                resp = {"port": PROXY_PORT, "host": PROXY_HOST}
-            elif service in known:
-                resp = {"port": PROXY_PORT, "host": PROXY_HOST,
-                        "service": service, "token": service_token(service)}
-            else:
-                resp = {"error": f"unknown service {service!r}", "services": sorted(known)}
+            resp = agent_response(service, known)
             writer.write((json.dumps(resp) + "\n").encode())
             await writer.drain()
         except Exception:
@@ -1616,9 +1680,23 @@ async def serve(args, log_config, agent_path: Path, ingest_path: Path, rotation:
     agent = await run_agent(agent_path, AGENT_SOCKET_GID)
     ingest = await run_ingest(ingest_path, INGEST_SOCKET_GID)
 
+    # Only remove sockets THIS process created. A proxy orphaned by a task
+    # restart (su forks; Nomad kills su, not the daemon) keeps running, and a
+    # later kill of that orphan ran this cleanup against paths that by then
+    # belonged to the replacement daemon -- which kept its bound fds but lost
+    # its filesystem entries, so every client got ENOENT. Compare inodes:
+    # a path re-bound by someone else is not ours to unlink.
+    def _socket_ino(path):
+        try:
+            return os.stat(path).st_ino
+        except OSError:
+            return None
+    agent_ino, ingest_ino = _socket_ino(agent_path), _socket_ino(ingest_path)
+
     def _cleanup_sockets():
-        agent_path.unlink(missing_ok=True)
-        ingest_path.unlink(missing_ok=True)
+        for path, ino in ((agent_path, agent_ino), (ingest_path, ingest_ino)):
+            if ino is not None and _socket_ino(path) == ino:
+                path.unlink(missing_ok=True)
     atexit.register(_cleanup_sockets)  # backstop cleanup
 
     print(f"Proxy on http://{args.host}:{PROXY_PORT} (random port)", flush=True)
@@ -1674,16 +1752,34 @@ async def serve(args, log_config, agent_path: Path, ingest_path: Path, rotation:
 
     sweeper = asyncio.create_task(attended_sweep_loop()) if ATTENDED else None
 
-    # JAliEn tokens are short-lived, so re-mint well before expiry. rebuild_tls() keeps
-    # the previous token in place if minting fails, so a transient outage is harmless.
+    # JAliEn tokens are short-lived, so re-mint well before expiry.
+    #
+    # TWO REGIMES, and conflating them cost a worker half a day. Once a token is
+    # held, a failed re-mint IS harmless: rebuild_tls() leaves the existing token
+    # in place, so waiting out the full interval is right. With NO token, the
+    # proxy answers "jalien token not available" and the CI task refuses to
+    # start -- on alissandra05 (2026-09-23) a single
+    # "[Errno 104] Connection reset by peer" from jcentral did exactly that, and
+    # the only retry was 12 hours away, so the node sat out of the pool until it
+    # was restarted by hand.
+    #
+    # So: short exponential backoff while empty, long interval once minted.
     async def alien_token_loop():
         interval = ALIEN_TOKEN.get("refresh_seconds") or DEFAULT_ALIEN_REFRESH_SECONDS
+        backoff = ALIEN_RETRY_MIN_SECONDS
         while True:
-            await asyncio.sleep(interval)
+            # Decided BEFORE sleeping: the wait depends on what we hold now.
+            await asyncio.sleep(
+                alien_wait_for(bool(ALIEN_TOKEN_PEMS), interval, backoff))
             try:
-                await rebuild_tls()
+                ok = await rebuild_tls()
             except Exception as exc:
+                ok = False
                 print(f"alien token: refresh failed: {exc}", flush=True)
+            backoff = alien_backoff_after(ok, backoff)
+            if not ok and not ALIEN_TOKEN_PEMS:
+                print(f"alien token: no token yet, retrying in {backoff}s",
+                      flush=True)
 
     alien = asyncio.create_task(alien_token_loop()) if ALIEN_TOKEN else None
 
