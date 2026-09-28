@@ -355,6 +355,21 @@ class ListBranchPRTestCase(unittest.TestCase):
         rows, _ = self.run_script(pulls)
         self.assertEqual([row[1] for row in rows], ["1", "2", "3"])
 
+    def test_all_groups_puts_failed_before_succeeded_each_stalest_first(self):
+        """A red check blocks a merge; a stale green one blocks nobody. So the
+        groups do NOT merge: 13 is the stalest of all and still sorts behind
+        both failures. This replaced an ordering that went purely by staleness,
+        which on 2026-09-04 spent a day and a half refreshing green PRs while
+        ~20 newly-red O2Physics PRs sat untouched."""
+        pulls = [
+            make_pr(11, "01", "FAILURE", "10"),
+            make_pr(12, "02", "FAILURE", "20"),
+            make_pr(13, "03", "SUCCESS", "05"),   # stalest of all
+            make_pr(14, "04", "SUCCESS", "25"),   # freshest of all
+        ]
+        rows, _ = self.run_script(pulls, all_groups=True)
+        self.assertEqual([row[1] for row in rows], ["11", "12", "13", "14"])
+
 
 if __name__ == "__main__":
     unittest.main()
