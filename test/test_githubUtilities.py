@@ -5,6 +5,7 @@ from alibot_helpers.github_utilities import calculateMessageHash
 from alibot_helpers.github_utilities import parseGithubRef
 from alibot_helpers.github_utilities import GithubCachedClient
 from alibot_helpers.github_utilities import relativeLink
+from alibot_helpers.github_utilities import setGithubStatus, StatusLimitReached
 
 
 class TestAuthorizationHeader(unittest.TestCase):
@@ -90,3 +91,81 @@ class TestGithubHelpers(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestStatusLimit(unittest.TestCase):
+  """A 422 on a status POST is terminal, and must not be swallowed.
+
+  GitHub caps statuses per (sha, context). Once a pair is full the POST returns
+  422 and nothing can ever be written for it again -- so the check keeps the
+  value it last held, the queue keeps offering it as `failed`, and a worker
+  rebuilds it forever. That is not hypothetical: alidist#6245 was unwritable
+  from 2026-08-17 and consumed 2000 of 5344 rounds across the fleet, 37% of all
+  CI capacity, because post() printed the 422 and every caller ignored the
+  returned code.
+  """
+
+  class FakeGH:
+    """An existing status to update, plus a scripted POST status code."""
+
+    def __init__(self, post_code, existing=True):
+      self.post_code, self.posts, self.existing = post_code, 0, existing
+      self.rate_limiting = (5000, 5000)
+
+    def get(self, *args, **kwds):
+      if not self.existing:
+        return []
+      return [{"context": "build/X", "state": "error",
+               "target_url": "", "description": "old"}]
+
+    def post(self, *args, **kwds):
+      self.posts += 1
+      return self.post_code
+
+    def printStats(self):
+      pass
+
+  class Args:
+    commit = "alisw/alidist@deadbeef"
+    status = "build/X/error"
+    message = "Rechecking since now"
+    url = ""
+    keep_url = False
+
+  def test_422_updating_an_existing_status_raises(self):
+    gh = self.FakeGH(422)
+    with self.assertRaises(StatusLimitReached):
+      setGithubStatus(gh, self.Args(), debug_print=False)
+    self.assertEqual(gh.posts, 1, "should raise only after attempting the POST")
+
+  def test_422_creating_a_new_status_raises(self):
+    gh = self.FakeGH(422, existing=False)
+    with self.assertRaises(StatusLimitReached):
+      setGithubStatus(gh, self.Args(), debug_print=False)
+
+  def test_it_names_the_context_that_can_no_longer_be_written(self):
+    gh = self.FakeGH(422)
+    with self.assertRaises(StatusLimitReached) as caught:
+      setGithubStatus(gh, self.Args(), debug_print=False)
+    self.assertIn("build/X", str(caught.exception))
+
+  def test_it_is_a_RuntimeError_so_existing_handlers_still_catch_it(self):
+    """set-github-status distinguishes it for the exit code, but anything that
+    only knows about RuntimeError must keep working."""
+    self.assertTrue(issubclass(StatusLimitReached, RuntimeError))
+
+  def test_a_successful_post_still_returns_normally(self):
+    gh = self.FakeGH(201)
+    setGithubStatus(gh, self.Args(), debug_print=False)
+    self.assertEqual(gh.posts, 1)
+
+  def test_a_matching_status_posts_nothing(self):
+    """What keeps an unchanged check from spending quota on every pass -- the
+    same quota whose exhaustion causes the loop above."""
+    gh = self.FakeGH(201)
+
+    class Same(TestStatusLimit.Args):
+      message = "old"
+
+    setGithubStatus(gh, Same(), debug_print=False)
+    self.assertEqual(gh.posts, 0)

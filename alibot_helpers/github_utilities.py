@@ -404,6 +404,16 @@ def parseGithubRef(s):
     return (repo_name, pr_n, commit_ref)
 
 
+class StatusLimitReached(RuntimeError):
+    """GitHub refused a status POST with 422.
+
+    In practice this means this commit has exhausted its status quota for this
+    context -- GitHub caps them per (sha, context) -- so NO further status can
+    ever be written for that pair. It is not transient: retrying is guaranteed
+    to fail, and the check will stay on whatever value it last held.
+    """
+
+
 def setGithubStatus(cgh, args, debug_print=True):
     repo_name, _, commit_ref = parseGithubRef(args.commit)
     state_context = args.status.rsplit("/", 1)[0] if "/" in args.status else ""
@@ -435,10 +445,14 @@ def setGithubStatus(cgh, args, debug_print=True):
                 "description": args.message,
                 "target_url": s["target_url"] if getattr(args, "keep_url", False) else args.url
             }
-            cgh.post("/repos/{repo_name}/statuses/{ref}",
-                     data=data,
-                     repo_name=repo_name,
-                     ref=commit_ref)
+            if cgh.post("/repos/{repo_name}/statuses/{ref}",
+                        data=data,
+                        repo_name=repo_name,
+                        ref=commit_ref) == 422:
+                raise StatusLimitReached(
+                    "%s@%s: cannot set %s -- the commit has reached GitHub's "
+                    "status limit for this context" %
+                    (repo_name, commit_ref, state_context))
             return
 
         # If the state already exists and it's the same, exit
@@ -460,9 +474,12 @@ def setGithubStatus(cgh, args, debug_print=True):
         "description": args.message,
         "target_url": "" if getattr(args, "keep_url", False) else args.url
     }
-    cgh.post(
+    if cgh.post(
         "/repos/{repo_name}/statuses/{ref}",
         data=data,
         repo_name=repo_name,
         ref=commit_ref
-    )
+    ) == 422:
+        raise StatusLimitReached(
+            "%s@%s: cannot create %s -- the commit has reached GitHub's "
+            "status limit for this context" % (repo_name, commit_ref, state_context))

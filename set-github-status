@@ -4,7 +4,8 @@ from argparse import ArgumentParser
 import logging
 import sys
 
-from alibot_helpers.github_utilities import setGithubStatus, GithubCachedClient
+from alibot_helpers.github_utilities import (
+    setGithubStatus, GithubCachedClient, StatusLimitReached)
 
 
 # Just for the moment
@@ -65,8 +66,15 @@ def main():
     with GithubCachedClient() as cgh:
         try:
             setGithubStatus(cgh, args)
+        except StatusLimitReached as e:
+            # Exit 3, not 1: this can never succeed, so a caller that retries or
+            # goes on to build is wasting its time. See the exception's docstring.
+            print(e, file=sys.stderr)
+            sys.exit(3)
         except RuntimeError as e:
-            print(e.message, file=sys.stderr)
+            # `e.message` has not existed since Python 2, so this handler used to
+            # raise AttributeError and lose the original error.
+            print(e, file=sys.stderr)
             sys.exit(1)
         finally:
             cgh.printStats()
