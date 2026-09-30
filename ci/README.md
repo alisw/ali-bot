@@ -3,13 +3,22 @@ Pull requests processor
 
 This folder contains the helper scripts which run our continuous integration.
 
-The core of the testing is the `continuous-builder.sh` script which loops on
-the open pull requests of a given repository and invokes `aliBuild` of a given
-package after merging the contents of a given pull request to a local checkout
-of the given repository. This means that we have the following tradeoffs:
+The core of the testing is `claim-builder.sh`, which each round asks
+`list-branch-pr` what is queued for the containers it serves, takes a
+`nomad var lock` on (check, commit) so exactly one worker builds it, and runs
+`build-one.sh` -> `build-loop.sh` to merge the pull request into a local
+checkout and invoke `aliBuild`.
 
-* We can test PRs for a single repository per builder.
-* We keep testing broken pull requests, although with less frequency compared to 
+It replaced `continuous-builder.sh`, which sharded the queue by worker index
+instead of claiming it, re-exec'd itself between iterations, and served one
+container per builder. That script was removed on 2026-09-30, once the last
+fleet running it had been retired; its inner loop survives as `build-loop.sh`,
+which the claim path still uses unchanged.
+
+The tradeoffs that remain:
+
+* A worker serves the containers named in `CUR_CONTAINERS`, not just one.
+* We keep testing broken pull requests, although with less frequency compared to
   newly introduced ones, which get precedence.
 
 This allows us to be more resistant to transient errors, since we keep retesting until
@@ -41,14 +50,14 @@ is waiting.
 
 Parameters (as environment variables):
 
-* `GITHUB_TOKEN`, `MESOS_ROLE`: as for `continuous-builder.sh`.
+* `GITHUB_TOKEN`, `MESOS_ROLE`: as for the builders.
 * `OTLP_METRICS_URL`: where to POST metrics, e.g.
   `https://monit-otlp.cern.ch:4319/v1/metrics`. Unset means "do not report",
   which is what makes the script safe to run by hand.
 * `OTLP_WRITE_TOKEN`: sent as `Authorization: Bearer`. Through the
   security-proxy this is a rotating gate token, not the real credential.
 * `CUR_CONTAINER`: short container name, e.g. `slc9`. Derived from
-  `CONTAINER_IMAGE` if unset, exactly as `continuous-builder.sh` does it, so the
+  `CONTAINER_IMAGE` if unset, by the same derivation the builders use, so the
   job can be given the same variables as the pool it watches.
 * `QUEUE_METRICS_INTERVAL`: seconds between polls (default 300). Can be
   overridden at runtime through `config/queue-metrics-interval`.
@@ -124,19 +133,6 @@ Parameters (as environment variables):
 * `PR_TOKEN`: GitHub token used to communicate with the GitHub API.
 
 
-run-continuous-builder.sh
--------------------------
-This script is used to run the continuous builder without Aurora. This is useful for running it on
-macOS, for instance.
-
-Usage:
-
-```bash
-./run-continuous-builder.sh <profile> [--test-build] [--test-doctor] [--list]
-```
-
-`<profile>` refers to `<path_to_this_script>/conf/<profile>.sh`, containing a configuration in the
-form of shell variables (the script will be sourced).
 
 * `--list`: list PRs to process and exit. Useful to test the GitHub API
 * `--test-doctor`: run aliDoctor and exit. Useful to test system dependencies

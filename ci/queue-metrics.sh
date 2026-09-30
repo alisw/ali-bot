@@ -64,7 +64,7 @@ if [ -z "$skip_setup" ]; then
   # Explicitly set UTF-8 support (Python needs it!)
   export {LANG{,UAGE},LC_{CTYPE,NUMERIC,TIME,COLLATE,MONETARY,PAPER,MESSAGES,NAME,ADDRESS,TELEPHONE,MEASUREMENT,IDENTIFICATION,ALL}}=en_US.UTF-8
 
-  # Derive CUR_CONTAINER the same way continuous-builder.sh does, so that this
+  # Derive CUR_CONTAINER the same way continuous-builder.sh did, so that this
   # job can be given the same CONTAINER_IMAGE as the pool it is watching.
   if [ -z "$CUR_CONTAINER" ]; then
     ensure_vars CONTAINER_IMAGE

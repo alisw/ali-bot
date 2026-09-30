@@ -439,7 +439,7 @@ def main(args):
     def emit_pr(group, pull):
         """One output line: TYPE, PR, SHA, ENV, TIMESTAMP (tab separated).
 
-        Exactly five fields, always. continuous-builder.sh reads six names from
+        Exactly five fields, always. build-loop.sh reads six names from
         `cat -n | while read`, and `read` folds any extra field into the last
         variable -- so appending a column here would silently corrupt the last
         one on every production builder. That is why the fifth field is
@@ -454,7 +454,7 @@ def main(args):
           without the flag   not use the value
 
         Only claim-builder.sh passes --all-groups, so the overload cannot reach
-        continuous-builder.sh."""
+        claim-builder.sh."""
         if args.all_groups and group != "untested":
             # A REBUILD's staleness is when the check last RAN, not when the PR
             # was last pushed. Only claim-builder.sh asks for --all-groups, and
