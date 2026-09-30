@@ -1,5 +1,6 @@
 #!/bin/bash -x
-# This file contains functions used by continuous-builder.sh and build-loop.sh.
+# This file contains functions used by claim-builder.sh, build-one.sh and
+# build-loop.sh.
 # It is sourced on every iteration, so functions defined here can be overridden
 # while the builder is running.
 

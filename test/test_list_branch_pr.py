@@ -13,7 +13,7 @@ writing statuses. Nothing here touches the network.
 The invariants worth knowing about, because breaking them breaks production
 rather than a test:
 
-  * the output is exactly five tab-separated fields. continuous-builder.sh
+  * the output is exactly five tab-separated fields. claim-builder.sh
     reads six names from `cat -n | while read`, and `read` folds any extra field
     into the last variable -- so a sixth column silently corrupts WAITING_SINCE
     on every builder.

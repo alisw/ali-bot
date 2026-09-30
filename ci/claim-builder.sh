@@ -1,10 +1,12 @@
 #!/bin/bash -x
 # -*- sh-basic-offset: 2 -*-
 # A build loop that takes work by CLAIMING it, rather than by owning a hash
-# shard of it. The claimed counterpart of continuous-builder.sh.
+# shard of it. This is now THE build loop; continuous-builder.sh, which sharded
+# by worker index, was removed on 2026-09-30 once the last fleet running it
+# retired.
 #
-# continuous-builder.sh is deliberately left alone: it drives every production
-# builder, and the two differ in ways that cannot be expressed as a flag --
+# It was written as a separate script rather than a flag on the old one because
+# the two differed in ways that could not be expressed as a flag --
 # which PRs a worker considers, how it avoids duplicating another worker, and
 # whether it re-execs itself. Running them side by side is also what lets a
 # single pool be migrated at a time. See ci/SCALING_PLAN.md, Phases 1-3.
@@ -121,14 +123,14 @@ entry_container () { printf %s "${1##*:}"; }
 : "${LISTER_CACHE_TTL:=60}"
 : "${LISTER:=list-branch-pr --all-groups --no-status --cache-ttl $LISTER_CACHE_TTL}"
 
-# The same identity continuous-builder.sh sets, for the same reason: the build
+# The same identity continuous-builder.sh set, for the same reason: the build
 # MERGES the PR into the base branch, and git refuses to commit without one --
 # "fatal: empty ident name". This lives in the entrypoint rather than in
 # build-one.sh because it is per-worker setup, not per-PR.
 #
 # Left out of the first version of this script, which is what made the loop fail
 # in setup on every round: the merge died before any compilation, so no build
-# ever ran. Anything else continuous-builder.sh does once at startup belongs
+# ever ran. Anything else continuous-builder.sh did once at startup belongs
 # here too -- it is not a shared prologue, and nothing warns when it diverges.
 git config --global user.name alibuild
 git config --global user.email alibuild@cern.ch
@@ -727,7 +729,7 @@ EOF
 
   # Reclaim disk before the next round, not after the build that needs it.
   #
-  # continuous-builder.sh has always done this; the claim loop was written fresh
+  # continuous-builder.sh always did this; the claim loop was written fresh
   # and the step was never carried across. The cost of the omission, measured on
   # alimetal01 on 2026-08-28: two allocations holding 746 and 902 GiB, a root
   # filesystem at 95%, and rounds failing not on anything they built but on

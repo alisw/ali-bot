@@ -1,8 +1,9 @@
 #!/bin/bash -x
-# This is the inner loop of continuous-builder.sh. This script builds one pull
-# request for one repository. Which repo is checked depends on the environment
-# variables passed to this script; they are set in continuous-builder.sh from
-# environment definitions in repo-config/.
+# This is the inner loop, called by build-one.sh under claim-builder.sh. It
+# builds one pull request for one repository. Which repo is checked depends on
+# the environment variables passed to this script; they are set by build-one.sh
+# from environment definitions in repo-config/. It was previously the inner loop
+# of continuous-builder.sh and is unchanged by that script's removal.
 #
 # Some functions used here are defined in build-helpers.sh.
 

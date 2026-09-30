@@ -9,9 +9,9 @@
 # when it exits. `. build-loop.sh` sourced into a loop's shell cannot be that
 # child, so the per-PR body has to be a command. See ci/claims.sh.
 #
-# It does NOT replace continuous-builder.sh, which keeps its own inline copy of
-# this sequence. The production builders are untouched by anything here: this
-# file is new, and the only thing it shares with them is build-loop.sh itself,
+# It began as a separate copy of this sequence, which continuous-builder.sh
+# kept inline, so the production builders were untouched while the claim path
+# was proven. That script is gone; what they shared was build-loop.sh itself,
 # which it calls unmodified. That is deliberate -- the build is the part worth
 # keeping identical between the sharded and claimed worlds, so that a
 # difference in behaviour can never be blamed on two diverging build paths.
@@ -92,8 +92,8 @@ fi
 
 # A candidate ali-bot under test wins over the *.env pin. Applied HERE, after
 # the env files, rather than by making repo-config/DEFAULTS.env respect a
-# pre-set INSTALL_ALIBOT: that file is read by continuous-builder.sh too, in a
-# long-lived shell that exports these and serves several checks in turn, so a
+# pre-set INSTALL_ALIBOT: that file is read in a long-lived shell that exports
+# these and serves several checks in turn, so a
 # ${VAR:-default} there would let the first check's pin stick to every later
 # one. Overriding in this process, which builds exactly one PR and exits, cannot
 # leak anywhere.
