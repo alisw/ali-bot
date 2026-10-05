@@ -2413,7 +2413,10 @@ Cookie headers are not forwarded in either direction by default. Set
 "allow_cookies": true on a route only if that upstream explicitly needs browser
 cookies; otherwise localhost cookies could leak across the proxy boundary.
 Route upstreams must be HTTPS (or WSS for websocket-capable routes); OAuth token
-endpoints and SSO login URLs must be HTTPS.
+endpoints and SSO login URLs must be HTTPS. The single exception is a route that
+sets "insecure_http_upstream": true, for an upstream that offers no TLS at all: it
+may then use http:// (or ws://), and its injected credentials cross the network in
+clear text. The proxy warns about every such route at startup.
 
 For ALICE grid upstreams (e.g. CCDB) a long-lived grid/host certificate can be kept
 out of the upstream leg entirely by minting a short-lived JAliEn token from it:
@@ -2632,6 +2635,11 @@ browser/curl access. Header-matched routes take precedence over prefix routes.
         route_is_websocket = r.get("websocket", False)
         if not isinstance(route_is_websocket, bool):
             parser.error("Route 'websocket' must be a boolean")
+        # Opt-in only, per route: an upstream that offers no TLS at all. The secret
+        # still never reaches the client, but it crosses the network in clear text.
+        insecure_http = r.get("insecure_http_upstream", False)
+        if not isinstance(insecure_http, bool):
+            parser.error("Route 'insecure_http_upstream' must be a boolean")
         # A `sign` route terminates locally (like the signing endpoint has no upstream);
         # every other route forwards and therefore needs a validated HTTPS/WSS upstream.
         if "sign" in r:
@@ -2639,12 +2647,16 @@ browser/curl access. Header-matched routes take precedence over prefix routes.
         elif "upstream" not in r:
             parser.error("Route missing required field: upstream")
         else:
+            schemes = {"https", "wss"} if route_is_websocket else {"https"}
+            if insecure_http:
+                schemes |= {"http", "ws"} if route_is_websocket else {"http"}
             route_upstream = validate_absolute_url(
-                parser,
-                r["upstream"],
-                "Route 'upstream'",
-                {"https", "wss"} if route_is_websocket else {"https"},
+                parser, r["upstream"], "Route 'upstream'", schemes,
             ).rstrip("/")
+            if route_upstream.startswith(("http://", "ws://")):
+                print(f"WARNING: route {r.get('name') or r.get('prefix')!r} forwards to "
+                      f"{route_upstream} WITHOUT TLS (insecure_http_upstream); its "
+                      "injected credentials cross the network in clear text", flush=True)
         # prefix is optional for header-matched routes (matched by auth_header, not path)
         prefix = r.get("prefix", "/")
         sso = r.get("sso")
