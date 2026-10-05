@@ -1201,6 +1201,34 @@ async def ws_proxy(ws: WebSocket, path: str):
         await upstream_ws.close()
 
 
+def s3_scope_violation(bucket: str, raw_path: bytes | None, headers, bucket_scoped: bool) -> str | None:
+    """Why an S3 request would reach past the bucket its keypair was chosen for.
+
+    S3 keys are scoped to a whole project, not a bucket, so a per-bucket keypair is
+    only as narrow as this check: the signature is computed over what goes on the
+    wire, and the keypair is chosen from the decoded path. Returns None when the
+    request stays inside `bucket`.
+
+    * The raw (percent-encoded) path is what is signed and forwarded, so its first
+      segment must be the same bucket the decoded path selected. A %2F, say, could
+      otherwise select one bucket's keypair and address another.
+    * With a bucket-scoped keypair, a copy source must be in that bucket too:
+      x-amz-copy-source would otherwise read any object of the project into it.
+    """
+    if raw_path is not None:
+        raw_bucket = raw_path.decode("latin-1").lstrip("/").split("/", 1)[0]
+        if raw_bucket != bucket:
+            return f"the request path addresses bucket {raw_bucket!r} on the wire but {bucket!r} decoded"
+    if bucket_scoped:
+        for source in headers.getlist("x-amz-copy-source"):
+            for form in (source, unquote(source)):
+                source_bucket = form.lstrip("/").split("?", 1)[0].split("/", 1)[0]
+                if source_bucket != bucket:
+                    return (f"x-amz-copy-source names bucket {source_bucket!r}, "
+                            f"but this keypair is scoped to {bucket!r}")
+    return None
+
+
 async def proxy_s3(path: str, request: Request, route: Route) -> Response:
     """Forward an S3 request, signing it with the real keys (SigV4).
 
@@ -1218,6 +1246,10 @@ async def proxy_s3(path: str, request: Request, route: Route) -> Response:
     if keypair is None:
         raise HTTPException(status_code=404,
                             detail=f"no S3 credentials configured for bucket '{bucket}'")
+    problem = s3_scope_violation(bucket, request.scope.get("raw_path"), request.headers,
+                                 bucket in s3["buckets"])
+    if problem:
+        raise HTTPException(status_code=403, detail=problem)
     # Both halves are one credential, so both spend a use and expire together.
     access_key = slot_get(keypair["access_slot"])
     secret_key = slot_get(keypair["secret_slot"])
