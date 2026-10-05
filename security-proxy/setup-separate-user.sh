@@ -343,7 +343,13 @@ cat > "$CONFIG_TMP" <<JSON
      "inject_headers": {"Authorization": {"ingest": "mimir-read"}}},
     {"name": "grafana-annotate", "prefix": "/grafana/",
      "upstream": "https://monit-grafana.cern.ch",
-     "inject_headers": {"Authorization": {"ingest": "grafana-annotate-token"}}}
+     "inject_headers": {"Authorization": {"ingest": "grafana-annotate-token"}}},
+    {"name": "laya", "prefix": "/laya/", "upstream": "https://aliskynet.cern.ch:8443",
+     "inject_headers": {"Authorization": {"ingest": "laya-key"}}},
+    {"name": "glm", "prefix": "/glm/", "upstream": "https://pcapiserv12.cern.ch:8081",
+     "inject_headers": {"Authorization": {"ingest": "glm-key"}}},
+    {"name": "aigw", "prefix": "/aigw/", "upstream": "https://aigw.cern.ch",
+     "inject_headers": {"Authorization": {"ingest": "aigw-key"}}}
   ]
 }
 JSON
