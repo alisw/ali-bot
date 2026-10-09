@@ -91,9 +91,9 @@ jobs:
 
           # Fix header include format in O2Physics.
           if [[ "${{ github.event.repository.name }}" == 'O2Physics' ]]; then
-            formatting_script="Scripts/format_includes.awk"
+            formatting_script="Scripts/format_includes.py"
             git checkout "origin/$BASE_BRANCH" -- "$formatting_script"
-            printf "%s\n" "${commit_files[@]}" | xargs -r -P 0 -I{} sh -c "awk -f \"$formatting_script\" \"{}\" > \"{}.tmp\" && mv \"{}.tmp\" \"{}\""
+            "$formatting_script" "${commit_files[@]}"
             git restore --staged --worktree "$formatting_script"
             git add -u
           fi
