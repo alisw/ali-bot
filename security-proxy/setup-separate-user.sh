@@ -309,6 +309,8 @@ cat > "$CONFIG_TMP" <<JSON
     {"prefix": "/bookkeeping/", "upstream": "https://ali-bookkeeping.cern.ch"},
     {"name": "github", "prefix": "/github/", "upstream": "https://api.github.com",
      "inject_headers": {"Authorization": {"ingest": "github-token"}}},
+    {"name": "mattermost", "prefix": "/mattermost/", "upstream": "https://mattermost.web.cern.ch",
+     "websocket": true, "inject_headers": {"Authorization": {"ingest": "mattermost-token"}}},
     {"name": "github-rw", "prefix": "/github-rw/", "upstream": "https://api.github.com",
      "inject_headers": {"Authorization": {"ingest": "github-token-rw"}}},
     {"name": "nomad", "upstream": "https://alinomad.cern.ch", "websocket": true,
