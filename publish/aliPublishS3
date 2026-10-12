@@ -8,7 +8,7 @@ from botocore.config import Config
 from glob import glob
 from argparse import ArgumentParser
 from datetime import datetime, timedelta, timezone
-from time import time
+from time import time, sleep
 from logging import debug, info, warning, error
 from re import search, escape
 from os.path import isdir, isfile, realpath, dirname, getmtime, join, basename, abspath, exists
@@ -547,6 +547,54 @@ def nameVerFromTar(tar, arch, validPacks, validPairs=None):
         return nv
   return None
 
+CAS_REDIRECT_HEADER = "x-amz-website-redirect-location"
+"""Where an aliBuild 2.0 store says the payload really is."""
+
+def resolveCasStub(url, baseUrl, connParams):
+  """Follow an aliBuild 2.0 store's redirect stub to the blob it points at.
+
+  Such a store leaves TARS/<arch>/store/... as ~78-byte objects naming the
+  blob in a HEADER, served with HTTP 200 rather than a 3xx, so `curl -L` in
+  the publish templates would tar up the stub. A legacy object has no such
+  header and comes back unchanged.
+  """
+  # Retried, because the fallback is useless for a stub: an unresolved one is
+  # 78 bytes of ASCII that fails as "not in gzip format", naming neither the
+  # stub nor the HEAD. conn_retries exists for exactly the S3 throttling that
+  # would cause this, and until now reached only curl inside the templates.
+  for attempt in range(1, max(1, connParams["conn_retries"]) + 1):
+    try:
+      head = requests.head(url, verify=connParams["http_ssl_verify"],
+                           timeout=connParams["conn_timeout_s"])
+    except requests.RequestException as exc:
+      warning("HEAD %s failed (attempt %d): %s", url, attempt, exc)
+      sleep(connParams["conn_dethrottle_s"])
+      continue
+    if head.status_code < 400:
+      break
+    if head.status_code < 500:
+      # Not transient -- the key is gone or wrong -- so retrying only delays
+      # the download's own, clearer error.
+      warning("HEAD %s: HTTP %d, not checking for a CAS stub",
+              url, head.status_code)
+      return url
+    # A 5xx carries no header either, and must not be mistaken for a clean miss.
+    warning("HEAD %s failed (attempt %d): HTTP %d", url, attempt, head.status_code)
+    sleep(connParams["conn_dethrottle_s"])
+  else:
+    # Still leave the URL alone: a legacy object is unaffected and we cannot
+    # tell which kind this is without a reply. The warnings above are the
+    # record that links a later tar failure back to here.
+    warning("giving up on HEAD %s; if it is a CAS stub the download will fail", url)
+    return url
+  target = head.headers.get(CAS_REDIRECT_HEADER, "").strip()
+  if not target:
+    return url
+  if not target.startswith(("http://", "https://")):
+    target = join(baseUrl, target.lstrip("/"))
+  debug("%s is a CAS stub pointing at %s", url, target)
+  return quote(target, safe=':/')
+
 def prettyPrintPkg(pkg):
   """Return a human-readable representation of the package."""
   return pkg["name"] + " " + pkg["ver"]
@@ -765,6 +813,7 @@ def sync(pub, architectures, s3Client, bucket, baseUrl, basePrefix, rules,
                                  timeout=connParams["conn_timeout_s"])
                             .text.rstrip().lstrip("./"))  # strip leading "../"
       pkgUrl = quote(pkgUrl, safe=':/')
+      pkgUrl = resolveCasStub(pkgUrl, baseUrl, connParams)
 
       # Here we can attempt the installation
       def prettyPrintPkgs(key):
