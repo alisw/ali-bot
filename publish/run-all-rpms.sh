@@ -13,12 +13,16 @@ s3_path () {
 }
 
 get_secrets () {
+  # Never traced: set -x expands every assignment in these files into the Nomad
+  # alloc log, which anything with read-logs on the namespace can fetch.
+  { set +x; } 2>/dev/null
   # This contains MATTERMOST_O2_RELEASE_INTEGRATION_URL, which we need.
   . /secrets/ci_secrets
   # aliPublish needs these S3 secrets.
   # rclone gets them from /secrets/alibuild_rclone_config.
   . /secrets/aws_bot_secrets
   export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+  set -x
 }
 
 # One or more architectures, comma-separated: "el9.x86_64,el10.x86_64". This
@@ -69,13 +73,18 @@ while true; do
       # Compare the file list to the dir now, to see which RPMs were published.
       s3cmd ls "s3://alibuild-repo/$path/$arch/" | sed 's|.*/||' | sort |
         comm -13 "before.$arch.pkgs" - > new.pkgs
-      # Post in the Release Integration channel if we have new RPMs.
+      # Post in the Release Integration channel if we have new RPMs. In a
+      # subshell with the trace off: the webhook URL is itself a credential and
+      # set -x would print the whole argv. The subshell restores -x on exit.
       if [ -s new.pkgs ]; then
-        curl -ifsSX POST -H 'Content-Type: application/json' \
-             -d "{\"text\": \"# New RPMs published for \`$arch\`
+        (
+          { set +x; } 2>/dev/null
+          curl -ifsSX POST -H 'Content-Type: application/json' \
+               -d "{\"text\": \"# New RPMs published for \`$arch\`
 
 $(sed 's/^/- `/; s/$/`/' new.pkgs)\"}" \
-             "$MATTERMOST_O2_RELEASE_INTEGRATION_URL" || true
+               "$MATTERMOST_O2_RELEASE_INTEGRATION_URL" || true
+        )
       fi
       rm -f "before.$arch.pkgs" new.pkgs
     done
