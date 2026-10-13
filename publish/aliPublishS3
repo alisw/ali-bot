@@ -4,6 +4,7 @@ import logging, gzip, sys, json, yaml, errno, boto3, requests
 import botocore.exceptions
 from concurrent.futures import ThreadPoolExecutor
 from functools import cache
+from botocore import UNSIGNED
 from botocore.config import Config
 from glob import glob
 from argparse import ArgumentParser
@@ -1090,15 +1091,31 @@ def main():
     if doExit:
       return 1
 
-    s3_config = Config(
-        max_pool_connections=50,
-      request_checksum_calculation='WHEN_REQUIRED',
-      response_checksum_validation='WHEN_REQUIRED',
-    )
+    # boto3 >= 1.36 checksums every request by default, which Ceph RGW rejects.
+    # Older botocore -- python3.9 on the CVMFS Stratum-0 -- has no such option and
+    # never sent them, but raises TypeError on an unknown one, so ask first.
+    s3Opts = {opt: "WHEN_REQUIRED"
+              for opt in ("request_checksum_calculation", "response_checksum_validation")
+              if opt in Config.OPTION_DEFAULTS}
+
+    # Only sync-rpms touches S3 with anything but ListObjectsV2, and only it
+    # writes. The read-only actions therefore go unsigned ALWAYS, not merely
+    # when the environment happens to be empty: the CVMFS and AliEn publishers
+    # then cannot authenticate at all, so they are not hosts where a key worth
+    # stealing has to be kept. Tarballs already came over plain https, through
+    # curl in the publish templates.
+    s3Creds = {}
+    if args.action == "sync-rpms":
+      s3Creds = {"aws_access_key_id": environ["AWS_ACCESS_KEY_ID"],
+                 "aws_secret_access_key": environ["AWS_SECRET_ACCESS_KEY"]}
+    else:
+      info("Reading %s unsigned: %s needs no credentials", conf["s3_bucket"],
+           args.action)
+      s3Opts["signature_version"] = UNSIGNED
+
     s3Client = boto3.client("s3", endpoint_url=conf["s3_endpoint_url"],
-                            aws_access_key_id=environ["AWS_ACCESS_KEY_ID"],
-                            aws_secret_access_key=environ["AWS_SECRET_ACCESS_KEY"],
-                            config=s3_config)
+                            config=Config(max_pool_connections=50, **s3Opts),
+                            **s3Creds)
 
     if args.action == "sync-cvmfs":
       archKey = "CVMFS"
