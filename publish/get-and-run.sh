@@ -24,9 +24,11 @@ elif [[ -x /home/monalisa/bin/alien ]]; then
   OVERRIDE='{"notification_email":{}}'
 elif [[ -d /cvmfs/alice.cern.ch ]]; then
   CMD=sync-cvmfs
-  PUB_CCDB=1
-  PUB_DATA=1
-  PUB_CERT=1
+  # Defaults rather than assignments: publish-all.sh runs this script once per
+  # config, and these three jobs are per HOST, not per config -- doing them
+  # unconditionally does them two or three times a pass, each with its own venv.
+  # The extra configs pass PUB_*=0.
+  : "${PUB_CCDB:=1}" "${PUB_DATA:=1}" "${PUB_CERT:=1}"
   export PATH=$HOME/opt/bin:$PATH
 elif [[ -d /cvmfs/sft-nightlies-test.cern.ch ]]; then
   CONF=/home/cvsft-nightlies-test/lcgBitsPublish-test.conf
