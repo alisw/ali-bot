@@ -157,6 +157,12 @@ under different names:
   - `aliPublish.conf`: used centrally on CVMFS and AliEn
   - `aliPublish-noarch.conf`: used for async reconstruction
   - `aliPublish-rpms-cc9.conf`: used for RPM publishing for AlmaLinux 9
+  - `aliPublish-cvmfs-slc10.conf`: el10-x86_64 bring-up on CVMFS, run by hand
+
+One config publishes one architecture: `run-all-rpms.sh` reads it out of the
+config's own `architectures:` map and refuses a config that names more than
+one, because its per-architecture bookkeeping would silently cover only one of
+them.
   - `aliPublish-s3-updatable-rpms.conf`: used for publishing GenTopo as an updatable RPM
 
 We then have a `get-and-run.sh` script that automatically performs the
