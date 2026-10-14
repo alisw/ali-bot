@@ -112,12 +112,25 @@ fi
 : "${REMOTE_STORE:=b3://alibuild-repo}"
 [ "$PUBLISH_BUILDS" = true ] && REMOTE_STORE=$REMOTE_STORE::rw
 [ "$USE_REMOTE_STORE" = false ] && REMOTE_STORE=
+# reapi:// authenticates with the same keys, and needs them even to READ --
+# REAPIRemoteSync refuses to start without them. Without this a reapi:// store
+# falls through with no credentials.
 case "$REMOTE_STORE" in
-  b3://*)
+  b3://*|reapi://*)
     set +x  # avoid leaking secrets
     . /secrets/aws_bot_secrets
     export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
     set -x ;;
+esac
+
+# aliBuild refuses to upload unsigned to a reapi:// store and no sign route is
+# reachable from here. --storage permanent keeps a published build past the CAS
+# bucket's 90-day LRU, and promotes the ephemeral blobs it reuses; set
+# ARTIFACT_STORAGE=ephemeral for a build nobody needs to keep.
+: "${ARTIFACT_STORAGE:=permanent}"
+remote_args=()
+case "$REMOTE_STORE" in
+  reapi://*) remote_args+=(--no-sign --storage "$ARTIFACT_STORAGE") ;;
 esac
 
 # Feature detection
@@ -132,6 +145,7 @@ aliBuild --reference-sources "$MIRROR"                    \
          --architecture "$ARCHITECTURE"                   \
          --jobs "${JOBS:-${MAX_CORES:-$(nproc)}}"         \
          ${REMOTE_STORE:+--remote-store "$REMOTE_STORE"}  \
+         "${remote_args[@]}"                              \
          ${DEFAULTS:+--defaults "$DEFAULTS"}              \
          ${DISABLE:+--disable "$DISABLE"}                 \
          ${ANNOTATE:+${BUILD_COMMENT:+--annotate "$PACKAGE_NAME=$BUILD_COMMENT"}} \

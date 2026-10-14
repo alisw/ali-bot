@@ -217,10 +217,15 @@ for package in $PACKAGES; do (
 ); done
 
 : "${REMOTE_STORE:=b3://alibuild-repo::rw}"
-# Despite the "daily" name, everything this script builds is used in production,
-# so its artifacts must outlive the CAS bucket's 90-day LRU. A permanent build
-# also promotes the ephemeral blobs it reuses, so the whole closure gets pinned
-# without rebuilding anything. Override only for a genuinely throwaway run.
+# Permanent by default: this script cuts releases as well as nightlies, and a
+# release that forgot the knob must not expire from the CAS bucket's 90-day LRU.
+# A permanent build also promotes the ephemeral blobs it reuses, so the whole
+# closure gets pinned without rebuilding anything.
+#
+# The real nightly jobs (e.g. the O2Physics daily) should set
+# ARTIFACT_STORAGE=ephemeral: they run every night, and an expired blob is not
+# lost -- its AC entry and reconstruction inputs outlive it in the AC bucket,
+# which the lifecycle rule does not touch.
 : "${ARTIFACT_STORAGE:=permanent}"
 case "$REMOTE_STORE" in
   # reapi:// authenticates with the same keys. Without it here, a reapi:// store
