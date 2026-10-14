@@ -217,14 +217,28 @@ for package in $PACKAGES; do (
 ); done
 
 : "${REMOTE_STORE:=b3://alibuild-repo::rw}"
+# Despite the "daily" name, everything this script builds is used in production,
+# so its artifacts must outlive the CAS bucket's 90-day LRU. A permanent build
+# also promotes the ephemeral blobs it reuses, so the whole closure gets pinned
+# without rebuilding anything. Override only for a genuinely throwaway run.
+: "${ARTIFACT_STORAGE:=permanent}"
 case "$REMOTE_STORE" in
-  b3://*)
+  # reapi:// authenticates with the same keys. Without it here, a reapi:// store
+  # falls through with no credentials and the upload fails on auth.
+  b3://*|reapi://*)
     set +x  # avoid leaking secrets
     . /secrets/aws_bot_secrets
     export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
     set -x ;;
 esac
-aliBuild --remote-store "$REMOTE_STORE" "${alibuild_args[@]}" || {
+# aliBuild refuses to upload unsigned to a reapi:// store, and no sign route is
+# reachable from here -- the CI signs through its broker, which this job has no
+# equivalent of. Revisit if one appears.
+remote_args=()
+case "$REMOTE_STORE" in
+  reapi://*) remote_args+=(--no-sign --storage "$ARTIFACT_STORAGE") ;;
+esac
+aliBuild --remote-store "$REMOTE_STORE" "${remote_args[@]}" "${alibuild_args[@]}" || {
   builderr=$?
   echo "Exiting with an error ($builderr), not tagging"
   exit $builderr
