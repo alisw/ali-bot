@@ -408,9 +408,12 @@ class RPM(object):
       have_remote_repo = True
       try:
         repomd_xml_content = self._s3.get_object(Bucket=self._bucket, Key=repomd_xml)["Body"].read()
-      except botocore.exceptions.ClientError as exc:
+      except botocore.exceptions.ClientError:
         have_remote_repo = False
-        warning("No existing repomd.xml found at %s", repomd_xml, exc_info=exc)
+        # A configured but never-populated repo hits this every pass, so only
+        # make noise when we are about to create the repodata for real.
+        (warning if new_rpms else debug)(
+          "No existing repomd.xml found at %s", repomd_xml)
       else:
         index_name_match = search(rb"repodata/[0-9a-f]+-primary\.xml\.gz", repomd_xml_content)
         if not index_name_match:
