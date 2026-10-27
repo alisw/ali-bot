@@ -53,6 +53,7 @@ class FakeWS:
         self.headers = headers or {}
         self.query_params = {}
         self.url = FakeURL()
+        self.scope = {"query_string": b""}
         self.accepted = False
         self.closed = None
         self.sent_one = False
