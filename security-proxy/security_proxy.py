@@ -359,6 +359,27 @@ def upstream_url_for(route: Route, upstream_path: str) -> str:
     return f"{route.upstream}/{upstream_path}" if upstream_path else route.upstream
 
 
+def client_upstream_path(route: Route, path: str, raw_path: bytes | None) -> str:
+    """The part of the client's path to forward upstream, still percent-encoded.
+
+    `path` comes from the ASGI scope and is already decoded, so forwarding it turns
+    an encoded `%2F` inside a segment into a real `/` (and `%3F`/`%23` into a query
+    or fragment). CCDB metadata such as `qc_task_name=Test%2Fpid1` then arrives as two
+    segments and Tomcat answers 400. The wire bytes in `raw_path` are what to forward;
+    route matching stays on the decoded form.
+
+    Header-matched routes forward the full path; prefix routes strip their prefix. If
+    the client percent-encoded part of the prefix itself, the raw path does not start
+    with it and we fall back to the decoded path."""
+    pfx = "" if route.auth_header else route.prefix.lstrip("/")
+    full = path
+    if raw_path:
+        raw = raw_path.decode("latin-1").lstrip("/")
+        if raw.startswith(pfx):
+            full = raw
+    return full[len(pfx):].lstrip("/")
+
+
 class SlotUnavailable(Exception):
     """Raised when a route needs an ingest slot that has not been provisioned yet."""
     def __init__(self, slot: str):
@@ -1085,15 +1106,14 @@ async def ws_proxy(ws: WebSocket, path: str):
     except SlotUnavailable as e:
         raise WebSocketDisconnect(code=4003, reason=e.detail[:120])
 
-    # Header-matched routes forward the full path; prefix routes strip their prefix
-    upstream_path = path if route.auth_header else path[len(route.prefix.lstrip("/")):]
-    upstream_path = upstream_path.lstrip("/")
+    upstream_path = client_upstream_path(route, path, ws.scope.get("raw_path"))
     try:
         upstream_url = upstream_url_for(route, upstream_path)
     except PathTraversal:
         raise WebSocketDisconnect(code=4005, reason="path escapes the route's prefix")
     # Forward query params, but drop the proxy's own auth "token" so it never leaks upstream
-    fwd = [(k, v) for k, v in parse_qsl(ws.url.query, keep_blank_values=True) if k != "token"]
+    query = ws.scope.get("query_string", b"").decode("latin-1")
+    fwd = [(k, v) for k, v in parse_qsl(query, keep_blank_values=True) if k != "token"]
     if fwd:
         sep = "&" if "?" in upstream_url else "?"
         upstream_url = f"{upstream_url}{sep}{urlencode(fwd)}"
@@ -1272,7 +1292,7 @@ async def proxy_s3(path: str, request: Request, route: Route) -> Response:
     # Use the raw (still percent-encoded) path so the signature matches the wire bytes.
     raw = request.scope.get("raw_path")
     canonical_uri = raw.decode("latin-1") if raw else "/" + quote(path, safe="/-_.~")
-    query = request.url.query
+    query = request.scope.get("query_string", b"").decode("latin-1")
 
     amz_date = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     datestamp = amz_date[:8]
@@ -1481,9 +1501,7 @@ async def proxy(path: str, request: Request):
     if route.oauth:
         return await proxy_oauth(path, request, route)
 
-    # Header-matched routes forward the full path; prefix routes strip their prefix
-    upstream_path = path if route.auth_header else path[len(route.prefix.lstrip("/")):]
-    upstream_path = upstream_path.lstrip("/")
+    upstream_path = client_upstream_path(route, path, request.scope.get("raw_path"))
 
     # Forward headers (minus host/auth), applying ingest-provided upstream headers
     try:
@@ -1495,8 +1513,11 @@ async def proxy(path: str, request: Request):
         url = upstream_url_for(route, upstream_path)
     except PathTraversal:
         raise HTTPException(status_code=400, detail="path escapes the route's prefix")
-    if request.url.query:
-        url = f"{url}?{request.url.query}"
+    # From the scope, not request.url: Starlette rebuilds that from the decoded path,
+    # so a `%3F` in the path would swallow the real query.
+    query = request.scope.get("query_string", b"").decode("latin-1")
+    if query:
+        url = f"{url}?{query}"
 
     # Inject the captured SSO credential for SSO routes
     if route.injected_token:
