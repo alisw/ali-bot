@@ -65,6 +65,7 @@ class Route:
     oauth: dict | None = None  # OAuth2 refresh-token broker: {"accounts": {name -> account}}
     sign: dict | None = None  # local Ed25519 signer (alibuild AC): {"key_slot": <slot>}
     allow_cookies: bool = False  # opt-in only: browser localhost cookies may otherwise leak upstream
+    user_agent: str | None = None  # replace the client's User-Agent on this route
 
 
 @dataclass(frozen=True)
@@ -511,6 +512,14 @@ def build_upstream_headers(request: Request, route: Route) -> httpx.Headers:
     # carries no accept-encoding. A client that sent none (curl, wiff) would then get
     # a gzipped body it never asked for and fail to parse it. Ask for identity instead.
     headers.setdefault("accept-encoding", "identity")
+    # Identify the proxy where an upstream refuses scraper-shaped clients. alimonitor
+    # answers /users/* with an empty-bodied 403 for "curl/..." and "python-httpx/...",
+    # with a VALID client certificate -- indistinguishable from an authorization
+    # failure, and it is not one: the same request with an identifying User-Agent
+    # returns 200. Dropping the header is not enough, because httpx supplies its own
+    # default whenever the request carries none.
+    if route.user_agent:
+        headers["user-agent"] = route.user_agent
     return headers
 
 
@@ -2150,6 +2159,22 @@ def push_main(argv=None) -> None:
     print(f"pushed slot {a.slot!r}{extra}")
 
 
+def _identity_from_cert(path: Path) -> str:
+    """SHA-1 fingerprint of the certificate in `path`, for resolve_keychain_identity.
+
+    Lets a bootstrap source name the identity by its CERTIFICATE rather than by the
+    Keychain's display name. The display name is the holder's name -- not unique (a
+    renewal leaves the old certificates sitting there under the same name) and not
+    stable across machines. The certificate on disk is exactly the credential the
+    proxy has to present, so deriving the fingerprint from it picks the right
+    identity by construction, and keeps picking it after each renewal with no edit.
+    """
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes
+    cert = x509.load_pem_x509_certificate(path.read_bytes())
+    return cert.fingerprint(hashes.SHA1()).hex().upper()
+
+
 def _export_identity_pem(identity: str) -> str:
     """Export a macOS Keychain identity (grid cert + key) as one combined PEM string.
 
@@ -2220,6 +2245,8 @@ def _resolve_source(source: dict, agent_socket: Path | None = None) -> str | Non
       {"keychain": "<account>"}                       a generic password, default service
       {"keychain": {"service","account","keychain"}}  ... explicit item / keychain file
       {"keychain_identity": "<name>"}                 a cert identity -> combined PEM
+      {"keychain_identity": "<cert path>"}            ... same, identity picked by
+                                                      the certificate's fingerprint
       {"file": "<path>"} or {"file": [paths...]}      file contents, concatenated
       {"vault": {"path","field","route"}}             a Vault field, via the proxy
       {"device_authorize": {provider, client_id, scope, tenant, account}}
@@ -2242,7 +2269,11 @@ def _resolve_source(source: dict, agent_socket: Path | None = None) -> str | Non
         return keychain_get_token(kc.get("service", "security-proxy"), kc["account"],
                                   kc.get("keychain"))
     if kind == "keychain_identity":
-        return _export_identity_pem(source["keychain_identity"])
+        want = str(source["keychain_identity"])
+        candidate = Path(want).expanduser()
+        if candidate.is_file():
+            want = _identity_from_cert(candidate)
+        return _export_identity_pem(want)
     if kind == "file":
         paths = source["file"]
         if isinstance(paths, str):
@@ -2580,7 +2611,7 @@ slot is filled. Push secrets in with either:
   security-proxy-bootstrap                           # fill all slots from a config
 The bootstrap config (~/.security-proxy-bootstrap.json) maps each slot to a source:
   {"nomad":     {"keychain": {"service": "security-proxy", "account": "alinomad.cern.ch"}},
-   "grid-cert": {"keychain_identity": "My Grid Cert"},
+   "grid-cert": {"keychain_identity": "~/.globus/usercert.pem"},
    "gitlab":    {"vault": {"path": "kv/data/ci", "field": "gitlab_pass"}},
    "mail":      {"device_authorize": {"provider": "microsoft", "client_id": "...",
                                       "scope": "... offline_access", "account": "me@x"}}}
@@ -2849,6 +2880,9 @@ browser/curl access. Header-matched routes take precedence over prefix routes.
         allow_cookies = r.get("allow_cookies", False)
         if not isinstance(allow_cookies, bool):
             parser.error("Route 'allow_cookies' must be a boolean")
+        user_agent = r.get("user_agent")
+        if user_agent is not None and not isinstance(user_agent, str):
+            parser.error("Route 'user_agent' must be a string")
         ROUTES.append(Route(
             prefix=prefix.strip("/") + "/",
             upstream=route_upstream,
@@ -2862,6 +2896,7 @@ browser/curl access. Header-matched routes take precedence over prefix routes.
             oauth=oauth,
             sign=sign,
             allow_cookies=allow_cookies,
+            user_agent=user_agent,
         ))
     # Service names must be unique, else gate tokens would be ambiguous
     names = [r.name for r in ROUTES]

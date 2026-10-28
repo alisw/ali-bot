@@ -284,6 +284,11 @@ echo "==> config (root-owned; cert+secrets are pushed at runtime, not stored her
 # the ALICEO2_CCDB_AUTH_TOKENS table -- resolves locally instead of falling
 # through to "no route matches this path". Route names are what gate tokens are
 # minted from, so the two get DIFFERENT tokens even pointing at one upstream.
+# The alimonitor route sets a user_agent: /users/* (download.jsp, jobs.jsp) answers
+# an EMPTY-BODIED 403 to "curl/..." and "python-httpx/...", even with a valid grid
+# certificate -- it looks exactly like an authorization failure and is not one.
+# Measured: no UA -> 200, identifying UA -> 200, curl/httpx UA -> 403. Just dropping
+# the header does not work, because httpx then supplies its own default.
 CONFIG_TMP=$(mktemp "$ETC/config.json.XXXXXX")
 cat > "$CONFIG_TMP" <<JSON
 {
@@ -304,7 +309,8 @@ cat > "$CONFIG_TMP" <<JSON
     {"name": "ccdb-prod", "prefix": "/ccdb-prod/", "upstream": "https://alice-ccdb.cern.ch"},
     {"prefix": "/hyperloop/", "upstream": "https://alimonitor.cern.ch/hyperloop"},
     {"prefix": "/remote-mcp/", "upstream": "wss://alien.cern.ch", "websocket": true},
-    {"prefix": "/alimonitor/", "upstream": "https://alimonitor.cern.ch"},
+    {"prefix": "/alimonitor/", "upstream": "https://alimonitor.cern.ch",
+     "user_agent": "security-proxy/1.0 (ali-bot; +https://github.com/alisw/ali-bot)"},
     {"prefix": "/alihyperloop-data/", "upstream": "https://alimonitor.cern.ch/alihyperloop-data"},
     {"prefix": "/bookkeeping/", "upstream": "https://ali-bookkeeping.cern.ch"},
     {"name": "github", "prefix": "/github/", "upstream": "https://api.github.com",
