@@ -6,6 +6,12 @@ name: "Build o2-full-deps repositories"
 # Controls when the action will run. This workflow is triggered manually.
 "on":
   workflow_dispatch:
+    inputs:
+      alibuild_tag:
+        description: "alibuild tag to package"
+        required: false
+        default: v2.0.0
+        type: string
 
 permissions: {}
 
@@ -20,26 +26,21 @@ jobs:
         include:
           - el_version: el8
             container: almalinux:8
-            alibuild_tag: v1.17.48
           - el_version: el9
             container: almalinux:9
-            alibuild_tag: v1.17.48
           - el_version: el10
             container: almalinux:10
-            alibuild_tag: v1.17.48
           - el_version: fedora
             container: fedora:40
-            alibuild_tag: v1.17.48
           # aarch64 build on native ARM runner
           - el_version: el9
             container: almalinux:9
-            alibuild_tag: v1.17.48
             runs_on: ubuntu-24.04-arm
 
     name: "RPM (${{ matrix.el_version }} ${{ matrix.runs_on || 'x86_64' }})"
     container: ${{ matrix.container }}
     env:
-      ALIBUILD_TAG: ${{ matrix.alibuild_tag }}
+      ALIBUILD_TAG: ${{ inputs.alibuild_tag }}
       DISTRO: ${{ matrix.el_version }}
 
     steps:
@@ -100,7 +101,7 @@ jobs:
     name: DEB (${{ matrix.ubuntu_codename }})
     container: ubuntu:${{ matrix.ubuntu_codename }}
     env:
-      ALIBUILD_TAG: v1.17.48
+      ALIBUILD_TAG: ${{ inputs.alibuild_tag }}
       ALIBUILD_DISTRO: ${{ matrix.ubuntu_codename }}
       DEBIAN_FRONTEND: noninteractive
     steps:
@@ -113,12 +114,29 @@ jobs:
           echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
           echo -n "${{ secrets.LAUNCHPAD_PPA_GPG_KEY }}" | gpg --no-tty --batch --import
 
+      # focal ships python3-setuptools-scm 3.2, which stopped satisfying
+      # setup.py's "setuptools_scm>=6.2,<10" (tightened in 9f2c5a6, "Fix
+      # building of o2-fulldeps RPMs"). setuptools then falls back to
+      # easy_install and dies, which is why the PPA is stuck at 1.17.43 for
+      # focal while jammy and noble are current. Capped below 8 because 8.x
+      # wants setuptools>=61 and focal has 45.2.
+      - name: "Install a newer setuptools_scm (focal only)"
+        if: matrix.ubuntu_codename == 'focal'
+        run: |
+          apt install -y python3-pip
+          pip3 install "setuptools_scm>=6.2,<8"
+
       - name: "Build a DEB for Ubuntu and push it to the PPA"
         run: |
           set -x
-          git clone  https://github.com/alisw/alibuild
+          # -b: this used to clone the default branch and only label it with
+          # $ALIBUILD_TAG, so the deb carried whatever master happened to be.
+          git clone -b "$ALIBUILD_TAG" https://github.com/alisw/alibuild
           cd alibuild
+          # .git goes, so setuptools_scm cannot read the version it would
+          # otherwise derive; state it instead of relying on a fallback.
           rm -rf .git
+          export SETUPTOOLS_SCM_PRETEND_VERSION="${ALIBUILD_TAG#v}"
           cat <<EOF > debian/changelog
           python3-alibuild (${ALIBUILD_TAG#v}+$ALIBUILD_DISTRO) $ALIBUILD_DISTRO; urgency=medium
 
