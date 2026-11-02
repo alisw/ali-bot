@@ -186,6 +186,10 @@ done
 # Get a temporary JAliEn token certificate and key, to give anything we build
 # below access. Do this before the `report_state pr_processing` line so we have
 # instant feedback in monitoring of whether a token is available for the build.
+# Tracing off: under `set -x` every test and assignment below prints the private
+# key, once per round, into a log anyone with read-only Nomad access can fetch.
+case $- in *x*) xtrace=1 ;; *) xtrace= ;; esac
+set +x
 if [ -n "$JALIEN_TOKEN_CERT" ] && [ -n "$JALIEN_TOKEN_KEY" ]; then
   # Already minted for us: on the claim-based workers the security-proxy
   # sidecar hands one out (round-setup.sh), as alien.py is not installed
@@ -201,6 +205,9 @@ else
   HAVE_JALIEN_TOKEN=0
 fi
 unset certdir jalien_token
+echo "JAliEn token: HAVE_JALIEN_TOKEN=$HAVE_JALIEN_TOKEN"
+[ -n "$xtrace" ] && set -x
+unset xtrace
 
 report_state pr_processing
 
