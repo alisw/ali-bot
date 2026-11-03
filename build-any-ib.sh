@@ -35,6 +35,11 @@ $PIP install --user --upgrade pip
 # A released tag, matching repo-config/mesosci/*/DEFAULTS.env: reapi:// stores
 # need 2.0, and the bare "alibuild" this used to default to tracked whatever
 # PyPI called latest -- so the builder silently changed major version under us.
+# slc7/slc8 are python3.6, whose newest boto3 (1.23.10) predates the S3
+# conditional writes 2.0 needs to claim a package before uploading.
+case "$ARCHITECTURE" in
+  slc7_*|slc8_*) : "${ALIBUILD_SLUG:=alisw/alibuild@v1.17.48}" ;;
+esac
 : "${ALIBUILD_SLUG:=alisw/alibuild@v2.0.0}"
 $PIP install --user --upgrade "${ALIBUILD_SLUG:+git+https://github.com/}${ALIBUILD_SLUG:-alibuild}"
 type aliBuild
