@@ -109,9 +109,34 @@ else
   rm -rf AliPhysics
 fi
 
+# slc10 lives only in the CAS: alibuild-repo has no TARS/slc10_x86-64 tree, so
+# a legacy store rebuilds the whole stack and publishes where nothing looks.
+case "$ARCHITECTURE" in
+  slc10_*) : "${REMOTE_STORE:=reapi://}" ;;
+esac
 : "${REMOTE_STORE:=b3://alibuild-repo}"
 [ "$PUBLISH_BUILDS" = true ] && REMOTE_STORE=$REMOTE_STORE::rw
 [ "$USE_REMOTE_STORE" = false ] && REMOTE_STORE=
+
+# A BARE reapi:// is the only form that lays the buckets out correctly: naming
+# one collapses the AC ledger and the legacy TARS/ links into the artifact
+# bucket, where the ledger shares the LRU of what it exists to describe and
+# nothing reaches consumers reading alibuild-repo (sync_reapi.py's
+# default_layout). Refuse rather than publish somewhere nobody reads.
+if [ "${ARCHITECTURE%%_*}" = slc10 ] && [ -n "$REMOTE_STORE" ]; then
+  case "${REMOTE_STORE%::rw}" in
+    reapi://*/*) store_ok= ;;
+    reapi://*)   store_ok=1 ;;
+    *)           store_ok= ;;
+  esac
+  if [ -z "$store_ok" ]; then
+    echo "ERROR: $ARCHITECTURE needs a bare reapi:// remote store." >&2
+    echo "  Got: REMOTE_STORE=$REMOTE_STORE" >&2
+    echo "  Use REMOTE_STORE=reapi:// (optionally reapi://<host>, no bucket)," >&2
+    echo "  or USE_REMOTE_STORE=false to build without a store." >&2
+    exit 1
+  fi
+fi
 # reapi:// authenticates with the same keys, and needs them even to READ --
 # REAPIRemoteSync refuses to start without them. Without this a reapi:// store
 # falls through with no credentials.
