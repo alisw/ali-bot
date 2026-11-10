@@ -289,6 +289,9 @@ echo "==> config (root-owned; cert+secrets are pushed at runtime, not stored her
 # certificate -- it looks exactly like an authorization failure and is not one.
 # Measured: no UA -> 200, identifying UA -> 200, curl/httpx UA -> 403. Just dropping
 # the header does not work, because httpx then supplies its own default.
+# laya, glm and aigw are only reachable from inside CERN. Outside, they fall back
+# to the SOCKS forward through lxtunnel that `lxtunnel-socks up` opens (2FA), and
+# only when the direct connection fails: see UPSTREAM_VIA_SOCKS.md.
 CONFIG_TMP=$(mktemp "$ETC/config.json.XXXXXX")
 cat > "$CONFIG_TMP" <<JSON
 {
@@ -353,10 +356,13 @@ cat > "$CONFIG_TMP" <<JSON
      "upstream": "https://monit-grafana.cern.ch",
      "inject_headers": {"Authorization": {"ingest": "grafana-annotate-token"}}},
     {"name": "laya", "prefix": "/laya/", "upstream": "https://aliskynet.cern.ch:8443",
+     "via": "socks5h://127.0.0.1:1080",
      "inject_headers": {"Authorization": {"ingest": "laya-key"}}},
     {"name": "glm", "prefix": "/glm/", "upstream": "https://pcapiserv12.cern.ch:8081",
+     "via": "socks5h://127.0.0.1:1080",
      "inject_headers": {"Authorization": {"ingest": "glm-key"}}},
     {"name": "aigw", "prefix": "/aigw/", "upstream": "https://aigw.cern.ch",
+     "via": "socks5h://127.0.0.1:1080",
      "inject_headers": {"Authorization": {"ingest": "aigw-key"}}}
   ]
 }
