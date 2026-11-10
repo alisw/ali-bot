@@ -20,6 +20,8 @@ dependencies = [
     "fastapi==0.138.0",
     "uvicorn==0.49.0",
     "httpx==0.28.1",
+    # SOCKS for routes with "via" (UPSTREAM_VIA_SOCKS.md); httpx imports it lazily.
+    "socksio==1.0.0",
     "cryptography==49.0.0",
     "websockets==16.0",
 ]

@@ -66,6 +66,11 @@ class Route:
     sign: dict | None = None  # local Ed25519 signer (alibuild AC): {"key_slot": <slot>}
     allow_cookies: bool = False  # opt-in only: browser localhost cookies may otherwise leak upstream
     user_agent: str | None = None  # replace the client's User-Agent on this route
+    # A SOCKS/HTTP proxy to fall back to when the upstream can't be reached
+    # directly, e.g. socks5h://127.0.0.1:1080 through lxtunnel from outside CERN.
+    via: str | None = None
+    via_connect_timeout: float = 0.5  # the direct attempt's connect timeout, when `via` is set
+    via_recheck: float = 300.0  # after a direct failure, use `via` this long before trying direct again
 
 
 @dataclass(frozen=True)
@@ -999,6 +1004,96 @@ async def mint_alien_token(source_ctx: ssl.SSLContext) -> tuple[str, str]:
     return cert_pem, key_pem
 
 
+VIA_SCHEMES = ("socks5h://", "socks5://", "http://")
+
+
+def _caused_by_tls(exc: BaseException) -> bool:
+    """Whether a connect error is a TLS failure (e.g. a certificate that does not verify).
+
+    httpx reports a failed TLS handshake as ConnectError too. A timeout is never
+    one, even when it struck during the handshake: its chain then carries
+    SSLWantReadError, which is an SSLError but only means "no data yet"."""
+    if isinstance(exc, httpx.TimeoutException):
+        return False
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        if isinstance(exc, ssl.SSLError) and not isinstance(exc, (ssl.SSLWantReadError, ssl.SSLWantWriteError)):
+            return True
+        seen.add(id(exc))
+        exc = exc.__cause__ or exc.__context__
+    return False
+
+
+class FallbackTransport(httpx.AsyncBaseTransport):
+    """Connect directly, and through `via` only if the direct connection fails.
+
+    Only failures to establish the connection fall back -- DNS, refused,
+    unreachable, connect timeout -- since nothing has been sent then, so retrying
+    is safe for any method. A TLS error, an HTTP error status or a read timeout
+    is passed on as it is: falling back there could replay a request the
+    upstream already got, or hide a real certificate problem.
+
+    After a direct failure the route uses `via` for `recheck` seconds, so that
+    each request does not pay the direct connect timeout while off-site."""
+
+    def __init__(self, name: str, ctx: ssl.SSLContext, via: str,
+                 connect_timeout: float, recheck: float):
+        self.name, self.via = name, via
+        self.connect_timeout, self.recheck = connect_timeout, recheck
+        self.direct = httpx.AsyncHTTPTransport(verify=ctx)
+        self.proxied = httpx.AsyncHTTPTransport(verify=ctx, proxy=via)
+        self.direct_failed_at: float | None = None
+
+    def _try_direct(self) -> bool:
+        return (self.direct_failed_at is None or
+                time.monotonic() - self.direct_failed_at > self.recheck)
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        if self._try_direct():
+            original = dict(request.extensions.get("timeout") or {})
+            request.extensions["timeout"] = dict(original, connect=self.connect_timeout)
+            try:
+                resp = await self.direct.handle_async_request(request)
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                request.extensions["timeout"] = original
+                if _caused_by_tls(exc):
+                    raise  # a certificate problem, not an unreachable upstream
+                if self.direct_failed_at is None:
+                    log.warning("%s: direct connection failed (%s), using via %s",
+                                self.name, type(exc).__name__, self.via)
+                self.direct_failed_at = time.monotonic()
+            else:
+                if self.direct_failed_at is not None:
+                    log.warning("%s: direct connection works again", self.name)
+                self.direct_failed_at = None
+                return resp
+        try:
+            return await self.proxied.handle_async_request(request)
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ProxyError) as exc:
+            if _caused_by_tls(exc):
+                raise  # reached the upstream, but its certificate did not verify
+            log.warning("%s: not reachable directly or via %s: %s", self.name, self.via, exc)
+            return httpx.Response(
+                502, request=request,
+                text=f"{self.name}: upstream not reachable directly or via {self.via}: "
+                     f"is the tunnel up? (e.g. run `lxtunnel-socks up`)\n")
+
+    async def aclose(self) -> None:
+        await self.direct.aclose()
+        await self.proxied.aclose()
+
+
+def via_mounts(ctx: ssl.SSLContext) -> dict:
+    """One FallbackTransport per route with `via`, mounted on its upstream's origin."""
+    mounts = {}
+    for route in ROUTES:
+        if route.via:
+            upstream = urlparse(route.upstream)
+            mounts[f"{upstream.scheme}://{upstream.netloc}"] = FallbackTransport(
+                route.name, ctx, route.via, route.via_connect_timeout, route.via_recheck)
+    return mounts
+
+
 async def rebuild_tls() -> bool:
     """(Re)build the SSL context + httpx client from the current cert source.
 
@@ -1031,7 +1126,7 @@ async def rebuild_tls() -> bool:
         print(f"{time.strftime('%Y-%m-%d %H:%M')} - minted JAliEn token certificate", flush=True)
     old = http_client
     ssl_ctx = new_ctx
-    http_client = httpx.AsyncClient(verify=new_ctx, timeout=300.0)
+    http_client = httpx.AsyncClient(verify=new_ctx, timeout=300.0, mounts=via_mounts(new_ctx))
     if old is not None:
         await old.aclose()
     return True
@@ -2883,6 +2978,18 @@ browser/curl access. Header-matched routes take precedence over prefix routes.
         user_agent = r.get("user_agent")
         if user_agent is not None and not isinstance(user_agent, str):
             parser.error("Route 'user_agent' must be a string")
+        via = r.get("via")
+        if via is not None:
+            if not isinstance(via, str) or not via.startswith(VIA_SCHEMES):
+                parser.error(f"Route 'via' must be a URL starting with one of {', '.join(VIA_SCHEMES)}")
+            if route_is_websocket:
+                parser.error("Route 'via' is not supported on websocket routes")
+        via_timing = {}
+        for key, default in (("via_connect_timeout", 0.5), ("via_recheck", 300.0)):
+            value = r.get(key, default)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+                parser.error(f"Route '{key}' must be a positive number of seconds")
+            via_timing[key] = float(value)
         ROUTES.append(Route(
             prefix=prefix.strip("/") + "/",
             upstream=route_upstream,
@@ -2897,6 +3004,8 @@ browser/curl access. Header-matched routes take precedence over prefix routes.
             sign=sign,
             allow_cookies=allow_cookies,
             user_agent=user_agent,
+            via=via,
+            **via_timing,
         ))
     # Service names must be unique, else gate tokens would be ambiguous
     names = [r.name for r in ROUTES]

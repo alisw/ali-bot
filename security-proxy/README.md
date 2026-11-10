@@ -96,6 +96,16 @@ Browser cookies are not forwarded across the proxy boundary by default: client
 headers are stripped before client responses. Set `"allow_cookies": true` on a
 route only if that upstream explicitly requires cookies.
 
+A route whose upstream is only reachable from inside CERN, e.g. `glm` on
+pcapiserv12 or `aigw`, can fall back to a SOCKS forward when the Mac is outside:
+`"via": "socks5h://127.0.0.1:1080"`. Requests always try the direct connection
+first, with a short connect timeout (`via_connect_timeout`, default 0.5 s), and
+only use `via` when that connection fails, never after a request was sent.
+After a direct failure the route stays on `via` for `via_recheck` seconds
+(default 300). Open the forward with `lxtunnel-socks up`, which needs your 2FA.
+When it is down, the route answers 502, saying so. See
+[`UPSTREAM_VIA_SOCKS.md`](UPSTREAM_VIA_SOCKS.md).
+
 Route `upstream` URLs must use `https://` by default, or `https://`/`wss://` for
 websocket-capable routes. OAuth token endpoints and SSO `login_url` values must
 use `https://`.
