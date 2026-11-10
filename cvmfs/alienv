@@ -311,9 +311,12 @@ alien="AliEn"
 
 # We cannot cross-pick pacakages among different platforms but we have to
 # pick all packages consistently from a certain platform tree. When listing
-# packages we show them all, when we load a package e define a priority list and
+# packages we show them all, when we load a package we define a priority list and
 # we always have a fallback for backward compatibility.
 PLATFORM_PRIORITY="el10-$uname_m el9-$uname_m el7-$uname_m el6-$uname_m el5-$uname_m el8-$uname_m ubuntu2604-$uname_m"
+# Search the detected platform first, so that a newer build (e.g. el10) is not picked on an older host.
+[[ $platform ]] && PLATFORM_PRIORITY="${platform}-$uname_m ${PLATFORM_PRIORITY//${platform}-$uname_m/}"
+[ x$ALIENV_DEBUG == x1 ] && printf "PLATFORM_PRIORITY=$PLATFORM_PRIORITY\n" >&2
 ARGS=("$@")
 PACKAGES=
 EXPECT_PACKAGES=
