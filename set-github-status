@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
 from argparse import ArgumentParser
+from datetime import datetime
 import logging
 import sys
 
 from alibot_helpers.github_utilities import (
-    setGithubStatus, GithubCachedClient, StatusLimitReached)
+    setGithubStatus, latestGithubState, GithubCachedClient, StatusLimitReached)
 
 
 # Just for the moment
@@ -36,6 +37,13 @@ def parse_args():
     url.add_argument("--keep-url", "-k", action="store_true",
                      help="Copy the target URL from the existing status.")
 
+    parser.add_argument("--print-state", "-p",
+                        action="store_true",
+                        help=("Print the state of the newest status of the "
+                              "context given with --status (no /<state> "
+                              "suffix) and its creation time in seconds since "
+                              "the epoch, or 'none'; change nothing"))
+
     parser.add_argument("--debug", "-d",
                         action="store_true",
                         default=False,
@@ -59,6 +67,25 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if args.print_state:
+        # Any failure is reported in one line and exits non-zero: the caller
+        # then builds as before, and a GitHub hiccup leaves no traceback.
+        try:
+            with GithubCachedClient() as cgh:
+                latest = latestGithubState(cgh, args.commit, args.status)
+        except Exception as e:
+            print("set-github-status: cannot read %s on %s: %s" %
+                  (args.status, args.commit, e), file=sys.stderr)
+            sys.exit(1)
+        if latest is None:
+            print("none")
+        else:
+            state, created = latest
+            when = int(datetime.fromisoformat(created.replace("Z", "+00:00")).timestamp()) \
+                if created else ""
+            print(state, when)
+        sys.exit(0)
+
     if args.dryRun:
         print("Dry run specified. Not executing")
         sys.exit(0)

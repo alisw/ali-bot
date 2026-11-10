@@ -119,7 +119,8 @@ entry_container () { printf %s "${1##*:}"; }
 # only the burst within one poll is shared.
 #
 # Safe because the claim lock, not the listing, is what stops two workers taking
-# the same PR: a stale row costs a lost claim, which this loop already handles.
+# the same PR: a stale row costs a lost claim while the build runs, and once it
+# has finished, build-one.sh re-reads the status before building again.
 : "${LISTER_CACHE_TTL:=60}"
 : "${LISTER:=list-branch-pr --all-groups --no-status --cache-ttl $LISTER_CACHE_TTL}"
 

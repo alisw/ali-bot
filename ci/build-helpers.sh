@@ -219,6 +219,28 @@ function build_type_to_status () {
   esac
 }
 
+function verdict_since_listing () {
+  # verdict_since_listing BUILD_TYPE STATE CREATED WAITING_SINCE
+  # True if the check got a verdict after the lister offered this row, so
+  # building it again would repeat work another worker has just finished.
+  # STATE and CREATED (epoch seconds) describe the check's newest status now,
+  # as set-github-status --print-state reports them. For a rebuild row the
+  # lister passes the time of the verdict it saw as WAITING_SINCE, so any newer
+  # status means somebody built it since. An untested row carries the commit
+  # time there instead, so for it only the state can tell. Anything unknown,
+  # including an empty STATE when the query failed, means "build".
+  local build_type=$1 state=$2 created=$3 since=$4
+  case "$build_type:$state" in
+    untested:success|untested:failure|untested:error) return 0 ;;
+  esac
+  case "$build_type" in
+    failed|succeeded)
+      case "$created$since" in ''|*[!0-9]*) return 1 ;; esac
+      [ "$since" -gt 0 ] && [ "$created" -gt "$since" ] ;;
+    *) return 1 ;;
+  esac
+}
+
 function report_pr_errors () {
   # This is a wrapper for report-pr-errors with some default switches.
   local repo checkout_name extra_args=()
