@@ -414,6 +414,25 @@ class StatusLimitReached(RuntimeError):
     """
 
 
+def latestGithubState(cgh, commit, context):
+    """The newest status for context on commit, as (state, created_at), or None.
+
+    GitHub lists statuses newest first, so the first match is the current one.
+    created_at is GitHub's ISO 8601 string. Raises RuntimeError when the
+    statuses cannot be read at all, so that a caller can tell "no status yet"
+    from "could not ask".
+    """
+    repo_name, _, commit_ref = parseGithubRef(commit)
+    statuses = cgh.get("/repos/{repo_name}/statuses/{ref}",
+                       repo_name=repo_name, ref=commit_ref)
+    if statuses is None:
+        raise RuntimeError("cannot read the statuses of %s" % commit)
+    for s in statuses:
+        if s["context"] == context:
+            return s["state"], s.get("created_at") or ""
+    return None
+
+
 def setGithubStatus(cgh, args, debug_print=True):
     repo_name, _, commit_ref = parseGithubRef(args.commit)
     state_context = args.status.rsplit("/", 1)[0] if "/" in args.status else ""

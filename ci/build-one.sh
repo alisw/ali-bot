@@ -21,6 +21,23 @@
 env_name=${1:?usage: build-one.sh ENV_NAME BUILD_TYPE PR_NUMBER PR_HASH [WAITING_SINCE]}
 export BUILD_TYPE=${2:?} PR_NUMBER=${3:?} PR_HASH=${4:?} WAITING_SINCE=${5:-}
 
+# Ask GitHub again now that we hold the claim. The claim stops two workers
+# building a check at the same time, but not one after the other: it is
+# released the moment the holder has posted its verdict, and a worker whose
+# listing predates that verdict still holds the row and would build it all over
+# again. The per-worker $attempted list cannot catch this.
+# Fails open: if the state cannot be read, build as before.
+if source_env_files "$env_name" 2>/dev/null; then
+  read -r _state _created < <(short_timeout set-github-status --print-state \
+                                -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME")
+  if verdict_since_listing "$BUILD_TYPE" "$_state" "$_created" "$WAITING_SINCE"; then
+    echo "build-one: $CHECK_NAME on $PR_REPO@$PR_HASH has a $_state verdict newer" \
+         "than our $BUILD_TYPE listing; another worker built it, skipping" >&2
+    exit 0
+  fi
+  unset _state _created
+fi
+
 # Tell the caller we actually ran, as opposed to never being started because
 # somebody else held the claim. The two are indistinguishable from the exit
 # status alone: `nomad var lock` returns the child's status when it runs one,
