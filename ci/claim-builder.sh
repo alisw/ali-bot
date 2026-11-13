@@ -782,9 +782,31 @@ EOF
   #
   # Between rounds and never during one: the loop builds a single check at a
   # time, so every other work area is idle at this point.
+  #
+  # With the first python that can import what cleanup.py needs, not whichever
+  # one its shebang names. That is the allocation venv, which the entrypoint
+  # deletes and re-installs on every restart -- and on a FULL disk that install
+  # fails half way, cleanup.py dies on "No module named 'alibuild_helpers'",
+  # nothing is freed, and the disk stays full for good: restarts only rebuild
+  # the same broken venv. All four arm Macs sat at 100% like that on
+  # 2026-11-13, failing every PR they claimed within seconds. The per-check
+  # venvs build-one.sh keeps in each work area survive restarts and already
+  # hold aliBuild and ali-bot; running cleanup.py with one freed 90 GiB.
+  # The allocation venv stays FIRST, so a healthy worker runs exactly as before.
+  _cleanup_py=
+  for _py in "$(command -v python3)" $(for _entry in $CUR_CONTAINERS; do
+               echo "$(entry_container "$_entry")"/*/.venv/bin/python3; done); do
+    "$_py" -c 'import alibuild_helpers.clean, alibot_helpers.utilities' \
+           2>/dev/null && _cleanup_py=$_py && break
+  done
+  _cleanup_script=$(command -v cleanup.py) || _cleanup_script=ali-bot/ci/cleanup.py
+  [ -n "$_cleanup_py" ] ||
+    printf '%s ===== CLEANUP IMPOSSIBLE: no python imports alibuild_helpers, %s free =====\n' \
+           "$(date '+%Y-%m-%d@%H:%M:%S')" "$(df -h . | awk 'NR == 2 { print $4 }')" >&2
   for _entry in $CUR_CONTAINERS; do
     _role=$(entry_role "$_entry") _container=$(entry_container "$_entry")
     [ -d "$_container" ] || continue
+    [ -n "$_cleanup_py" ] || continue
     # The positional argument names the *definitions* directory,
     # <repo-config>/$MESOS_ROLE/<name>/*.env, and those live under the SUFFIXED
     # name -- so it must carry $ALIBOT_CONFIG_SUFFIX. -r stays unsuffixed
@@ -797,10 +819,11 @@ EOF
     # nothing, every round, for as long as the job has existed. That is how
     # alimetal05 reached 1.3 TB in one work area and started failing other
     # people's builds with "ld: final link failed: No space left on device".
-    cleanup.py -t "${CLEANUP_MAX_AGE_DAYS:-2}" -f "${CLEANUP_MIN_FREE_GIB:-50}" \
+    "$_cleanup_py" "$_cleanup_script" \
+               -t "${CLEANUP_MAX_AGE_DAYS:-2}" -f "${CLEANUP_MIN_FREE_GIB:-50}" \
                -r "$_container" "$_role" "$_container$ALIBOT_CONFIG_SUFFIX" || true
   done
-  unset _entry _role _container
+  unset _entry _role _container _py _cleanup_py _cleanup_script
 
   # A pass that built nothing AND skipped something only because it was cooling
   # is the one case the cooldown must never cause: the worker would sit idle on
