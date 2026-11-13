@@ -1,0 +1,21 @@
+2026-11-13@15:00:00 ===== ROUND 41 BEGIN check=build/O2/o2_slc9 pr=15000 sha=11111111 type=untested =====
+  Resolved https://github.com/alisw/ali-bot to commit 0000000000000000000000000000000000000000
+2026-11-13@15:04:00 [round 41] check=build/O2/o2_slc9 pr=15000 sha=11111111 elapsed=5m
+Collecting ali-bot@ git+https://github.com/alisw/ali-bot@master
+  Cloning https://github.com/alisw/ali-bot (to revision master) to /tmp/pip-install-vzinzjb2/ali-bot_58e8
+  Resolved https://github.com/alisw/ali-bot to commit fb9457ba457010002fb292538959228e675b8507
+Successfully installed PyGithub-1.46 ali-bot-0.1.dev2537+gfb9457ba4 anyio-4.12.1
+== claim self-check ==
+2026-11-13@15:18:12 ===== ROUND 1 BEGIN check=build/O2Physics/code-check pr=18724 sha=c9214235 type=untested =====
+  Resolved https://github.com/alisw/ali-bot to commit 9999999999999999999999999999999999999999
+2026-11-13@15:20:12 ===== ROUND 1 END pr=18724 result=built rc=1 duration=2m (120s) =====
+2026-11-13@15:20:13 ===== ROUND 1 BEGIN check=build/O2/fullCI_slc9 pr=16121 sha=5d6cf70b type=untested =====
+2026-11-13@15:20:13 ===== ROUND 1 END pr=16121 result=claim-lost =====
+2026-11-13@15:20:14 ===== ROUND 1 BEGIN check=build/O2/alidist_bits-slc9-x86 pr=4966 sha=3d7b5ad0 type=failed =====
+2026-11-13@15:20:30 ===== ROUND 1 END pr=4966 result=built rc=0 duration=0m (16s) =====
+2026-11-13@15:21:00 ===== ROUND 2 BEGIN check=build/O2/o2_slc9 pr=15318 sha=fcdecb02 type=untested =====
+2026-11-13@15:21:05 ===== ROUND 2 END pr=15318 result=built rc=4 duration=0m (5s) =====
+2026-11-13@15:22:00 ===== ROUND 2 BEGIN check=build/O2Physics/staging pr=18701 sha=57f6ce90 type=untested =====
+2026-11-13@15:22:01 ===== ROUND 2 END pr=18701 result=stale-skip =====
+2026-11-13@15:23:00 ===== ROUND 3 BEGIN check=build/O2/fullCI-slc10-x86 pr=16114 sha=aaaaaaaa type=failed =====
+2026-11-13@15:28:00 [round 3] check=build/O2/fullCI-slc10-x86 pr=16114 sha=aaaaaaaa elapsed=5m

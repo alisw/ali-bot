@@ -181,9 +181,13 @@ def nomad_log(alloc_id, task, stream="stderr", max_bytes=MAX_FETCH_BYTES):
     return text, truncated
 
 
-#: aliBuild stamps the lines it emits itself with LOCAL time:
+#: aliBuild stamps the lines it emits itself with LOCAL time, and so do
+#: claim-builder.sh's banners and heartbeats -- on stderr as the `set -x` trace
+#: of the printf, whose first argument is the date:
 #:   2026-08-21@14:10:21:DEBUG:O2Suite:autotools:slc10_x86-64-...:
-STAMP_RE = re.compile(r"^(\d{4}-\d\d-\d\d)@(\d\d:\d\d:\d\d):")
+#:   2026-11-13@18:23:40 ===== ROUND 53 BEGIN check=... =====
+#:   + printf '%s ===== ROUND %s END pr=%s result=claim-lost =====\n' 2026-11-13@18:23:40 53 18728
+STAMP_RE = re.compile(r"^(?:\++ printf '[^']*' )?(\d{4}-\d\d-\d\d)@(\d\d:\d\d:\d\d)\b")
 
 
 def line_time(line):
@@ -192,18 +196,31 @@ def line_time(line):
     return (found.group(1), found.group(2)) if found else None
 
 
+#: No timezone suffix on purpose: the log has none, and a UTC value from a
+#: GitHub status would silently compare an hour or two early.
+SINCE_RE = re.compile(r"^(?:(\d{4}-\d\d-\d\d)[@T ]+)?(\d{1,2}:\d\d(?::\d\d)?)$")
+
+
 def parse_since(since, lines):
     """Normalise a `since` argument to a (date, time) pair, or None.
 
-    Accepts "14:10", "14:10:21" or "2026-08-21@14:10". A bare time means today
-    IN THE LOG'S OWN CLOCK -- the date of its newest stamped line, not this
-    Mac's -- because the builders are on CEST and this machine need not be.
+    Accepts "14:10", "14:10:21", or a date before it: "2026-08-21 14:10",
+    "2026-08-21@14:10:21", "2026-08-21T14:10". A bare time means today IN THE
+    LOG'S OWN CLOCK -- the date of its newest stamped line, not this Mac's --
+    because the builders are on CEST and this machine need not be.
+
+    Anything else is refused rather than guessed at: "2026-11-13 15:20" used to
+    be read as a bare time, so the label said "since 2026-11-12 2026-11-13
+    15:20:00" and no line ever compared after it.
     """
     if not since:
         return None
-    since = since.strip()
-    date, _, clock = since.partition("@") if "@" in since else (None, "", since)
-    parts = (clock.split(":") + ["00", "00"])[:3]
+    found = SINCE_RE.match(since.strip())
+    if not found:
+        raise ValueError("since=%r: expected HH:MM[:SS] or YYYY-MM-DD HH:MM[:SS] "
+                         "in the builder's local clock" % since)
+    date, clock = found.groups()
+    parts = (clock.split(":") + ["00"])[:3]
     clock = ":".join(part.zfill(2) for part in parts)
     if date is None:
         date = ""
@@ -256,10 +273,135 @@ def find_rounds(lines):
         elif rounds:
             pkg = ROUND_PKG_RE.match(raw)
             # Only while still in the block: a later ci-round: line starts a new
-            # one, and anything else means the block has ended.
-            if pkg and index == rounds[-1][0] + len(rounds[-1][4]) + 1:
+            # one. Not "the next line": `set -x` traces the loop that prints the
+            # block, a dozen lines per checkout, some of them multi-line.
+            if pkg and index - rounds[-1][0] < 200:
                 rounds[-1][4][pkg.group(1)] = pkg.group(2)
     return rounds
+
+
+#: claim-builder.sh brackets every claim ATTEMPT with a pair of banners, on
+#: stdout as text and on stderr as the `set -x` trace of the printf:
+#:
+#:   2026-11-13@18:23:40 ===== ROUND 53 BEGIN check=build/O2Physics/staging pr=18737 sha=088646b4 type=failed =====
+#:   2026-11-13@18:28:11 ===== ROUND 53 END pr=18737 result=built rc=0 duration=4m (271s) =====
+#:   + printf '%s ===== ROUND %s END pr=%s result=%s =====\n' 2026-11-13@18:23:40 53 18737 stale-skip
+#:
+#: Unlike the ci-round: block these are printed whether or not anything gets
+#: built, so they are the only boundaries that see a lost claim, a stale-skip, a
+#: status-cap skip or a merge conflict. "ROUND n" is the claim-builder's pass
+#: counter: one pass walks the queue, so several attempts share an n, and it
+#: restarts at 1 with the task.
+CLAIM_BEGIN_RE = re.compile(
+    r"^(\d{4}-\d\d-\d\d)@(\d\d:\d\d:\d\d) ===== ROUND (\d+) BEGIN check=(\S+) "
+    r"pr=(\S+) sha=(\S+) type=(\S+) =====")
+CLAIM_END_RE = re.compile(
+    r"^(\d{4}-\d\d-\d\d)@(\d\d:\d\d:\d\d) ===== ROUND (\d+) END pr=(\S+) "
+    r"result=(\S+)(?: rc=(\d+))?(?: duration=\S+ \((\d+)s\))? =====")
+XTRACE_PRINTF_RE = re.compile(r"^\++ printf '([^']*)\\n' (.*)$")
+#: build-loop.sh's give-up when a commit cannot take another status. It exits 0,
+#: so the END banner says "built rc=0" for a round that built nothing.
+STATUS_CAP_RE = re.compile(r"^build-loop: .* has reached GitHub's status limit "
+                           r"for .*skipping this build")
+
+
+def banner_text(raw):
+    """A ROUND banner as printed, whether `raw` is the text or its xtrace."""
+    found = XTRACE_PRINTF_RE.match(raw)
+    if not found:
+        return raw
+    pieces = re.split(r"%(?:\.\d+)?s", found.group(1))
+    args = [arg.strip("'") for arg in found.group(2).split()]
+    if len(pieces) != len(args) + 1:
+        return raw
+    return pieces[0] + "".join(arg + piece for arg, piece in zip(args, pieces[1:]))
+
+
+def find_claims(lines):
+    """[{...}, ...]: claim-builder.sh's ROUND BEGIN/END pairs, in log order.
+
+    Paired by position, not by number, because n is shared within a pass. An
+    attempt with no END ("stop" None) is either still running or was killed.
+    """
+    claims = []
+    for index, raw in enumerate(lines):
+        if "===== ROUND " not in raw:          # cheap: a log is ~250k lines
+            continue
+        text = banner_text(raw)
+        found = CLAIM_BEGIN_RE.match(text)
+        last = claims[-1] if claims else None
+        if found:
+            when = found.group(1, 2)
+            # Both streams merged into one log would show every banner twice.
+            if last and last["stop"] is None and last["when"] == when and \
+               (last["n"], last["check"], last["pr"]) == found.group(3, 4, 5):
+                continue
+            claims.append({"start": index, "stop": None, "when": when,
+                           "n": found.group(3), "check": found.group(4),
+                           "pr": found.group(5), "sha": found.group(6),
+                           "type": found.group(7), "result": None, "rc": None,
+                           "seconds": None, "status_cap": False})
+            continue
+        found = CLAIM_END_RE.match(text)
+        if found and last and last["stop"] is None and \
+           (last["n"], last["pr"]) == found.group(3, 4):
+            last.update(stop=index, result=found.group(5), rc=found.group(6),
+                        seconds=found.group(7) and int(found.group(7)))
+    for claim in claims:
+        if claim["rc"] == "0":
+            claim["status_cap"] = any(STATUS_CAP_RE.match(raw) for raw
+                                      in lines[claim["start"]:claim["stop"]])
+    return claims
+
+
+def claim_class(claim, last):
+    """What a claim attempt came to, in one word (plus the rc of a failure)."""
+    if claim["result"] is None:
+        # The last one has not finished; an earlier one never will: the worker
+        # was killed or restarted mid-round.
+        return "running" if last else "no-END"
+    if claim["result"] != "built":
+        return claim["result"]       # claim-lost, stale-skip, closed, not-head
+    if claim["rc"] == "0":
+        return "status-cap" if claim["status_cap"] else "ok"
+    if claim["rc"] == "4":
+        return "verdict-only"        # build-loop.sh: merge conflict or too big
+    return "FAILED rc=%s" % claim["rc"]
+
+
+def held_claims(claims):
+    """Positions of the claims that were not lost: the numbered rounds.
+
+    A lost claim is a few dozen lines of nothing, and a busy worker loses
+    several a minute; numbering them would shift every round= between a
+    ci_rounds call and the ci_build_errors that follows it.
+    """
+    return [position for position, claim in enumerate(claims)
+            if claim["result"] != "claim-lost"]
+
+
+def claim_stop(claims, position, lines):
+    """One past the last line of claims[position]: its END, else the next BEGIN."""
+    claim = claims[position]
+    if claim["stop"] is not None:
+        return claim["stop"] + 1
+    return claims[position + 1]["start"] if position + 1 < len(claims) else len(lines)
+
+
+def attach_provenance(claims, lines):
+    """Give each claim the ci-round: block build-loop.sh printed inside it."""
+    rounds = find_rounds(lines)
+    starts = [entry[0] for entry in rounds]
+    for position, claim in enumerate(claims):
+        slot = bisect.bisect_left(starts, claim["start"])
+        inside = slot < len(rounds) and starts[slot] < claim_stop(claims, position, lines)
+        claim["ci_round"] = rounds[slot] if inside else None
+
+
+def describe_claim(claim):
+    if claim.get("ci_round"):
+        return describe_round(claim["ci_round"])
+    return "%s on pr=%s@%.8s" % (claim["check"], claim["pr"], claim["sha"])
 
 
 PR_OK_RE = re.compile(r"^\+*\s*PR_OK=([01])\s*$")
@@ -380,9 +522,32 @@ def log_span(lines):
 def scope_lines(lines, since, round_):
     """Slice a log to one round, or to a time. Returns (lines, start, label).
 
-    `round_` wins over `since`: it is exact where a timestamp is a guess.
+    An explicit `round_` wins over `since`: it is exact where a timestamp is a
+    guess. The default "last" does not -- it would silently discard the `since`
+    the caller did pass.
+
+    Rounds are claim-builder.sh's ROUND BEGIN/END pairs that held their claim,
+    numbered as ci_rounds numbers them. The ci-round: banners are only the
+    fallback for logs without them: they mark just a merged build, so on a claim
+    worker everything after one (lost claims, skips, the next PR's merge) was
+    read as part of it.
     """
-    if round_ and round_ != "all":
+    claims = find_claims(lines) if round_ and round_ != "all" else []
+    held = held_claims(claims)
+    if held and not (since and round_ == "last"):
+        try:
+            number = len(held) if round_ == "last" else int(round_)
+            if not 0 < number <= len(held):
+                raise IndexError(round_)
+        except (ValueError, IndexError):
+            return lines, 0, ("round=%s not found; %d round(s) in the window"
+                              % (round_, len(held)))
+        index = held[number - 1]
+        attach_provenance(claims, lines)
+        begin, stop = claims[index]["start"], claim_stop(claims, index, lines)
+        return lines[begin:stop], begin, "round=%d: %s" % (
+            number, describe_claim(claims[index]))
+    if round_ and round_ != "all" and not (since and round_ == "last"):
         rounds = find_rounds(lines)
         if not rounds:
             note = ("no ci-round: banner is in the window -- an old "
@@ -539,65 +704,55 @@ def strip_alibuild_prefix(line):
 # Tools
 # ---------------------------------------------------------------------------
 
-#: Repos whose pending statuses name the worker building them. Used to answer
-#: "which PR is this allocation on", which the logs cannot reliably say.
-DEFAULT_REPOS = ("alisw/alidist", "AliceO2Group/AliceO2")
+#: The heartbeat claim-builder.sh prints on stdout every few minutes of a build.
+HEARTBEAT_RE = re.compile(r"^(\S+) \[round (\d+)\] check=(\S+) pr=(\S+) "
+                          r"sha=(\S+) elapsed=(\d+)m")
 
 
-def building_now(repos):
-    """Map allocation-id prefix -> (repo, PR, check), from pending statuses.
+def current_claim(lines):
+    """What a worker is on, from its stdout: (busy, description).
 
-    The obvious approach -- scrape the log for the PR being built -- does not
-    work: build-loop.sh prints that line once, at the start of a round, which by
-    the time a build reaches [1300/4771] is hundreds of megabytes back. Reading
-    that much log per worker to recover one number is absurd.
-
-    But the worker already publishes the mapping. report_pr_errors --pending
-    sets a status reading "Started <when> on <host_id>", and under Nomad
-    host_id is the allocation id. So GitHub knows which allocation is building
-    which PR, authoritatively, for one query per repo.
+    The latest ROUND BEGIN with no END is the round in progress; if the latest
+    has ENDed the worker is between rounds. Nothing else in the log can be
+    trusted for this -- a GitHub status naming the allocation goes stale the
+    moment the worker moves on, and the last PR number anywhere in the log
+    belongs to whatever printed last, which on a claim worker is usually a lost
+    claim for something else.
     """
-    claims = {}
-    for repo in repos:
-        owner, _, name = repo.partition("/")
-        try:
-            data = github_graphql("""
-            query($o:String!,$n:String!){repository(owner:$o,name:$n){
-              pullRequests(states:OPEN,first:100,
-                           orderBy:{field:UPDATED_AT,direction:DESC}){
-                nodes{number commits(last:1){nodes{commit{status{contexts{
-                  context state description}}}}}}}}}
-            """, o=owner, n=name)
-        except Exception:                       # noqa: BLE001
-            continue
-        for pull in data["repository"]["pullRequests"]["nodes"]:
-            commits = pull["commits"]["nodes"]
-            status = commits[0]["commit"]["status"] if commits else None
-            for ctx in (status or {}).get("contexts", []):
-                # Any state, not just PENDING. A first build says "Started ...
-                # on <alloc>" and stays pending, but a REBUILD keeps its old
-                # red or green and only rewrites the description to "Rechecking
-                # since ... on <alloc>" -- so filtering on PENDING loses every
-                # worker that is rebuilding, which is most of them once a queue
-                # has drained. Stale descriptions naming a finished allocation
-                # are harmless: they match no running one.
-                match = re.search(r"\bon ([0-9a-f]{8})\b", ctx["description"] or "")
-                if match:
-                    claims[match.group(1)] = (repo, pull["number"], ctx["context"])
-    return claims
+    claims = find_claims(lines)
+    claim = claims[-1] if claims else None
+    if claim and claim["result"] is None:
+        return True, "%s pr=%s@%.8s type=%s since %s" % (
+            claim["check"], claim["pr"], claim["sha"], claim["type"],
+            claim["when"][1])
+    beat = None
+    for raw in reversed(lines):
+        beat = HEARTBEAT_RE.match(raw)
+        if beat or " ===== ROUND " in raw:
+            break
+    if beat:
+        # The BEGIN scrolled out of the tail, but a heartbeat after the last
+        # banner can only belong to a round still running.
+        return True, "%s pr=%s@%.8s  %sm in" % beat.group(3, 4, 5, 6)
+    if not claim:
+        return False, "no ROUND banner in the stdout tail"
+    held = [c for c in claims if c["result"] != "claim-lost"]
+    last = (" (last: %s pr=%s %s)" % (held[-1]["check"].rsplit("/", 1)[-1],
+                                      held[-1]["pr"], claim_class(held[-1], False))
+            if held else "")
+    return False, "idle since %s%s" % (claim["when"][1], last)
 
 
 @mcp.tool()
 def ci_workers() -> str:
     """What every running CI checker allocation is doing right now.
 
-    One line per worker: job, allocation, node, which check and PR it claimed,
-    and how far into the build it is. Replaces the five-step dance of listing
-    jobs, listing allocations, then grepping each log for the PR number and the
-    ninja progress counter.
+    One line per worker: job, allocation, node, the claim it holds (from the
+    latest ROUND BEGIN with no END on its stdout) or "idle" between rounds, and
+    how far into the build it is -- counted only from output after that BEGIN,
+    so a previous round's [n/m] is never shown for the current one.
     """
     out = []
-    claims = building_now(DEFAULT_REPOS)
     for job in nomad_get("/v1/jobs"):
         if not job["ID"].startswith("ci-"):
             continue
@@ -611,6 +766,8 @@ def ci_workers() -> str:
                 out.append(line[0] + "  (no running task)")
                 continue
             try:
+                index, _ = nomad_log(alloc["ID"], task, stream="stdout",
+                                     max_bytes=512 * 1024)
                 log, _ = nomad_log(alloc["ID"], task, max_bytes=2 * 1024 * 1024)
             except Exception as err:            # noqa: BLE001
                 # Never echo the URL: it carries the broker's ephemeral port and
@@ -618,13 +775,15 @@ def ci_workers() -> str:
                 out.append(line[0] + "  (no log for task %s: %s)"
                            % (task, type(err).__name__))
                 continue
-            # Identity from GitHub (authoritative), progress from the log tail
-            # (which is where the recent output actually is).
-            claim = claims.get(short)
-            if claim:
-                line.append("%s#%d %s" % (claim[0].split("/")[-1], claim[1],
-                                          claim[2].rsplit("/", 1)[-1]))
-            package = re.findall(r"DEBUG:[^:]*:([^:]+):(?:slc|osx)", log)
+            # Identity from the stdout index; progress from the stderr tail, but
+            # only after this round's BEGIN trace: before it is another round.
+            busy, what = current_claim(index.splitlines())
+            trouble = task_trouble(alloc["TaskStates"][task])
+            line.append(trouble or what)
+            lines = log.splitlines() if busy and not trouble else []
+            claims = find_claims(lines)
+            log = "\n".join(lines[claims[-1]["start"]:] if claims else lines)
+            package = re.findall(r"DEBUG:[^:]*:([^:]+):(?:slc|osx|ubuntu)", log)
             progress = re.findall(r"\[(\d+)/(\d+)\]", log)
             if package:
                 line.append("building %s" % package[-1])
@@ -755,7 +914,9 @@ def ci_log_search(alloc: str, pattern: str, task: str = "ci",
     read exactly like the running one: a stale `--threads 4` and a stale
     "[1249/1255]" were once reported as the current build's state when they
     belonged to the previous round, which had already failed. Pass round="all"
-    to search the whole window, or a number from ci_rounds for a specific one.
+    to search the whole window, a number from ci_rounds for a specific one, or
+    a `since` ("HH:MM" or "YYYY-MM-DD HH:MM", builder-local), which the default
+    round="last" does not override.
 
     Shows the LAST matches, not the first; pass oldest_first=True to flip that.
 
@@ -805,34 +966,69 @@ def ci_log_search(alloc: str, pattern: str, task: str = "ci",
 
 
 @mcp.tool()
-def ci_rounds(alloc: str, task: str = "ci", window_mb: int = 0) -> str:
-    """What this worker has actually been building, round by round.
+def ci_rounds(alloc: str, task: str = "ci", window_mb: int = 0,
+              show_lost: bool = False, max_rounds: int = 40) -> str:
+    """What this worker has actually been doing, round by round.
 
-    Reads the `ci-round:` banners build-loop.sh prints after merging each PR:
-    the check, the PR and head sha it claimed, and the resolved commit of every
-    checkout including alidist. Package pins live inside alidist, so the alidist
-    commit answers "was my recipe fix in this build?" without fetching anything.
+    Reads the ROUND BEGIN/END banners claim-builder.sh prints around every claim
+    attempt, so it sees the rounds that never reach a build as well: one line
+    per round with its time, outcome, duration, build type (untested / failed /
+    succeeded) and what it was for. Outcomes:
 
-    Each round also carries how it ended and how long it took, read from the
-    PR_OK=0/1 that build-loop.sh sets after the build. "running" is the round in
-    progress; "no verdict" is one that ended without setting it, i.e. the worker
-    was killed or restarted mid-build. A duration is omitted rather than guessed
-    when the window clips the start of a round.
+      ok            built, rc=0
+      FAILED rc=N   built and failed
+      verdict-only  rc=4: build-loop.sh posted "merge conflicts" or "too big"
+      status-cap    the commit has hit GitHub's status limit; nothing built
+      stale-skip / closed / not-head   build-one.sh re-read the status and
+                    found the listing out of date; nothing built
+      claim-lost    another worker held the claim (hidden unless show_lost)
+      running       no END yet; no-END is an earlier round that never got one,
+                    i.e. the worker was killed or restarted mid-round
+
+    Where build-loop.sh printed its `ci-round:` block inside the round, the line
+    carries it instead: the merged PR and the resolved commit of every checkout,
+    including alidist -- which answers "was my recipe fix in this build?".
 
     Use this BEFORE ci_build_errors on a claim-based worker: the round number it
     prints can be passed straight back as `round`, which beats guessing a
-    `since` timestamp from a GitHub status in another timezone. The outcome
-    column also says which rounds are worth asking about -- there is no point
-    running ci_build_errors over a round that succeeded.
+    `since` timestamp from a GitHub status in another timezone. Numbers count
+    the rounds in the window that held their claim, so they shift when one
+    falls off the front: use them soon, with the same window_mb.
     """
     alloc_id = _resolve_alloc(alloc)
     log, truncated = nomad_log(alloc_id, task,
                                max_bytes=(window_mb or 0) * 1024 * 1024
                                or MAX_FETCH_BYTES)
     lines = log.splitlines()
+    claims = find_claims(lines)
+    if claims:
+        attach_provenance(claims, lines)
+        classes = [claim_class(claim, position + 1 == len(claims))
+                   for position, claim in enumerate(claims)]
+        tally = Counter(name.split()[0] for name in classes)
+        numbers = {position: number for number, position
+                   in enumerate(held_claims(claims), start=1)}
+        rows = [("round=%d" % numbers[position] if position in numbers else "lost",
+                 claim, name) for position, (claim, name)
+                in enumerate(zip(claims, classes))
+                if show_lost or position in numbers]
+        out = ["%d round(s) in %s (%s)%s"
+               % (len(numbers), alloc_id[:8],
+                  ", ".join("%d %s" % (count, name)
+                            for name, count in sorted(tally.items())),
+                  window_note(lines, truncated))]
+        if len(rows) > max_rounds:
+            out.append("  ... %d earlier round(s) not shown" % (len(rows) - max_rounds))
+        for number, claim, name in rows[-max_rounds:]:
+            out.append("  [%s] %s %-12s %-7s %-10s %s"
+                       % (number, claim["when"][1], name,
+                          human_duration(claim["seconds"]), claim["type"],
+                          describe_claim(claim)))
+        return "\n".join(out)
+    # No claim banners: a worker on an older loop. Fall back to ci-round:.
     rounds = find_rounds(lines)
     if not rounds:
-        return ("no ci-round: banner in %s%s\nEither the worker predates the "
+        return ("no ROUND or ci-round: banner in %s%s\nEither the worker predates the "
                 "banner in build-loop.sh, or every round in the window started "
                 "before it -- try a larger window_mb."
                 % (alloc_id[:8], window_note(lines, truncated)))
@@ -863,6 +1059,200 @@ def ci_rounds(alloc: str, task: str = "ci", window_mb: int = 0) -> str:
                    % (number, stamp[1] if stamp else "        ", verdict,
                       human_duration(seconds), describe_round(entry)))
     return "\n".join(out)
+
+
+#: The jobs that run claim-builder.sh.
+CLAIM_JOBS = ("ci-linux-x86", "ci-linux-x86-v2", "ci-linux-arm",
+              "ci-linux-x86-gpu", "ci-linux-x86-release", "ci-macos-arm")
+
+#: The entrypoint pip-installs ali-bot into a fresh allocation venv before the
+#: loop starts, and pip says which commit it resolved and what it installed.
+#: build-one.sh's per-check installs print the same, hence "before the first
+#: BEGIN after the start".
+ALIBOT_RESOLVED_RE = re.compile(
+    r"Resolved https://github\.com/(\S+/ali-bot)\S* to commit ([0-9a-f]{7,})")
+ALIBOT_INSTALLED_RE = re.compile(r"^Successfully installed .*\bali-bot-(\S+)")
+#: What says a worker is unhealthy, matched only on lines that are not `set -x`
+#: traces (a trace of the printf is not the event).
+HEALTH_RE = {
+    "cooldown": re.compile(r"^\S+ ===== COOLDOWN "),
+    "traceback": re.compile(r"^Traceback \(most recent call last\)"),
+    "ModuleNotFound": re.compile(r"^ModuleNotFoundError"),
+    "cleanup-impossible": re.compile(r"^\S+ ===== CLEANUP IMPOSSIBLE"),
+}
+FREE_RE = re.compile(r"^cleanup\.py: \w+: .*?([\d.]+ GiB) free"
+                     r"|^\S+ ===== CLEANUP IMPOSSIBLE: .*, (\S+) free =====")
+#: Only for a task never restarted, whose LastRestart carries no UTC offset.
+BUILDER_TZ = "Europe/Zurich"
+
+
+def task_start(state):
+    """(date, time) of a task's latest (re)start in the BUILDER's clock, or None.
+
+    Nomad gives StartedAt in UTC; the log is stamped in local time. LastRestart
+    is serialised in the Nomad client's own zone, which is the host's, and the
+    ci task is raw_exec, so that offset is the log's.
+    """
+    from zoneinfo import ZoneInfo
+
+    def parse(value):
+        # Nomad has nanoseconds; fromisoformat stops at microseconds.
+        value = re.sub(r"(\.\d{6})\d+", r"\1", value or "").replace("Z", "+00:00")
+        return datetime.fromisoformat(value)
+    try:
+        started = parse(state.get("StartedAt"))
+        zone = (parse(state["LastRestart"]).tzinfo if state.get("LastRestart")
+                else ZoneInfo(BUILDER_TZ))
+    except ValueError:
+        return None
+    if started.year < 2000:               # 0001-01-01: never started
+        return None
+    local = started.astimezone(zone)
+    return local.strftime("%Y-%m-%d"), local.strftime("%H:%M:%S")
+
+
+def task_trouble(state):
+    """"" for a running task, else its state and Nomad's latest word on it.
+
+    An allocation can be "running" while its main task crash-loops: on
+    2026-11-13 the GPU worker's had restarted 6108 times, and its stdout still
+    ended in a BEGIN from before, which read as a 17-hour build.
+    """
+    if state.get("State") == "running":
+        return ""
+    events = state.get("Events") or [{}]
+    return "TASK %s: %.80s" % (state.get("State"),
+                               events[-1].get("DisplayMessage") or "")
+
+
+def since_start(lines, start):
+    """Index of the first line after the last one stamped before `start`."""
+    cut = 0
+    for index, raw in enumerate(lines if start else ()):
+        stamp = line_time(raw)
+        if stamp and stamp < start:
+            cut = index + 1
+    return cut
+
+
+def rollout_line(job_id, alloc, window_mb):
+    """ci_rollout's line for one allocation."""
+    head = "%-20s %s %-18s" % (job_id, alloc["ID"][:8], alloc["NodeName"])
+    task = main_task(alloc)
+    state = (alloc.get("TaskStates") or {}).get(task)
+    if alloc["ClientStatus"] != "running" or not state:
+        return head + "  " + alloc["ClientStatus"]
+    start = task_start(state)
+    bits = ["started %s %s" % (start[0][5:], start[1][:5]) if start
+            else "start unknown", "restarts=%d" % state.get("Restarts", 0)]
+    if task_trouble(state):
+        bits.append(task_trouble(state))
+    try:
+        index, index_full = nomad_log(alloc["ID"], task, stream="stdout",
+                                      max_bytes=4 * 1024 * 1024)
+        log, log_full = nomad_log(alloc["ID"], task,
+                                  max_bytes=window_mb * 1024 * 1024)
+    except Exception as err:                # noqa: BLE001
+        return head + "  (no log for task %s: %s)" % (task, type(err).__name__)
+
+    # stdout is the round index and reaches back far; stderr is the firehose.
+    out_lines = index.splitlines()
+    out_cut = since_start(out_lines, start)
+    out_lines = out_lines[out_cut:]
+    err_lines = log.splitlines()
+    err_cut = since_start(err_lines, start)
+    err_lines = err_lines[err_cut:]
+    err_claims = find_claims(err_lines)
+    claims = find_claims(out_lines) or err_claims
+
+    version = "unknown"
+    if out_cut or not index_full:           # the window reaches the start
+        pre = out_lines[:claims[0]["start"]] if claims and claims is not err_claims \
+            else out_lines
+        resolved = installed = None
+        for raw in pre:
+            resolved = ALIBOT_RESOLVED_RE.search(raw) or resolved
+            installed = ALIBOT_INSTALLED_RE.match(raw) or installed
+        if resolved:
+            version = "%s@%.8s" % resolved.groups()
+        elif installed:
+            version = "ali-bot-" + installed.group(1)
+    else:
+        version = "unknown (start not in window)"
+    bits.append(version)
+
+    # The status-cap skip is only visible on stderr; carry it over by banner.
+    capped = {(c["when"], c["check"], c["pr"]) for c in err_claims if c["status_cap"]}
+    for claim in claims:
+        claim["status_cap"] |= (claim["when"], claim["check"], claim["pr"]) in capped
+    tally = Counter(claim_class(claim, position + 1 == len(claims)).split()[0]
+                    for position, claim in enumerate(claims))
+    bits.append("rounds: " + (", ".join("%d %s" % (count, name)
+                                        for name, count in sorted(tally.items()))
+                              or "none"))
+
+    health, free = Counter(), None
+    for raw in err_lines:
+        if raw.startswith("+"):
+            continue
+        for name, pattern in HEALTH_RE.items():
+            if pattern.match(raw):
+                health[name] += 1
+        found = FREE_RE.match(raw)
+        if found:
+            free = found.group(1) or found.group(2)
+    bits.append(" ".join("%s=%d" % (name, health[name]) for name in HEALTH_RE))
+    bits.append("free=%s" % (free or "?"))
+    # Counted from the window, not from the start, when it does not reach back.
+    notes = ["%s from %s" % (what, log_span(lines).split(" to ")[0] or "?")
+             for what, lines, cut, full in (("rounds", out_lines, out_cut, index_full),
+                                            ("stderr counts", err_lines, err_cut, log_full))
+             if full and not cut]
+    if notes:
+        bits.append("[only %s]" % "; ".join(notes))
+    return head + "  " + "  ".join(bits)
+
+
+@mcp.tool()
+def ci_rollout(job: str = "", window_mb: int = 8) -> str:
+    """Did the restart pick up the new code, and is it healthy? One call.
+
+    One line per allocation of `job` (default: every claim-based ci-* job):
+    node, when its task last (re)started and how often (from Nomad, shown in
+    the builder's clock), the ali-bot commit the entrypoint installed (from
+    pip's "Resolved ... to commit" before the first round; "unknown" if that
+    is not in the window), and SINCE THAT START: rounds by outcome as in
+    ci_rounds, COOLDOWN banners, Python Tracebacks, ModuleNotFoundError,
+    CLEANUP IMPOSSIBLE, and the last free-space figure cleanup.py printed.
+
+    Rounds come from stdout, which is small and usually reaches back to the
+    start; the other counts need stderr, of which only the last `window_mb` MB
+    are read per allocation. When that does not reach the start the line says
+    from when it counted.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    work = []
+    for job_id in [job] if job else CLAIM_JOBS:
+        try:
+            allocs = nomad_get("/v1/job/%s/allocations" % job_id)
+        except requests.HTTPError:
+            work.append((job_id, None))
+            continue
+        work += [(job_id, alloc) for alloc in allocs
+                 if alloc["ClientStatus"] in ("running", "pending")]
+
+    def one(item):
+        job_id, alloc = item
+        if alloc is None:
+            return "%-20s (no such job)" % job_id
+        try:
+            return rollout_line(job_id, alloc, window_mb)
+        except Exception as err:            # noqa: BLE001
+            return "%-20s %s  (failed: %s)" % (job_id, alloc["ID"][:8],
+                                              type(err).__name__)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        lines = list(pool.map(one, work))
+    return "\n".join(lines) or "no running allocations in %s" % (job or "the ci-* jobs")
 
 
 @mcp.tool()
