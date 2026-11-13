@@ -219,6 +219,29 @@ function build_type_to_status () {
   esac
 }
 
+function stale_listing () {
+  # stale_listing BUILD_TYPE WAITING_SINCE STATE CREATED
+  # Prints why a claimed row must not be built and returns 0, if the check's
+  # status changed since the listing. STATE and CREATED describe its newest
+  # status now, as set-github-status --print-state prints them.
+  # An untested row was listed with no verdict, so any verdict now is newer;
+  # pending still builds, as with the claim free it means its holder died.
+  # A rebuild row carries the createdAt of the status it was listed for as
+  # WAITING_SINCE, so a later one is a different, newer status, whatever its
+  # state. Anything empty or unknown means "build".
+  local build_type=$1 since=$2 state=$3 created=$4
+  case $build_type:$state in
+    untested:success|untested:failure|untested:error) ;;
+    failed:*|succeeded:*)
+      if ! is_numeric "$since" || ! is_numeric "$created" ||
+         [ "$since" -eq 0 ] || [ "$created" -le "$since" ]; then
+        return 1
+      fi ;;
+    *) return 1 ;;
+  esac
+  echo "stale-skip: a newer $state status than this $build_type listing"
+}
+
 function report_pr_errors () {
   # This is a wrapper for report-pr-errors with some default switches.
   local repo checkout_name extra_args=()

@@ -19,6 +19,7 @@ The lister stub here deliberately returns the same three PRs every time: that is
 exactly what GitHub looks like when the status never gets written.
 """
 
+import functools
 import os
 import subprocess
 import tempfile
@@ -302,6 +303,49 @@ class ClaimBuilderFastFailTestCase(unittest.TestCase):
                            "being attempted; got %r" % (order,))
 
 
+# Two workers, one shared GitHub status, the real build-one.sh in between. The
+# claim is free between their rounds, exactly as after `nomad var lock` releases
+# it, so only the re-read in build-one.sh can stop the second worker.
+STALE_HELPERS = """\
+. %s
+reset_git_repository () { :; }
+general_timeout () { :; }
+short_timeout () { case $1 in python3) ;; *) "$@" ;; esac; }  # not pip
+source_env_files () {
+  export CHECK_NAME=build/O2/fullCI PR_REPO=alisw/alidist
+  INSTALL_ALIBOT=alisw/ali-bot@master INSTALL_ALIBUILD=alisw/alibuild@v1.17.43
+}
+""" % os.path.join(REPO, "ci", "build-helpers.sh")
+STALE_FILES = (
+    ("build-one.sh", '#!/bin/bash\nexec bash %s "$@"\n' % os.path.join(REPO, "ci", "build-one.sh")),
+    # The build posts its verdict, as build-loop.sh does at the end.
+    ("build-loop.sh", 'echo "$PR_HASH" >> "$LOGFILE"; echo "success $(date +%s) 42" > "$STATUSFILE"\n'),
+    ("set-github-status", '#!/bin/bash\n'
+     'case " $* " in *" --help "*) echo --print-state ;; *) cat "$STATUSFILE" ;; esac\n'),
+)
+STALE_CLAIMS = 'with_claim () { shift 2; "$@"; }\n'
+STALE_LISTER = "#!/bin/bash\nprintf 'untested\\t6413\\tsha-aaa\\tfullci\\t1682437081\\n'\n"
+
+
+class ClaimBuilderStaleListingTestCase(unittest.TestCase):
+    def test_the_second_worker_skips_what_the_first_built(self):
+        with tempfile.TemporaryDirectory() as shared:
+            status, roundlog = os.path.join(shared, "status"), os.path.join(shared, "rounds")
+            with open(status, "w") as handle:
+                handle.write("none - -\n")
+            run = functools.partial(
+                ClaimBuilderProgressTestCase.run_loop, lister=STALE_LISTER, helpers=STALE_HELPERS,
+                claims=STALE_CLAIMS, files=STALE_FILES, extra_env={"STATUSFILE": status})
+            # Both listed sha-aaa as untested; worker 1 builds it first.
+            self.assertEqual(run(seconds=10), ["sha-aaa"])
+            self.assertEqual(run(seconds=4, roundlog=roundlog), [],
+                             "worker 2 rebuilt what worker 1 had just built")
+            with open(roundlog) as handle:
+                rounds = handle.read()
+            self.assertIn("result=stale-skip", rounds)
+            self.assertNotIn("result=claim-lost", rounds)
+
+
 class ClaimBuilderProgressTestCase(unittest.TestCase):
     #: Every assertion here reads the same run, because the run costs wall-clock
     #: (the loop has to be timed out) and nothing below mutates it.
@@ -312,14 +356,17 @@ class ClaimBuilderProgressTestCase(unittest.TestCase):
         cls.ORDER = cls.run_loop()
 
     @staticmethod
-    def run_loop(seconds=4, lister=None, helpers=None, claims=None, extra_env=None):
-        """Run the real claim-builder.sh against stubs; return what it built."""
+    def run_loop(seconds=4, lister=None, helpers=None, claims=None, extra_env=None,
+                 files=(), roundlog=None):
+        """Run the real claim-builder.sh against stubs; return what it built.
+
+        files adds (name, body) stubs to PATH; roundlog keeps its stdout."""
         with tempfile.TemporaryDirectory() as tree:
             binpath = os.path.join(tree, "bin")
             os.mkdir(binpath)
             for name, body in (("build-helpers.sh", helpers or HELPERS),
                                ("claims.sh", claims or CLAIMS),
-                               ("list-branch-pr", lister or LISTER)):
+                               ("list-branch-pr", lister or LISTER)) + tuple(files):
                 path = os.path.join(binpath, name)
                 with open(path, "w") as handle:
                     handle.write(body)
@@ -341,8 +388,9 @@ class ClaimBuilderProgressTestCase(unittest.TestCase):
                        **(extra_env or {}))
             # The loop never exits by design, so stop it and read what it did.
             try:
-                subprocess.run(["bash", CLAIM_BUILDER], env=env, timeout=seconds,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                with open(roundlog or os.devnull, "w") as out:
+                    subprocess.run(["bash", CLAIM_BUILDER], env=env, timeout=seconds,
+                                   cwd=tree, stdout=out, stderr=subprocess.DEVNULL)
             except subprocess.TimeoutExpired:
                 pass
             with open(log) as handle:
