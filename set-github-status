@@ -5,7 +5,8 @@ import logging
 import sys
 
 from alibot_helpers.github_utilities import (
-    setGithubStatus, githubStateLine, GithubCachedClient, StatusLimitReached)
+    setGithubStatus, githubStateLine, githubPullState, GithubCachedClient,
+    StatusLimitReached)
 
 
 # Just for the moment
@@ -16,7 +17,7 @@ DEFAULT_USER = "alisw"
 def parse_args():
     usage = "set-github-status "
     usage += "[-d] [-n] -c <commit> -s <status> [-m <status-message>] [-u <target-url> | -k]"
-    usage += "\n       set-github-status -c <commit> --print-state --context <context>"
+    usage += "\n       set-github-status -c <commit> --print-state --context <context> [--pr <number>]"
     parser = ArgumentParser(usage=usage)
     parser.add_argument("--commit", "-c",
                         required=True,
@@ -33,6 +34,9 @@ def parse_args():
                               "'none - -' if there is none"))
     parser.add_argument("--context",
                         help="Context for --print-state, e.g. build/O2/fullCI")
+    parser.add_argument("--pr", help=("With --print-state, also print PR: open, "
+                                      "closed, not-head if the commit is no "
+                                      "longer its head, or '-' if unknown"))
 
     parser.add_argument("--message", "-m",
                         default="",
@@ -76,7 +80,11 @@ def main():
         # unless the line says otherwise, so no traceback is worth more.
         try:
             with GithubCachedClient() as cgh:
-                print(githubStateLine(cgh, args.commit, args.context))
+                line = githubStateLine(cgh, args.commit, args.context)
+                # Only a number is a pull request; a branch or a tag is not.
+                if args.pr and args.pr.isdigit():
+                    line += " " + githubPullState(cgh, args.commit, args.pr)
+                print(line)
         except Exception as e:
             print("set-github-status: cannot read %s on %s: %s" %
                   (args.context, args.commit, e), file=sys.stderr)
