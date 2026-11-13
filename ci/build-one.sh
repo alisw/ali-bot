@@ -33,19 +33,19 @@ if source_env_files "$env_name"; then
     echo "build-one: set-github-status has no --print-state, building without" \
          "re-reading the status; upgrade the allocation's ali-bot" >&2
   else
-    read -r _state _created _id < <(short_timeout set-github-status \
-      --print-state -c "$PR_REPO@$PR_HASH" --context "$CHECK_NAME")
-    _skip=$(stale_listing "$BUILD_TYPE" "$WAITING_SINCE" "$_state" "$_created")
+    read -r _state _created _id _pr < <(short_timeout set-github-status \
+      --print-state -c "$PR_REPO@$PR_HASH" --context "$CHECK_NAME" --pr "$PR_NUMBER")
+    _skip=$(stale_listing "$BUILD_TYPE" "$WAITING_SINCE" "$_state" "$_created" "$_pr")
     echo "build-one: $CHECK_NAME on $PR_REPO@$PR_HASH: listed $BUILD_TYPE" \
          "since=${WAITING_SINCE:--}, now ${_state:-unknown} created=${_created:--}" \
-         "id=${_id:--}: ${_skip:-build}" >&2
+         "id=${_id:--} pr=${_pr:--}: ${_skip:-build}" >&2
     # Not $BUILD_MARKER: claim-builder.sh must not count this as a build.
     if [ -n "$_skip" ]; then
       [ -n "$BUILD_MARKER" ] && echo "${_skip%%:*}" > "$BUILD_MARKER.skipped"
       exit 0
     fi
   fi
-  unset _state _created _id _skip
+  unset _state _created _id _pr _skip
 fi
 
 # Tell the caller we actually ran, as opposed to never being started because

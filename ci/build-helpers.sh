@@ -220,7 +220,7 @@ function build_type_to_status () {
 }
 
 function stale_listing () {
-  # stale_listing BUILD_TYPE WAITING_SINCE STATE CREATED
+  # stale_listing BUILD_TYPE WAITING_SINCE STATE CREATED [PR]
   # Prints why a claimed row must not be built and returns 0, if the check's
   # status changed since the listing. STATE and CREATED describe its newest
   # status now, as set-github-status --print-state prints them.
@@ -228,8 +228,13 @@ function stale_listing () {
   # pending still builds, as with the claim free it means its holder died.
   # A rebuild row carries the createdAt of the status it was listed for as
   # WAITING_SINCE, so a later one is a different, newer status, whatever its
-  # state. Anything empty or unknown means "build".
-  local build_type=$1 since=$2 state=$3 created=$4
+  # state. A PR that is closed, or no longer has this sha as its head, is not
+  # worth building either. Anything empty or unknown means "build".
+  local build_type=$1 since=$2 state=$3 created=$4 pr=$5
+  case $pr in
+    closed) echo "closed: the pull request is closed"; return 0 ;;
+    not-head) echo "not-head: the pull request has moved on from this sha"; return 0 ;;
+  esac
   case $build_type:$state in
     untested:success|untested:failure|untested:error) ;;
     failed:*|succeeded:*)

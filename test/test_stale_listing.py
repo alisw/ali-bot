@@ -20,7 +20,7 @@ import unittest
 from importlib.machinery import SourceFileLoader
 from unittest import mock
 
-from alibot_helpers.github_utilities import githubStateLine
+from alibot_helpers.github_utilities import githubPullState, githubStateLine
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HELPERS = os.path.join(REPO, "ci", "build-helpers.sh")
@@ -37,8 +37,8 @@ def stale_listing(*args):
 
 def read_and_decide(line, build_type, since):
     """Parse a --print-state line exactly as build-one.sh does, then decide."""
-    p = subprocess.run(["bash", "-c", '. "$0"; read -r state created id; '
-                        'stale_listing "$1" "$2" "$state" "$created"',
+    p = subprocess.run(["bash", "-c", '. "$0"; read -r state created id pr; '
+                        'stale_listing "$1" "$2" "$state" "$created" "$pr"',
                         HELPERS, build_type, since],
                        input=line + "\n", capture_output=True, text=True)
     return p.returncode, p.stdout, p.stderr
@@ -86,13 +86,29 @@ class StaleListingTestCase(unittest.TestCase):
                                ("1000", "20x0")):
             self.assertBuild("failed", since, "error", created)
 
+    def test_an_obsolete_sha_is_skipped_whatever_its_status(self):
+        for pr in ("closed", "not-head"):
+            for build_type, state in (("untested", "pending"), ("failed", "error")):
+                rc, out, err = stale_listing(build_type, "1000", state, "1000", pr)
+                self.assertEqual((rc, err), (0, ""))
+                self.assertTrue(out.startswith(pr + ": "), out)
+
+    def test_an_open_or_unknown_pr_does_not_change_the_decision(self):
+        for pr in ("open", "-", "", "bogus"):
+            self.assertBuild("untested", "1000", "pending", "2000", pr)
+            self.assertSkip("untested", "1000", "success", "2000", pr)
+
 
 class FakeGH:
-    def __init__(self, statuses):
-        self.statuses = statuses
+    def __init__(self, statuses, pull=None):
+        self.statuses, self.pull = statuses, pull
 
-    def get(self, *args, **kwds):
-        return self.statuses
+    def get(self, url, **kwds):
+        if "/pulls/" not in url:
+            return self.statuses
+        if isinstance(self.pull, Exception):
+            raise self.pull
+        return self.pull
 
 
 CREATED = "2026-11-10T00:26:22Z"
@@ -121,6 +137,14 @@ class GithubStateLineTestCase(unittest.TestCase):
         gh = FakeGH([{"context": "build/X", "state": "error", "id": 42}])
         self.assertEqual(githubStateLine(gh, "alisw/alidist@abc", "build/X"), "error - 42")
 
+    def test_the_pull_request_state(self):
+        for pull, field in (({"state": "open", "head": {"sha": "abc123"}}, "open"),
+                            ({"state": "open", "head": {"sha": "def456"}}, "not-head"),
+                            ({"state": "closed", "head": {"sha": "abc123"}}, "closed"),
+                            (None, "-"), (RuntimeError("5xx"), "-")):
+            self.assertEqual(githubPullState(FakeGH(None, pull), "alisw/alidist@abc123",
+                                             "6413"), field)
+
     def test_an_unreadable_status_list_raises(self):
         with self.assertRaises(RuntimeError):
             githubStateLine(FakeGH(None), "alisw/alidist@abc", "build/X")
@@ -131,6 +155,7 @@ class GithubStateLineTestCase(unittest.TestCase):
         self.assertEqual(read_and_decide("error - 42", "failed", "1000"), (1, "", ""))
         self.assertEqual(read_and_decide("none - -", "untested", "1000"), (1, "", ""))
         self.assertEqual(read_and_decide("", "failed", "1000"), (1, "", ""))
+        self.assertEqual(read_and_decide("none - - not-head", "untested", "1000")[0], 0)
 
 
 def load_set_github_status():
@@ -159,6 +184,13 @@ class PrintStateTestCase(unittest.TestCase):
             ["--print-state", "-c", "alisw/alidist@abc", "--context", "build/X"],
             [{"context": "build/X", "state": "success", "created_at": CREATED, "id": 42}])
         self.assertEqual((code, out), (0, "success %d 42\n" % EPOCH))
+
+    def test_the_pull_request_is_a_fourth_field(self):
+        argv = ["--print-state", "-c", "alisw/alidist@abc", "--context", "build/X", "--pr"]
+        self.assertEqual(self.run_main(argv + ["6413"], [])[:2], (0, "none - - -\n"))
+        # A branch or a release tag stands where the number would; never ask.
+        for ref in ("master", "O2PDPSuite-daily-20260825-1100"):
+            self.assertEqual(self.run_main(argv + [ref], [])[:2], (0, "none - -\n"))
 
     def test_an_unreadable_status_is_one_line_and_exit_1(self):
         code, out, err = self.run_main(
@@ -230,6 +262,12 @@ class BuildOneStaleListingTestCase(unittest.TestCase):
             self.assertEqual((rc, built, skipped), (0, False, "stale-skip"), build_type)
             self.assertNotIn("build-loop", log)
             self.assertNotIn("pip install", log)
+
+    def test_an_obsolete_sha_is_skipped(self):
+        for pr in ("closed", "not-head"):
+            rc, built, skipped, log, _ = run_build_one("untested", "1000", "pending 2000 42 " + pr)
+            self.assertEqual((rc, built, skipped), (0, False, pr))
+            self.assertNotIn("build-loop", log)
 
     def test_a_fresh_row_builds(self):
         rc, built, skipped, log, _ = run_build_one("untested", "1000", "pending 2000 42")

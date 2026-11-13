@@ -441,6 +441,25 @@ def githubStateLine(cgh, commit, context):
     return "%s %s %s" % (latest["state"], created or "-", latest.get("id") or "-")
 
 
+def githubPullState(cgh, commit, pr):
+    """Whether commit is still worth building for pull request number pr.
+
+    "open" if it is the head of the open PR, "not-head" if the PR has moved on
+    (a force push or new commits), "closed" if it is closed or merged, and "-"
+    if that cannot be told, so that the caller builds.
+    """
+    repo_name, _, commit_ref = parseGithubRef(commit)
+    try:
+        pull = cgh.get("/repos/{repo_name}/pulls/{pr}", repo_name=repo_name, pr=pr)
+    except Exception:
+        return "-"
+    if not pull:
+        return "-"
+    if pull.get("state") != "open":
+        return "closed"
+    return "open" if pull.get("head", {}).get("sha", "").startswith(commit_ref) else "not-head"
+
+
 def setGithubStatus(cgh, args, debug_print=True):
     repo_name, _, commit_ref = parseGithubRef(args.commit)
     state_context = args.status.rsplit("/", 1)[0] if "/" in args.status else ""
