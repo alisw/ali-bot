@@ -587,6 +587,7 @@ clean_env long_timeout $BUILD_CMD build "$PACKAGE"             \
      ${use_docker:+--architecture "$ARCHITECTURE"}           \
      ${use_docker:+--docker-image "$CONTAINER_IMAGE"}        \
      ${use_docker:+--docker-extra-args="$DOCKER_EXTRA_ARGS"} \
+     ${ALIBUILD_STORAGE:+--storage "$ALIBUILD_STORAGE"}      \
      ${ALIBUILD_EXTRA_ARGS:+$ALIBUILD_EXTRA_ARGS}            \
      --fetch-repos --debug --no-auto-cleanup || build_rc=$?
 set -x

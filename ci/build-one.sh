@@ -117,6 +117,37 @@ for name, value in (m.groupdict() or {}).items():
   unset _day _regex tag_env
 fi
 
+# One release a week is kept for good. Release builders upload with the default
+# --storage ephemeral, so their CAS blobs expire 90 days after they were first
+# written -- and a package that rarely changes is deduplicated rather than
+# re-uploaded, so its blob keeps that first date however often it is used. Set
+# PERMANENT_STORAGE_WEEKDAY (ISO: 1 = Monday ... 7 = Sunday) in a release check's
+# *.env and the build of the tag dated on that weekday runs with
+# --storage permanent: its own blobs never expire, and every ephemeral blob it
+# reuses is promoted, so the whole closure of that week's release is pinned.
+#
+# Decided from the date IN THE TAG, not from today: every worker, and any
+# rebuild of the same tag, makes the same choice. Set here rather than in the
+# *.env, which is sourced before the tag is parsed. Reset first, because this
+# value must never come from the environment this worker was started with.
+ALIBUILD_STORAGE=
+if [ -n "$PERMANENT_STORAGE_WEEKDAY" ] && ! is_numeric "$PR_NUMBER"; then
+  _weekday=$(python3 -c '
+import datetime, re, sys
+m = re.search(r"(?:^|-)([0-9]{8})(?=-|_|$)", sys.argv[1])
+if not m:
+    sys.exit(1)
+print(datetime.datetime.strptime(m.group(1), "%Y%m%d").isoweekday())
+' "$PR_NUMBER") || _weekday=
+  if [ -z "$_weekday" ]; then
+    echo "$env_name: no YYYYMMDD date in tag $PR_NUMBER, building it ephemeral" >&2
+  elif [ "$_weekday" = "$PERMANENT_STORAGE_WEEKDAY" ]; then
+    ALIBUILD_STORAGE=permanent
+    echo "$env_name: $PR_NUMBER is dated on weekday $_weekday, building it with --storage permanent" >&2
+  fi
+  unset _weekday
+fi
+
 # A candidate ali-bot under test wins over the *.env pin. Applied HERE, after
 # the env files, rather than by making repo-config/DEFAULTS.env respect a
 # pre-set INSTALL_ALIBOT: that file is read in a long-lived shell that exports
