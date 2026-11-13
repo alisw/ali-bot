@@ -47,12 +47,10 @@ fi
 
 [ x$ALIENV_DEBUG == x1 ] && printf "distro_name=$distro_name\ndistro_release=$distro_release\n" >&2
 
-
-uname_m=$(uname -m)
-
 case $distro_name in
      Scientific*|CentOS*|Rocky*|Alma*|RedHatEnterprise*|'Red Hat Enterprise'*)
         distro_dir="Scientific"
+        uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
            5.*)
@@ -75,11 +73,16 @@ case $distro_name in
               distro_xrelease=8.x
               platform=el9
               ;;
+           10*)
+              distro_xrelease=8.x
+              platform=el10
+              ;;
 
         esac
         ;;
      Fedora*)
         distro_dir="Scientific"
+        uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
            17|18)
@@ -97,6 +100,7 @@ case $distro_name in
         ;;
      SUSE*)
         distro_dir="Scientific"
+        uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
            11) # Titan
@@ -110,6 +114,7 @@ case $distro_name in
         ;;
      Debian*)
         distro_dir="Scientific"
+        uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
            6.*|6|7.*|7)
@@ -129,6 +134,7 @@ case $distro_name in
         ;;
      Ubuntu*)
         distro_dir="Scientific"
+        uname_m=`uname -m`
         arch=${uname_m}-2.6-gnu-4.1.2
         case $distro_release in
            13.*)
@@ -138,10 +144,14 @@ case $distro_name in
               distro_xrelease=6.x
               platform=ubuntu1404
               ;;
-           16.*|17.*|18.*|2?.*)
+           16.*|17.*|18.*|2[0-5].*)
               # Required from system: apt install libx11-6 environment-modules
               distro_xrelease=
               platform=ubuntu1604
+              ;;
+           2?.*)
+              distro_xrelease=
+              platform=ubuntu2604
               ;;
         esac
         ;;
@@ -301,9 +311,12 @@ alien="AliEn"
 
 # We cannot cross-pick pacakages among different platforms but we have to
 # pick all packages consistently from a certain platform tree. When listing
-# packages we show them all, when we load a package e define a priority list and
+# packages we show them all, when we load a package we define a priority list and
 # we always have a fallback for backward compatibility.
-PLATFORM_PRIORITY="el9-$uname_m el7-$uname_m el6-$uname_m el5-$uname_m el8-$uname_m"
+PLATFORM_PRIORITY="el10-$uname_m el9-$uname_m el7-$uname_m el6-$uname_m el5-$uname_m el8-$uname_m ubuntu2604-$uname_m"
+# Search the detected platform first, so that a newer build (e.g. el10) is not picked on an older host.
+[[ $platform ]] && PLATFORM_PRIORITY="${platform}-$uname_m ${PLATFORM_PRIORITY//${platform}-$uname_m/}"
+[ x$ALIENV_DEBUG == x1 ] && printf "PLATFORM_PRIORITY=$PLATFORM_PRIORITY\n" >&2
 ARGS=("$@")
 PACKAGES=
 EXPECT_PACKAGES=
@@ -349,12 +362,15 @@ else
               $cvmfsdir/el6-$uname_m
               $cvmfsdir/el7-$uname_m
               $cvmfsdir/el8-$uname_m
-              $cvmfsdir/el9-$uname_m"
+              $cvmfsdir/el9-$uname_m
+              $cvmfsdir/el10-$uname_m"
   export MODULEPATH=$(modulepath modulefiles $moduledirs)
   [ x$platform != x ] && MODULEPATH="$cvmfsdir/etc/toolchain/modulefiles/${platform}-${uname_m}:$MODULEPATH"
 fi
 
 [ x$ALIENV_DEBUG == x1 ] && printf "MODULEPATH=$MODULEPATH\n" >&2
+
+COMMAND_IN_ENV=()
 
 while [ $# -gt 0 ]
 do
@@ -438,8 +454,8 @@ do
        export MODULEPATH=$MODULEPATH:$(modulepath archive $moduledirs)
        ;;
      -c)
-       shift 1
-       exec bash -c "$*"
+       shift; COMMAND_IN_ENV=("$@");
+       exec "${COMMAND_IN_ENV[@]}"
        ;;
      -alien-version|--alien-version)
        shift 1
@@ -471,3 +487,4 @@ do
      ;;
     esac
 done
+
