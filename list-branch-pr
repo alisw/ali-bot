@@ -302,7 +302,8 @@ class RepoConfig:
         return trusted
 
     def process_single_pr(self, pull_number, last_commit, pr_created,
-                          is_draft=False, is_trusted=False, is_urgent=False):
+                          is_draft=False, is_trusted=False, is_urgent=False,
+                          is_conflicting=False):
         """Decide whether to queue this PR (or branch) for testing.
 
         If it should be queued, return an object describing the PR, else,
@@ -336,6 +337,19 @@ class RepoConfig:
         else:
             state = "skip"
 
+        # A red PR that GitHub says cannot merge is not offered for a recheck.
+        # The recheck could only fail at `git merge` again, and each one wrote
+        # two statuses ("Rechecking since", "Please resolve merge conflicts"):
+        # with every claim worker retrying hourly that is ~8 an hour, and
+        # AliceO2#15688 reached GitHub's per-commit status cap that way, after
+        # which no verdict can ever be written for it. A conflict only goes away
+        # with a new push, which is a new commit and so an untested row again.
+        # Untested and green rows are still built: the first build is what tells
+        # the author, and a green PR whose base moved underneath it deserves to
+        # turn red once. UNKNOWN is not CONFLICTING, so it builds as before.
+        if state == "failed" and is_conflicting:
+            state = "skip"
+
         # The PR has been waiting for checks either since it was created or
         # since its latest commit was pushed. commit["pushedDate"] was
         # unfortunately deprecated and removed by GitHub, so committedDate
@@ -345,6 +359,7 @@ class RepoConfig:
         waiting_since = max(pr_created, last_commit["committedDate"])
         print(f"pr: {pull_number:6d}@{commit_hash:.7s}: wait={waiting_since} "
               f"revd={reviewed:d} trust={is_trusted:d} tested={tested:d} "
+              f"conflict={is_conflicting:d} "
               f"success={success:d} broken={broken:d} => state={state}",
               file=sys.stderr)
         return None if state == "skip" else (state, {
@@ -367,6 +382,7 @@ class RepoConfig:
                 is_trusted=self.trust_pr(cgh, session, pull),
                 is_urgent=any(label["name"] == PRIORITY_LABEL
                               for label in pull["labels"]["nodes"]),
+                is_conflicting=pull.get("mergeable") == "CONFLICTING",
             )
             if item is not None:
                 yield item
@@ -696,6 +712,10 @@ query statuses(
         isDraft
         createdAt
         authorAssociation
+        # MERGEABLE, CONFLICTING or UNKNOWN (GitHub computes it lazily). Only
+        # CONFLICTING is acted on, in process_single_pr. Same node, no extra
+        # request.
+        mergeable
         # Cheap: same node as the fields above, so no extra request. Only the
         # presence of PRIORITY_LABEL matters, but names are not filterable
         # server-side, so fetch the (few) labels a PR carries and check here.

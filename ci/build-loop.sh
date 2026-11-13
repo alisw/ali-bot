@@ -69,31 +69,8 @@ case "$BUILD_TYPE" in
   # If we are running in Nomad, add a link to the this allocation.
   untested) report_pr_errors --pending -m "Started $PR_START_TIME on $host_id" \
                              ${NOMAD_ALLOC_ID:+--log-url "https://alinomad.cern.ch/ui/allocations/$NOMAD_ALLOC_ID"} ;;
-  # Rebuilds only change the existing status's message, keeping the red status
-  # and URL intact.
-  #
-  # Exit 3 means the commit has exhausted GitHub's status quota for this
-  # context, so the result of this build could never be recorded: the check
-  # would stay red, the queue would offer it again as `failed`, and the worker
-  # would rebuild it for as long as the PR stays open. alidist#6245 did exactly
-  # that -- 2000 of 5344 rounds across the fleet, 37% of all CI capacity, spent
-  # on one pull request whose verdict was unwritable since 2026-08-17.
-  #
-  # Give up the round here, before the build rather than after it. The check
-  # keeps its last value, which is the only outcome GitHub will accept; a human
-  # clears it by pushing a new commit, which resets the quota.
-  failed) _status_rc=0
-          set-github-status -k -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/$(build_type_to_status "$BUILD_TYPE")" \
-                            -m "Rechecking since $PR_START_TIME on $host_id" || _status_rc=$?
-          if [ "$_status_rc" -eq 3 ]; then
-            echo "build-loop: $PR_REPO@$PR_HASH has reached GitHub's status limit for" \
-                 "$CHECK_NAME; skipping this build, push a new commit to reset it" >&2
-            # PR_OK deliberately left unset: nothing was built, so report_state
-            # omits prok rather than recording a failure that never happened.
-            report_state pr_processing_done
-            exit 0
-          fi
-          unset _status_rc ;;
+  # Rebuilds (failed) post their "Rechecking" status further down, AFTER the
+  # merge: see "Recheck status" below.
   # See above for why we don't update the status for green checks.
   succeeded) ;;
 esac
@@ -267,7 +244,11 @@ if [ -z "$TAG_REGEX" ] && pushd "$PR_REPO_CHECKOUT"; then
       short_timeout report-analytics exception --desc 'set-github-status fail on cannot merge'
     PR_OK=0
     report_state pr_processing_done
-    exit 1
+    # 4, not 1: "verdict posted, nothing built". A failure this fast is
+    # otherwise read by claim-builder.sh as a broken worker, and three of them
+    # cool the whole check down on this node -- for something wrong with the
+    # PR, not with the machine.
+    exit 4
   fi
 
   if [ $(($(du -sm . | cut -f1) - old_size)) -gt "${MAX_DIFF_SIZE:-5}" ]; then
@@ -279,10 +260,48 @@ if [ -z "$TAG_REGEX" ] && pushd "$PR_REPO_CHECKOUT"; then
       short_timeout report-analytics exception --desc 'report-pr-errors fail on merge diff too big'
     PR_OK=0
     report_state pr_processing_done
-    exit 1
+    # 4, not 1: "verdict posted, nothing built". A failure this fast is
+    # otherwise read by claim-builder.sh as a broken worker, and three of them
+    # cool the whole check down on this node -- for something wrong with the
+    # PR, not with the machine.
+    exit 4
   fi
 
   popd || exit 1
+fi
+
+# Recheck status. Rebuilds only change the existing status's message, keeping
+# the red status and URL intact.
+#
+# AFTER the merge, deliberately. Posted before it, a PR that no longer merges
+# cost two statuses per recheck -- "Rechecking since" then "Please resolve merge
+# conflicts" -- which is how AliceO2#15688 used up its whole quota. The lister
+# now skips red PRs GitHub reports as CONFLICTING; this covers the rest
+# (UNKNOWN, or a base branch that moved since the listing).
+#
+# Exit 3 means the commit has exhausted GitHub's status quota for this
+# context, so the result of this build could never be recorded: the check
+# would stay red, the queue would offer it again as `failed`, and the worker
+# would rebuild it for as long as the PR stays open. alidist#6245 did exactly
+# that -- 2000 of 5344 rounds across the fleet, 37% of all CI capacity, spent
+# on one pull request whose verdict was unwritable since 2026-08-17.
+#
+# Give up the round here, before the build rather than after it. The check
+# keeps its last value, which is the only outcome GitHub will accept; a human
+# clears it by pushing a new commit, which resets the quota.
+if [ "$BUILD_TYPE" = failed ]; then
+  _status_rc=0
+  set-github-status -k -c "$PR_REPO@$PR_HASH" -s "$CHECK_NAME/$(build_type_to_status "$BUILD_TYPE")" \
+                    -m "Rechecking since $PR_START_TIME on $host_id" || _status_rc=$?
+  if [ "$_status_rc" -eq 3 ]; then
+    echo "build-loop: $PR_REPO@$PR_HASH has reached GitHub's status limit for" \
+         "$CHECK_NAME; skipping this build, push a new commit to reset it" >&2
+    # PR_OK deliberately left unset: nothing was built, so report_state
+    # omits prok rather than recording a failure that never happened.
+    report_state pr_processing_done
+    exit 0
+  fi
+  unset _status_rc
 fi
 
 # Provenance for this round, in one greppable block: what was claimed, what was

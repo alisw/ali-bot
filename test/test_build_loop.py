@@ -127,5 +127,35 @@ class QueuedStatusParsingTestCase(unittest.TestCase):
         self.assertIn("read -r", self.read_loop_line(),
                       "the queued-status loop must read raw")
 
+
+class MergeConflictOrderingTestCase(unittest.TestCase):
+    """A recheck of a PR that no longer merges must cost one status, not two.
+
+    The "Rechecking since" status used to be posted before the merge, so every
+    recheck of a conflicting PR wrote it and then "Please resolve merge
+    conflicts". With four workers retrying hourly, AliceO2#15688 reached
+    GitHub's per-commit status cap, after which no verdict can be recorded.
+    """
+
+    def source(self):
+        with open(BUILD_LOOP) as handle:
+            return handle.read()
+
+    def test_the_recheck_status_is_posted_after_the_merge(self):
+        text = self.source()
+        merge = text.index('git merge --no-edit "$PR_HASH"')
+        recheck = text.index('-m "Rechecking since')
+        self.assertLess(merge, recheck,
+                        "the Rechecking status is posted before the merge again")
+
+    def test_a_conflict_exits_with_the_verdict_only_code(self):
+        """Exit 1 there made claim-builder.sh count a bad PR as a broken
+        worker; three of them cooled the whole check down on that node."""
+        text = self.source()
+        conflict = text.index("Please resolve merge conflicts")
+        self.assertRegex(text[conflict:conflict + 800], r"\n\s*exit 4\n",
+                         "the merge-conflict path no longer exits 4")
+
+
 if __name__ == "__main__":
     unittest.main()
