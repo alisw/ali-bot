@@ -1,0 +1,38 @@
++ printf '%s ===== ROUND %s BEGIN check=%s pr=%s sha=%.8s type=%s =====\n' 2026-11-13@15:00:00 41 build/O2/o2_slc9 15000 1111111111111111111111111111111111111111 untested
+2026-11-13@15:01:00:DEBUG:O2Suite:O2:slc9_x86-64-slc9_x86-64: [155/642] Building CXX object Old/old.cxx.o
+Traceback (most recent call last):
+ModuleNotFoundError: No module named 'alibuild_helpers'
+2026-11-13@15:05:00:DEBUG:O2Suite:O2:slc9_x86-64-slc9_x86-64: [156/642] Building CXX object Old/older.cxx.o
+++ python3 -m pip install --upgrade pip
++ printf '%s ===== ROUND %s BEGIN check=%s pr=%s sha=%.8s type=%s =====\n' 2026-11-13@15:18:12 1 build/O2Physics/code-check 18724 c92142351234567890abcdef1234567890abcdef untested
++ git merge --no-edit c92142351234567890abcdef1234567890abcdef
+++ printf 'ci-round: check=%s pr=%s#%s head=%s\n' build/O2Physics/code-check AliceO2Group/O2Physics 18724 c92142351234567890abcdef1234567890abcdef
+ci-round: check=build/O2Physics/code-check pr=AliceO2Group/O2Physics#18724 head=c92142351234567890abcdef1234567890abcdef
+ci-round:   O2Physics=d115f44837a1ac784673a26d87fb61c4e43ce906
+ci-round:   alidist=d7c73c54be20e360d38fcb57cfb7f855be7bf80a
+2026-11-13@15:18:30:DEBUG:O2Physics:O2Physics:slc9_x86-64-slc9_x86-64: Calculating hash.
+2026-11-13@15:19:30:DEBUG:O2Physics:O2Physics-code-check:slc9_x86-64-slc9_x86-64: foo.cxx:1:1: error: code-check says no
++ PR_OK=0
++ printf '%s ===== ROUND %s END pr=%s result=built rc=%s duration=%sm (%ss) =====\n' 2026-11-13@15:20:12 1 18724 1 2 120
++ printf '%s ===== ROUND %s BEGIN check=%s pr=%s sha=%.8s type=%s =====\n' 2026-11-13@15:20:13 1 build/O2/fullCI_slc9 16121 5d6cf70b1234567890abcdef1234567890abcdef untested
++ printf '%s ===== ROUND %s END pr=%s result=claim-lost =====\n' 2026-11-13@15:20:13 1 16121
++ printf '%s ===== ROUND %s BEGIN check=%s pr=%s sha=%.8s type=%s =====\n' 2026-11-13@15:20:14 1 build/O2/alidist_bits-slc9-x86 4966 3d7b5ad01234567890abcdef1234567890abcdef failed
+alisw/alidist@3d7b5ad01234567890abcdef1234567890abcdef: cannot set build/O2/alidist_bits-slc9-x86 -- the commit has reached GitHub's status limit for this context
+++ echo 'build-loop: alisw/alidist@3d7b5ad01234567890abcdef1234567890abcdef has reached GitHub'\''s status limit for' 'build/O2/alidist_bits-slc9-x86; skipping this build, push a new commit to reset it'
+build-loop: alisw/alidist@3d7b5ad01234567890abcdef1234567890abcdef has reached GitHub's status limit for build/O2/alidist_bits-slc9-x86; skipping this build, push a new commit to reset it
++ printf '%s ===== ROUND %s END pr=%s result=built rc=%s duration=%sm (%ss) =====\n' 2026-11-13@15:20:30 1 4966 0 0 16
+cleanup.py: DEBUG: 13 symlinks remain; 933.67 GiB free; target 50.00 GiB
++ printf '%s ===== ROUND %s BEGIN check=%s pr=%s sha=%.8s type=%s =====\n' 2026-11-13@15:21:00 2 build/O2/o2_slc9 15318 fcdecb021234567890abcdef1234567890abcdef untested
++ git merge --no-edit fcdecb021234567890abcdef1234567890abcdef
++ PR_OK=0
++ exit 4
++ printf '%s ===== ROUND %s END pr=%s result=built rc=%s duration=%sm (%ss) =====\n' 2026-11-13@15:21:05 2 15318 4 0 5
++ printf '%s ===== COOLDOWN %s for %ss after %s fast failures (<%ss each) =====\n' 2026-11-13@15:21:06 build/O2/o2_slc9 600 3 60
+2026-11-13@15:21:06 ===== COOLDOWN build/O2/o2_slc9 for 600s after 3 fast failures (<60s each) =====
++ printf '%s ===== ROUND %s BEGIN check=%s pr=%s sha=%.8s type=%s =====\n' 2026-11-13@15:22:00 2 build/O2Physics/staging 18701 57f6ce901234567890abcdef1234567890abcdef untested
+build-one: build/O2Physics/staging on AliceO2Group/O2Physics@57f6ce90: listed untested since=-, now success created=- id=- pr=-: stale-skip: a newer success status than this untested listing
++ printf '%s ===== ROUND %s END pr=%s result=%s =====\n' 2026-11-13@15:22:01 2 18701 stale-skip
+Traceback (most recent call last):
+cleanup.py: DEBUG: 12 symlinks remain; 901.50 GiB free; target 50.00 GiB
++ printf '%s ===== ROUND %s BEGIN check=%s pr=%s sha=%.8s type=%s =====\n' 2026-11-13@15:23:00 3 build/O2/fullCI-slc10-x86 16114 aaaaaaaa1234567890abcdef1234567890abcdef failed
+2026-11-13@15:23:10:DEBUG:O2Suite:O2:slc10_x86-64-slc10_x86-64: [1500/4771] Building CXX object New/new.cxx.o
