@@ -90,6 +90,11 @@
 readonly LISTER_TEMPFAIL=75
 lister_backoff=$IDLE_SLEEP
 : "${FAST_FAIL_SECONDS:=60}" "${FAST_FAIL_LIMIT:=3}" "${FAST_FAIL_COOLDOWN:=600}"
+#: Exit status build-loop.sh uses for "a verdict was posted, nothing was built"
+#: -- the PR does not merge, or is too big. Over in seconds, but it says nothing
+#: about this worker, so it must neither count towards a cooldown nor clear one.
+#: Keep in step with the `exit 4` in build-loop.sh.
+VERDICT_ONLY_RC=4
 # check|consecutive-fast-failures|when, same shape as $attempted above.
 fastfail=
 : "${HEARTBEAT:=300}"
@@ -680,12 +685,18 @@ EOF
           [ -n "$_f_check" ] || continue
           case $_f_when in ''|*[!0-9]*) continue ;; esac
           [ $((_now - _f_when)) -lt "$FAST_FAIL_COOLDOWN" ] || continue
-          if [ "$_f_check" = "$check" ]; then _n=$_f_n; else
+          if [ "$_f_check" = "$check" ]; then _n=$_f_n _f_when_kept=$_f_when; else
             _kept="${_kept:+$_kept$'\n'}$_f_check|$_f_n|$_f_when"; fi
         done <<EOF
 $fastfail
 EOF
-        if [ "$build_rc" -ne 0 ] && [ $((SECONDS - claim_started)) -lt "$FAST_FAIL_SECONDS" ]; then
+        if [ "$build_rc" -eq "$VERDICT_ONLY_RC" ]; then
+          # Neutral: keep this check's streak exactly as it was. Re-add the
+          # entry dropped above rather than letting it count as a success.
+          if [ "$_n" -gt 0 ]; then
+            _kept="${_kept:+$_kept$'\n'}$check|$_n|$_f_when_kept"
+          fi
+        elif [ "$build_rc" -ne 0 ] && [ $((SECONDS - claim_started)) -lt "$FAST_FAIL_SECONDS" ]; then
           _n=$((_n + 1))
           _kept="${_kept:+$_kept$'\n'}$check|$_n|$_now"
           if [ "$_n" -ge "$FAST_FAIL_LIMIT" ]; then
@@ -697,7 +708,7 @@ EOF
         # A success, or a failure that actually built for a while, clears this
         # check: the entry was dropped above and is simply not re-added.
         fastfail=$_kept
-        unset _f_check _f_n _f_when _kept _now _n
+        unset _f_check _f_n _f_when _f_when_kept _kept _now _n
       fi
 
       # Pushed EVERY round, including the healthy zero case: a series that only

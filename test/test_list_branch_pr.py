@@ -78,7 +78,7 @@ class CountingRestClient:
 
 def make_pr(number, committed_day, state=None, built_day=None, labels=(),
             draft=False, title="a pull request", association="MEMBER",
-            approved=True, reviewed=True, broken=0):
+            approved=True, reviewed=True, broken=0, mergeable="MERGEABLE"):
     """One node shaped like the GraphQL query's pullRequests.nodes entries.
 
     state=None means this check has never run on the commit (untested);
@@ -106,6 +106,7 @@ def make_pr(number, committed_day, state=None, built_day=None, labels=(),
         "isDraft": draft,
         "createdAt": "2023-01-01T00:00:00Z",
         "authorAssociation": association,
+        "mergeable": mergeable,
         "author": {"login": "someone"},
         "reviews": {"isApproved": approved},
         "labels": {"nodes": [{"name": name} for name in labels]},
@@ -410,6 +411,38 @@ class ListBranchPRTestCase(unittest.TestCase):
         rows, _ = self.run_script(pulls, all_groups=True)
         self.assertEqual([row[1] for row in rows], ["11", "12", "13", "14"])
 
+
+    # ---- merge conflicts ----------------------------------------------------
+
+    def test_a_red_pr_that_cannot_merge_is_not_rechecked(self):
+        """The recheck could only fail at `git merge` again. Each one wrote two
+        statuses, and AliceO2#15688 hit GitHub's per-commit status cap that way,
+        after which no verdict can ever be recorded for it."""
+        pulls = [make_pr(1, "01", "FAILURE", "05", mergeable="CONFLICTING"),
+                 make_pr(2, "02", "FAILURE", "06")]
+        rows, _ = self.run_script(pulls, all_groups=True)
+        self.assertEqual([row[1] for row in rows], ["2"])
+
+    def test_an_untested_pr_that_cannot_merge_is_still_built_once(self):
+        """The first build is what tells the author about the conflict."""
+        rows, _ = self.run_script([make_pr(1, "01", mergeable="CONFLICTING")])
+        self.assertEqual([(row[0], row[1]) for row in rows], [("untested", "1")])
+
+    def test_a_green_pr_that_no_longer_merges_is_still_rebuilt(self):
+        """Its base moved underneath it: it should turn red once, saying why."""
+        rows, _ = self.run_script(
+            [make_pr(1, "01", "SUCCESS", "05", mergeable="CONFLICTING")],
+            all_groups=True)
+        self.assertEqual([(row[0], row[1]) for row in rows], [("succeeded", "1")])
+
+    def test_unknown_mergeability_is_rechecked_as_before(self):
+        """GitHub computes mergeable lazily and often answers UNKNOWN; only a
+        definite CONFLICTING may take a PR out of the queue."""
+        for value in ("UNKNOWN", None):
+            rows, _ = self.run_script(
+                [make_pr(1, "01", "FAILURE", "05", mergeable=value)],
+                all_groups=True)
+            self.assertEqual([row[1] for row in rows], ["1"], value)
 
 if __name__ == "__main__":
     unittest.main()

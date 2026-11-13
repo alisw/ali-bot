@@ -119,6 +119,19 @@ with_claim () {
 """
 
 
+# Like FASTFAIL_CLAIMS, but env-bad rounds end with build-loop.sh's verdict-only
+# status (4): the PR does not merge. Over in no time, and not the worker's fault.
+VERDICT_CLAIMS = """\
+with_claim () {
+  local check=$1 sha=$2; shift 2
+  echo "$sha" >> "$LOGFILE"
+  [ -n "$BUILD_MARKER" ] && : > "$BUILD_MARKER"
+  case $check in *env-bad*) return 4 ;; esac
+  return 0
+}
+"""
+
+
 class ClaimBuilderAffinityTestCase(unittest.TestCase):
     """Cache affinity: prefer the check this worker just built, as a TIE-BREAK.
 
@@ -344,6 +357,28 @@ class ClaimBuilderStaleListingTestCase(unittest.TestCase):
                 rounds = handle.read()
             self.assertIn("result=stale-skip", rounds)
             self.assertNotIn("result=claim-lost", rounds)
+
+
+class ClaimBuilderVerdictOnlyTestCase(unittest.TestCase):
+    """A round that only posted a verdict (exit 4) must not cool its check.
+
+    Merge conflicts end in seconds, so before exit 4 they were counted as
+    infrastructure failures: three conflicting PRs in a row cooled the whole
+    check on that worker, delaying every healthy PR of it for ten minutes.
+    """
+
+    def test_conflicting_prs_do_not_put_the_check_on_cooldown(self):
+        order = ClaimBuilderProgressTestCase.run_loop(
+            seconds=8, lister=FASTFAIL_LISTER, helpers=AFFINITY_HELPERS,
+            claims=VERDICT_CLAIMS)
+        bad = [s for s in order if s.startswith("sha-bad")]
+        self.assertEqual(bad[:5],
+                         ["sha-bad1", "sha-bad2", "sha-bad3", "sha-bad4", "sha-bad5"],
+                         "verdict-only rounds were treated as fast failures; got %r"
+                         % (order,))
+        self.assertEqual(order[:9], [sha for _, _, sha, _ in FASTFAIL_ROWS],
+                         "the queue should be taken in order, nothing cooled; got %r"
+                         % (order,))
 
 
 class ClaimBuilderProgressTestCase(unittest.TestCase):
