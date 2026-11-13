@@ -21,6 +21,33 @@
 env_name=${1:?usage: build-one.sh ENV_NAME BUILD_TYPE PR_NUMBER PR_HASH [WAITING_SINCE]}
 export BUILD_TYPE=${2:?} PR_NUMBER=${3:?} PR_HASH=${4:?} WAITING_SINCE=${5:-}
 
+# Re-read the check's status now that we hold the claim. The claim stops two
+# workers building a check at once, but not one after the other: it is released
+# as soon as the holder has posted its verdict, and a worker whose listing
+# predates that verdict wins the free claim and builds the check all over again.
+# While we hold the claim nobody else posts to it, so what we read is final.
+# This runs before the per-check venv below, i.e. with the allocation's ali-bot.
+# Anything unreadable or unknown means build, as before.
+if source_env_files "$env_name"; then
+  if ! set-github-status --help 2>/dev/null | grep -q -- --print-state; then
+    echo "build-one: set-github-status has no --print-state, building without" \
+         "re-reading the status; upgrade the allocation's ali-bot" >&2
+  else
+    read -r _state _created _id < <(short_timeout set-github-status \
+      --print-state -c "$PR_REPO@$PR_HASH" --context "$CHECK_NAME")
+    _skip=$(stale_listing "$BUILD_TYPE" "$WAITING_SINCE" "$_state" "$_created")
+    echo "build-one: $CHECK_NAME on $PR_REPO@$PR_HASH: listed $BUILD_TYPE" \
+         "since=${WAITING_SINCE:--}, now ${_state:-unknown} created=${_created:--}" \
+         "id=${_id:--}: ${_skip:-build}" >&2
+    # Not $BUILD_MARKER: claim-builder.sh must not count this as a build.
+    if [ -n "$_skip" ]; then
+      [ -n "$BUILD_MARKER" ] && echo "${_skip%%:*}" > "$BUILD_MARKER.skipped"
+      exit 0
+    fi
+  fi
+  unset _state _created _id _skip
+fi
+
 # Tell the caller we actually ran, as opposed to never being started because
 # somebody else held the claim. The two are indistinguishable from the exit
 # status alone: `nomad var lock` returns the child's status when it runs one,

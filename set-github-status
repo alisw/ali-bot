@@ -5,7 +5,7 @@ import logging
 import sys
 
 from alibot_helpers.github_utilities import (
-    setGithubStatus, GithubCachedClient, StatusLimitReached)
+    setGithubStatus, githubStateLine, GithubCachedClient, StatusLimitReached)
 
 
 # Just for the moment
@@ -16,6 +16,7 @@ DEFAULT_USER = "alisw"
 def parse_args():
     usage = "set-github-status "
     usage += "[-d] [-n] -c <commit> -s <status> [-m <status-message>] [-u <target-url> | -k]"
+    usage += "\n       set-github-status -c <commit> --print-state --context <context>"
     parser = ArgumentParser(usage=usage)
     parser.add_argument("--commit", "-c",
                         required=True,
@@ -23,8 +24,15 @@ def parse_args():
                               "<org>/<project>@<ref> format"))
 
     parser.add_argument("--status", "-s",
-                        required=True,
                         help="Status to set in <status-id>/<status> format")
+
+    parser.add_argument("--print-state", action="store_true",
+                        help=("Change nothing; print the newest status of "
+                              "--context as STATE CREATED ID, CREATED in "
+                              "seconds since the epoch, '-' if unknown, or "
+                              "'none - -' if there is none"))
+    parser.add_argument("--context",
+                        help="Context for --print-state, e.g. build/O2/fullCI")
 
     parser.add_argument("--message", "-m",
                         default="",
@@ -48,6 +56,10 @@ def parse_args():
                         help="Dry run. Do not actually modify the state")
 
     args = parser.parse_args()
+    if args.print_state and not args.context:
+        parser.error("--print-state needs --context")
+    if not args.print_state and not args.status:
+        parser.error("the following arguments are required: --status/-s")
 
     if args.debug:
         logger = logging.getLogger()
@@ -59,6 +71,18 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if args.print_state:
+        # One line on stdout, or one on stderr and exit 1. build-one.sh builds
+        # unless the line says otherwise, so no traceback is worth more.
+        try:
+            with GithubCachedClient() as cgh:
+                print(githubStateLine(cgh, args.commit, args.context))
+        except Exception as e:
+            print("set-github-status: cannot read %s on %s: %s" %
+                  (args.context, args.commit, e), file=sys.stderr)
+            sys.exit(1)
+        sys.exit(0)
+
     if args.dryRun:
         print("Dry run specified. Not executing")
         sys.exit(0)

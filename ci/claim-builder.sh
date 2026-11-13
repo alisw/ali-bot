@@ -119,7 +119,8 @@ entry_container () { printf %s "${1##*:}"; }
 # only the burst within one poll is shared.
 #
 # Safe because the claim lock, not the listing, is what stops two workers taking
-# the same PR: a stale row costs a lost claim, which this loop already handles.
+# the same PR: a stale row costs a lost claim while the build runs, and once it
+# has finished, build-one.sh re-reads the status and skips it (result=stale-skip).
 : "${LISTER_CACHE_TTL:=60}"
 : "${LISTER:=list-branch-pr --all-groups --no-status --cache-ttl $LISTER_CACHE_TTL}"
 
@@ -613,7 +614,7 @@ EOF
         continue
       fi
 
-      rm -f "$marker"
+      rm -f "$marker" "$marker.skipped"
       # The banner goes out BEFORE the claim is attempted, because at this point
       # we do not yet know whether we will get it -- with_claim returns having
       # done nothing if another worker holds it. The END line below says which
@@ -638,6 +639,12 @@ EOF
                "$round" "$pr_number" "$build_rc" \
                "$(( (SECONDS - claim_started) / 60 ))" \
                "$(( SECONDS - claim_started ))"
+      elif [ -s "$marker.skipped" ]; then
+        # We held the claim, but build-one.sh found the row out of date. Kept
+        # apart from a lost race in the log, and otherwise treated like one.
+        printf '%s ===== ROUND %s END pr=%s result=%s =====\n' \
+               "$(date '+%Y-%m-%d@%H:%M:%S')" "$round" "$pr_number" \
+               "$(cat "$marker.skipped")"
       else
         printf '%s ===== ROUND %s END pr=%s result=claim-lost =====\n' \
                "$(date '+%Y-%m-%d@%H:%M:%S')" "$round" "$pr_number"
@@ -724,7 +731,7 @@ EOF
       fi
       # Otherwise somebody else holds it -- try the next entry immediately.
     done <<< "$hashes"
-    rm -f "$marker"
+    rm -f "$marker" "$marker.skipped"
   fi
 
   # Reclaim disk before the next round, not after the build that needs it.

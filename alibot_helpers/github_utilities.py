@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from collections import OrderedDict
+from datetime import datetime
 from hashlib import sha1
 import errno
 import inspect
@@ -412,6 +413,32 @@ class StatusLimitReached(RuntimeError):
     ever be written for that pair. It is not transient: retrying is guaranteed
     to fail, and the check will stay on whatever value it last held.
     """
+
+
+def githubStateLine(cgh, commit, context):
+    """The newest status of context on commit, as one line for build-one.sh.
+
+    "STATE CREATED ID": its state, its creation time in seconds since the epoch
+    and GitHub's id for it, or "none - -" if the context has no status yet. "-"
+    stands for any field GitHub did not send, so that `read` keeps the fields
+    in place. CREATED is converted exactly as list-branch-pr converts the
+    createdAt of the status it lists, so the two compare exactly. Raises
+    RuntimeError if the statuses cannot be read at all.
+    """
+    repo_name, _, commit_ref = parseGithubRef(commit)
+    statuses = cgh.get("/repos/{repo_name}/statuses/{ref}",
+                       repo_name=repo_name, ref=commit_ref)
+    if statuses is None:
+        raise RuntimeError("cannot read the statuses of %s" % commit)
+    # GitHub lists statuses newest first, so the first match is the current one.
+    latest = next((s for s in statuses if s["context"] == context), None)
+    if latest is None:
+        return "none - -"
+    created = latest.get("created_at")
+    if created:
+        created = int(datetime.fromisoformat(
+            created.replace("Z", "+00:00")).timestamp())
+    return "%s %s %s" % (latest["state"], created or "-", latest.get("id") or "-")
 
 
 def setGithubStatus(cgh, args, debug_print=True):
