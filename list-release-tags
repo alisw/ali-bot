@@ -191,16 +191,21 @@ if best:
       # until somebody cuts a new tag. It cannot spin, because claim-builder.sh
       # records every (check, sha) it has attempted and will not take the same
       # one twice in a session.
-      state=$(gh "/repos/$PR_REPO/commits/$sha/status" |
+      # Its creation time too: a rebuild row must carry it, see waiting_since.
+      status=$(gh "/repos/$PR_REPO/commits/$sha/status" |
                 python3 -c '
-import json, sys
+import json, sys, calendar, time
 d = json.load(sys.stdin)
 want = sys.argv[1]
 for s in d.get("statuses") or []:
     if s.get("context") == want:
-        print(s.get("state", ""))
+        ts = s.get("created_at") or ""
+        print(s.get("state", "") or "-",
+              calendar.timegm(time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")) if ts else "")
         break
 ' "$CHECK_NAME") || continue
+      read -r state status_created <<< "$status"
+      [ "$state" = - ] && state=
       # REBUILD_TAGS forces a tag that is already green to be offered again,
       # as a whitespace- or comma-separated list of tag names or globs. This is
       # cheap on purpose: a rebuild finds its tarballs in the store and fetches
@@ -241,15 +246,27 @@ for s in d.get("statuses") or []:
                          build_type=failed ;;
       esac
 
-      # waiting_since: when the tag was cut, so the queue metrics measure the
-      # delay a release actually saw rather than when we noticed it.
-      since=$(gh "/repos/$PR_REPO/commits/$sha" |
-                python3 -c '
+      # waiting_since. For a rebuild row (failed, succeeded) it is the
+      # createdAt of the status the row was listed for, the same contract as
+      # list-branch-pr: build-one.sh re-reads the status once it holds the claim
+      # and skips the row as stale if that status is newer than WAITING_SINCE.
+      # Passing the tag's date here instead made EVERY failed release stale --
+      # its error status is always newer than the tag -- so a failed daily was
+      # offered every round and never rebuilt (the 20261114 dailies, 2026-11-14).
+      #
+      # For an untested row: when the tag was cut, so the queue metrics measure
+      # the delay a release actually saw rather than when we noticed it.
+      if [ "$build_type" != untested ]; then
+        since=$status_created
+      else
+        since=$(gh "/repos/$PR_REPO/commits/$sha" |
+                  python3 -c '
 import json, sys, calendar, time
 d = json.load(sys.stdin)
 ts = (((d.get("commit") or {}).get("committer") or {}).get("date"))
 print(calendar.timegm(time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")) if ts else "")
 ') || since=
+      fi
       printf '%s %s %s %s %s\n' "$build_type" "$tag" "$sha" "$env_name" "$since"
     done
   )
