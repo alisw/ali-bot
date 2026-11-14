@@ -304,9 +304,44 @@ toolchain_broken () {
   return 0
 }
 
+# ---- restart after this round, on request ------------------------------------
+#
+# Restarting the allocation is how a worker picks up new ali-bot: the entrypoint
+# reinstalls ali-bot@master. But `nomad alloc restart` kills whatever round is
+# running, and a busy worker is nearly always mid-round. So an operator asks
+# instead, and the worker exits at its next gap between rounds:
+#
+#   nomad-rw var put ci/claims/_restart/<full alloc id> requested_by=$USER at=$(date +%s)
+#
+# (requested_by is the item read, so a request without it is ignored; ci-jobs'
+# restart-between-rounds.py --graceful does this and waits for the restart.)
+#
+# Under $CLAIM_PREFIX because ci-claims.policy.hcl already grants the workers
+# read and destroy there. The request is deleted before exiting, so the
+# restarted task does not exit again; if it cannot be deleted we do not exit at
+# all, rather than crash-loop the allocation. Exit 0 is enough: a service job's
+# restart{} policy restarts a task whatever its exit code (only batch jobs stop
+# on success), and each such restart counts as one of its attempts.
+#
+# One cheap `nomad var get` per check; any error -- no such variable, no token,
+# no agent -- means "no request" and the loop carries on exactly as before.
+: "${RESTART_REQUEST_PATH:=$CLAIM_PREFIX/_restart/${NOMAD_ALLOC_ID:-}}"
+restart_if_requested () {    # last-round
+  local _who
+  [ -n "${NOMAD_ALLOC_ID:-}" ] || return 0
+  _who=$(general_timeout "${RESTART_CHECK_TIMEOUT:-20}" \
+           nomad var get -item requested_by "$RESTART_REQUEST_PATH" 2>/dev/null) || return 0
+  general_timeout "${RESTART_CHECK_TIMEOUT:-20}" \
+    nomad var purge "$RESTART_REQUEST_PATH" > /dev/null 2>&1 || return 0
+  printf '%s ===== RESTART REQUESTED by %s -- exiting after round %s =====\n' \
+         "$(date '+%Y-%m-%d@%H:%M:%S')" "$_who" "$1"
+  exit 0
+}
+
 round=0
 
 while true; do
+  restart_if_requested "$round"
   round=$((round + 1))
   lister_tempfail=
   # Credentials that expire, refreshed before anything uses them.
@@ -738,6 +773,8 @@ EOF
         # nothing about ubuntu2204/o2-alidist.
         last_env=$env_key
         built=1
+        # Before cleanup, which can take minutes; the next pass checks too.
+        restart_if_requested "$round"
         break
       fi
       # Otherwise somebody else holds it -- try the next entry immediately.
