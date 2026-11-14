@@ -381,6 +381,99 @@ class ClaimBuilderVerdictOnlyTestCase(unittest.TestCase):
                          % (order,))
 
 
+# A restart request is a Nomad variable; this `nomad` keeps it in a file.
+# NOMAD_STUB=fail makes every call fail, as with no agent or no token;
+# NOMAD_STUB=nopurge lets the read succeed and the delete fail.
+RESTART_HELPERS = HELPERS + "general_timeout () { shift; \"$@\"; }\n"
+RESTART_FILES = (("nomad", """#!/bin/bash
+echo "$*" >> "$NOMADLOG"
+case $NOMAD_STUB:$1:$2 in
+  fail:*) echo "Error: permission denied" >&2; exit 1 ;;
+  *:var:get) [ "$*" = "var get -item requested_by ci/claims/_restart/$NOMAD_ALLOC_ID" ] &&
+               cat "$REQUEST" 2>/dev/null ;;
+  nopurge:var:purge) exit 1 ;;
+  *:var:purge) rm "$REQUEST" ;;
+  *) exit 1 ;;
+esac
+"""),)
+# Builds normally, and the operator asks for a restart while the FIRST build runs.
+RESTART_CLAIMS = """\
+with_claim () {
+  local check=$1 sha=$2; shift 2
+  [ -s "$LOGFILE" ] || echo ktf > "$REQUEST"
+  echo "$sha" >> "$LOGFILE"
+  [ -n "$BUILD_MARKER" ] && : > "$BUILD_MARKER"
+  return 0
+}
+"""
+
+
+class ClaimBuilderRestartRequestTestCase(unittest.TestCase):
+    """A restart request makes the worker exit 0 between rounds, never in one.
+
+    Restarting the allocation is how a worker gets new ali-bot, and doing it
+    with `nomad alloc restart` kills the build in progress. The request is read
+    from a Nomad variable and consumed, so the restarted task does not exit
+    again; anything going wrong with Nomad must leave the loop as it was.
+    """
+
+    def run_with(self, stub="", request=None, claims=RESTART_CLAIMS):
+        with tempfile.TemporaryDirectory() as scratch:
+            paths = {name: os.path.join(scratch, name)
+                     for name in ("request", "nomad.log", "rounds")}
+            open(paths["nomad.log"], "w").close()
+            if request is not None:
+                with open(paths["request"], "w") as handle:
+                    handle.write(request)
+            built = ClaimBuilderProgressTestCase.run_loop(
+                helpers=RESTART_HELPERS, claims=claims,
+                files=RESTART_FILES, roundlog=paths["rounds"],
+                # CLAIM_PREFIX is claims.sh's, which the claims stubs replace.
+                extra_env={"NOMAD_ALLOC_ID": "0123abcd-alloc", "NOMAD_STUB": stub,
+                           "CLAIM_PREFIX": "ci/claims",
+                           "REQUEST": paths["request"],
+                           "NOMADLOG": paths["nomad.log"]})
+            with open(paths["rounds"]) as handle, open(paths["nomad.log"]) as calls:
+                return (built, ClaimBuilderProgressTestCase.EXIT_STATUS,
+                        handle.read(), calls.read(), os.path.exists(paths["request"]))
+
+    def test_a_request_made_mid_round_exits_after_that_round(self):
+        built, status, rounds, calls, pending = self.run_with()
+        self.assertEqual(status, 0, "the loop should have exited 0; stdout:\n" + rounds)
+        self.assertEqual(built, ["sha-aaa"], "exactly the round in progress runs")
+        self.assertRegex(rounds, r"ROUND 1 END pr=4966 result=built rc=0 .*\n.*"
+                         r"===== RESTART REQUESTED by ktf -- exiting after round 1 =====")
+        self.assertFalse(pending, "the request was not consumed")
+        self.assertIn("var purge ci/claims/_restart/0123abcd-alloc", calls)
+
+    def test_a_request_already_waiting_exits_before_claiming(self):
+        built, status, rounds, _, pending = self.run_with(request="ktf\n")
+        self.assertEqual((built, status, pending), ([], 0, False))
+        self.assertIn("exiting after round 0", rounds)
+        self.assertNotIn("BEGIN", rounds)
+
+    def test_no_request_changes_nothing(self):
+        built, status, rounds, calls, _ = self.run_with(claims=CLAIMS)
+        self.assertIsNone(status, "the loop exited; stdout:\n" + rounds)
+        self.assertEqual(sorted(set(built)), sorted(sha for _, sha in PRS))
+        self.assertNotIn("RESTART", rounds)
+        self.assertIn("var get", calls, "the request was never looked for")
+
+    def test_a_failing_nomad_changes_nothing(self):
+        built, status, rounds, calls, _ = self.run_with(stub="fail")
+        self.assertIsNone(status, "the loop exited; stdout:\n" + rounds)
+        self.assertEqual(sorted(set(built)), sorted(sha for _, sha in PRS))
+        self.assertNotIn("RESTART", rounds)
+        self.assertNotIn("purge", calls)
+
+    def test_a_request_that_cannot_be_deleted_is_not_acted_on(self):
+        """Exiting without consuming it would crash-loop the allocation."""
+        built, status, rounds, _, pending = self.run_with(stub="nopurge", request="ktf\n")
+        self.assertIsNone(status, "the loop exited; stdout:\n" + rounds)
+        self.assertEqual(sorted(set(built)), sorted(sha for _, sha in PRS))
+        self.assertTrue(pending)
+
+
 class ClaimBuilderProgressTestCase(unittest.TestCase):
     #: Every assertion here reads the same run, because the run costs wall-clock
     #: (the loop has to be timed out) and nothing below mutates it.
@@ -422,10 +515,13 @@ class ClaimBuilderProgressTestCase(unittest.TestCase):
                        LOGFILE=log, IDLE_SLEEP="1", HOME=tree,
                        **(extra_env or {}))
             # The loop never exits by design, so stop it and read what it did.
+            # EXIT_STATUS is None when it had to be stopped.
+            ClaimBuilderProgressTestCase.EXIT_STATUS = None
             try:
                 with open(roundlog or os.devnull, "w") as out:
-                    subprocess.run(["bash", CLAIM_BUILDER], env=env, timeout=seconds,
-                                   cwd=tree, stdout=out, stderr=subprocess.DEVNULL)
+                    ClaimBuilderProgressTestCase.EXIT_STATUS = subprocess.run(
+                        ["bash", CLAIM_BUILDER], env=env, timeout=seconds,
+                        cwd=tree, stdout=out, stderr=subprocess.DEVNULL).returncode
             except subprocess.TimeoutExpired:
                 pass
             with open(log) as handle:
