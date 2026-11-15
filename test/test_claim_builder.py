@@ -21,8 +21,10 @@ exactly what GitHub looks like when the status never gets written.
 
 import functools
 import os
+import signal
 import subprocess
 import tempfile
+import time
 import unittest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -406,6 +408,54 @@ with_claim () {
   return 0
 }
 """
+
+
+class ClaimBuilderSignalTestCase(unittest.TestCase):
+    """SIGTERM ends the worker; it does not just stop the heartbeat.
+
+    Nomad stops or restarts a task with kill_signal, then SIGKILLs it after
+    kill_timeout. A trap that returns makes bash resume the loop, so the worker
+    went on claiming for the whole timeout and was killed in a round it had
+    started meanwhile: alibuildmac00 began three in the 30 s after `nomad alloc
+    restart` on 2026-11-15.
+    """
+
+    def test_sigterm_exits_the_loop(self):
+        with tempfile.TemporaryDirectory() as tree:
+            binpath = os.path.join(tree, "bin")
+            os.mkdir(binpath)
+            # Rounds that never run out: every row is a new sha, and each build
+            # takes long enough that the TERM lands in the middle of the loop.
+            lister = ("#!/bin/bash\nprintf 'untested\\t1\\tsha-%s\\to2-alidist\\t1682437080\\n' "
+                      "\"$(date +%s%N)\"\n")
+            claims = ("with_claim () { echo \"$2\" >> \"$LOGFILE\"; sleep 0.2; return 0; }\n")
+            for name, body in (("build-helpers.sh", HELPERS), ("claims.sh", claims),
+                               ("list-branch-pr", lister)):
+                path = os.path.join(binpath, name)
+                with open(path, "w") as handle:
+                    handle.write(body)
+                os.chmod(path, 0o755)
+            log = os.path.join(tree, "built.log")
+            open(log, "w").close()
+            env = dict(os.environ, PATH=binpath + os.pathsep + os.environ["PATH"],
+                       CUR_CONTAINER="slc10", LOGFILE=log, IDLE_SLEEP="1", HOME=tree)
+            proc = subprocess.Popen(["bash", CLAIM_BUILDER], env=env, cwd=tree,
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                deadline = time.time() + 10
+                while time.time() < deadline and os.path.getsize(log) == 0:
+                    time.sleep(0.05)
+                self.assertGreater(os.path.getsize(log), 0, "the loop never built anything")
+                proc.send_signal(signal.SIGTERM)
+                try:
+                    status = proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    self.fail("claim-builder.sh was still looping 3 s after SIGTERM")
+                self.assertEqual(status, 143)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait()
 
 
 class ClaimBuilderRestartRequestTestCase(unittest.TestCase):
