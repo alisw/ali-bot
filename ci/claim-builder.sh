@@ -262,7 +262,17 @@ stop_heartbeat() {
 
 # A worker killed mid-build (Nomad stopping the task, or a restart) would
 # otherwise leave the background loop behind.
-trap stop_heartbeat EXIT INT TERM
+#
+# The signal traps must EXIT, which then runs stop_heartbeat through the EXIT
+# trap. `trap stop_heartbeat EXIT INT TERM` used to be the whole of it, and a
+# bash trap that returns resumes the script: SIGTERM stopped the heartbeat and
+# the worker carried on claiming. Nomad's kill_signal was thus ignored for the
+# whole kill_timeout, and the SIGKILL at its end landed in whatever round had
+# started meanwhile -- 2026-11-15, alibuildmac00 began three rounds in the 30 s
+# after `nomad alloc restart` and was killed in the third.
+trap stop_heartbeat EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
 
 # A broken host toolchain must take THIS WORKER out, not the PRs it claims.
 #
