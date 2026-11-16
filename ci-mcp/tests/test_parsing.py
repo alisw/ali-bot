@@ -27,7 +27,7 @@ STDERR = fixture("claim-stderr.log")
 STDOUT = fixture("claim-stdout.log")
 ALLOC_ID = "68b69499-3819-d995-5671-8d390694245b"
 ALLOC = {
-    "ID": ALLOC_ID, "NodeName": "alimetal02.cern.ch", "ClientStatus": "running",
+    "ID": ALLOC_ID, "NodeName": "ci-efba6f.example.org", "ClientStatus": "running",
     "TaskStates": {"ci": {"State": "running", "Restarts": 1,
                           "StartedAt": "2026-11-13T14:17:26.780939876Z",
                           "LastRestart": "2026-11-13T15:17:26.72349199+01:00"}},
@@ -233,7 +233,7 @@ class RolloutTest(unittest.TestCase):
              mock.patch.object(m, "nomad_get", lambda path: [ALLOC]):
             out = m.ci_rollout("ci-linux-x86")
         self.assertEqual(len(out.splitlines()), 1)
-        self.assertTrue(out.startswith("ci-linux-x86         68b69499 alimetal02"))
+        self.assertTrue(out.startswith("ci-linux-x86         68b69499 ci-efba6f"))
 
 
 if __name__ == "__main__":

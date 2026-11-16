@@ -18,3 +18,13 @@ ali_bot.egg-info/
 .envrc
 build/
 *.egg-info
+
+# Python tooling. *.pyc above already covers what is inside __pycache__, and
+# venvs and pytest write their own .gitignore; these make it explicit.
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+.coverage
+# Claude Code's per-user settings (the shared .claude/settings.json is not ignored).
+**/.claude/settings.local.json
