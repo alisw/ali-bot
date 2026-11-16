@@ -1,0 +1,17 @@
+# Runtime dependencies of the cocoindex image (indexer and MCP server), pinned to
+# the versions the tests ran against. Regenerate the lock after any change:
+#   <venv>/bin/python -c "import importlib.metadata as m; print('\\n'.join(
+#       f\"{d.metadata['Name']}=={d.version}\" for d in m.distributions()))" > tested.txt
+#   uv pip compile requirements.in -c tested.txt --python-version 3.12 \
+#     --python-platform x86_64-manylinux_2_28 --generate-hashes \
+#     -o requirements-linux.lock
+# where <venv> is the one the tests passed in, so that transitive versions are
+# the tested ones too, not whatever was newest on the day.
+# The lock, not the resolver, decides what goes into the image (--require-hashes).
+cocoindex[litellm,sqlite]==1.2.0
+boto3==1.44.3
+zstandard==0.25.0
+mcp==2.3.0
+pyjwt==2.15.1
+sqlite-vec==0.1.9
+uvicorn==0.54.0
