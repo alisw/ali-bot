@@ -50,81 +50,17 @@ mcp = FastMCP("ci")
 
 
 # ---------------------------------------------------------------------------
-# Error patterns: imported, never copied.
-#
-# report-pr-errors has a well-tuned set of regexes -- compiler errors with and
-# without ANSI colour, ninja and make failures, CMake, killed compilers, failed
-# unit tests, full-system-test timeouts. Reproducing them here would mean two
-# definitions of "what an error looks like" drifting apart, and the copy that
-# loses is always the one nobody is reading when a new failure mode appears.
-# The file has no .py extension, hence the loader dance.
+# Error patterns and the per-line extraction live in logscan.py (next to this
+# file), shared with the cocoindex ci-failures indexer, so there is one
+# definition of "what an error looks like" for both. logscan lifts the regexes
+# out of report-pr-errors by AST, as this file used to.
 # ---------------------------------------------------------------------------
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import logscan                                   # noqa: E402
+from logscan import (NOISE_RE, FATAL_RE, BODY_LINES, clip,  # noqa: E402,F401
+                     with_body, strip_alibuild_prefix, WANTED_PATTERNS)
 
-#: Which of report-pr-errors' regexes to lift, and what to call each kind here.
-#:
-#: ORDER MATTERS: the first pattern to match wins, and ERRORS_RE is deliberately
-#: broad -- it matches ": fatal error:", which is also how a compiler killed by
-#: the OOM reaper announces itself ("c++: fatal error: Killed signal terminated
-#: program cc1plus"). With the generic pattern first, KILLED_RE never fired and
-#: an out-of-memory build was reported as an ordinary compile error, which is a
-#: completely different diagnosis. So the specific kinds come first and the
-#: catch-all comes last.
-WANTED_PATTERNS = {
-    "KILLED_RE": "killed",
-    "CMAKE_ERROR_RE": "cmake",
-    "FAILED_UNIT_TEST_RE": "test",
-    "FST_TASK_TIMEOUT_RE": "fst-timeout",
-    "FST_LOGFILE_RE": "fst-logfile",
-    "FST_FAILED_CMD_RE": "fst-command",
-    "ERRORS_RE": "error",
-}
-
-
-def _load_error_patterns():
-    """Lift the `NAME_RE = re.compile("...")` assignments out of the source.
-
-    Read rather than imported. Importing report-pr-errors means executing it,
-    which pulls in alibot_helpers and its whole dependency tree -- so this
-    server would need ali-bot installed in its venv just to learn what an error
-    looks like, and would fall back to a worse pattern set the day that broke.
-
-    Only string literals passed to re.compile are evaluated, and only for the
-    names listed above, so this reads the file without running any of it.
-    """
-    import ast
-    path = os.path.join(ALIBOT, "report-pr-errors")
-    with open(path) as source:
-        tree = ast.parse(source.read(), filename=path)
-    found = {}
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
-            continue
-        target = node.targets[0]
-        if not isinstance(target, ast.Name) or target.id not in WANTED_PATTERNS:
-            continue
-        call = node.value
-        if not (isinstance(call, ast.Call) and call.args):
-            continue
-        try:
-            found[WANTED_PATTERNS[target.id]] = re.compile(
-                ast.literal_eval(call.args[0]))
-        except (ValueError, re.error):
-            continue          # a pattern we cannot read is one we skip, not a crash
-    if "error" not in found:
-        raise RuntimeError("ERRORS_RE not found in %s" % path)
-    # Re-key in WANTED_PATTERNS order. `found` was filled in the order the
-    # assignments appear in report-pr-errors, which puts the broad ERRORS_RE
-    # first -- so without this the specific kinds are unreachable no matter how
-    # this table is written.
-    return {kind: found[kind] for kind in WANTED_PATTERNS.values()
-            if kind in found}
-
-
-try:
-    PATTERNS = _load_error_patterns()
-except Exception as err:                       # noqa: BLE001
-    print("could not import report-pr-errors patterns: %s" % err, file=sys.stderr)
-    PATTERNS = {"error": re.compile(r": (fatal )?error:|^ERROR: |ninja: build stopped")}
+PATTERNS = logscan.patterns()
 
 
 # ---------------------------------------------------------------------------
@@ -630,76 +566,6 @@ def github_graphql(query, **variables):
     return body["data"]
 
 
-#: Lines that match an error pattern but are not errors.
-#:
-#: Overwhelmingly the top of any ranking before this existed. aliBuild's
-#: prefer_system_check compiles a probe for every optional dependency and prints
-#: the compiler's complaint when it is absent -- "WARNING: GSL: <stdin>:1:10:
-#: fatal error: gsl/gsl_version.h: No such file or directory". That failure is
-#: the mechanism working: it is how aliBuild decides to build its own copy. It
-#: says "fatal error" because the compiler said so, and it is prefixed WARNING
-#: because aliBuild knows it is not one.
-#:
-#: The rule is deliberately about the WARNING prefix rather than about probes:
-#: an error pattern matching inside a line its own author labelled a warning is
-#: a false positive by construction, whatever produced it.
-NOISE_RE = re.compile(
-    r"^\s*WARNING:"                      # aliBuild's own downgrade, incl. probes
-    r"|^\s*report-analytics:"            # telemetry helpers failing to report;
-    r"|^\s*report-metric-monalisa:"      # every round, unrelated to the build
-    #: recc logs an [ERROR] whenever it declines to remote-execute a command and
-    #: falls back to compiling locally -- notably for every link. The build is
-    #: fine; on a macOS O2Physics log this alone was 36 of the 36 "errors",
-    #: pushing the real failure out of the report.
-    r"|\[parsedcommandfactory\.cpp:\d+\] \[ERROR\] Failed to read command-line "
-    r"options from file"
-)
-
-#: Errors that stop a build, as opposed to errors it survives. Used to rank, not
-#: to filter -- a build that dies of one fatal error usually emits dozens of
-#: incidental ones first, and frequency alone puts the noisy ones on top.
-FATAL_RE = re.compile(
-    r"ninja: build stopped:|make.*: \*\*\*|^\s*ERROR:|\[FATAL\]"
-    r"|internal compiler error|fatal error: Killed signal")
-
-
-def clip(line):
-    line = line.rstrip("\n")
-    return line if len(line) <= MAX_LINE_CHARS else line[:MAX_LINE_CHARS] + " ...[clipped]"
-
-
-#: How many following lines carry the message, per kind. A compiler puts its
-#: complaint on the line that matched, so pulling context there is pure noise.
-#: CMake does the opposite: "CMake Error at FetchContent.cmake:2106 (message):"
-#: says only WHERE, and every word of WHY is on the lines beneath it -- reported
-#: alone it is unactionable, which is exactly how it first came back here.
-BODY_LINES = {"cmake": 6, "test": 1, "fst-command": 2}
-
-
-def with_body(lines, position, kind):
-    """The matched line plus the continuation lines that carry its meaning."""
-    body = [strip_alibuild_prefix(lines[position])]
-    for offset in range(1, BODY_LINES.get(kind, 0) + 1):
-        if position + offset >= len(lines):
-            break
-        nxt = strip_alibuild_prefix(lines[position + offset]).strip()
-        # CMake indents the body and separates paragraphs with blank lines; stop
-        # at "Call Stack", which is location again rather than reason.
-        if not nxt or nxt.startswith("Call Stack"):
-            break
-        body.append("      " + nxt)
-    return "\n".join(body)
-
-
-def strip_alibuild_prefix(line):
-    """Drop aliBuild's "2026-08-19@21:17:45:DEBUG:O2:GEANT4:slc10_x86-64-...:".
-
-    Two identical compiler errors from two packages are the same error; leaving
-    the timestamp on makes every line unique and defeats deduplication.
-    """
-    return re.sub(r"^\d{4}-\d\d-\d\d@[\d:]+:[A-Z]+:[^:]*:[^:]*:[^:]*:\s*", "", line)
-
-
 # ---------------------------------------------------------------------------
 # Tools
 # ---------------------------------------------------------------------------
@@ -825,8 +691,6 @@ def ci_build_errors(alloc: str, task: str = "ci", max_errors: int = 12,
     log, truncated = nomad_log(alloc_id, task,
                                max_bytes=(window_mb or 0) * 1024 * 1024
                                or MAX_FETCH_BYTES)
-    hits = {}                     # key -> [count, sample, kind, last_position]
-    kinds, skipped = Counter(), 0
     lines = log.splitlines()
     lines, start, scope_label = scope_lines(lines, since, round)
     # A full window only hides something if it could hide what was ASKED for.
@@ -835,25 +699,8 @@ def ci_build_errors(alloc: str, task: str = "ci", max_errors: int = 12,
     # -- warning about it just sends the reader re-fetching for nothing.
     if (since or round) and start > 0:
         truncated = False
-    for position, raw in enumerate(lines):
-        line = strip_alibuild_prefix(raw)
-        if NOISE_RE.search(line):
-            skipped += 1
-            continue
-        for kind, pattern in PATTERNS.items():
-            if pattern.search(line):
-                # Numbers vary between otherwise identical errors (line
-                # numbers, template depths, addresses); collapse them so the
-                # same failure in twenty files groups into one entry.
-                key = (kind, re.sub(r"\d+", "#", line)[:MAX_LINE_CHARS])
-                if key in hits:
-                    hits[key][0] += 1
-                    hits[key][3] = position
-                else:
-                    hits[key] = [1, with_body(lines, position, kind), kind,
-                                 position]
-                kinds[kind] += 1
-                break
+    # key -> [count, sample, kind, last_position]; see logscan.scan_lines.
+    hits, kinds, skipped = logscan.scan_lines(lines, PATTERNS)
     if not hits:
         return ("no recognised errors in %s (%d lines scanned, %d suppressed as "
                 "noise).%s\nThe build may have been killed rather than failed -- "
@@ -861,27 +708,8 @@ def ci_build_errors(alloc: str, task: str = "ci", max_errors: int = 12,
                 % (alloc_id[:8], len(lines), skipped,
                    window_note(lines, truncated, scope_label)))
 
-    def severity(entry):
-        """Rank fatal-and-late above frequent.
-
-        Sorting by count put ten copies of a harmless message above the two
-        copies of the one that stopped the build -- and the decisive error is
-        usually the LAST one, since everything after it is teardown. So: the
-        kinds that are always serious first, then anything that looks
-        build-stopping, then latest-first within each tier. Count is reported
-        but never ranks.
-        """
-        count, sample, kind, position = entry
-        if kind in ("killed", "cmake", "test", "fst-timeout",
-                    "fst-logfile", "fst-command"):
-            tier = 0
-        elif FATAL_RE.search(sample):
-            tier = 1
-        else:
-            tier = 2
-        return (tier, -position)
-
-    ranked = sorted(hits.values(), key=severity)
+    # Fatal-and-late above frequent: logscan.severity says why.
+    ranked = sorted(hits.values(), key=logscan.severity)
     head = "%d distinct error(s) in %s, %s" % (
         len(hits), alloc_id[:8],
         ", ".join("%s=%d" % kv for kv in kinds.most_common()))
@@ -1415,7 +1243,7 @@ def ci_build_log(repo: str, pr: int, check_name: str, sha: str = "",
     # A few hundred bytes ending in "No logs found" is not a failed PR, it is a
     # broken machine: the build produced nothing at all. That was the signature
     # of the missing-SDK failure, and it reads as an ordinary red check.
-    if len(log) < 2000 and "No logs found" in log:
+    if logscan.is_no_output(log):
         out.append("")
         out.append("  *** THE BUILD PRODUCED NO OUTPUT (%d bytes, 'No logs "
                    "found'). This is a BROKEN BUILDER, not a broken PR -- the "
@@ -1423,23 +1251,7 @@ def ci_build_log(repo: str, pr: int, check_name: str, sha: str = "",
                    "named above." % len(log))
         return "\n".join(out)
 
-    hits, kinds, skipped = {}, Counter(), 0
-    for position, raw in enumerate(lines):
-        line = strip_alibuild_prefix(raw)
-        if NOISE_RE.search(line):
-            skipped += 1
-            continue
-        for kind, pattern in PATTERNS.items():
-            if pattern.search(line):
-                key_ = (kind, re.sub(r"\d+", "#", line)[:MAX_LINE_CHARS])
-                if key_ in hits:
-                    hits[key_][0] += 1
-                    hits[key_][3] = position
-                else:
-                    hits[key_] = [1, with_body(lines, position, kind), kind,
-                                  position]
-                kinds[kind] += 1
-                break
+    hits, kinds, skipped = logscan.scan_lines(lines, PATTERNS)
     if not hits:
         out.append("")
         out.append("  no recognised errors in %d lines (%d suppressed as noise)."
