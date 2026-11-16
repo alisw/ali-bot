@@ -1,0 +1,159 @@
+Finished building on ci-61a156.example.org at 2026-09-21-13:45:33
+Built commit a4eb29b6b63777c1a871b1f0e1a1a76466211e09 from https://github.com/AliceO2Group/O2Physics/pull/17992
+Nomad allocation:
+    https://alinomad.cern.ch/ui/allocations/f587a6a4-34fe-9acf-1c06-6bf75d507c2f
+To log into the build machine, use:
+    nomad alloc exec f587a6a4 bash
+To stream logs from the CI process, use:
+    nomad alloc logs -stderr -tail -f f587a6a4
+The following files (oldest first) are present in the log:
+- sw/BUILD/pythia-latest/log
+- sw/BUILD/generators-latest/log
+- sw/BUILD/ROOT-latest/log
+- sw/BUILD/JAliEn-ROOT-latest/log
+- sw/BUILD/VMC-latest/log
+- sw/BUILD/HepMC3-latest/log
+- sw/BUILD/FairRoot-latest/log
+- sw/BUILD/O2-latest/log
+- sw/BUILD/O2Physics-latest/log
+## Begin sw/BUILD/pythia-latest/log Mon Sep 21 09:43:18 2026
+++ rsync -a --chmod=ug=rwX --delete --exclude '**/.git' --delete-excluded /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/SOURCES/pythia/pythia8318/pythia8318/ ./
+++ MODULEFILE=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/bf7ada580092e8695cbd43bf75a79d01db4ff006/osx_arm64/pythia/pythia8318-local1/etc/modulefiles/pythia
+++ mkdir -p /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/bf7ada580092e8695cbd43bf75a79d01db4ff006/osx_arm64/pythia/pythia8318-local1/etc/modulefiles
+++ cat
+## End sw/BUILD/pythia-latest/log Mon Sep 21 09:43:18 2026 (0.0s)
+## Begin sw/BUILD/generators-latest/log Mon Sep 21 09:43:22 2026
+++ MODULEFILE_REQUIRES=
+++ MODULEFILE=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/05059cc25c782f53b99f8942311a3566b7e67830/osx_arm64/generators/v1.0-local3/etc/modulefiles/generators
+++ mkdir -p /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/05059cc25c782f53b99f8942311a3566b7e67830/osx_arm64/generators/v1.0-local3/etc/modulefiles
+++ cat
+## End sw/BUILD/generators-latest/log Mon Sep 21 09:43:22 2026 (0.0s)
+## Begin sw/BUILD/ROOT-latest/log Mon Sep 21 10:18:53 2026
+++ cat
+2026-09-21T09:46:33.306+0200 [79888:0x1f59fe180] [parsedcommandfactory.cpp:433] [ERROR] Failed to read command-line options from file "rpath/libGLEW.dylib": std::system_error exception thrown at [buildboxcommon_fileutils.cpp:490] [system:2], errMsg = "Failed to open file "rpath/libGLEW.dylib"", errno : No such file or directory
+2026-09-21T10:09:00.318+0200 [22628:0x1f59fe180] [parsedcommandfactory.cpp:433] [ERROR] Failed to read command-line options from file "rpath/libGraf.6.36.so": std::system_error exception thrown at [buildboxcommon_fileutils.cpp:490] [system:2], errMsg = "Failed to open file "rpath/libGraf.6.36.so"", errno : No such file or directory
+++ mkdir -p /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/c02edccf275a1193eefc6bce1f28dcb1307ae5f0/osx_arm64/ROOT/v6-36-10-alice4-local2/etc/modulefiles
+++ rsync -a --delete etc/modulefiles/ /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/c02edccf275a1193eefc6bce1f28dcb1307ae5f0/osx_arm64/ROOT/v6-36-10-alice4-local2/etc/modulefiles
+++ cat
+## End sw/BUILD/ROOT-latest/log Mon Sep 21 10:18:53 2026 (0.0s)
+## Begin sw/BUILD/JAliEn-ROOT-latest/log Mon Sep 21 10:19:28 2026
+++ SONAME=so
+++ cat
+++ mkdir -p /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/835bfd9fcc915b12dbdce6bb5d3840a0f1b48373/osx_arm64/JAliEn-ROOT/0.7.22-local2/etc/modulefiles
+++ rsync -a --delete etc/modulefiles/ /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/835bfd9fcc915b12dbdce6bb5d3840a0f1b48373/osx_arm64/JAliEn-ROOT/0.7.22-local2/etc/modulefiles
+## End sw/BUILD/JAliEn-ROOT-latest/log Mon Sep 21 10:19:28 2026 (0.0s)
+## Begin sw/BUILD/VMC-latest/log Mon Sep 21 10:19:36 2026
+++ MODULEDIR=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/4615a4a500a28c7761e515f59786dbc824ed9618/osx_arm64/VMC/v2-2-local5/etc/modulefiles
+++ case $ARCHITECTURE in
+++ ln -s libVMCLibrary.dylib libVMC.dylib
+++ cat
+## End sw/BUILD/VMC-latest/log Mon Sep 21 10:19:36 2026 (0.0s)
+## Begin sw/BUILD/HepMC3-latest/log Mon Sep 21 10:20:04 2026
+++ cmake /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/SOURCES/HepMC3/3.3.1/3.3.1 -DROOT_DIR=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/osx_arm64/ROOT/v6-36-10-alice4-local2 -DCMAKE_INSTALL_PREFIX=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/50db166ed123c6d81a4bc7da024c11cce5db9f5f/osx_arm64/HepMC3/3.3.1-local5 -DCMAKE_INSTALL_LIBDIR=lib -DHEPMC3_ENABLE_PYTHON=OFF -DHEPMC3_ENABLE_ROOTIO=ON
+++ MODULEFILE=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/50db166ed123c6d81a4bc7da024c11cce5db9f5f/osx_arm64/HepMC3/3.3.1-local5/etc/modulefiles/HepMC3
+++ mkdir -p /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/50db166ed123c6d81a4bc7da024c11cce5db9f5f/osx_arm64/HepMC3/3.3.1-local5/etc/modulefiles
+++ cat
+## End sw/BUILD/HepMC3-latest/log Mon Sep 21 10:20:04 2026 (0.0s)
+## Begin sw/BUILD/vgm-latest/log Mon Sep 21 10:20:49 2026
+++ cmake /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/SOURCES/vgm/v5-3/v5-3 -DCMAKE_CMAKE_BUILD_TYPE=RELWITHDEBINFO -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_INSTALL_PREFIX=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/af4d98e31445713ca55f4bb37a8efc3d858696c8/osx_arm64/vgm/v5-3-local5 -DCMAKE_CXX_STANDARD=20
+++ MODULEFILE=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/af4d98e31445713ca55f4bb37a8efc3d858696c8/osx_arm64/vgm/v5-3-local5/etc/modulefiles/vgm
+++ mkdir -p /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/af4d98e31445713ca55f4bb37a8efc3d858696c8/osx_arm64/vgm/v5-3-local5/etc/modulefiles
+++ cat
+## End sw/BUILD/vgm-latest/log Mon Sep 21 10:20:49 2026 (0.0s)
+## Begin sw/BUILD/GBL-latest/log Mon Sep 21 10:21:07 2026
+++ cmake -S /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/SOURCES/GBL/V03-01-04/V03-01-04/cpp/ -B /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/BUILD/d67d980c968a88886567a9c6f9acf0fbd5c6af8a/GBL -DCMAKE_BUILD_TYPE=RELWITHDEBINFO -DCMAKE_INSTALL_PREFIX=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/d67d980c968a88886567a9c6f9acf0fbd5c6af8a/osx_arm64/GBL/V03-01-04-local5 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DEIGEN3_INCLUDE_DIR=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/osx_arm64/Eigen3/3.4.0-onnx1-local1/include/eigen3 -DSUP
+++ MODULEDIR=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/d67d980c968a88886567a9c6f9acf0fbd5c6af8a/osx_arm64/GBL/V03-01-04-local5/etc/modulefiles
+++ mkdir -p /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/d67d980c968a88886567a9c6f9acf0fbd5c6af8a/osx_arm64/GBL/V03-01-04-local5/etc/modulefiles
+++ rsync -a --delete etc/modulefiles/ /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/d67d980c968a88886567a9c6f9acf0fbd5c6af8a/osx_arm64/GBL/V03-01-04-local5/etc/modulefiles
+## End sw/BUILD/GBL-latest/log Mon Sep 21 10:21:07 2026 (0.0s)
+## Begin sw/BUILD/KFParticle-latest/log Mon Sep 21 10:21:22 2026
+++ cmake /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/SOURCES/KFParticle/v1.1-alice10/v1.1-alice10 -G Ninja -DVc_INCLUDE_DIR=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/osx_arm64/Vc/1.4.5-local1/include -DCMAKE_INSTALL_PREFIX=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/0957fe488c1c6e907e7edcc7a3ff49a315efb717/osx_arm64/KFParticle/v1.1-alice10-local5 -DCMAKE_BUILD_TYPE=RELWITHDEBINFO -DFIXTARGET=FALSE
++ '[' true = true ']'
++ printf 'prepend-path ROOT_INCLUDE_PATH $PKG_ROOT/include\n'
++ echo
+## End sw/BUILD/KFParticle-latest/log Mon Sep 21 10:21:22 2026 (0.0s)
+## Begin sw/BUILD/GEANT3-latest/log Mon Sep 21 10:22:11 2026
++++ gfortran --version
++ '[' '' = true ']'
++ '[' '' = true ']'
++ echo
+## End sw/BUILD/GEANT3-latest/log Mon Sep 21 10:22:11 2026 (0.0s)
+## Begin sw/BUILD/MCStepLogger-latest/log Mon Sep 21 10:22:29 2026
+++ cmake /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/SOURCES/MCStepLogger/v0.6.2/v0.6.2 -DCMAKE_INSTALL_PREFIX=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/37407ee7829fbff6517a57bd2e71a2d37fb20e30/osx_arm64/MCStepLogger/v0.6.2-local5 -DCMAKE_CXX_STANDARD=20 -DROOT_DIR=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/osx_arm64/ROOT/v6-36-10-alice4-local2 -DBUILD_SHARED_LIBS=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
++ '[' '' = true ']'
++ echo
+++ cat
+## End sw/BUILD/MCStepLogger-latest/log Mon Sep 21 10:22:29 2026 (0.0s)
+## Begin sw/BUILD/GEANT4_VMC-latest/log Mon Sep 21 10:23:18 2026
+++ LDFLAGS=' -L/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/osx_arm64/GEANT4/v11.2.0-alice2-local2/lib'
+++ MODULEFILE=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/11585f7a5e3eab5140d8a783ac412ed0348b283f/osx_arm64/GEANT4_VMC/v6-6-update2-p3-local5/etc/modulefiles/GEANT4_VMC
+++ mkdir -p /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/11585f7a5e3eab5140d8a783ac412ed0348b283f/osx_arm64/GEANT4_VMC/v6-6-update2-p3-local5/etc/modulefiles
+++ cat
+## End sw/BUILD/GEANT4_VMC-latest/log Mon Sep 21 10:23:18 2026 (0.0s)
+## Begin sw/BUILD/simulation-latest/log Mon Sep 21 10:23:19 2026
+++ MODULEFILE_REQUIRES=
+++ MODULEFILE=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/2718819a19ff301d0e8851316e4483a98addd65b/osx_arm64/simulation/v1.0-local5/etc/modulefiles/simulation
+++ mkdir -p /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/INSTALLROOT/2718819a19ff301d0e8851316e4483a98addd65b/osx_arm64/simulation/v1.0-local5/etc/modulefiles
+++ cat
+## End sw/BUILD/simulation-latest/log Mon Sep 21 10:23:19 2026 (0.0s)
+## Begin sw/BUILD/FairRoot-latest/log Mon Sep 21 10:24:21 2026
+++ unset SIMPATH
++ '[' '' = true ']'
++ echo
+++ cat
+## End sw/BUILD/FairRoot-latest/log Mon Sep 21 10:24:21 2026 (0.0s)
+## Begin sw/BUILD/O2-latest/log Mon Sep 21 11:15:51 2026
+++ export ROOTSYS=/Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/osx_arm64/ROOT/v6-36-10-alice4-local2
+2026-09-21T10:35:06.796+0200 [55417:0x1f59fe180] [parsedcommandfactory.cpp:433] [ERROR] Failed to read command-line options from file "rpath/libO2FrameworkCCDBSupport.dylib": std::system_error exception thrown at [buildboxcommon_fileutils.cpp:490] [system:2], errMsg = "Failed to open file "rpath/libO2FrameworkCCDBSupport.dylib"", errno : No such file or directory
+Error: missing ; at end of rule at /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/SOURCES/O2/daily-20260921-0000/daily-20260921-0000/Detectors/TPC/base/src/TPCBaseLinkDef.h:83:135
+
+Error: missing ; at end of rule at /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/SOURCES/O2/daily-20260921-0000/daily-20260921-0000/Detectors/TPC/base/src/TPCBaseLinkDef.h:84:135
+
+
+[1785/4779] Building CXX object Detectors/MUON/MID/Tracking/CMakeFiles/O2lib-MIDTracking.dir/src/TrackerParam.cxx.o
+[1786/4779] Building CXX object Detectors/MUON/MID/Tracking/CMakeFiles/O2lib-MIDTracking.dir/src/HitMapBuilder.cxx.o
+[1787/4779] Building CXX object Detectors/MUON/MID/Raw/test/CMakeFiles/O2test-mid-Raw.dir/testRaw.cxx.o
+[1788/4779] Building CXX object Detectors/MUON/MID/Tracking/CMakeFiles/O2lib-MIDTracking.dir/G__O2MIDTracking.cxx.o
+[1789/4779] Building CXX object Detectors/MUON/MID/Filtering/CMakeFiles/O2lib-MIDFiltering.dir/src/ChannelMasksHandler.cxx.o
+2026-09-21T10:41:05.782+0200 [66952:0x1f59fe180] [parsedcommandfactory.cpp:433] [ERROR] Failed to read command-line options from file "rpath/libO2DataFormatsCPV.dylib": std::system_error exception thrown at [buildboxcommon_fileutils.cpp:490] [system:2], errMsg = "Failed to open file "rpath/libO2DataFormatsCPV.dylib"", errno : No such file or directory
+2026-09-21T10:47:08.594+0200 [76290:0x1f59fe180] [parsedcommandfactory.cpp:433] [ERROR] Failed to read command-line options from file "rpath/libO2DataFormatsMFT.dylib": std::system_error exception thrown at [buildboxcommon_fileutils.cpp:490] [system:2], errMsg = "Failed to open file "rpath/libO2DataFormatsMFT.dylib"", errno : No such file or directory
+[2736/4779] Building CXX object Detectors/MUON/MCH/Workflow/CMakeFiles/O2exe-mch-entropy-encoder-workflow.dir/src/entropy-encoder-workflow.cxx.o
+[2737/4779] Generating G__O2ECalBase.cxx, ../../../../../stage/lib/G__O2ECalBase_rdict.pcm, ../../../../../stage/lib/libO2ECalBase.rootmap
+Error: missing ; at end of rule at /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/SOURCES/O2/daily-20260921-0000/daily-20260921-0000/Detectors/Upgrades/ALICE3/ECal/base/src/ECalBaseLinkDef.h:19:48
+
+
+[2738/4779] Linking CXX executable stage/bin/o2-mch-entropy-encoder-workflow
+ld: warning: building for macOS-14.0, but linking with dylib '/opt/homebrew/opt/gsl/lib/libgsl.28.dylib' which was built for newer version 15.0
+ld: warning: building for macOS-14.0, but linking with dylib '/opt/homebrew/opt/gsl/lib/libgslcblas.0.dylib' which was built for newer version 15.0
+[2739/4779] Building CXX object Detectors/TPC/spacecharge/CMakeFiles/O2lib-TPCSpaceCharge.dir/src/SpaceCharge.cxx.o
+[2740/4779] Building CXX object Detectors/Upgrades/ALICE3/ECal/DataFormatsECal/CMakeFiles/O2lib-DataFormatsECal.dir/src/Cluster.cxx.o
+2026-09-21T10:49:23.657+0200 [79932:0x1f59fe180] [parsedcommandfactory.cpp:433] [ERROR] Failed to read command-line options from file "rpath/libO2FITWorkflow.dylib": std::system_error exception thrown at [buildboxcommon_fileutils.cpp:490] [system:2], errMsg = "Failed to open file "rpath/libO2FITWorkflow.dylib"", errno : No such file or directory
+[3318/4779] Generating G__O2ITSSimulation.cxx, ../../../../stage/lib/G__O2ITSSimulation_rdict.pcm, ../../../../stage/lib/libO2ITSSimulation.rootmap
+[3319/4779] Generating G__O2MI3Base.cxx, ../../../../../stage/lib/G__O2MI3Base_rdict.pcm, ../../../../../stage/lib/libO2MI3Base.rootmap
+Error: missing ; at end of rule at /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/SOURCES/O2/daily-20260921-0000/daily-20260921-0000/Detectors/Upgrades/ALICE3/MID/base/src/MI3BaseLinkDef.h:18:47
+
+
+[3320/4779] Generating G__O2RICHBase.cxx, ../../../../../stage/lib/G__O2RICHBase_rdict.pcm, ../../../../../stage/lib/libO2RICHBase.rootmap
+Error: missing ; at end of rule at /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/SOURCES/O2/daily-20260921-0000/daily-20260921-0000/Detectors/Upgrades/ALICE3/RICH/base/src/RICHBaseLinkDef.h:18:48
+
+
+[3321/4779] Generating G__O2FD3Base.cxx, ../../../../../stage/lib/G__O2FD3Base_rdict.pcm, ../../../../../stage/lib/libO2FD3Base.rootmap
+[3322/4779] Building CXX object Detectors/Upgrades/ALICE3/IOTOF/DataFormatsIOTOF/CMakeFiles/O2lib-DataFormatsIOTOF.dir/src/Digit.cxx.o
+[3323/4779] Generating G__O2GRPCalibration.cxx, ../../../stage/lib/G__O2GRPCalibration_rdict.pcm, ../../../stage/lib/libO2GRPCalibration.rootmap
+[3324/4779] Building CXX object Detectors/Upgrades/ALICE3/IOTOF/DataFormatsIOTOF/CMakeFiles/O2lib-DataFormatsIOTOF.dir/src/Cluster.cxx.o
+[3325/4779] Generating G__O2TRKFT3Simulation.cxx, ../../../../../../stage/lib/G__O2TRKFT3Simulation_rdict.pcm, ../../../../../../stage/lib/libO2TRKFT3Simulation.rootmap
+++ [[ -f /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/alidist/resources/FindO2GPU.cmake ]]
+++ cmp -s /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/alidist/resources/FindO2GPU.cmake /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/SOURCES/O2/daily-20260921-0000/daily-20260921-0000/dependencies/FindO2GPU.cmake
+++ [[ RELWITHDEBINFO == COVERAGE ]]
+## End sw/BUILD/O2-latest/log Mon Sep 21 11:15:51 2026 (0.0s)
+## Begin sw/BUILD/O2Physics-latest/log Mon Sep 21 13:45:32 2026
+++ case $ARCHITECTURE in
+2026-09-21T11:18:50.936+0200 [45186:0x1f59fe180] [parsedcommandfactory.cpp:433] [ERROR] Failed to read command-line options from file "rpath/libO2PhysicsGFWCore.dylib": std::system_error exception thrown at [buildboxcommon_fileutils.cpp:490] [system:2], errMsg = "Failed to open file "rpath/libO2PhysicsGFWCore.dylib"", errno : No such file or directory
+2026-09-21T11:19:39.801+0200 [46280:0x1f59fe180] [parsedcommandfactory.cpp:433] [ERROR] Failed to read command-line options from file "rpath/libO2PhysicsPWGEMDileptonCore.dylib": std::system_error exception thrown at [buildboxcommon_fileutils.cpp:490] [system:2], errMsg = "Failed to open file "rpath/libO2PhysicsPWGEMDileptonCore.dylib"", errno : No such file or directory
+[3125/3246] Building CXX object Tutorials/PWGUD/CMakeFiles/O2Physicsexe-analysis-ud-udtutorial-07.dir/UDTutorial_07.cxx.o
+FAILED: Tutorials/PWGUD/CMakeFiles/O2Physicsexe-analysis-ud-udtutorial-07.dir/UDTutorial_07.cxx.o 
+error: error opening 'Tutorials/PWGUD/CMakeFiles/O2Physicsexe-analysis-ud-udtutorial-08.dir/UDTutorial_08.cxx.o.d': /Volumes/build/alice-ci-claim-workdir/osx_arm64/o2physics/sw/BUILD/334da2321fba65ca5573a76fdbbd54a7b8fd2a02/O2Physics/Tutorials/PWGUD/CMakeFiles/O2Physicsexe-analysis-ud-udtutorial-08.dir/UDTutorial_08.cxx.o.d: No space left on device
+1 error generated.
+[3127/3246] Building CXX object Tutorials/PWGLF/Resonance/CMakeFiles/O2Physicsexe-analysistutorial-lf-resonances-step0.dir/resonances_step0.cxx.o
+FAILED: Tutorials/PWGLF/Resonance/CMakeFiles/O2Physicsexe-analysistutorial-lf-resonances-step0.dir/resonances_step0.cxx.o 
+## End sw/BUILD/O2Physics-latest/log Mon Sep 21 13:45:32 2026 (0.0s)

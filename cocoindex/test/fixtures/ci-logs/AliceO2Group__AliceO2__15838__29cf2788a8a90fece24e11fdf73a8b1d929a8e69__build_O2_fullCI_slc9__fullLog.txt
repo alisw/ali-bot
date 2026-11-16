@@ -1,0 +1,10 @@
+Finished building on ci-efba6f.example.org at 2026-09-24-16:20:30
+Built commit 29cf2788a8a90fece24e11fdf73a8b1d929a8e69 from https://github.com/AliceO2Group/AliceO2/pull/15838
+Nomad allocation:
+    https://alinomad.cern.ch/ui/allocations/f2ebe038-f6b8-efdb-3d35-de6467e09fdf
+To log into the build machine, use:
+    nomad alloc exec f2ebe038 bash
+To stream logs from the CI process, use:
+    nomad alloc logs -stderr -tail -f f2ebe038
+No logs found. Please check the aurora log.
+See http://alisw.github.io/infrastructure-pr-testing for more instructions.

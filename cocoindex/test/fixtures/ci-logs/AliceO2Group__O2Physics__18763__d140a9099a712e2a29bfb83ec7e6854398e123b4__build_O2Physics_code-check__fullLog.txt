@@ -1,0 +1,94 @@
+Finished building on ci-94822a at 2026-11-16-09:29:40
+Built commit d140a9099a712e2a29bfb83ec7e6854398e123b4 from https://github.com/AliceO2Group/O2Physics/pull/18763
+Nomad allocation:
+    https://alinomad.cern.ch/ui/allocations/be0fbfcb-026f-b1f5-c8d5-28a89b70664a
+To log into the build machine, use:
+    nomad alloc exec be0fbfcb bash
+To stream logs from the CI process, use:
+    nomad alloc logs -stderr -tail -f be0fbfcb
+The following files (oldest first) are present in the log:
+- sw/BUILD/O2Physics-latest/log
+- sw/BUILD/O2Physics-code-check-latest/log
+## Begin sw/BUILD/O2Physics-latest/log Mon Nov 16 09:24:29 2026
++ NO_SHARED=OFF
++ [[ -n '' ]]
++ HAVE_NO_SHARED=OFF
+-- Installing: /sw/slc9_x86-64/O2Physics/slc9_x86-64-slc9_x86-64-local3/lib/cmake/O2Physics/FindONNXRuntime.cmake
++ mkdir -p /sw/slc9_x86-64/O2Physics/slc9_x86-64-slc9_x86-64-local3/etc/modulefiles
++ rsync -a --delete etc/modulefiles/ /sw/slc9_x86-64/O2Physics/slc9_x86-64-slc9_x86-64-local3/etc/modulefiles
+## End sw/BUILD/O2Physics-latest/log Mon Nov 16 09:24:29 2026 (0.0s)
+## Begin sw/BUILD/O2Physics-code-check-latest/log Mon Nov 16 09:29:40 2026
+++ set -euo pipefail
+ 2676 |     const float dphi = deltaPhiMinusPiToPi((float)mcacc::lamPhi(candidate1),
+      |                                            ^
+/sw/SOURCES/O2Physics/slc9_x86-64-slc9_x86-64/0/PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:2677:44: error: C-style casts are discouraged; use static_cast/const_cast/reinterpret_cast [google-readability-casting,-warnings-as-errors]
+ 2677 |                                            (float)mcacc::lamPhi(candidate2));
+      |                                            ^
+/sw/SOURCES/O2Physics/slc9_x86-64-slc9_x86-64/0/PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:2739:43: warning: statement should be inside braces [readability-braces-around-statements]
+ 2739 |         if (hasSharedDaughtersMC(v0, v02))
+      |                                           ^
+      |                                            {
+ 2740 |           continue;
+      |                             ^~~~~
+      |                             static_cast<int>
+/sw/SOURCES/O2Physics/slc9_x86-64-slc9_x86-64/0/PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4252:42: error: C-style casts are discouraged; use static_cast (if needed, the cast may be redundant) [google-readability-casting,-warnings-as-errors]
+ 4252 |           const int j = i + (int)(seed % (uint64_t)(matches.size() - i));
+      |                                          ^~~~~~~~~~
+      |                                          static_cast<uint64_t>
+/sw/SOURCES/O2Physics/slc9_x86-64-slc9_x86-64/0/PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4328:13: warning: use auto when initializing with a cast to avoid duplicating the type name [modernize-use-auto]
+ 4328 |       const int64_t curColIdx = static_cast<int64_t>(col1.index());
+      |             ^~~~~~~
+      |             auto
+/sw/SOURCES/O2Physics/slc9_x86-64-slc9_x86-64/0/PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4328:33: error: redundant explicit casting to the same type 'int64_t' (aka 'long') as the sub-expression, remove this casting [readability-redundant-casting,-warnings-as-errors]
+ 4328 |       const int64_t curColIdx = static_cast<int64_t>(col1.index());
+      |                                 ^~~~~~~~~~~~~~~~~~~~~            ~
+/sw/slc9_x86-64/O2/daily-20261116-0000-local1/include/Framework/ASoA.h:778:25: note: source type originates from the invocation of this method
+  778 |   [[nodiscard]] int64_t index() const
+      |                 ~~~~~~~ ^
+/sw/SOURCES/O2Physics/slc9_x86-64-slc9_x86-64/0/PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4338:42: warning: statement should be inside braces [readability-braces-around-statements]
+ 4338 |         if (hasSharedDaughtersMC(t1, t2))
+      |                                                    ^~~~~~~        
+      |                                                    static_cast<float>( )
+/sw/SOURCES/O2Physics/slc9_x86-64-slc9_x86-64/0/PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4555:69: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+ 4555 |             const float dPhi = deltaPhiMinusPiToPi((float)l1.Phi(), (float)lY.Phi());
+      |                                                                     ^~~~~~~        
+      |                                                                     static_cast<float>( )
+/sw/SOURCES/O2Physics/slc9_x86-64-slc9_x86-64/0/PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4556:50: warning: statement should be inside braces [readability-braces-around-statements]
+ 4556 |             if (fillHistConfig.fillBasicQAHistos)
+      |                                                  ^
+      |                                                   {
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:2578:86: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:2676:44: error: C-style casts are discouraged; use static_cast/const_cast/reinterpret_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:2677:44: error: C-style casts are discouraged; use static_cast/const_cast/reinterpret_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:2951:27: error: redundant explicit casting to the same type 'int64_t' (aka 'long') as the sub-expression, remove this casting [readability-redundant-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:2952:23: error: redundant explicit casting to the same type 'int64_t' (aka 'long') as the sub-expression, remove this casting [readability-redundant-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:3047:11: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:3102:40: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:3107:29: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:3107:42: error: C-style casts are discouraged; use static_cast (if needed, the cast may be redundant) [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:3185:33: error: redundant explicit casting to the same type 'int64_t' (aka 'long') as the sub-expression, remove this casting [readability-redundant-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4247:40: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4252:29: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4252:42: error: C-style casts are discouraged; use static_cast (if needed, the cast may be redundant) [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4328:33: error: redundant explicit casting to the same type 'int64_t' (aka 'long') as the sub-expression, remove this casting [readability-redundant-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4365:39: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4365:80: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4365:133: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4372:39: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4372:80: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4372:133: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4500:52: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4500:69: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4555:52: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4555:69: error: C-style casts are discouraged; use static_cast [google-readability-casting,-warnings-as-errors]
+++ [[ 343 -gt 0 ]]
+++ cat /sw/BUILD/df674edf9b8cadf3e3b7887593baf0ae80011b84/O2Physics-code-check/warnings.txt
+PWGLF/TableProducer/Strangeness/lambdaspincorrelation.cxx:53:8: warning: constructor does not initialize these fields: ccdb [cppcoreguidelines-pro-type-member-init]
+PWGLF/TableProducer/Strangeness/lambdaspincorrelation.cxx:312:23: warning: statement should be inside braces [readability-braces-around-statements]
+PWGLF/TableProducer/Strangeness/lambdaspincorrelation.cxx:336:15: warning: implicit conversion 'std::tuple_element<0, std::tuple<int, int, bool>>::type' (aka 'int') -> 'bool' [readability-implicit-bool-conversion]
+PWGLF/TableProducer/Strangeness/lambdaspincorrelation.cxx:339:15: warning: implicit conversion 'std::tuple_element<1, std::tuple<int, int, bool>>::type' (aka 'int') -> 'bool' [readability-implicit-bool-conversion]
+PWGLF/TableProducer/Strangeness/lambdaspincorrelation.cxx:342:15: warning: implicit conversion 'std::tuple_element<0, std::tuple<int, int, bool>>::type' (aka 'int') -> 'bool' [readability-implicit-bool-conversion]
+PWGLF/Tasks/Strangeness/lambdaspincorrderived.cxx:4556:50: warning: statement should be inside braces [readability-braces-around-statements]
+++ [[ 70 -gt 0 ]]
+++ exit 1
+## End sw/BUILD/O2Physics-code-check-latest/log Mon Nov 16 09:29:40 2026 (0.0s)

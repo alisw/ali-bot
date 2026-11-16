@@ -1,0 +1,27 @@
+Finished building on ci-9d9f7f.example.org at 2026-10-10-23:24:42
+Built commit e085cf4d1c3413f0f29994dcf73eaf7e89414b8e from https://github.com/AliceO2Group/AliceO2/pull/15909
+Nomad allocation:
+    https://alinomad.cern.ch/ui/allocations/6fb6f564-0e5b-7ccf-fc08-7ec81c9e25d8
+To log into the build machine, use:
+    nomad alloc exec 6fb6f564 bash
+To stream logs from the CI process, use:
+    nomad alloc logs -stderr -tail -f 6fb6f564
+The following files (oldest first) are present in the log:
+- sw/BUILD/O2-latest/log
+## Begin sw/BUILD/O2-latest/log Sat Oct 10 23:24:41 2026
+++ export ROOTSYS=/sw/slc10_x86-64/ROOT/v6-36-10-alice4-5
+++ ROOTSYS=/sw/slc10_x86-64/ROOT/v6-36-10-alice4-5
+++ [[ -f /sw/slc10_x86-64/gpu-system/build-from-alidist-cuda_arch_80_real_86_real_89_real_120_real_75_virtual-rocm_arch_gfx906_gfx908-local1/etc/gpu-features-available.sh ]]
+++ source /sw/slc10_x86-64/gpu-system/build-from-alidist-cuda_arch_80_real_86_real_89_real_120_real_75_virtual-rocm_arch_gfx906_gfx908-local1/etc/gpu-features-available.sh
+-- Detected Compiler: GCC 14.2.0
+-- Detected CPU: zen3
+CMake Error at /sw/slc10_x86-64/CMake/v4.1.4-4/share/cmake-4.1/Modules/FindPackageHandleStandardArgs.cmake:227 (message):
+  Could NOT find GLUT (missing: GLUT_glut_LIBRARY GLUT_INCLUDE_DIR)
+Call Stack (most recent call first):
+  /sw/slc10_x86-64/CMake/v4.1.4-4/share/cmake-4.1/Modules/FindPackageHandleStandardArgs.cmake:591 (_FPHSA_FAILURE_MESSAGE)
+  /sw/slc10_x86-64/CMake/v4.1.4-4/share/cmake-4.1/Modules/FindGLUT.cmake:172 (find_package_handle_standard_args)
+  CMakeLists.txt:91 (find_package)
+
+
+-- Configuring incomplete, errors occurred!
+## End sw/BUILD/O2-latest/log Sat Oct 10 23:24:41 2026 (0.0s)

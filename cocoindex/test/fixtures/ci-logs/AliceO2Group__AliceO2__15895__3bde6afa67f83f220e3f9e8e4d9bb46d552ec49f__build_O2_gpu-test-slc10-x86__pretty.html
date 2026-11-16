@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<head>
+  <title>Build results</title>
+  <style>
+   body { border-width: 0.5rem; border-style: solid; margin: 0; padding: 1rem; min-height: 100vh; box-sizing: border-box; }
+   pre { overflow-x: auto; }
+   .succeeded { border-color: #1b5e20; }
+   .succeeded h1 { color: #1b5e20; }
+   .failed { border-color: #b71c1c; }
+   .failed h1 { color: #b71c1c; }
+   #noerrors, #noerrors-toc { display: none; }
+   #fetch, #fetch-toc { display: none; }
+   #compiler-killed, #compiler-killed-toc { display: none; }
+   #o2checkcode, #o2checkcode-toc { display: none; }
+   #o2pcheckcode, #o2pcheckcode-toc { display: none; }
+   #tests, #tests-toc { display: none; }
+   #errors, #errors-toc { display: none; }
+   #warnings, #warnings-toc { display: block; }
+   #cmake, #cmake-toc { display: block; }
+   #fullsystest, #fullsystest-toc { display: none; }
+   #xjalienfs, #xjalienfs-toc { display: none; }
+   #extra-files, #extra-files-toc { display: none; }
+  </style>
+</head>
+<body class="failed">
+  <h1>The build failed</h1>
+  <table>
+    <tr><th>Build host</th><td>ci-9d9f7f.example.org</td></tr>
+    <tr><th>Started at</th><td>Fri 9 Oct 2026, 07:05:52 CEST</td></tr>
+    <tr><th>Finished at</th><td>Fri 9 Oct 2026, 07:26:34 CEST</td></tr>
+    <tr><th>Built PR</th>
+        <td><a href="https://github.com/AliceO2Group/AliceO2/pull/15895">AliceO2Group/AliceO2#15895</a></td></tr>
+    <tr><th>Built commit</th>
+        <td><a href="https://github.com/AliceO2Group/AliceO2/pull/15895/commits/3bde6afa67f83f220e3f9e8e4d9bb46d552ec49f"><code>3bde6afa67f83f220e3f9e8e4d9bb46d552ec49f</code></a></td></tr>
+    <tr><th>Nomad allocation</th>
+        <td><a href="https://alinomad.cern.ch/ui/allocations/6fb6f564-0e5b-7ccf-fc08-7ec81c9e25d8">Nomad allocation information</a></td></tr>
+    <tr><th>SSH command</th>
+        <td><code>nomad alloc exec 6fb6f564 bash</code></td></tr>
+    <tr><th>Stream logs</th>
+        <td><code>nomad alloc logs -stderr -tail -f 6fb6f564</code></td></tr>
+    <tr><th>Alibuild version</th>
+        <td>alisw/alibuild@refs/pull/1038/head</td></tr>
+    <tr><th>Alidist version</th>
+        <td>Not pinned (most likely alidist@master)</td></tr>
+  </table>
+  <p>The code that finds and extracts error messages may have missed some.
+     Check the <a href="https://ali-ci.cern.ch/alice-build-logs/AliceO2Group/AliceO2/15895/3bde6afa67f83f220e3f9e8e4d9bb46d552ec49f/build_O2_gpu-test-slc10-x86/fullLog.txt">full build log</a> if you suspect the build failed for reasons not listed below.</p>
+  <h3>Table of contents</h3>
+  <p><nav><ol>
+    <li id="noerrors-toc"><a href="#noerrors">No errors found</a></li>
+    <li id="fetch-toc"><a href="#fetch">Git fetch failed</a></li>
+    <li id="compiler-killed-toc"><a href="#compiler-killed">Error: the compiler process was killed</a></li>
+    <li id="cmake-toc"><a href="#cmake">CMake errors and warnings</a></li>
+    <li id="o2checkcode-toc"><a href="#o2checkcode"><code>o2checkcode</code> results</a></li>
+    <li id="o2pcheckcode-toc"><a href="#o2pcheckcode"><code>O2Physics-code-check</code> results</a></li>
+    <li id="tests-toc"><a href="#tests">Unit test results</a></li>
+    <li id="fullsystest-toc"><a href="#fullsystest">O2 full system test</a></li>
+    <li id="xjalienfs-toc"><a href="#xjalienfs">XjalienFS exceptions</a></li>
+    <li id="errors-toc"><a href="#errors">Error messages</a></li>
+    <li id="warnings-toc"><a href="#warnings">Compiler warnings</a></li>
+    <li id="extra-files-toc"><a href="#extra-files">Additional logs and histograms</a></li>
+  </ol></nav></p>
+  <section id="noerrors">
+    <h2>No errors found</h2>
+    <p>Check the <a href="https://ali-ci.cern.ch/alice-build-logs/AliceO2Group/AliceO2/15895/3bde6afa67f83f220e3f9e8e4d9bb46d552ec49f/build_O2_gpu-test-slc10-x86/fullLog.txt">full build log</a> to see all compilation messages.</p>
+  </section>
+  <section id="fetch">
+    <h2>Git fetch failed</h2>
+    <p>This error may indicate an outage of a git host, such as GitHub or CERN GitLab.</p>
+    <p>This build will be retried automatically;
+       this error will be resolved once the git host comes back.<

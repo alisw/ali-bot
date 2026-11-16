@@ -1,0 +1,51 @@
+Finished building on ci-ec7976 at 2026-11-02-13:23:38
+Built commit b77e634f38debd8b42ef264a35f6639d0546bd82 from https://github.com/AliceO2Group/AliceO2/pull/16034
+Nomad allocation:
+    https://alinomad.cern.ch/ui/allocations/0d571218-0cac-4977-a792-e7759971ed58
+To log into the build machine, use:
+    nomad alloc exec 0d571218 bash
+To stream logs from the CI process, use:
+    nomad alloc logs -stderr -tail -f 0d571218
+The following files (oldest first) are present in the log:
+- sw/BUILD/O2-latest/log
+## Begin sw/BUILD/O2-latest/log Mon Nov  2 13:23:37 2026
+++ export ROOTSYS=/sw/slc9_x86-64/ROOT/v6-36-10-alice4-6
+++ ROOTSYS=/sw/slc9_x86-64/ROOT/v6-36-10-alice4-6
+++ [[ -f /sw/slc9_x86-64/gpu-system/auto-local2/etc/gpu-features-available.sh ]]
+++ source /sw/slc9_x86-64/gpu-system/auto-local2/etc/gpu-features-available.sh
+370/617 Test  #27: framework:utils ......................................................................   Passed    0.81 sec
+        Start  99: Utilities/Mergers/test/test_Algorithm.cxx
+371/617 Test #128: CCDB/test/testCcdbApiHeaders.cxx .....................................................***Failed    0.96 sec
+[INFO] Init CcdApi with UserAgentID: o2-test-ccdb-Cc/o2-test-ccdb-CcdbApi-Headers@25318 target/Linux_x86_64 init/1793622145018 id/mesosci@ci-ec7976 session/E0wyc2qz, Host: http://127.0.0.1:40659/ccdb-prod, Curl timeouts: upload:20 download:5
+[INFO] Init CcdApi with UserAgentID: o2-test-ccdb-Cc/o2-test-ccdb-CcdbApi-Headers@25318 target/Linux_x86_64 init/1793622145018 id/mesosci@ci-ec7976 session/E0wyc2qz, Host: http://127.0.0.1:40659/ccdb, Curl timeouts: upload:20 download:5
+[INFO] Path we will use in this test suite : Users/m/meide/Tests/ci-ec7976/pid-25318/BasicCCDBManager/
+
+[INFO] ccdb url: http://127.0.0.1:40659/ccdb
+
+[INFO] Is host reachable ? --> 1
+[INFO] ccdb reads http://127.0.0.1:40659/ccdb/Users/m/meide/Tests/ci-ec7976/pid-25318/BasicCCDBManager/NonCachingB/1000/0ff5be9d-d6b8-11f1-8484-fdb938091960 for 1500 (retrieve, agent_id: o2-test-ccdb-Cc/o2-test-ccdb-CcdbApi-Headers@25318 target/Linux_x86_64 init/1793622145018 id/mesosci@ci-ec7976 session/E0wyc2qz), 
+[INFO] ccdb reads http://127.0.0.1:40659/ccdb/Users/m/meide/Tests/ci-ec7976/pid-25318/BasicCCDBManager/NonCachingA/1000/0ff439de-d6b8-11f1-8484-fdb938091960 for 1500 (retrieve, agent_id: o2-test-ccdb-Cc/o2-test-ccdb-CcdbApi-Headers@25318 target/Linux_x86_64 init/1793622145018 id/mesosci@ci-ec7976 session/E0wyc2qz), 
+/sw/SOURCES/O2/slc9_x86-64-slc9_x86-64/0/CCDB/test/testCcdbApiHeaders.cxx(230): [1;31;49merror: in "testNonCachedHeaders": The headers for the same object should be the same even if not cached[0;39;49m
+[INFO] ccdb reads http://127.0.0.1:40659/ccdb/Users/m/meide/Tests/ci-ec7976/pid-25318/BasicCCDBManager/ObjA/10000/0ff9f490-d6b8-11f1-8484-fdb938091960 for 15000 (retrieve, agent_id: o2-test-ccdb-Cc/o2-test-ccdb-CcdbApi-Headers@25318 target/Linux_x86_64 init/1793622145018 id/mesosci@ci-ec7976 session/E0wyc2qz), 
+[ERROR] Requested resource does not exist: http://127.0.0.1:40659/ccdb/Users/m/meide/Tests/ci-ec7976/pid-25318/BasicCCDBManager/FailThenRecover/299000/
+[INFO] ccdb reads http://127.0.0.1:40659/ccdb/Users/m/meide/Tests/ci-ec7976/pid-25318/BasicCCDBManager/FailThenRecover/300000/0fffb27e-d6b8-11f1-8484-fdb938091960 for 305000 (retrieve, agent_id: o2-test-ccdb-Cc/o2-test-ccdb-CcdbApi-Headers@25318 target/Linux_x86_64 init/1793622145018 id/mesosci@ci-ec7976 session/E0wyc2qz), 
+[INFO] ccdb reads http://127.0.0.1:40659/ccdb/Users/m/meide/Tests/ci-ec7976/pid-25318/BasicCCDBManager/LateHeaders/400000/1003d3dc-d6b8-11f1-8484-fdb938091960 for 405000 (retrieve, agent_id: o2-test-ccdb-Cc/o2-test-ccdb-CcdbApi-Headers@25318 target/Linux_x86_64 init/1793622145018 id/mesosci@ci-ec7976 session/E0wyc2qz), 
+[INFO] ccdb reads http://127.0.0.1:40659/ccdb/Users/m/meide/Tests/ci-ec7976/pid-25318/BasicCCDBManager/StableHeaders/500000/1007beda-d6b8-11f1-8484-fdb938091960 for 505000 (retrieve, agent_id: o2-test-ccdb-Cc/o2-test-ccdb-CcdbApi-Headers@25318 target/Linux_x86_64 init/1793622145018 id/mesosci@ci-ec7976 session/E0wyc2qz), 
+
+[1;31;49m*** 1 failure is detected in the test module "CCDB"
+[0;39;49m[INFO] Test data truncated/deleted (Users/m/meide/Tests/ci-ec7976/pid-25318/BasicCCDBManager/)
+
+617/617 Test  #28: framework:aod-native .................................................................   Passed    1.45 sec
+
+99% tests passed, 1 tests failed out of 617
+
+Label Time Summary:
+CPV               = 265.78 sec*proc (9 tests)
+algorithm         =   0.41 sec*proc (4 tests)
+alice3            =  21.20 sec*proc (8 tests)
+align             =  73.59 sec*proc (3 tests)
+cadsupport        =  34.26 sec*proc (3 tests)
+++ set +x
+++ [[ ! -n 8 ]]
+++ exit 1
+## End sw/BUILD/O2-latest/log Mon Nov  2 13:23:37 2026 (0.0s)

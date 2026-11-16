@@ -1,0 +1,19 @@
+Finished building on ci-870806.example.org at 2026-11-16-08:55:48
+Built commit d140a9099a712e2a29bfb83ec7e6854398e123b4 from https://github.com/AliceO2Group/O2Physics/pull/18763
+Nomad allocation:
+    https://alinomad.cern.ch/ui/allocations/e0934062-a211-48ba-b4cc-0bd6f256d99f
+To log into the build machine, use:
+    nomad alloc exec e0934062 bash
+To stream logs from the CI process, use:
+    nomad alloc logs -stderr -tail -f e0934062
+The following files (oldest first) are present in the log:
+- sw/BUILD/O2Physics-latest/log
+## Begin sw/BUILD/O2Physics-latest/log Mon Nov 16 08:55:47 2026
++ NO_SHARED=OFF
++ [[ -n '' ]]
++ HAVE_NO_SHARED=OFF
++ grep -q '^CMAKE_LINK_DEPENDS_NO_SHARED:[A-Z]*=ON$' CMakeCache.txt
+-- Installing: /sw/slc9_x86-64/O2Physics/slc9_x86-64-slc9_x86-64-local33/lib/cmake/O2Physics/O2PhysicsCompileFlags.cmake
++ mkdir -p /sw/slc9_x86-64/O2Physics/slc9_x86-64-slc9_x86-64-local33/etc/modulefiles
++ rsync -a --delete etc/modulefiles/ /sw/slc9_x86-64/O2Physics/slc9_x86-64-slc9_x86-64-local33/etc/modulefiles
+## End sw/BUILD/O2Physics-latest/log Mon Nov 16 08:55:47 2026 (0.0s)
