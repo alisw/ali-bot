@@ -473,6 +473,15 @@ class Logs(object):
                   "https://github.com/%s/pull/%s" % (self.pr_built.repo_name,
                                                      self.pr_built.id),
                   file=logf)
+            # The alidist commit the build really used (for an alidist PR, the
+            # merged checkout). Package versions are pinned in alidist, so this
+            # answers "did this failure start with alidist X?" from the log
+            # alone; the worker's own output, which also has it, rotates
+            # within the hour. Read from ./alidist, where build-loop.sh checks
+            # it out and from where it runs this script.
+            err, alidist = getstatusoutput("git -C alidist rev-parse HEAD")
+            if err == 0 and re.fullmatch(r"[0-9a-f]{40}", alidist):
+                print("Built with alidist", alidist, file=logf)
             if "NOMAD_ALLOC_ID" in os.environ:
                 print("Nomad allocation:",
                       "    https://alinomad.cern.ch/ui/allocations/" + os.environ["NOMAD_ALLOC_ID"],
