@@ -32,7 +32,14 @@ SRC = {
         LOGF(error, "Device %s (%d) returned with %d", name, pid, code);
         throw std::runtime_error(fmt::format("Cannot open file {} for writing", fname));
         LOG(info) << "short";
-        O2_SIGNPOST_EVENT_EMIT_ERROR(device, cid, "Run", "Exception while running: %{public}s. Rethrowing.", err.what);""",
+        O2_SIGNPOST_EVENT_EMIT_ERROR(device, cid, "Run", "Exception while running: %{public}s. Rethrowing.", err.what);
+        // LOG(error) << "A line commented out prints nothing";
+        /* LOG(error) << "Nor does a block commented out";
+           */ const char* u = "http://not.a/comment"; LOG(warn) << "Message after a block comment";
+        std::string printError(int code) const {
+          LOG(error) << "A message in the body of a reporting function " << code;
+          return "unrelated literal text of the function body";
+        }""",
     "CCDB/test/testCcdbApi.cxx": """
         BOOST_AUTO_TEST_CASE(timestamptest)
         {
@@ -79,6 +86,14 @@ check({"Got nullptr from CCDB for path _ and timestamp _", "Requested resource d
       "a signpost's format, and a local Error(message, ...) give templates")
 check(not any("short" in t or "never indexed" in t or t.startswith("Error in <_>") for t in texts),
       "too little literal text, skipped directories and ROOT's Error(where, \"%s\") give none")
+check(not any("commented out" in t for t in texts) and "Message after a block comment" in texts,
+      "commented-out code gives no template, and the code after a comment still does")
+check("A message in the body of a reporting function _" in texts
+      and not any("unrelated literal text" in t for t in texts),
+      "a function named like a reporter is not a call: its body's own calls count, not the whole body")
+line = {"".join("_" if p == S.HOLE else "" if p == S.CLS else p for p in t["pieces"]).strip(): t["line"]
+        for t in idx["templates"]}
+check(line["Message after a block comment"] == 10, f"line numbers hold across comments ({line['Message after a block comment']})")
 check({"Test _: _ with generator _ -> FAILED", "Workflow _ finished with _ errors", "Cannot create workflow: _ has no generator",
        "Unknown collision system _", "Anchoring failed for run _ after _ tries"} <= texts,
       "shell echo/printf and Python print/raise/logging give templates")

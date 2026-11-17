@@ -43,7 +43,8 @@ EXTS = (".cxx", ".cpp", ".cc", ".h", ".hpp", ".hxx", ".C", ".inl", ".icc")
 SH_EXTS, PY_EXTS = (".sh",), (".py",)
 SKIP_DIRS = {".git", "build", "doc", "docs", "tutorials", "roottest", "test_data", "interpreter"}
 INDEX = "templates.json"
-INDEX_VERSION = 3   # 2: signposts, ROOT-named calls read both ways; 3: shell, Python, ROOT class prefix
+INDEX_VERSION = 4   # 2: signposts, ROOT-named calls read both ways; 3: shell, Python, ROOT class prefix;
+                    # 4: no comments, no function definitions
 
 CALL_RE = re.compile(
     r"\b(?P<log>LOG|LOGP|LOGF|LOG_IF|LOGP_IF|LOGF_IF|ILOG|QcInfoLogger::\w+|throw\s+(?:[\w:]+::)?"
@@ -95,6 +96,37 @@ def _statement(src: str, start: int) -> str | None:
             return src[start:i]
         i += 1
     return None
+
+
+# C++ comments, skipped over string, character and raw string literals. Code
+# that is commented out prints nothing.
+_CXX_TOKEN_RE = re.compile(r'R"([^()\\\s]{0,16})\(.*?\)\1"|"(?:[^"\\\n]|\\.)*"' r"|'(?:[^'\\\n]|\\.)*'"
+                           r"|//[^\n]*|/\*.*?(?:\*/|$)", re.S)
+
+
+def _uncomment(src: str) -> str:
+    """src with every comment blanked, newlines kept (so line numbers hold)."""
+    return _CXX_TOKEN_RE.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)) if m.group(0)[0] == "/" else m.group(0), src)
+
+
+def _is_definition(src: str, open_paren: int) -> bool:
+    """printError(...) { ... }: a function's definition, not a call. Its body
+    would read as one long statement of every literal in it."""
+    depth, i, n = 1, open_paren, min(len(src), open_paren + 3000)
+    while i < n and depth:
+        ch = src[i]
+        if ch == '"':
+            m = STR_RE.match(src, i)
+            i = m.end() if m else i + 1
+            continue
+        depth += ch == "("
+        depth -= ch == ")"
+        i += 1
+    return bool(_DEF_TAIL_RE.match(src, i))
+
+
+_DEF_TAIL_RE = re.compile(r"\s*(?:(?:const|override|final|noexcept(?:\([^)]*\))?|volatile|&&?)\s*)*"
+                          r"(?:->\s*[^{;=]+?)?\s*\{")
 
 
 def _pieces(stmt: str, head_end: int, root_call: str | None, last_only: bool = False) -> list[str] | None:
@@ -271,7 +303,12 @@ def extract(repo: str, root: str) -> list[dict]:
                 if pcs:
                     out.append({"repo": repo, "path": rel, "line": src.count("\n", 0, m.start()) + 1, "pieces": pcs})
             continue
+        if not CALL_RE.search(src):
+            continue
+        src = _uncomment(src)
         for m in CALL_RE.finditer(src):
+            if _is_definition(src, m.end()):
+                continue
             st = _statement(src, m.start())
             if not st:
                 continue
