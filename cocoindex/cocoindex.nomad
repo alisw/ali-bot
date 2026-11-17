@@ -76,6 +76,8 @@ job "cocoindex" {
       #   cocoindex/flows/<flow>/state   LMDB (COCOINDEX_DB), ~1.5x the DB
       #   cocoindex/flows/<flow>/<db>    the output SQLite file
       #   cocoindex/mirrors/*.git        blobless bare mirrors, branches only
+      #   cocoindex/sources/*            shallow sparse trees (C++ and CMake only) and
+      #                                  templates.json, for srctemplates.py (~0.5 GB)
       #   cocoindex/snap                 scratch for the snapshot being published
       # Estimated total ~5 GB for commits; 10 GB leaves room for ci-failures.
       # sticky: an updated allocation lands back on this node and keeps it.
@@ -450,6 +452,24 @@ job "cocoindex" {
         COCOINDEX_DISABLE_USAGE_TRACKING  = "1"
       }
 
+      # The key of the filler hashes in the published ci-failures.db
+      # (srctemplates.py): it groups the values of a message without letting a
+      # reader confirm a guess at them. Not an upstream credential, so it does
+      # not go through the proxy. Missing key = no filler hashes published.
+      #   vault-admin kv patch kv/cocoindex filler_key=$(openssl rand -hex 32)
+      vault {
+        role        = "cocoindex"
+        change_mode = "noop"
+      }
+      template {
+        destination = "secrets/filler.env"
+        env         = true
+        change_mode = "noop"
+        data        = <<-EOT
+          {{ with secret "kv/data/cocoindex" }}{{ with .Data.data.filler_key }}CIF_FILLER_KEY={{ . }}{{ end }}{{ end }}
+        EOT
+      }
+
       # The code ships inside the jobspec (file() reads it at submit time), so
       # a code change is a new job version and nothing is fetched at runtime.
       # Delimiters are set to something no file contains, so consul-template
@@ -503,6 +523,15 @@ job "cocoindex" {
         left_delimiter  = "[[%%"
         right_delimiter = "%%]]"
         data            = file("sanitize.py")
+      }
+      # Public templates of runtime error messages, from the sources runner.sh
+      # keeps (sanitize.py matches them at publish time).
+      template {
+        destination     = "local/srctemplates.py"
+        change_mode     = "noop"
+        left_delimiter  = "[[%%"
+        right_delimiter = "%%]]"
+        data            = file("srctemplates.py")
       }
 
       # The embeddinggemma task prefixes, shared by the flows and reader.py.

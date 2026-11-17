@@ -25,9 +25,12 @@ In the copy:
   material (repos, PRs, shas, GitHub check names and states), CI metadata
   (times, counts, packages, alloc-<id>), errors by hash (sig_hash,
   class_hash) with a readable `fingerprint` only where its text is public
-  (logscan.public_fingerprint: crash fingerprints, compiler diagnostic
-  templates), file paths that pass logscan.public_path, and pointers into the
-  logs (log_url, line: the logs themselves need CERN SSO). Never log text, no
+  (public_part(): crash fingerprints, compiler diagnostic templates, and the
+  format strings in public code that printed a runtime message, see
+  srctemplates.py), the template_id and keyed filler_hash that group them,
+  file paths that pass logscan.public_path, and pointers into the logs
+  (log_url, line: the logs themselves need CERN SSO) and into the code
+  (fingerprint_src, a GitHub permalink). Never log text, no
   signature text (sig_exact, sig_class), and never the full allocation id.
 * PRAGMA secure_delete and a final VACUUM, so the replaced and dropped text is
   not left in free pages of the uploaded file.
@@ -46,6 +49,10 @@ for _p in (_HERE, _HERE.parent / "ci-mcp"):
         sys.path.insert(0, str(_p))
         break
 import logscan  # noqa: E402
+import os  # noqa: E402
+
+sys.path.insert(0, str(_HERE))
+import srctemplates  # noqa: E402
 
 HOST = "<host>"
 IP = "<ip>"
@@ -72,10 +79,11 @@ PUBLISHED = {
         "errors_with_file", "errors_in_pr_files", "no_output", "extracted", "log_bytes", "log_key", "log_url"},
     "ci_errors": {
         "build_id", "sig_hash", "rank", "repo", "pr", "sha", "check_name", "host", "uploaded_at", "state",
-        "kind", "infra", "fatal", "class_hash", "fingerprint", "file", "package", "section",
-        "in_pr_files", "count", "line"},
+        "kind", "infra", "fatal", "class_hash", "file", "package", "section", "in_pr_files", "count", "line",
+        *("fingerprint", "fingerprint_kind", "fingerprint_src", "template_id", "filler_hash")},
     # The embedding stays: the MCP server searches with it and never returns it.
-    "ci_signatures": {"sig_hash", "class_hash", "kind", "infra", "fingerprint", "file", "embedding"},
+    "ci_signatures": {"sig_hash", "class_hash", "kind", "infra", "file", "embedding",
+                      *("fingerprint", "fingerprint_kind", "fingerprint_src", "template_id", "filler_hash")},
     "ci_repos": {"repo", "logs_in_bucket", "builds", "extracted", "pending", "oldest", "newest"},
 }
 
@@ -162,28 +170,61 @@ def _text_columns(c: sqlite3.Connection, table: str) -> list[str]:
             if r[2].upper() in ("TEXT", "") and r[1] != "host"]
 
 
-def fingerprints(c: sqlite3.Connection, stats) -> None:
-    """Add `fingerprint` (the public part of each signature, or NULL) and
+FP_COLUMNS = ("fingerprint", "fingerprint_kind", "fingerprint_src", "template_id", "filler_hash")
+
+
+def public_part(kind: str, exact: str, cls: str, file: str | None, templates) -> dict:
+    """The readable part of one signature, and how it was found:
+      crash     logscan's stack-trace fingerprint
+      compiler  a compiler/clang-tidy diagnostic's template (logscan.public_fingerprint)
+      cmake     "CMake Error at <public file> (<command>):", the message under it hidden
+      source    the format string of the statement in public code that printed it
+      test      a Boost.Test check or ctest name found in the public tree
+    plus, for source/test, the permalink to that code and the keyed hash of the
+    normalised values (filler_hash). All NULL: hash-only."""
+    fp = logscan.public_fingerprint(kind, exact, cls, file)
+    if fp:
+        out = {"fingerprint": fp, "fingerprint_kind": {"crash": "crash", "cmake": "cmake"}.get(kind, "compiler"),
+               "fingerprint_src": None, "filler_hash": None}
+    else:
+        out = (templates.match(kind, exact) if templates else None) or dict.fromkeys(
+            ("fingerprint", "fingerprint_kind", "fingerprint_src", "filler_hash"))
+    out["template_id"] = srctemplates.template_id(out["fingerprint"]) if out["fingerprint"] else None
+    return out
+
+
+def fingerprints(c: sqlite3.Connection, stats, templates=None) -> None:
+    """Add the FP_COLUMNS (the public part of each signature, or NULL) and
     withhold file paths that are not public, before restrict() drops the
     signature text. A published copy (no sig_exact any more) is left alone."""
+    cache: dict[tuple, dict] = {}
     for t in ("ci_errors", "ci_signatures"):
         cols = _columns(c, t)
         if "sig_exact" not in cols:
             continue
-        if "fingerprint" not in cols:
-            c.execute(f'ALTER TABLE "{t}" ADD COLUMN fingerprint TEXT')
+        for col in FP_COLUMNS:
+            if col not in cols:
+                c.execute(f'ALTER TABLE "{t}" ADD COLUMN "{col}" TEXT')
         rows = c.execute(f'SELECT rowid, kind, sig_exact, sig_class, file FROM "{t}"').fetchall()
         for rowid, kind, exact, cls, file in rows:
-            fp = logscan.public_fingerprint(kind, exact or "", cls or "", file)
-            pub = logscan.public_path(file)
-            c.execute(f'UPDATE "{t}" SET fingerprint = ?, file = ? WHERE rowid = ?', (fp, pub, rowid))
-            stats[f"{t}: readable fingerprint" if fp else f"{t}: hash only"] += 1
+            k = (kind, exact, cls, file)
+            if k not in cache:
+                cache[k] = public_part(kind, exact or "", cls or "", file, templates)
+            p, pub = cache[k], logscan.public_path(file)
+            c.execute(f'UPDATE "{t}" SET ' + ", ".join(f'"{x}" = ?' for x in FP_COLUMNS) + ", file = ? WHERE rowid = ?",
+                      (*(p[x] for x in FP_COLUMNS), pub, rowid))
+            stats[f"{t}: fingerprint {p['fingerprint_kind']}" if p["fingerprint"] else f"{t}: hash only"] += 1
             if file and not pub:
                 stats[f"{t}: file withheld"] += 1
 
 
-def sanitize_db(path) -> dict:
-    """Sanitize the ci-failures.db at path in place. Returns counts by kind."""
+def sanitize_db(path, templates="env") -> dict:
+    """Sanitize the ci-failures.db at path in place. Returns counts by kind.
+
+    templates: a srctemplates.Templates, None, or "env": the index under
+    $SRCTEMPLATES (runner.sh's $COCO_ROOT/sources), with $CIF_FILLER_KEY."""
+    if templates == "env":
+        templates = srctemplates.load(os.environ.get("SRCTEMPLATES"), os.environ.get("CIF_FILLER_KEY"))
     c = sqlite3.connect(path)
     c.execute("PRAGMA secure_delete = ON")
     stats: collections.Counter = collections.Counter()
@@ -224,7 +265,7 @@ def sanitize_db(path) -> dict:
                   "THEN 'alloc-' || substr(alloc, 1, 8) END")
         c.execute("UPDATE ci_errors SET host = (SELECT b.host FROM ci_builds b "
                   "WHERE b.build_id = ci_errors.build_id)")
-    fingerprints(c, stats)
+    fingerprints(c, stats, templates)
     restrict(c, stats)
     c.commit()
     c.execute("VACUUM")
