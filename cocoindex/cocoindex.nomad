@@ -495,6 +495,16 @@ job "cocoindex" {
         data            = file("ci_failures_flow.py")
       }
 
+      # What a published ci-failures.db may not contain (secrets, machine
+      # names): s3snap.py runs it on the copy it uploads.
+      template {
+        destination     = "local/sanitize.py"
+        change_mode     = "noop"
+        left_delimiter  = "[[%%"
+        right_delimiter = "%%]]"
+        data            = file("sanitize.py")
+      }
+
       # The embeddinggemma task prefixes, shared by the flows and reader.py.
       template {
         destination     = "local/embedtext.py"

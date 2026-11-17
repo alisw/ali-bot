@@ -56,6 +56,9 @@ FLOW_DBS = {
     # travels in the state tarball and obeys the same pairing rule.
     "ci-failures": "ci-failures.db",
 }
+# Flows whose published DB is reduced by sanitize.py: the CI logs come from a
+# private bucket and name the builders. Commits and PRs are public GitHub data.
+SANITIZED = {"ci-failures"}
 RUN_ID_RE = re.compile(r"^\d{8}T\d{6}Z$")
 
 
@@ -272,7 +275,15 @@ def restore(root: Path, flows: list[str]) -> int:
             t.extractall(tmp, filter="data")  # yields tmp/state/
         plain.unlink()
         tarball.unlink()
-        (tmp / ent["db"]["name"]).rename(tmp / db.name)
+        raw = tmp / "raw" / ent["db"]["name"]
+        if raw.exists():
+            # A sanitized flow: its published DB is the reduced copy readers
+            # get; the indexer restores the one its state was built with.
+            (tmp / ent["db"]["name"]).unlink()      # the same name: drop it first
+            raw.rename(tmp / db.name)
+            (tmp / "raw").rmdir()
+        else:
+            (tmp / ent["db"]["name"]).rename(tmp / db.name)
         # One rename publishes state + db together: a crash leaves either the
         # old (absent) pair or the complete new one, never half.
         d.parent.mkdir(parents=True, exist_ok=True)
@@ -313,6 +324,25 @@ def publish(root: Path, flows: list[str], run_id: str, keep: int, min_interval: 
         with sqlite3.connect(db) as c:
             c.execute("VACUUM INTO ?", (str(out),))
         c.close()
+        raw = None
+        if f in SANITIZED:
+            # The unsanitized DB travels inside the state tarball, which only the
+            # indexer reads back (restore() prefers it): a restored node gets the
+            # very rows its state describes, machine names included.
+            raw = snap / f"raw-{dbname}"
+            with sqlite3.connect(db) as c:
+                c.execute("VACUUM INTO ?", (str(raw),))
+            c.close()
+            # Only the copy readers get: secrets and machine names out
+            # (sanitize.py). An exception here fails the publish: nothing goes
+            # out unsanitized, and the previous snapshot stays current.
+            import sanitize
+            stats = sanitize.sanitize_db(out)
+            secrets = {k: v for k, v in stats.items() if k.startswith("secret:")}
+            if secrets:
+                log(f"{f}: WARNING: secret-like text redacted before publishing, which the "
+                    f"extraction missed: {secrets}")
+            log(f"{f}: sanitized for publishing: {stats or 'nothing to change'}")
         db_sha, db_content = sha256(out), content_sha256(out)
         if last["flows"].get(f, {}).get("db", {}).get("content_sha256") != db_content:
             changed.append(f)
@@ -321,6 +351,10 @@ def publish(root: Path, flows: list[str], run_id: str, keep: int, min_interval: 
         plain = snap / f"state-{f}.tar"
         with tarfile.open(plain, "w") as t:
             t.add(state, arcname="state", filter=lambda ti: None if ti.name.endswith("lock.mdb") else ti)
+            if raw is not None:
+                t.add(raw, arcname=f"raw/{dbname}")
+        if raw is not None:
+            raw.unlink()
         tz = snap / f"state-{f}.tar.zst"
         zstd_compress(plain, tz)
         plain.unlink()

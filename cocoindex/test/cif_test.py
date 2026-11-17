@@ -96,14 +96,17 @@ def mkpretty(verdict: str, host: str, when: float, repo: str, pr: str, sha: str)
             f'    <tr><th>Started at</th><td>{t}</td></tr>\n    <tr><th>Finished at</th><td>{t}</td></tr>\n'
             f'    <tr><th>Built PR</th>\n        <td><a href="https://github.com/{repo}/pull/{pr}">{repo}#{pr}</a></td></tr>\n'
             f'    <tr><th>Nomad allocation</th>\n        <td><a href="https://alinomad.cern.ch/ui/allocations/'
-            f'0123abcd-0000-1111-2222-333344445555">Nomad allocation information</a></td></tr>\n  </table>\n')
+            f'{hashlib.sha256(host.encode()).hexdigest()[:8]}-0000-1111-2222-333344445555">'
+            f'Nomad allocation information</a></td></tr>\n  </table>\n')
 
 
 def mklog(host: str, when: float, repo: str, pr: str, sha: str, sections: list[tuple[str, list[str]]]) -> str:
     stamp = datetime.fromtimestamp(when, timezone.utc).strftime("%Y-%m-%d-%H:%M:%S")
     out = [f"Finished building on {host} at {stamp}",
            f"Built commit {sha} from https://github.com/{repo}/pull/{pr}",
-           "Nomad allocation:", "    https://alinomad.cern.ch/ui/allocations/0123abcd-0000-1111-2222-333344445555",
+           # One allocation per builder, so a re-run elsewhere has another one.
+           "Nomad allocation:", "    https://alinomad.cern.ch/ui/allocations/"
+           + hashlib.sha256(host.encode()).hexdigest()[:8] + "-0000-1111-2222-333344445555",
            "The following files (oldest first) are present in the log:"]
     out += [f"- sw/BUILD/{pkg}-latest/log" for pkg, _ in sections]
     for pkg, lines in sections:
