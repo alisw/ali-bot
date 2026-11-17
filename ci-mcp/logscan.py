@@ -22,6 +22,8 @@ Contents:
   INFRA_RULES              evidence-based "the builder broke, not the PR" kinds
   parse_header(), sections(), is_no_output()
   signature()              sig_exact / sig_class of one error, plus the file it names
+  crashes()                fingerprints of the stack traces of crashed processes
+  public_fingerprint()     the readable part of a signature that may be published
   scrub()                  secrets out of log text before anything is stored
 """
 
@@ -169,7 +171,7 @@ FATAL_RE = re.compile(
     r"|internal compiler error|fatal error: Killed signal")
 
 #: Kinds that are always serious (ranked first).
-SERIOUS_KINDS = ("killed", "cmake", "test", "fst-timeout", "fst-logfile", "fst-command")
+SERIOUS_KINDS = ("killed", "cmake", "test", "fst-timeout", "fst-logfile", "fst-command", "crash")
 
 
 def clip(line):
@@ -212,13 +214,15 @@ def strip_alibuild_prefix(line):
     return _ALIBUILD_PREFIX_RE.sub("", line)
 
 
-def scan_lines(lines, kinds=None, extra_noise=None):
+def scan_lines(lines, kinds=None, extra_noise=None, first=None):
     """Classify every line: the loop ci_build_errors and ci_build_log both run.
 
     Returns (hits, kinds_count, skipped). hits maps a dedup key (kind, line with
     digits collapsed) to [count, sample-with-body, kind, last position]; the
     first pattern of `kinds` (default patterns()) that matches a line wins.
     skipped counts the noise lines (NOISE_RE, plus extra_noise if given).
+    If `first` is a dict, it gets each key's first position: the line the
+    sample was taken from.
 
     ~8-10 MB/s of log per core. (A whole-text multi-line prefilter was tried:
     no faster, as Python's re is slow on these alternations either way. The
@@ -241,6 +245,8 @@ def scan_lines(lines, kinds=None, extra_noise=None):
                     hits[key][3] = position
                 else:
                     hits[key] = [1, with_body(lines, position, kind), kind, position]
+                    if first is not None:
+                        first[key] = position
                 counts[kind] += 1
                 break
     return hits, counts, skipped
@@ -506,6 +512,227 @@ def signature(text: str, kind: str | None = None) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# What of a signature is public.
+#
+# The published index holds errors by hash only (sig_hash, class_hash), plus a
+# readable `fingerprint` where its text comes from public sources alone:
+#   * a crash: device, executable and function names, all from public code;
+#   * a compiler (or clang-tidy) diagnostic on a file of the sources: its
+#     message template, sig_class, in which names and numbers are already '_'
+#     and N -- the compiler's own fixed text, plus the check name.
+# Everything else (test and runtime output, CMake, infra) is hash-only: that
+# free text is where user names, CCDB paths and internal URLs show up.
+# ---------------------------------------------------------------------------
+_DIAG_RE = re.compile(r"^(?:fatal )?error: (?!in '_': )[^\n]{1,300}$")   # not Boost.Test's "error: in '<test>':"
+_PRIVATE_PATH_RE = re.compile(r"(?:^|/)(?:home|Users|afs|eos|tmp|var|private|root|scratch|Volumes|build|work)/"
+                              r"|<tmp>|<host>|^~")
+
+
+def public_path(path: str | None) -> str | None:
+    """A file path as published: relative to its package's sources, or under a
+    system tree (SDK, /usr, CVMFS); None when it could name a person or a box."""
+    if not path or _PRIVATE_PATH_RE.search(path):
+        return None
+    return path
+
+
+def public_fingerprint(kind: str, sig_exact: str, sig_class: str, file: str | None) -> str | None:
+    """The readable part of a signature that may be published, or None."""
+    if kind == "crash":
+        return sig_exact
+    if kind == "error" and public_path(file) and _DIAG_RE.match(sig_class) \
+            and not re.search(r"(?:^|[\s'\"(=])/|<host>|<hex>|<tmp>|https?://", sig_class):
+        return sig_class
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Crashes: a fingerprint of the stack trace, not the trace.
+#
+# A crash reaches the line patterns only as its last words -- DPL's "Workflow
+# crashed - PID N (<device>) did not exit correctly", ROOT's "*** Break ***" --
+# which say which process died but not where, so two different crashes of one
+# device read as one error. The trace says where. Its fingerprint is the
+# device, the executable and the top CRASH_FRAMES named frames, with addresses,
+# pids, argument lists, template arguments, library paths and versions
+# dropped, and the frames every crash shares (libc, the C++ runtime, the
+# logger, FairMQ's and DPL's own run loop, the signal handler, main) skipped.
+# A frame with no symbol (a static function, a stripped library) counts as its
+# library, "[libO2CCDB]", once per run of them.
+#
+# sig_exact is "crash in <device> (<executable>): f1 < f2 < ...", innermost
+# first; sig_class is "crash: f1 < f2 < ...", the same crash in any device.
+# Three formats, all seen in or taken from what prints them:
+#   * DPL (Framework/Foundation/src/BacktraceHelpers.cxx): "Executable is <exe>"
+#     then one "    <lib>: <symbol>" per frame, every line under the device's
+#     "[pid:device]: " prefix. On Linux <lib> is a path, possibly followed by
+#     "(mangled+0x..) [0x..]"; on macOS it is backtrace_symbols()'s
+#     "N  libX.dylib  0x...". A DPL crash prints two traces: where the
+#     exception was thrown, then the abort's own, which holds nothing but the
+#     frames skipped here and so yields no fingerprint.
+#   * gdb, as ROOT's crash handler (etc/gdb-backtrace.sh) prints it: "#N  0x..
+#     in f (args) at file:line" / "from lib", per thread; the frames after
+#     "<signal handler called>" (or ROOT's own SigHandler frames) of the thread
+#     that crashed.
+# ---------------------------------------------------------------------------
+CRASH_FRAMES = 5
+_DEVICE_PREFIX_RE = re.compile(r"^(?:\./[\w.-]+\.log)?\[(\d+):([^\]]+)\]: ")
+_DPL_EXE_RE = re.compile(r"^Executable is (\S+)")
+_DPL_FRAME_RE = re.compile(r"^ {4}(\S.*?):\s+(.*)$")
+_MAC_LIB_RE = re.compile(r"^\d+\s+(\S+)\s+0x[0-9a-fA-F]+\s*$")
+_LINUX_LIB_RE = re.compile(r"^(\S+?)(?:\([^)]*\))?(?:\s*\[0x[0-9a-fA-F]+\])?$")
+_GDB_FRAME_RE = re.compile(r"^#\d+\s+(?:0x[0-9a-fA-F]+ in )?(.*?)(?:\s+from\s+(\S+))?$")
+_GDB_SIGNAL_RE = re.compile(r"There was a crash \((\w+)\)")
+_REASON_RE = re.compile(r"\[(?:FATAL|ERROR)\]\s*(.*)")
+_SKIP_LIB_RE = re.compile(
+    r"(?:^|/)(?:libc\.so|libc\+\+|libc\+\+abi|libsystem_\w+|libdyld|dyld|linux-vdso|ld-linux|libpthread"
+    r"|libstdc\+\+|libgcc_s|libFairLogger|libfairmq|libuv|libboost_\w+)(?:[.-]|$)")
+_SKIP_SYM_RE = re.compile(
+    r"^(?:_start|start|main|mainNoCatch|callMain|doMain|doChild|runStateMachine|doDPLException"
+    r"|__libc_\w+|__GI_\w+|__pthread_kill\w*|raise|abort|gsignal|_sigtramp|__restore_rt"
+    r"|SigHandler|sighandler|TUnixSystem::DispatchSignals|TUnixSystem::StackTrace|TSystem::\w+"
+    r"|TCling::\w+|cling::[\w:]+|TApplication::\w+|TRint::\w+|o2::framework::BacktraceHelpers::\w+"
+    r"|fair::\w+|o2::framework::(?:run_callback|runSolutionsCompletion|DataProcessingDevice::(?:Run|doRun"
+    r"|doPrepare|tryDispatchComputation|handleData))|std::(?:terminate|rethrow_exception|__terminate)"
+    r"|__cxa_\w+|__cxxabiv1::\w+|__gnu_cxx::__verbose_terminate_handler)\b")
+
+
+def _frame_symbol(s: str) -> str:
+    """A function name without its argument list, location or template arguments."""
+    s = re.sub(r"\s+(?:at|from)\s+\S+$", "", s.strip())
+    s = re.sub(r"\s+\+\s+\d+$", "", s)               # macOS "symbol + 123"
+    depth = 0
+    for i, ch in enumerate(s):
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth -= 1
+        elif ch == "(" and depth == 0 and not s[:i].rstrip().endswith("operator") and i > 0:
+            s = s[:i]
+            break
+    while True:                                       # innermost template arguments first
+        t = re.sub(r"<[^<>]*>", "\x00", s)
+        if t == s:
+            break
+        s = t
+    return s.replace("\x00", "<>").strip()
+
+
+def _lib_name(lib: str) -> str:
+    m = _MAC_LIB_RE.match(lib)
+    if m:
+        lib = m.group(1)
+    else:
+        m = _LINUX_LIB_RE.match(lib)
+        lib = m.group(1) if m else lib.split()[0]
+    return lib.rsplit("/", 1)[-1]
+
+
+def _fingerprint(frames: list[tuple[str, str]]) -> list[str]:
+    """frames: (library or "", raw symbol), innermost first."""
+    top: list[str] = []
+    for lib, sym in frames:
+        name = _frame_symbol(sym)
+        if (lib and _SKIP_LIB_RE.search(lib)) or _SKIP_SYM_RE.match(name):
+            continue
+        if not name or name.startswith("??"):
+            base = re.sub(r"\.(?:so|dylib)\b.*$", "", lib) if lib else "??"
+            name = f"[{base}]"
+        if not top or top[-1] != name:
+            top.append(name)
+    while top and top[0] == "[libO2Framework]":      # DPL's throw/backtrace helpers
+        top.pop(0)
+    top = top[:CRASH_FRAMES]
+    return top if any(not t.startswith("[") for t in top) else []
+
+
+def _crash(device: str | None, exe: str | None, top: list[str], text: str, position: int) -> dict:
+    where = re.sub(r"_\d+$", "_N", device) if device else None
+    head = "crash" + (f" in {where}" if where else "") + (f" ({exe})" if exe else "")
+    exact = f"{head}: " + " < ".join(top)
+    cls = "crash: " + " < ".join(top)
+    return {"sig_exact": exact, "sig_hash": sig_hash(exact), "sig_class": cls, "class_hash": sig_hash(cls),
+            "file": None, "package": None, "text": text, "position": position}
+
+
+def crashes(lines) -> list[dict]:
+    """The crash fingerprints of a log, in order: a signature() dict plus the
+    reason and first frames as text, and the position of the trace's first line."""
+    out: list[dict] = []
+    reason: dict[str, str] = {}
+    dpl: dict[str, tuple] = {}            # device -> (exe, frames, raw lines, start)
+
+    def close_dpl(dev):
+        exe, frames, raw, start = dpl.pop(dev)
+        top = _fingerprint(frames)
+        if top:
+            why = reason.get(dev)
+            out.append(_crash(dev, exe, top, "\n".join(([why] if why else []) + raw[:12]), start))
+
+    gdb: list[tuple[str, str]] = []
+    gdb_start, gdb_signal, after_handler, gdb_raw = None, None, False, []
+
+    def close_gdb():
+        nonlocal gdb, gdb_start, after_handler, gdb_raw
+        if gdb and after_handler:
+            top = _fingerprint(gdb)
+            if top:
+                exact = _crash(None, None, top, "\n".join(gdb_raw[:12]), gdb_start)
+                if gdb_signal:
+                    exact["sig_exact"] = exact["sig_exact"].replace("crash:", f"crash ({gdb_signal}):", 1)
+                    exact["sig_hash"] = sig_hash(exact["sig_exact"])
+                out.append(exact)
+        gdb, gdb_start, after_handler, gdb_raw = [], None, False, []
+
+    for position, raw in enumerate(lines):
+        line = strip_alibuild_prefix(raw.rstrip("\n"))
+        m = _DEVICE_PREFIX_RE.match(line)
+        dev, body = (m.group(2), line[m.end():]) if m else (None, line)
+        if dev in dpl:
+            f = _DPL_FRAME_RE.match(body)
+            if f:
+                lib, sym = f.groups()
+                dpl[dev][1].append((_lib_name(lib), sym))
+                dpl[dev][2].append(clip(body))
+                continue
+            close_dpl(dev)
+        e = _DPL_EXE_RE.match(body)
+        if e:
+            if dev in dpl:
+                close_dpl(dev)
+            dpl[dev] = (e.group(1).rsplit("/", 1)[-1], [], [], position)
+            continue
+        r = _REASON_RE.search(body)
+        if r and "Exception while running" not in body:
+            reason[dev] = clip(r.group(1))
+        s = _GDB_SIGNAL_RE.search(body)
+        if s:
+            gdb_signal = s.group(1)
+        g = _GDB_FRAME_RE.match(body.strip()) if body.lstrip().startswith("#") else None
+        if g:
+            sym, lib = g.group(1), g.group(2) or ""
+            if gdb_start is None:
+                gdb_start = position
+            gdb_raw.append(clip(body.strip()))
+            if "<signal handler called>" in sym or _frame_symbol(sym) in (
+                    "SigHandler", "sighandler", "TUnixSystem::DispatchSignals"):
+                gdb, after_handler = [], True
+            else:
+                gdb.append((_lib_name(lib) if lib else "", sym))
+            continue
+        if gdb and (body.startswith("Thread ") or body.startswith("====")):
+            close_gdb()
+        elif gdb and not body.strip():
+            continue
+        elif gdb:
+            close_gdb()
+    for dev in list(dpl):
+        close_dpl(dev)
+    close_gdb()
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Secrets. Log text is produced by PR code and builder scripts; anything that
 # looks like a credential is replaced before it is stored or embedded.
 # ---------------------------------------------------------------------------
@@ -553,10 +780,17 @@ def scrub(text: str) -> str:
 # ---------------------------------------------------------------------------
 # One log, as the indexer keeps it (top-level, so a process pool can run it)
 # ---------------------------------------------------------------------------
+#: What extract_log() keeps, by version. The indexer stores the version a log
+#: was extracted with and re-extracts the logs still in the bucket that an
+#: older one read. 2: crash fingerprints, and each error's line in the log.
+EXTRACT_VERSION = 2
+
+
 def extract_log(raw: bytes, max_errors: int = 40, text_chars: int = 1500) -> dict:
     """What the ci-failures indexer keeps of one fullLog.txt: its header, the
     aliBuild sections, and up to max_errors distinct errors, ranked as ci-mcp
-    ranks them (severity), each signed and with its text clipped. Everything
+    ranks them (severity), each signed, with the 1-based line of the log it
+    was taken from ("line": the pointer to the original), and its text clipped. Everything
     kept -- each error's text with its body lines, and the header -- is scrubbed
     of secrets before it is signed or stored. (Scrubbing the whole log first
     did the same and cost a third of the extraction time on 10 MB logs.)"""
@@ -569,12 +803,24 @@ def extract_log(raw: bytes, max_errors: int = 40, text_chars: int = 1500) -> dic
                                                  text="No logs found. Please check the aurora log.")]}
     lines = text.splitlines()
     secs = sections(lines)
-    hits, counts, _ = scan_lines(lines, classify_kinds(), INDEX_NOISE_RE)
-    ranked = sorted(hits.values(), key=severity)
+    first: dict = {}
+    hits, counts, _ = scan_lines(lines, classify_kinds(), INDEX_NOISE_RE, first)
+    entries = [(*v, first[k]) for k, v in hits.items()]
+    # A crash ranks with the serious kinds, at its trace's first line
+    # (severity is fatal-and-late); its sample is the reason (the last [FATAL]
+    # or [ERROR] of that device) and the first frames.
+    for c in crashes(lines):
+        entries.append((1, c, "crash", c["position"], c["position"]))
+        counts["crash"] += 1
     errors: dict[str, dict] = {}
-    for count, sample, kind, pos in ranked:
-        sample = scrub(sample)
-        sig = signature(sample, kind)
+    for count, sample, kind, pos, first_pos in sorted(entries, key=lambda e: severity(e[:4])):
+        if kind == "crash":
+            sig = {k: scrub(v) if isinstance(v, str) else v for k, v in sample.items()
+                   if k not in ("text", "position")}
+            sample = scrub(sample["text"])
+        else:
+            sample = scrub(sample)
+            sig = signature(sample, kind)
         e = errors.get(sig["sig_hash"])
         if e:  # two raw lines that only differed in what the signature strips
             e["count"] += count
@@ -585,7 +831,7 @@ def extract_log(raw: bytes, max_errors: int = 40, text_chars: int = 1500) -> dic
                     or bool(FATAL_RE.search(sample)))
         errors[sig["sig_hash"]] = dict(
             sig, kind=kind, infra=int(kind in INFRA_KINDS), fatal=fatal, count=count,
-            rank=len(errors) + 1, section=package_at(secs, pos),
+            rank=len(errors) + 1, section=package_at(secs, pos), line=first_pos + 1,
             text="\n".join(clip(l) for l in sample.splitlines())[:text_chars])
     first_fatal = next((e for e in errors.values() if e["fatal"]), None)
     return {"header": hdr, "no_output": 0, "packages": [s[0] for s in secs],

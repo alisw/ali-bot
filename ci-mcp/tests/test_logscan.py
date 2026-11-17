@@ -151,3 +151,132 @@ class LogTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# The DPL trace of a CCDB fetch failing in a digitizer (from a real aarch64 log,
+# shortened): the throw site, then the abort's own trace.
+DPL_LINUX = """\
+./digi.log[960:internal-dpl-ccdb-backend]: [01:09:23][FATAL] Alien Token Check failed - Please get an alien token
+./digi.log[960:internal-dpl-ccdb-backend]: Executable is /sw/slc9_aarch64/O2/local3/bin/o2-sim-digitizer-workflow
+./digi.log[960:internal-dpl-ccdb-backend]:     /sw/slc9_aarch64/O2/local3/lib/libO2Framework.so:     ?? ??:0
+./digi.log[960:internal-dpl-ccdb-backend]:     /sw/slc9_aarch64/FairLogger/v2.3.1-6/lib/libFairLogger.so.2.3: fair::Logger::~Logger()
+./digi.log[960:internal-dpl-ccdb-backend]:     /sw/slc9_aarch64/O2/local3/lib/libO2CCDB.so: o2::ccdb::CcdbApi::initTGrid() const
+./digi.log[960:internal-dpl-ccdb-backend]:     /sw/slc9_aarch64/O2/local3/lib/libO2CCDB.so: o2::ccdb::CcdbApi::loadFileToMemory(std::vector<char, std::pmr::polymorphic_allocator<char> >&, int)
+./digi.log[961:TRDDigitizer]: [01:09:27][INFO] TRD: Sending 10411 digits
+./digi.log[960:internal-dpl-ccdb-backend]:     /sw/slc9_aarch64/O2/local3/lib/libO2CCDB.so:     ?? ??:0
+./digi.log[960:internal-dpl-ccdb-backend]:     /sw/slc9_aarch64/O2/local3/lib/libO2CCDB.so:     ?? ??:0
+./digi.log[960:internal-dpl-ccdb-backend]:     /sw/slc9_aarch64/O2/local3/lib/libO2Framework.so: o2::framework::DataProcessingDevice::doRun(o2::framework::ServiceRegistryRef)
+./digi.log[960:internal-dpl-ccdb-backend]:     /sw/slc9_aarch64/FairMQ/v1.11.0-7/lib/libfairmq.so.1.11.0: fair::mq::Device::RunWrapper()
+./digi.log[960:internal-dpl-ccdb-backend]:     o2-sim-digitizer-workflow:     main at runDataProcessing.h:218
+./digi.log[960:internal-dpl-ccdb-backend]:     /lib64/libc.so.6:     ?? ??:0
+./digi.log[960:internal-dpl-ccdb-backend]: [01:09:30][ERROR] Exception while running: Fatal error. Rethrowing.
+./digi.log[960:internal-dpl-ccdb-backend]: *** Program crashed (Aborted)
+./digi.log[960:internal-dpl-ccdb-backend]: Backtrace by DPL:
+./digi.log[960:internal-dpl-ccdb-backend]: Executable is /sw/slc9_aarch64/O2/local3/bin/o2-sim-digitizer-workflow
+./digi.log[960:internal-dpl-ccdb-backend]:     linux-vdso.so.1:     ?? ??:0
+./digi.log[960:internal-dpl-ccdb-backend]:     /sw/slc9_aarch64/GCC-Toolchain/v14.2.0-alice2-1/lib64/libstdc++.so.6(_ZN9__gnu_cxx27__verbose_terminate_handlerEv+0x184) [0xff51e0cb37c4]:     ?? ??:0
+./digi.log[960:internal-dpl-ccdb-backend]:     /sw/slc9_aarch64/O2/local3/lib/libO2Framework.so:     ?? ??:0
+./digi.log[960:internal-dpl-ccdb-backend]:     /sw/slc9_aarch64/O2/local3/lib/libO2Framework.so: doDPLException(o2::framework::RuntimeErrorRef&, char const*)
+./digi.log[960:internal-dpl-ccdb-backend]:     /sw/slc9_aarch64/O2/local3/lib/libO2Framework.so: callMain(int, char**, int (*)(int, char**))
+./digi.log[960:internal-dpl-ccdb-backend]:     o2-sim-digitizer-workflow() [0x469bf0]:     _start at ??:?
+./digi.log[960:internal-dpl-ccdb-backend]: Backtrace complete.
+./digi.log[ERROR] Workflow crashed - PID 960 (internal-dpl-ccdb-backend) did not exit correctly however it's not clear why. Exit code forced to 128.
+"""
+
+# The same printer on macOS: backtrace_symbols() "N  lib  0xADDR", then the
+# demangled name (BacktraceHelpers.cxx, __APPLE__ branch).
+DPL_MAC = """\
+[4242:its-tracker_0]: Executable is /Volumes/build/sw/osx_arm64/O2/16084-local2/bin/o2-its-reco-workflow
+[4242:its-tracker_0]:     1   libO2Framework.dylib                0x0000000104d2c3a8 : o2::framework::BacktraceHelpers::demangled_backtrace_symbols(void**, unsigned int, int)
+[4242:its-tracker_0]:     2   libsystem_platform.dylib            0x0000000189a1e584 : _sigtramp
+[4242:its-tracker_0]:     3   libO2ITStracking.dylib              0x0000000110a1b2c4 : o2::its::TrackerTraits<7>::computeLayerTracklets(int, int, int)
+[4242:its-tracker_0]:     4   libO2ITStracking.dylib              0x0000000110a1c000 : o2::its::Tracker::clustersToTracks(std::function<void (std::string)>&, std::function<void (std::string)>&)
+[4242:its-tracker_0]:     5   libO2Framework.dylib                0x0000000104d00000 : o2::framework::DataProcessingDevice::doRun(o2::framework::ServiceRegistryRef)
+[4242:its-tracker_0]:     6   dyld                                0x0000000189a00000 : start
+[ERROR] Workflow crashed - PID 4242 (its-tracker_0) was killed abnormally with Segmentation fault
+"""
+
+# ROOT's crash handler (etc/gdb-backtrace.sh): all threads, the crashed one has
+# the signal handler frames, then the hint section repeats the useful frames.
+ROOT_GDB = """\
+ *** Break *** segmentation violation
+
+
+
+===========================================================
+There was a crash (kSigSegmentationViolation).
+This is the entire stack trace of all threads:
+===========================================================
+
+Thread 2 (Thread 0x7f2a3c1ff640 (LWP 4711) "root.exe"):
+#0  0x00007f2a4a8e3c3f in __GI___clock_nanosleep () from /lib64/libc.so.6
+#1  0x00007f2a4a8e8b27 in nanosleep () from /lib64/libc.so.6
+#2  0x00007f2a4b0a1234 in TTimer::Notify() () from /sw/slc9_x86-64/ROOT/v6-36/lib/libCore.so
+
+Thread 1 (Thread 0x7f2a4a6d7b80 (LWP 4710) "root.exe"):
+#0  0x00007f2a4a8f5a7a in wait4 () from /lib64/libc.so.6
+#1  0x00007f2a4a86b0f7 in do_system () from /lib64/libc.so.6
+#2  0x00007f2a4b1e43a3 in TUnixSystem::StackTrace() () from /sw/slc9_x86-64/ROOT/v6-36/lib/libCore.so
+#3  0x00007f2a4b1e1d55 in TUnixSystem::DispatchSignals(ESignals) () from /sw/slc9_x86-64/ROOT/v6-36/lib/libCore.so
+#4  <signal handler called>
+#5  0x00007f2a38a1b2c4 in o2::tof::Clusterer::processStrip (this=0x55d1, cluster=..., strip=0x0) at /sw/SOURCES/O2/x/Detectors/TOF/reconstruction/src/Clusterer.cxx:142
+#6  0x00007f2a38a1c000 in o2::tof::Clusterer::process<o2::tof::DataReader> (this=0x55d1, reader=...) at Clusterer.cxx:61
+#7  0x00007f2a38a1d000 in run_clus_tof (inputfile=...) at run_clus_tof.C:44
+#8  0x00007f2a4b9a0000 in ?? ()
+#9  0x00007f2a4b500000 in TCling::ProcessLine(char const*, TInterpreter::EErrorCode*) () from /sw/slc9_x86-64/ROOT/v6-36/lib/libCling.so
+===========================================================
+
+
+The lines below might hint at the cause of the crash. If you see question
+#5  0x00007f2a38a1b2c4 in o2::tof::Clusterer::processStrip (this=0x55d1, cluster=..., strip=0x0) at Clusterer.cxx:142
+#6  0x00007f2a38a1c000 in o2::tof::Clusterer::process<o2::tof::DataReader> (this=0x55d1, reader=...) at Clusterer.cxx:61
+===========================================================
+"""
+
+
+class CrashTest(unittest.TestCase):
+    def test_dpl_linux(self):
+        c = L.crashes(DPL_LINUX.splitlines())
+        self.assertEqual(len(c), 1, "the abort's own trace has nothing named: no second fingerprint")
+        self.assertEqual(c[0]["sig_exact"],
+                         "crash in internal-dpl-ccdb-backend (o2-sim-digitizer-workflow): "
+                         "o2::ccdb::CcdbApi::initTGrid < o2::ccdb::CcdbApi::loadFileToMemory < [libO2CCDB]")
+        self.assertEqual(c[0]["sig_class"],
+                         "crash: o2::ccdb::CcdbApi::initTGrid < o2::ccdb::CcdbApi::loadFileToMemory < [libO2CCDB]")
+        self.assertEqual(c[0]["position"], 1)
+        self.assertTrue(c[0]["text"].startswith("Alien Token Check failed"), c[0]["text"])
+
+    def test_dpl_mac(self):
+        c = L.crashes(DPL_MAC.splitlines())
+        self.assertEqual([x["sig_exact"] for x in c],
+                         ["crash in its-tracker_N (o2-its-reco-workflow): "
+                          "o2::its::TrackerTraits<>::computeLayerTracklets < o2::its::Tracker::clustersToTracks"])
+
+    def test_root_gdb(self):
+        c = L.crashes(ROOT_GDB.splitlines())
+        self.assertEqual([x["sig_exact"] for x in c],
+                         ["crash (kSigSegmentationViolation): o2::tof::Clusterer::processStrip < "
+                          "o2::tof::Clusterer::process<> < run_clus_tof < [??]"])
+        self.assertEqual(c[0]["sig_class"], "crash: o2::tof::Clusterer::processStrip < "
+                         "o2::tof::Clusterer::process<> < run_clus_tof < [??]")
+
+    def test_same_crash_other_addresses_and_pids(self):
+        a = L.crashes(DPL_LINUX.splitlines())[0]
+        other = (DPL_LINUX.replace("[960:", "[1234:").replace("0xff51e0cb37c4", "0xaaaa00001111")
+                 .replace("v1.11.0-7", "v1.11.0-9").replace("local3", "local7"))
+        self.assertEqual(L.crashes(other.splitlines())[0]["sig_hash"], a["sig_hash"])
+
+    def test_no_trace_no_crash(self):
+        self.assertEqual(L.crashes(["#1 in the list", "#2  0x1234 in foo () from /lib/libx.so", "done"]), [],
+                         "gdb-looking lines without a signal handler are not a crash")
+
+    def test_extract_log_ranks_crash_and_points_at_lines(self):
+        log = ("Finished building on host at 2026-11-17-10:00:00\n"
+               "/sw/SOURCES/O2/x/0/Foo.cxx:12:3: error: no member named 'bar' in 'Foo'\n" + DPL_LINUX)
+        ex = L.extract_log(log.encode())
+        kinds = [(e["kind"], e["line"]) for e in ex["errors"]]
+        self.assertIn(("crash", 4), kinds)              # its "Executable is" line, 1-based
+        self.assertIn(("error", 2), kinds)
+        crash = next(e for e in ex["errors"] if e["kind"] == "crash")
+        self.assertTrue(crash["fatal"])
+        self.assertEqual(crash["sig_hash"], L.sig_hash(crash["sig_exact"]))
