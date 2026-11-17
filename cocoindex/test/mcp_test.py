@@ -214,7 +214,7 @@ async def exercise_cf(client, label, cache, st):
     want = cdb.execute("SELECT count(DISTINCT pr), min(uploaded_at), max(uploaded_at) FROM ci_errors "
                        "WHERE sig_hash = ?", (glut,)).fetchone()
     check(g["match"] == "exact" and g["prs"] == want[0] == 3 and g["first_seen"] == want[1]
-          and g["last_seen"] == want[2] and "ci-9d9f7f.example.org" in g["hosts"]
+          and g["last_seen"] == want[2] and g["hosts"] and all(h.startswith("alloc-") for h in g["hosts"])
           and g["in_pr_files"] == {"yes": 0, "no": 1} and len(g["prs_list"]) == 3,
           f"{L} ci_signature by hash: 3 PRs, first/last seen, hosts, not in the PRs' files")
     rc = cdb.execute("SELECT sig_hash FROM ci_errors WHERE kind = 'remote-cache' LIMIT 1").fetchone()[0]
@@ -228,8 +228,13 @@ async def exercise_cf(client, label, cache, st):
     p = payload(await client.call_tool("ci_pr_builds", {"repo": "O2Physics", "pr": 18073}))
     want = cdb.execute("SELECT count(*) FROM ci_builds WHERE pr = 18073").fetchone()[0]
     stg = sorted((b["attempt"], b["state"], b["host"]) for b in p["builds"] if b["check"] == "build/O2Physics/staging")
-    check(len(p["builds"]) == want == 3 and stg == [(1, "failure", "ci-2f787c.example.org"), (2, "success", "ci-11e07d.example.org")],
-          f"{L} ci_pr_builds: every build, the re-run as attempt 2 on another host {stg}")
+    alloc = lambda h: "alloc-" + hashlib.sha256(h.encode()).hexdigest()[:8]   # as cif_test's logs record them
+    check(len(p["builds"]) == want == 3 and stg == [(1, "failure", alloc("ci-2f787c.example.org")),
+                                                    (2, "success", alloc("ci-11e07d.example.org"))],
+          f"{L} ci_pr_builds: every build, the re-run as attempt 2 on another allocation {stg}")
+    names = [h for (h,) in cdb.execute("SELECT host FROM ci_builds UNION SELECT host FROM ci_errors") if h]
+    check(names and all(h.startswith("alloc-") for h in names),
+          f"{L} published hosts are Nomad allocations, never machine names ({sorted(set(names))[:3]})")
     comp = [b for b in p["builds"] if b["check"] == "build/O2Physics/o2"][0]
     check(comp["top_errors"] and comp["top_errors"][0]["untrusted"]["text"] and any(
         e["in_pr_files"] == 1 for e in comp["top_errors"]) and all("text" not in e for e in comp["top_errors"]),

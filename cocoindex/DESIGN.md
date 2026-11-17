@@ -212,6 +212,18 @@ They join to `prs` on `(repo, pr = number)` and to `commits` on `(repo, sha)`. R
 - **`test/mcp_test.py`** on that store: 157 checks (109 + 24 CI checks per transport). **`sso_test.py`**: 89 on the prs store, 113 on the cif store. **ci-mcp:** `tests/test_logscan.py` (scrubber per secret kind, signatures, header, real fixtures) brings it to 30 unit tests.
 
 
+## What a published ci-failures.db contains (`sanitize.py`)
+
+Decided 2026-11-17. The CI logs come from a private bucket and name the builders; the commits and PRs are public GitHub data. So `s3snap.publish()` runs `sanitize.sanitize_db()` on the VACUUM INTO copy of `ci-failures.db` it uploads, never on the flow's own database:
+
+- **Secrets, again.** Every text value goes through `logscan.scrub_report()`. The flow already scrubs what it extracts, but its extraction cache can hold text scrubbed by older patterns. A hit is logged as `WARNING: secret-like text redacted before publishing`, by kind, never by value: it means a pattern was missing at extraction. `logscan` gained JWT, Google, Slack, `sk-` and PGP private-key patterns at the same time. Measured on the first real snapshot (11,659 errors): no secret-like text at all, before or after.
+- **Machine names.** The `host` columns hold `alloc-<first 8 of the Nomad allocation>` (NULL when the log recorded none: 1 of 10,400 builds). In a build's texts its own machine, by full and short name, becomes that `alloc-<id>`; any other builder the DB knows of, any other `*.cern.ch` name, and CERN or private IPv4 addresses become `<host>` / `<ip>`. Public services stay (`KEEP_HOSTS`: alice-ccdb, alimonitor, alien, s3, gitlab, auth, ali-ci, and alinomad, whose allocation links are what replaces the names). An operator finds the machine from the allocation in Nomad. On the first snapshot this replaced 478 own-machine mentions, 30 other builders, 220 other cern.ch names and 7 IPs; no builder name is left in the file's bytes.
+- **No residue.** `PRAGMA secure_delete` and a final VACUUM, so replaced text is not left in free pages.
+- **Restore keeps the original.** The unsanitized DB travels in the state tarball (`raw/ci-failures.db`), which only the indexer reads; `restore()` prefers it, so a restored node gets the rows its state describes. Readers download only the sanitized DB. Note that the bucket's readers (the `ali-bot` keys) could still fetch the tarball: the boundary is what the MCP server serves, not what the bucket holds.
+- An exception in the sanitizer fails the publish: nothing goes out unsanitized, and the previous snapshot stays current.
+
+What it does not remove: CERN usernames in paths (e.g. CCDB test paths `Users/<initial>/<login>/...`), and the error text itself, which is build output of public code.
+
 ## Reader (`reader.py`)
 
 1. GET `latest.json`.

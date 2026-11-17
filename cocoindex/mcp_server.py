@@ -905,7 +905,8 @@ async def search_ci_failures(query: str, repo: str | None = None, check: str | N
 async def ci_signature(sig: str, repo: str | None = None, max_prs: int = 20) -> dict:
     """History of one CI error: first and last seen, builds (failed / green), distinct PRs,
     checks, hosts, per week, how many failing builds later went green on the same sha
-    (flaky), and whether it was in files the PRs changed.
+    (flaky), and whether it was in files the PRs changed. Hosts are Nomad allocations
+    (alloc-<id>): one CI worker each; machine names are not published.
 
     sig: the error line as printed in the log (build paths, line numbers, hashes are
     normalised, so another PR's copy of the same error matches), or a 16-hex sig_hash
@@ -916,7 +917,8 @@ async def ci_signature(sig: str, repo: str | None = None, max_prs: int = 20) -> 
 
 @server.tool(annotations=RO)
 async def ci_pr_builds(repo: str, pr: int, errors_per_build: int = 3) -> dict:
-    """Every CI build of one pull request, newest first: sha, check, host, state, attempt
+    """Every CI build of one pull request, newest first: sha, check, host (the Nomad
+    allocation that built it, alloc-<id>), state, attempt
     (a re-run of the same sha and check is attempt 2), and for failed builds the top
     errors with in_pr_files (1: in a file the PR changed) and other_prs_3d (how many
     OTHER PRs hit the same error within 3 days). Error text is under "untrusted"."""
@@ -947,6 +949,8 @@ async def sql(query: str, max_rows: int = 100) -> dict:
           errors_in_pr_files, no_output, extracted, log_bytes, log_key, log_url)
           -- one row per CI build (log key + etag; a re-run of the same sha/check is attempt 2);
           -- state: success | failure | unknown; uploaded_at is UTC
+          -- host: alloc-<first 8 of alloc>, the CI worker; machine names are not published,
+          -- and in error text a build's own machine reads alloc-<id>, any other <host>
       ci_errors(build_id, sig_hash, rank, repo, pr, sha, check_name, host, uploaded_at, state, kind, infra,
           fatal, class_hash, sig_exact, sig_class, file, package, section, in_pr_files, count, text)
           -- distinct errors per build; same sig_hash = same error; class_hash = same message template

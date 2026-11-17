@@ -510,27 +510,44 @@ def signature(text: str, kind: str | None = None) -> dict:
 # looks like a credential is replaced before it is stored or embedded.
 # ---------------------------------------------------------------------------
 REDACTED = "<redacted>"
+# (kind, pattern, replacement). The kind is only for reporting (scrub_report).
 _SECRET_RES = [
-    (re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)", re.S),
+    ("private-key", re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)", re.S),
      "-----BEGIN PRIVATE KEY-----" + REDACTED + "-----END PRIVATE KEY-----"),
-    (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}"), REDACTED),
-    (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}"), REDACTED),
-    (re.compile(r"\bglpat-[A-Za-z0-9_-]{20,}"), REDACTED),
-    (re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"), REDACTED),
-    (re.compile(r"(?i)\b(authorization|proxy-authorization|x-vault-token|x-api-key|private-token)"
-                r"(\s*[:=]\s*)[^\r\n]*"), r"\1\2" + REDACTED),
-    (re.compile(r"(?i)\b((?:[a-z0-9]+[_-])*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key)"
-                r"(?:[_-][a-z0-9]+)*)(\s*[=:]\s*)(\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;&'\"]+)"),
+    ("pgp-private-key", re.compile(r"-----BEGIN PGP PRIVATE KEY BLOCK-----.*?(-----END PGP PRIVATE KEY BLOCK-----|\Z)", re.S),
+     "-----BEGIN PGP PRIVATE KEY BLOCK-----" + REDACTED + "-----END PGP PRIVATE KEY BLOCK-----"),
+    ("github-token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}"), REDACTED),
+    ("github-token", re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}"), REDACTED),
+    ("gitlab-token", re.compile(r"\bglpat-[A-Za-z0-9_-]{20,}"), REDACTED),
+    ("aws-key", re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"), REDACTED),
+    ("google-key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"), REDACTED),
+    ("slack-token", re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}"), REDACTED),
+    # OpenAI-style keys, which LiteLLM gateways such as aigw also hand out.
+    ("sk-key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}"), REDACTED),
+    ("jwt", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"), REDACTED),
+    ("auth-header", re.compile(r"(?i)\b(authorization|proxy-authorization|x-vault-token|x-api-key|private-token)"
+                               r"(\s*[:=]\s*)[^\r\n]*"), r"\1\2" + REDACTED),
+    ("key-value", re.compile(r"(?i)\b((?:[a-z0-9]+[_-])*(?:password|passwd|pwd|token|secret|api[_-]?key|access[_-]?key)"
+                             r"(?:[_-][a-z0-9]+)*)(\s*[=:]\s*)(\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;&'\"]+)"),
      r"\1\2" + REDACTED),
-    (re.compile(r"\b([a-z][a-z0-9+.-]*://)[^/\s:@]+:[^/\s@]+@"), r"\1" + REDACTED + "@"),
-    (re.compile(r"\b([a-z][a-z0-9+.-]*://)[^/\s:@]{16,}@"), r"\1" + REDACTED + "@"),
+    ("url-credentials", re.compile(r"\b([a-z][a-z0-9+.-]*://)[^/\s:@]+:[^/\s@]+@"), r"\1" + REDACTED + "@"),
+    ("url-credentials", re.compile(r"\b([a-z][a-z0-9+.-]*://)[^/\s:@]{16,}@"), r"\1" + REDACTED + "@"),
 ]
 
 
+def scrub_report(text: str) -> tuple[str, list[str]]:
+    """scrub(), and the kind of each pattern that changed the text."""
+    kinds = []
+    for kind, rx, repl in _SECRET_RES:
+        new = rx.sub(repl, text)
+        if new != text:
+            kinds.append(kind)
+            text = new
+    return text, kinds
+
+
 def scrub(text: str) -> str:
-    for rx, repl in _SECRET_RES:
-        text = rx.sub(repl, text)
-    return text
+    return scrub_report(text)[0]
 
 
 # ---------------------------------------------------------------------------

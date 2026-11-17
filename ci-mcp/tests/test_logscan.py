@@ -33,7 +33,17 @@ class ScrubTest(unittest.TestCase):
         ("fetch https://x-access-token" + "Q" * 20 + "@github.com/o/r", "x-access-token"),
         ("-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA7bq98\n-----END RSA PRIVATE KEY-----", "MIIEowIBAAKC"),
         ("-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n(truncated", "b3BlbnNzaC1"),
+        ("-----BEGIN PGP PRIVATE KEY BLOCK-----\nlQOYBF0abcdef\n-----END PGP PRIVATE KEY BLOCK-----", "lQOYBF0abcdef"),
+        ("key AIza" + "SyA1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q" + " used", "AIzaSyA1b2C3"),
+        ("slack xoxb-" + "123456789012-abcdefABCDEF", "xoxb-123456789012"),
+        ("OPENAI sk-" + "proj-a1B2c3D4e5F6g7H8i9J0" + " set", "sk-proj-a1B2"),
+        ("jwt eyJhbGciOiJSUzI1NiJ9" + ".eyJzdWIiOiJ0ZXN0LXVzZXIifQ" + ".c2lnbmF0dXJlLXZhbHVl ok", "eyJzdWIiOiJ0"),
     ]
+
+    def test_report_names_the_kind(self):
+        text, kinds = L.scrub_report("a ghp_" + "a1B2c3D4e5" * 4 + " b AKIAIOSFODNN7EXAMPLE")
+        self.assertEqual(sorted(kinds), ["aws-key", "github-token"])
+        self.assertEqual(L.scrub_report("nothing here")[1], [])
 
     def test_each_kind_is_redacted(self):
         for text, secret in self.CASES:
@@ -45,7 +55,8 @@ class ScrubTest(unittest.TestCase):
         for line in ["/sw/SOURCES/O2/x/0/Foo.cxx:12:3: error: 'token' was not declared in this scope",
                      "https://github.com/AliceO2Group/AliceO2/pull/15895",
                      "ninja: build stopped: subcommand failed.",
-                     "PWGLF/Tasks/a.cxx:1:2: error: use of undeclared identifier 'passwordHash'"]:
+                     "PWGLF/Tasks/a.cxx:1:2: error: use of undeclared identifier 'passwordHash'",
+                     "disk-full on task-runner-0123456789abcdefghij (no sk- key here)"]:
             self.assertEqual(L.scrub(line), line)
 
     def test_real_fixtures_are_clean(self):
