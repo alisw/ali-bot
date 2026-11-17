@@ -99,6 +99,45 @@ resolve_endpoints() {
   fi
 }
 
+# The proxy and its bootstrap are prestart sidecars: Nomad starts this task once
+# they have STARTED, not once the proxy has its secrets. Wait until the agent
+# socket answers and the s3 route has its keys (it answers 503 until then),
+# rather than exiting and being restarted a minute later.
+PROXY_WAIT_S=${PROXY_WAIT_S:-300}
+s3_ready() {
+  local bucket=${STORE_URL#s3://}
+  [[ "$STORE_URL" == s3://* ]] || return 0
+  python3 - "$S3_ENDPOINT_URL/${bucket%%/*}?list-type=2&max-keys=1" "$AWS_ACCESS_KEY_ID" <<'PY'
+import sys, urllib.error, urllib.request
+url, token = sys.argv[1], sys.argv[2]
+req = urllib.request.Request(url, headers={
+    "Authorization": f"AWS4-HMAC-SHA256 Credential={token}/00000000/default/s3/aws4_request, "
+                     "SignedHeaders=host, Signature=unsigned",
+    "x-amz-content-sha256": "UNSIGNED-PAYLOAD"})
+try:
+    urllib.request.urlopen(req, timeout=10).close()
+except urllib.error.HTTPError as e:
+    sys.exit(e.code == 503)      # anything but 503: the keys are there
+except OSError:
+    sys.exit(1)                  # proxy not listening yet
+PY
+}
+
+wait_for_proxy() {
+  [ -z "$PROXY_SOCK" ] && return 0
+  local deadline=$(( $(date +%s) + PROXY_WAIT_S )) waited=0
+  until resolve_endpoints 2>/dev/null && s3_ready; do
+    if (( $(date +%s) >= deadline )); then
+      log "the proxy is not ready after ${PROXY_WAIT_S}s"
+      return 1
+    fi
+    waited=1
+    sleep 5
+  done
+  [ "$waited" = 1 ] && log "proxy ready"
+  return 0
+}
+
 # ---------------------------------------------------------------- mirrors
 # Bare, branches only (a GitHub --mirror would also pull every refs/pull/*),
 # blobless by default: blobs arrive on demand when the flow runs git show.
@@ -179,6 +218,9 @@ for f in ${FLOWS//,/ }; do
   flow_file "$f" > /dev/null || { log "unknown flow $f"; exit 2; }
 done
 ensure_venv
+
+# Exits non-zero only if the proxy never becomes ready: Nomad's restart then.
+wait_for_proxy || exit 1
 
 if [ "$RESTORE" = skip ]; then
   log "RESTORE=skip: starting from whatever is on local disk (empty = full re-embed)"
