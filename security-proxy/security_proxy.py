@@ -209,11 +209,20 @@ def match_route(path: str, headers) -> Route | None:
     An `s3_sign` route is matched by an AWS-style `Authorization` header (the bucket
     name lives in the path, so it can't be matched by prefix). Routes with neither
     are matched by path prefix as before."""
-    # 0) S3 signing routes: matched by an AWS-style Authorization header (SigV4 or v2)
-    if headers.get("authorization", "")[:3].upper() == "AWS":
-        for route in ROUTES:
-            if route.s3_sign:
+    # 0) S3 signing routes: matched by an AWS-style Authorization header (SigV4 or v2).
+    # Several may exist -- the unattended `s3` and an attended `s3-rw` with other keys
+    # -- and s3cmd sends the same header to both, so the gate token in its access-key-id
+    # picks the route, as for the shared-header routes below. An unknown token falls
+    # back to the first, which then answers 401.
+    auth = headers.get("authorization", "")
+    if auth[:3].upper() == "AWS":
+        s3_routes = [r for r in ROUTES if r.s3_sign]
+        presented = _s3_client_scope(auth)["access"]
+        for route in s3_routes:
+            if gate_ok(presented, route.name):
                 return route
+        if s3_routes:
+            return s3_routes[0]
     # 1) header-matched services (the HashiCorp CLIs, all at /v1/...)
     # Several routes may share one auth header -- e.g. read-only `nomad` and attended
     # `nomad-rw`, both fed from NOMAD_TOKEN because the CLI sends no other header. The

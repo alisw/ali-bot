@@ -82,6 +82,22 @@ def run():
               matched("ccdb/x", {}), "ccdb")
         check("an empty auth header is not a match",
               matched("ccdb/x", {"X-Nomad-Token": ""}), "ccdb")
+
+        # --- S3 routes: one Authorization header, told apart by gate token ---
+        # s3cmd sends the gate token as its access-key-id, to every S3 route alike.
+        kp = {"access_slot": "a", "secret_slot": "s"}
+        sp.ROUTES[:] = [route("s3", s3_sign={"buckets": {}, "default": kp}),
+                        route("s3-rw", s3_sign={"buckets": {}, "default": kp}),
+                        route("ccdb", prefix="/ccdb/")]
+        v4 = "AWS4-HMAC-SHA256 Credential={}/20261117/us-east-1/s3/aws4_request, SignedHeaders=host, Signature=x"
+        check("the s3 token picks the s3 route",
+              matched("bucket/key", {"Authorization": v4.format(sp.service_token("s3"))}), "s3")
+        check("the s3-rw token reaches s3-rw despite being listed second",
+              matched("bucket/key", {"Authorization": v4.format(sp.service_token("s3-rw"))}), "s3-rw")
+        check("SigV2 is told apart the same way",
+              matched("bucket", {"Authorization": f"AWS {sp.service_token('s3-rw')}:sig"}), "s3-rw")
+        check("an unknown S3 token falls back to the first S3 route",
+              matched("bucket", {"Authorization": v4.format("nonsense")}), "s3")
     finally:
         sp.ROUTES[:] = saved_routes
     return failures

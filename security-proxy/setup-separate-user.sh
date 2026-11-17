@@ -306,7 +306,8 @@ cat > "$CONFIG_TMP" <<JSON
                      "nomad-admin": {"ttl": 300, "max_uses": 5},
                      "consul-rw": {"ttl": 900},
                      "consul-admin": {"ttl": 300, "max_uses": 5},
-                     "vault-admin": {"ttl": 300, "max_uses": 5}},
+                     "vault-admin": {"ttl": 300, "max_uses": 5},
+                     "s3-rw-access": {"ttl": 300}, "s3-rw-secret": {"ttl": 300}},
   "routes": [
     {"prefix": "/ccdb/", "upstream": "https://alice-ccdb.cern.ch"},
     {"name": "ccdb-prod", "prefix": "/ccdb-prod/", "upstream": "https://alice-ccdb.cern.ch"},
@@ -340,6 +341,8 @@ cat > "$CONFIG_TMP" <<JSON
      "auth_header": "X-Vault-Token", "inject_headers": {"X-Vault-Token": {"ingest": "vault-admin"}}},
     {"name": "s3", "upstream": "https://s3.cern.ch",
      "s3": {"access_key": {"ingest": "s3-access"}, "secret_key": {"ingest": "s3-secret"}}},
+    {"name": "s3-rw", "upstream": "https://s3.cern.ch",
+     "s3": {"access_key": {"ingest": "s3-rw-access"}, "secret_key": {"ingest": "s3-rw-secret"}}},
     {"name": "mail", "upstream": "https://login.microsoftonline.com", "oauth": {"accounts": {
        "giulio.eulisse@cern.ch": {
          "endpoint": "https://login.microsoftonline.com/c80d3499-4a40-4a8c-986e-abce017d6b19/oauth2/v2.0/token",

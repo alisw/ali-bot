@@ -251,6 +251,22 @@ s3cmd() {
 one wrapper serves every bucket: `s3cmd ls s3://<bucket>/`. `secret_key` only has to
 be non-empty (the proxy signs; its value is ignored).
 
+**A second, attended S3 route.** Several S3 routes can coexist: s3cmd sends the same
+`Authorization` header to all of them, and the gate token it carries as access-key-id
+selects the route (an unknown one gets the first, and its 401). The deployment adds
+`s3-rw`, whose key pair lives in two attended slots, for what the unattended `s3`
+keys must not do (bucket creation and deletion, `setpolicy`):
+
+```json
+"attended_slots": {"s3-rw-access": {"ttl": 300}, "s3-rw-secret": {"ttl": 300}},
+{"name": "s3-rw", "upstream": "https://s3.cern.ch",
+ "s3": {"access_key": {"ingest": "s3-rw-access"}, "secret_key": {"ingest": "s3-rw-secret"}}}
+```
+
+No `max_uses`: one s3cmd command is several requests. Unlock both halves, then use
+the same wrapper with `security-proxy-token ... s3-rw`:
+`security-proxy-unlock s3-rw-access && security-proxy-unlock s3-rw-secret`.
+
 ## Email (mbsync / msmtp via OAuth2)
 
 Mail clients that speak XOAUTH2 (mbsync/isync for IMAP, msmtp for SMTP) need a
