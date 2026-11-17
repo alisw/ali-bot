@@ -180,17 +180,30 @@ def public_part(kind: str, exact: str, cls: str, file: str | None, templates) ->
       cmake     "CMake Error at <public file> (<command>):", the message under it hidden
       source    the format string of the statement in public code that printed it
       test      a Boost.Test check or ctest name found in the public tree
-    plus, for source/test, the permalink to that code and the keyed hash of the
-    normalised values (filler_hash). All NULL: hash-only."""
+    plus, for source/test, the permalink to that code, and for compiler, source,
+    test and tool the keyed hash of the normalised values (filler_hash). All
+    NULL: hash-only."""
     fp = logscan.public_fingerprint(kind, exact, cls, file)
     if fp:
-        out = {"fingerprint": fp, "fingerprint_kind": {"crash": "crash", "cmake": "cmake"}.get(kind, "compiler"),
-               "fingerprint_src": None, "filler_hash": None}
+        fk = {"crash": "crash", "cmake": "cmake"}.get(kind, "compiler")
+        out = {"fingerprint": fp, "fingerprint_kind": fk, "fingerprint_src": None, "filler_hash": None}
+        fillers = compiler_fillers(exact) if fk == "compiler" and templates else []
+        if any(f.strip() for f in fillers):
+            out["filler_hash"] = templates.filler_hash(srctemplates.template_id(fp), fillers)
     else:
         out = (templates.match(kind, exact) if templates else None) or dict.fromkeys(
             ("fingerprint", "fingerprint_kind", "fingerprint_src", "filler_hash"))
     out["template_id"] = srctemplates.template_id(out["fingerprint"]) if out["fingerprint"] else None
     return out
+
+
+def compiler_fillers(exact: str) -> list[str]:
+    """The names a compiler diagnostic's template shows as '_' (the header not
+    found, the variable unused), in order: its fillers. The file is not one:
+    it is a column of its own. Numbers (N) are line numbers and counts."""
+    first = exact.split("\n", 1)[0]
+    i = first.find("error: ")
+    return [q[1:-1] for q in logscan._QUOTED_RE.findall(first[i:] if i >= 0 else first)]
 
 
 def fingerprints(c: sqlite3.Connection, stats, templates=None) -> None:

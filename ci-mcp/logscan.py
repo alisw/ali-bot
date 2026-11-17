@@ -597,17 +597,29 @@ _SKIP_SYM_RE = re.compile(
     r"|__cxa_\w+|__cxxabiv1::\w+|__gnu_cxx::__verbose_terminate_handler)\b")
 
 
+_OPERATOR_RE = re.compile(r"\boperator\s*(?:<=>|<<=|>>=|<<|>>|<=|>=|->\*?|<|>|\(\s*\)|\[\s*\])")
+
+
 def _frame_symbol(s: str) -> str:
     """A function name without its argument list, location or template arguments."""
     s = re.sub(r"\s+(?:at|from)\s+\S+$", "", s.strip())
     s = re.sub(r"\s+\+\s+\d+$", "", s)               # macOS "symbol + 123"
+    # An operator's own name (operator<<, operator(), operator->) is not a
+    # bracket: set it aside, or its "<" opens a template that never closes and
+    # the argument list stays, "(__os=..., __str=...)".
+    ops: list[str] = []
+
+    def _hide(m: re.Match) -> str:
+        ops.append(m.group(0))
+        return f"\x01{len(ops) - 1}\x01"
+    s = _OPERATOR_RE.sub(_hide, s)
     depth = 0
     for i, ch in enumerate(s):
         if ch == "<":
             depth += 1
         elif ch == ">":
             depth -= 1
-        elif ch == "(" and depth == 0 and not s[:i].rstrip().endswith("operator") and i > 0:
+        elif ch == "(" and depth == 0 and i > 0:
             s = s[:i]
             break
     while True:                                       # innermost template arguments first
@@ -615,6 +627,7 @@ def _frame_symbol(s: str) -> str:
         if t == s:
             break
         s = t
+    s = re.sub(r"\x01(\d+)\x01", lambda m: ops[int(m.group(1))], s)
     return s.replace("\x00", "<>").strip()
 
 

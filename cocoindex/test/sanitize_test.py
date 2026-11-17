@@ -137,6 +137,26 @@ except Exception as e:
     check("secret_body" in str(e) or isinstance(e, sqlite3.OperationalError),
           f"an undroppable unlisted column fails the publish ({type(e).__name__}: {e})")
 
+# A compiler diagnostic's names (the '_' of its template) are its fillers: hashed
+# with the key, the same name in two files grouped, never shown.
+import srctemplates  # noqa: E402
+srctemplates.build(str(work), [])
+T = srctemplates.load(str(work), "k" * 32)
+ex = {n: f"{f}:3:5: error: unused variable '{v}' [-Wunused-variable]"
+      for n, f, v in [("a", "x.cxx", "nTracks"), ("b", "y.cxx", "nTracks"), ("c", "x.cxx", "nClusters")]}
+pp = {n: sanitize.public_part("error", e, DIAG, "x.cxx", T) for n, e in ex.items()}
+check(pp["a"]["filler_hash"] == pp["b"]["filler_hash"] != pp["c"]["filler_hash"]
+      and len({p["template_id"] for p in pp.values()}) == 1,
+      f"compiler: one template, the filler hash tells the names apart ({pp})")
+check(sanitize.compiler_fillers(ex["a"]) == ["nTracks"] and "nTracks" not in str(pp),
+      "the name is the filler, and only its keyed hash is published")
+check(sanitize.public_part("error", ex["a"], DIAG, "x.cxx", srctemplates.load(str(work)))["filler_hash"] is None,
+      "without a key, no filler hash")
+check(sanitize.public_part("error", CRASH, CRASH, None, T)["filler_hash"] is None
+      and sanitize.public_part("error", "x.cxx: error: expected expression", "error: expected expression",
+                               "x.cxx", T)["filler_hash"] is None,
+      "a crash, or a diagnostic without names, has no filler")
+
 shutil.rmtree(work)
 print(f"\n{len(failures)} failure(s)")
 sys.exit(1 if failures else 0)

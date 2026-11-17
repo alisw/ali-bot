@@ -260,6 +260,16 @@ class CrashTest(unittest.TestCase):
         self.assertEqual(c[0]["sig_class"], "crash: o2::tof::Clusterer::processStrip < "
                          "o2::tof::Clusterer::process<> < run_clus_tof < [??]")
 
+    def test_operator_frames_lose_their_arguments(self):
+        for raw, name in [
+                ("std::operator<< <char, std::char_traits<char> > (__os=..., __str=...) at basic_string.h:6",
+                 "std::operator<< <>"),
+                ("o2::Foo::operator() (this=0x1, x=2) at Foo.cxx:3", "o2::Foo::operator()"),
+                ("std::vector<int, std::allocator<int> >::operator[] (this=0x2, n=3)", "std::vector<>::operator[]"),
+                ("Foo::operator->() const", "Foo::operator->"),
+                ("o2::Bar<std::map<int, int> >::run(int) + 12", "o2::Bar<>::run")]:
+            self.assertEqual(L._frame_symbol(raw), name)
+
     def test_same_crash_other_addresses_and_pids(self):
         a = L.crashes(DPL_LINUX.splitlines())[0]
         other = (DPL_LINUX.replace("[960:", "[1234:").replace("0xff51e0cb37c4", "0xaaaa00001111")
