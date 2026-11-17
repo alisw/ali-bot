@@ -917,7 +917,7 @@ async def process_sig(sig: tuple[str, str, str, int, str, str, str], tables: Tab
     """One component per distinct signature seen in a build that did not pass:
     the only embeddings this flow makes."""
     sig_hash, class_hash, kind, infra, exact, cls, file = sig
-    vec = await coco.use_context(EMBEDDER).embed(embedtext.doc(f"{kind}: {exact}"[:EMBED_CHARS]))
+    vec = await embedtext.embed_doc(coco.use_context(EMBEDDER), f"{kind}: {exact}"[:EMBED_CHARS])
     tables.sigs.declare_row(row=CISignature(sig_hash, class_hash, kind, bool(infra), exact, cls, file or None, vec))
 
 

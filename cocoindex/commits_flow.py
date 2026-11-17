@@ -73,7 +73,8 @@ EMBED_MAX_INFLIGHT_REQUESTS = int(os.environ.get("EMBED_MAX_INFLIGHT_REQUESTS", 
 EMBED_TIMEOUT_S = float(os.environ.get("EMBED_TIMEOUT_S", "300"))
 
 # embeddinggemma-300m on aigw answers HTTP 400 (ContextWindowExceeded) above
-# 2048 tokens, rather than truncating; code diffs run ~3-4 chars/token.
+# 2048 tokens, rather than truncating; code diffs run ~3-4 chars/token. Denser
+# text (hash-heavy squash logs) is retried shorter by embedtext.embed_doc.
 MAX_EMBED_CHARS = 5000
 MAX_CHUNKS_PER_FILE = 4
 SKIP_DIFF_PATHS = re.compile(r"(\.(root|pdf|png|svg|json|csv|dat|txt)$)|(/data/)|(^\.github/)")
@@ -200,7 +201,7 @@ async def process_commit(sha: str, repo: str, tables: Tables) -> None:
     tables.commits.declare_row(row=Commit(
         repo, sha, parents.strip(), an, ae, datetime.fromisoformat(ad), commit_date,
         subject, body.strip(), int(pr.group(1)) if pr else None, nfiles, ins, dels,
-        await embedder.embed(embedtext.doc(text)),
+        await embedtext.embed_doc(embedder, text),
     ))
     # Diff chunks: only for single-parent commits newer than DIFF_EMBED_SINCE.
     if len(parents.split()) != 1 or cd[:10] < DIFF_EMBED_SINCE:
@@ -214,7 +215,7 @@ async def process_commit(sha: str, repo: str, tables: Tables) -> None:
             pieces.append((path, i, fdiff[i * MAX_EMBED_CHARS:(i + 1) * MAX_EMBED_CHARS]))
     # Concurrent embed() calls are batched by CocoIndex (up to 64 texts/request).
     vecs = await asyncio.gather(*(
-        embedder.embed(embedtext.doc(f"{repo} {path}: {subject}\n{piece}"[:MAX_EMBED_CHARS]))
+        embedtext.embed_doc(embedder, f"{repo} {path}: {subject}\n{piece}"[:MAX_EMBED_CHARS])
         for path, _, piece in pieces))
     for (path, i, piece), vec in zip(pieces, vecs):
         tables.chunks.declare_row(row=DiffChunk(repo, sha, path, i, commit_date, piece, vec))

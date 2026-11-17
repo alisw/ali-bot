@@ -27,3 +27,29 @@ def doc(text: str) -> str:
 def query(text: str) -> str:
     """A search text, compared against stored documents."""
     return QUERY_PREFIX + text
+
+
+# Texts are cut to a character budget before they are embedded, but the model's
+# limit is 2048 TOKENS, and aigw answers 400 (litellm's ContextWindowExceededError)
+# rather than truncating. Ordinary text and code run 3-4 characters per token; a
+# squashed-commit log of hashes and dates, or hundreds of "* 1" WIP bullets, runs
+# nearer 2, and 5000 characters of it does not fit. Such a text is retried shorter.
+RETRY_CHARS = (2500, 1000)
+
+
+def _too_long(e: BaseException) -> bool:
+    return "ContextWindowExceeded" in type(e).__name__ or "maximum context length" in str(e)
+
+
+async def embed_doc(embedder, text: str):
+    """embedder.embed(doc(text)), retried on RETRY_CHARS-long prefixes of text if
+    the model reports it as too long. Any other error is raised as it is."""
+    for limit in (None, *RETRY_CHARS):
+        if limit is not None and len(text) <= limit:
+            continue
+        try:
+            return await embedder.embed(doc(text if limit is None else text[:limit]))
+        except Exception as e:
+            if not _too_long(e) or limit == RETRY_CHARS[-1]:
+                raise
+    raise AssertionError("unreachable")
