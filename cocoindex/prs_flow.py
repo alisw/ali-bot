@@ -68,6 +68,10 @@ from cocoindex.connectors import sqlite
 from cocoindex.ops.litellm import LiteLLMEmbedder
 from numpy.typing import NDArray
 
+# embedtext.py (the embeddinggemma task prefixes) ships next to this file.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import embedtext  # noqa: E402
+
 FLOW_DB = os.environ.get("FLOW_DB", "prs.db")
 STATE_DIR = pathlib.Path(os.environ.get("COCOINDEX_DB", "."))
 FETCH_DB = pathlib.Path(os.environ.get("PRS_FETCH_DB", STATE_DIR / "github" / "fetch.db"))
@@ -634,8 +638,8 @@ async def process_pr(item: tuple[int, str, bool], repo: str, tables: Tables) -> 
                     nd += 1
 
     vecs = await asyncio.gather(
-        embedder.embed((head + body)[:MAX_EMBED_CHARS]),
-        *(embedder.embed(f"{repo}#{number} {title}\n{kind}{' ' + path if path else ''}: {text}"[:MAX_EMBED_CHARS])
+        embedder.embed(embedtext.doc((head + body)[:MAX_EMBED_CHARS])),
+        *(embedder.embed(embedtext.doc(f"{repo}#{number} {title}\n{kind}{' ' + path if path else ''}: {text}"[:MAX_EMBED_CHARS]))
           for kind, _, path, _, _, text in pieces))
     a = pr.get("author") or {}
     tables.prs.declare_row(row=PR(

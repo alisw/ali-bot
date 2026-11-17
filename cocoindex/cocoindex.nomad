@@ -21,15 +21,10 @@
 # open read-only. See DESIGN.md.
 #
 # Before registering:
-#   * repin python:3.12-bookworm by digest;
 #   * the S3 bucket named in STORE_URL and in the proxy route must exist, and
 #     the keys the bootstrap pushes must be able to read/write/delete in it;
 #   * kv/data/cocoindex must hold aigw_key (the aigw API key, bare) and
 #     github_token (a PAT for the prs flow; public repos, so no scopes needed);
-#   * the pinned security-proxy image must support "s3": {"buckets": ...}: the
-#     amd64 image predates the ALI_BOT_REF pin (see ci-linux-x86.nomad), so
-#     check `grep -c '"buckets"' .../site-packages/security_proxy.py` in it, or
-#     use a flat access_key/secret_key in the route instead.
 
 job "cocoindex" {
   datacenters = ["meyrin"]
@@ -43,8 +38,8 @@ job "cocoindex" {
 
   update {
     max_parallel = 1
-    # Healthy = tasks have RUN this long. Long enough to get past the venv
-    # install and the restore, which is where a broken spec fails.
+    # Healthy = tasks have RUN this long. Long enough to get past the
+    # restore, which is where a broken spec fails.
     min_healthy_time  = "3m"
     healthy_deadline  = "30m"
     progress_deadline = "1h"
@@ -81,7 +76,6 @@ job "cocoindex" {
       #   cocoindex/flows/<flow>/state   LMDB (COCOINDEX_DB), ~1.5x the DB
       #   cocoindex/flows/<flow>/<db>    the output SQLite file
       #   cocoindex/mirrors/*.git        blobless bare mirrors, branches only
-      #   cocoindex/venv                 cocoindex + litellm, ~1 GB
       #   cocoindex/snap                 scratch for the snapshot being published
       # Estimated total ~5 GB for commits; 10 GB leaves room for ci-failures.
       # sticky: an updated allocation lands back on this node and keeps it.
@@ -126,9 +120,11 @@ job "cocoindex" {
       }
 
       config {
-        # Pinned by digest -- this container holds credentials. Same image as
-        # queue-metrics.nomad; repin together.
-        image        = "registry.cern.ch/alisw/security-proxy@sha256:be422fab6667f6d32e6863c49e095dd4489a049433d2f122b140806e52ab9d31"
+        # Pinned by digest -- this container holds credentials. The amd64
+        # "latest" of 2026-10-27 (docks ALI_BOT_REF f7f4df6c): newer than
+        # queue-metrics.nomad's be422fab, which predates the per-bucket S3
+        # keypairs ("s3": {"buckets": ...}, ali-bot 2732d48b) the s3 route needs.
+        image        = "registry.cern.ch/alisw/security-proxy@sha256:39464dfbd28952c43d17ea24fac9bc570be6a48195e71e637abefdacfab66f9c"
         network_mode = "host"
         args         = ["/usr/local/lib/security-proxy/venv/bin/security-proxy", "--config", "/local/config.json"]
       }
@@ -277,13 +273,17 @@ job "cocoindex" {
       }
 
       vault {
-        role = "nomad"
+        # Its own role (jwt-nomad/role/cocoindex), bound to the cocoindex and
+        # cocoindex-mcp jobs, with policy "cocoindex": kv/data/cocoindex,
+        # kv/data/cocoindex-mcp and kv/data/s3-services, read only. Not the
+        # shared "nomad" role, which any job can use.
+        role = "cocoindex"
       }
 
       user = "root"
 
       config {
-        image        = "registry.cern.ch/alisw/security-proxy@sha256:be422fab6667f6d32e6863c49e095dd4489a049433d2f122b140806e52ab9d31"
+        image        = "registry.cern.ch/alisw/security-proxy@sha256:39464dfbd28952c43d17ea24fac9bc570be6a48195e71e637abefdacfab66f9c"
         network_mode = "host"
         entrypoint   = ["/bin/sh"]
         args         = ["/local/bootstrap.sh"]
@@ -386,10 +386,13 @@ job "cocoindex" {
       kill_timeout = "30s"
 
       config {
-        # Full (non-slim) Debian image: ships git, setpriv, coreutils timeout.
-        # Its python is built with loadable SQLite extensions, which sqlite-vec
-        # needs. cocoindex needs >= 3.11. REPIN BY DIGEST before registering.
-        image        = "python:3.12-bookworm"
+        # alisw/docks cocoindex/: python 3.12 (loadable SQLite extensions, for
+        # sqlite-vec), git, setpriv, and the hash-locked venv of
+        # requirements-linux.lock in /opt/cocoindex/venv. Runtime only: the
+        # code comes from the templates below. Built 2026-11-16 by docks
+        # workflow run 43866765519 (docks db77616d, ALI_BOT_REF 7c56be43).
+        # A change to requirements-linux.lock needs a new image and this digest.
+        image        = "registry.cern.ch/alisw/cocoindex@sha256:2643b976055e724f1dac6a3b8fdf2dc1261f02f4e5103637a8a145683449399e"
         network_mode = "host"
         entrypoint   = ["/bin/bash", "-c"]
         # Root only long enough to hand /alloc/data/cocoindex to an unprivileged
@@ -408,6 +411,9 @@ job "cocoindex" {
         HOME      = "/alloc/data/cocoindex/home"
         COCO_ROOT = "/alloc/data/cocoindex"
         CODE_DIR  = "/local"
+        # The image's venv; runner.sh must not build its own.
+        VENV      = "/opt/cocoindex/venv"
+        SKIP_VENV = "1"
         NODE_NAME = "${node.unique.name}"
 
         # Flows run in this order, each to completion (or PASS_TIMEOUT) before
@@ -487,6 +493,15 @@ job "cocoindex" {
         left_delimiter  = "[[%%"
         right_delimiter = "%%]]"
         data            = file("ci_failures_flow.py")
+      }
+
+      # The embeddinggemma task prefixes, shared by the flows and reader.py.
+      template {
+        destination     = "local/embedtext.py"
+        change_mode     = "noop"
+        left_delimiter  = "[[%%"
+        right_delimiter = "%%]]"
+        data            = file("embedtext.py")
       }
 
       # The log extraction shared with ci-mcp, and the error regexes it lifts

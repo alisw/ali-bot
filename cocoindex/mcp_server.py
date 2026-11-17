@@ -258,24 +258,26 @@ def _url(repo: str, sha: str) -> str:
 
 
 @functools.lru_cache(maxsize=2048)
-def _embed_cached(text: str) -> bytes:
+def _embed_cached(text: str, as_document: bool = False) -> bytes:
     import sqlite_vec
     # The gate token rotates daily: resolve per miss, and once more on a 401/403
     # (a token that expired between resolving and sending).
     try:
-        vec = reader.embed_query(text)
+        vec = reader.embed_query(text, as_document=as_document)
     except urllib.error.HTTPError as e:
         if e.code not in (401, 403):
             raise
-        vec = reader.embed_query(text, reader.embed_endpoint())
+        vec = reader.embed_query(text, reader.embed_endpoint(), as_document=as_document)
     return sqlite_vec.serialize_float32(vec)
 
 
-def _embed(text: str) -> bytes:
+def _embed(text: str, as_document: bool = False) -> bytes:
+    """A search text as a query; as_document=True embeds it as a stored text is
+    (embedtext.doc), to find the stored texts most like it."""
     text = text.strip()
     if not text:
         raise BadRequest("query is empty")
-    return _embed_cached(text[:4000])
+    return _embed_cached(text[:4000], as_document)
 
 
 def _rows(cur) -> list[dict[str, Any]]:
@@ -581,7 +583,7 @@ def _resolve_sig(conn, sig):
             if conn.execute(f"SELECT 1 FROM cf.ci_errors WHERE {col} = ? LIMIT 1", (c[col],)).fetchone():
                 return match, col, c[col]
     hit = conn.execute("SELECT sig_hash, vec_distance_cosine(embedding, ?) AS d FROM cf.ci_signatures "
-                       "ORDER BY d LIMIT 1", (_embed(sig),)).fetchone()
+                       "ORDER BY d LIMIT 1", (_embed(sig, as_document=True),)).fetchone()
     if hit is None:
         raise BadRequest("no CI errors are indexed yet")
     return f"nearest (cosine distance {hit[1]:.3f}; not the same error)", "sig_hash", hit[0]

@@ -98,6 +98,9 @@ for _p in (_HERE, _HERE.parent / "ci-mcp"):
         break
 import logscan  # noqa: E402
 
+sys.path.insert(0, str(_HERE))  # embedtext.py ships next to this file
+import embedtext  # noqa: E402
+
 FLOW_DB = os.environ.get("FLOW_DB", "ci-failures.db")
 STATE_DIR = pathlib.Path(os.environ.get("COCOINDEX_DB", "."))
 CACHE_DB = pathlib.Path(os.environ.get("CIF_CACHE_DB", STATE_DIR / "s3" / "logs.db"))
@@ -914,7 +917,7 @@ async def process_sig(sig: tuple[str, str, str, int, str, str, str], tables: Tab
     """One component per distinct signature seen in a build that did not pass:
     the only embeddings this flow makes."""
     sig_hash, class_hash, kind, infra, exact, cls, file = sig
-    vec = await coco.use_context(EMBEDDER).embed(f"{kind}: {exact}"[:EMBED_CHARS])
+    vec = await coco.use_context(EMBEDDER).embed(embedtext.doc(f"{kind}: {exact}"[:EMBED_CHARS]))
     tables.sigs.declare_row(row=CISignature(sig_hash, class_hash, kind, bool(infra), exact, cls, file or None, vec))
 
 

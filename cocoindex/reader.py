@@ -44,6 +44,10 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+# embedtext.py (the embeddinggemma task prefixes) ships next to this file.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import embedtext  # noqa: E402
+
 CACHE = Path(os.environ.get("COCO_CACHE", Path.home() / ".cache" / "cocoindex-reader"))
 STORE = os.environ.get("COCO_STORE", "")
 PROXY_SOCK = os.environ.get("SECURITY_PROXY_SOCK", "/usr/local/var/run/security-proxy/agent/agent.sock")
@@ -207,12 +211,16 @@ def embed_endpoint() -> tuple[str, str]:
     return addr + "/aigw/v1", token
 
 
-def embed_query(text: str, endpoint: tuple[str, str] | None = None) -> list[float]:
+def embed_query(text: str, endpoint: tuple[str, str] | None = None,
+                as_document: bool = False) -> list[float]:
+    """Embed a search text with the query prefix the index was built for, or
+    with the document one to compare it with stored texts as one of them."""
     base, key = endpoint or embed_endpoint()
     model = EMBED_MODEL.split("/", 1)[1] if EMBED_MODEL.startswith("openai/") else EMBED_MODEL
     req = urllib.request.Request(
         base.rstrip("/") + "/embeddings",
-        data=json.dumps({"model": model, "input": [text]}).encode(),
+        data=json.dumps({"model": model, "input": [embedtext.doc(text) if as_document
+                                                  else embedtext.query(text)]}).encode(),
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
                  "Accept-Encoding": "identity"})
     with urllib.request.urlopen(req, timeout=60) as r:

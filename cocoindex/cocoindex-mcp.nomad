@@ -30,7 +30,6 @@
 #   * the nomad Vault role must be able to read kv/data/cocoindex-mcp;
 #   * register the SSO client in the Application Portal and fill in the OIDC_*
 #     DECISIONs below (client id = audience? role name?) from a real token;
-#   * repin python:3.12-bookworm by digest (same digest as the indexer);
 #   * decide the public URL (DECISION below) and whether it is reachable from
 #     outside CERN.
 
@@ -78,7 +77,7 @@ job "cocoindex-mcp" {
     }
 
     ephemeral_disk {
-      # venv (~150 MB) + the snapshot cache (commits.db ~0.5 GB; the old file
+      # The snapshot cache (commits.db ~0.5 GB; the old file
       # lingers while connections still read it). Sticky only so a restart
       # does not re-download; losing it costs one download, nothing else.
       size    = 3000
@@ -112,9 +111,11 @@ job "cocoindex-mcp" {
       }
 
       config {
-        # Pinned by digest -- this container holds credentials. Same image as
-        # queue-metrics.nomad; repin together.
-        image        = "registry.cern.ch/alisw/security-proxy@sha256:be422fab6667f6d32e6863c49e095dd4489a049433d2f122b140806e52ab9d31"
+        # Pinned by digest -- this container holds credentials. The amd64
+        # "latest" of 2026-10-27 (docks ALI_BOT_REF f7f4df6c): newer than
+        # queue-metrics.nomad's be422fab, which predates the per-bucket S3
+        # keypairs ("s3": {"buckets": ...}, ali-bot 2732d48b) the s3 route needs.
+        image        = "registry.cern.ch/alisw/security-proxy@sha256:39464dfbd28952c43d17ea24fac9bc570be6a48195e71e637abefdacfab66f9c"
         network_mode = "host"
         args         = ["/usr/local/lib/security-proxy/venv/bin/security-proxy", "--config", "/local/config.json"]
       }
@@ -258,13 +259,17 @@ job "cocoindex-mcp" {
       }
 
       vault {
-        role = "nomad"
+        # Its own role (jwt-nomad/role/cocoindex), bound to the cocoindex and
+        # cocoindex-mcp jobs, with policy "cocoindex": kv/data/cocoindex,
+        # kv/data/cocoindex-mcp and kv/data/s3-services, read only. Not the
+        # shared "nomad" role, which any job can use.
+        role = "cocoindex"
       }
 
       user = "root"
 
       config {
-        image        = "registry.cern.ch/alisw/security-proxy@sha256:be422fab6667f6d32e6863c49e095dd4489a049433d2f122b140806e52ab9d31"
+        image        = "registry.cern.ch/alisw/security-proxy@sha256:39464dfbd28952c43d17ea24fac9bc570be6a48195e71e637abefdacfab66f9c"
         network_mode = "host"
         entrypoint   = ["/bin/sh"]
         args         = ["/local/bootstrap.sh"]
@@ -359,13 +364,18 @@ job "cocoindex-mcp" {
       kill_timeout = "10s"
 
       vault {
-        role = "nomad"
+        # Its own role (jwt-nomad/role/cocoindex), bound to the cocoindex and
+        # cocoindex-mcp jobs, with policy "cocoindex": kv/data/cocoindex,
+        # kv/data/cocoindex-mcp and kv/data/s3-services, read only. Not the
+        # shared "nomad" role, which any job can use.
+        role = "cocoindex"
       }
 
       config {
-        # Same image as the indexer: its python loads SQLite extensions
-        # (sqlite-vec). REPIN BY DIGEST before registering.
-        image        = "python:3.12-bookworm"
+        # Same image (and digest) as the indexer, see cocoindex.nomad: its
+        # python loads SQLite extensions (sqlite-vec), and its venv holds mcp,
+        # pyjwt, sqlite-vec, boto3 and uvicorn from requirements-linux.lock.
+        image        = "registry.cern.ch/alisw/cocoindex@sha256:2643b976055e724f1dac6a3b8fdf2dc1261f02f4e5103637a8a145683449399e"
         network_mode = "host"
         ports        = ["http"]
         entrypoint   = ["/bin/bash", "-c"]
@@ -411,14 +421,7 @@ job "cocoindex-mcp" {
         data        = <<-EOS
         #!/bin/bash
         set -euo pipefail
-        VENV=/alloc/data/mcp/venv
-        PIN="mcp==2.3.0 pyjwt==2.15.1 sqlite-vec==0.1.9 boto3==1.44.3 uvicorn==0.54.0"
-        if [ "$(cat "$VENV/.pin" 2>/dev/null)" != "$PIN $(python3 -V 2>&1)" ]; then
-          python3 -m venv --clear "$VENV"
-          "$VENV/bin/pip" install -q --disable-pip-version-check $PIN
-          echo "$PIN $(python3 -V 2>&1)" > "$VENV/.pin"
-        fi
-        exec "$VENV/bin/python" /local/mcp_server.py --http --host 0.0.0.0 --port "$NOMAD_PORT_http"
+        exec /opt/cocoindex/venv/bin/python /local/mcp_server.py --http --host 0.0.0.0 --port "$NOMAD_PORT_http"
         EOS
       }
 
@@ -436,6 +439,15 @@ job "cocoindex-mcp" {
         left_delimiter  = "[[%%"
         right_delimiter = "%%]]"
         data            = file("reader.py")
+      }
+
+      # The embeddinggemma task prefixes, shared by the flows and reader.py.
+      template {
+        destination     = "local/embedtext.py"
+        change_mode     = "restart"
+        left_delimiter  = "[[%%"
+        right_delimiter = "%%]]"
+        data            = file("embedtext.py")
       }
 
       # Error-text normalisation for ci_signature (the same code the indexer

@@ -9,16 +9,27 @@ the number of inputs, so a test can assert "zero embedding calls".
 
 With TEXTLOG, every input text is also appended to it as one JSON line, so a
 test can tell which flow's texts were embedded.
+
+The embeddinggemma task prefixes (embedtext.py) are dropped before hashing: to
+the real model they are an instruction, not content, so a document and a query
+with the same text land close together. Here they land on the same vector, and
+searching for a stored text still finds it at distance 0. TEXTLOG keeps the
+texts as sent, prefixes included.
 """
-import hashlib, http.server, json, sys
+import hashlib, http.server, json, os, sys
 
 import numpy as np
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir))
+import embedtext  # noqa: E402
 
 PORT, LOG = int(sys.argv[1]), sys.argv[2]
 TEXTLOG = sys.argv[3] if len(sys.argv) > 3 else None
 
 
 def vec(text: str) -> list[float]:
+    for prefix in (embedtext.DOC_PREFIX, embedtext.QUERY_PREFIX):
+        text = text.removeprefix(prefix)
     seed = int.from_bytes(hashlib.sha256(text.encode()).digest()[:8], "little")
     v = np.random.default_rng(seed).standard_normal(768).astype(np.float32)
     return (v / np.linalg.norm(v)).tolist()
