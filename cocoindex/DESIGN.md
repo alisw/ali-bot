@@ -24,7 +24,7 @@ published.json   snap/ (scratch)
 ## Data flow (runner.sh)
 
 1. **Start.** For each flow in `FLOWS` that has no local state+db pair, `s3snap.py restore` fetches **both** from the run that `latest.json` names. Before a file is used, its size and sha256 are checked against the manifest. The pair is extracted into `flows/F.restoring/` and put in place with one `rename()`. If only half a pair is on disk, it is moved aside and the flow is restored.
-2. **Pass.** The runner resolves the proxy port and gate tokens, then fetches the mirrors (`git fetch --prune`, then `git gc --auto`). It then runs `cocoindex update -f <flow>.py` once per flow, in order. Each run has its own `timeout --signal=INT PASS_TIMEOUT` (50m), after which it is killed.
+2. **Pass.** The runner resolves the proxy port and gate tokens, then fetches the mirrors (`git fetch --prune`, then `git gc --auto`). It then runs `cocoindex update -f <flow>.py` once per flow, in an order shuffled every pass (`FLOW_ORDER=random`; `fixed` keeps the order of `FLOWS`). No flow reads another's output during a pass, and the shuffle means a flow that uses up its PASS_TIMEOUT (commits and prs, while the embedder is slow) does not always go first, ahead of the GitHub budget and the publish. Each run has its own `timeout --signal=INT PASS_TIMEOUT` (50m), after which it is killed.
 3. **Snapshot.** Nothing is running at this point. For each flow:
    - copy the db with `VACUUM INTO snap/<db>`, never `cp`;
    - tar the LMDB dir without `lock.mdb` and compress it with zstd into `state-F.tar.zst`;
@@ -76,7 +76,7 @@ This was demonstrated locally. Restoring a state with a db that lacked one month
 
 ## The prs flow (`prs_flow.py`)
 
-Pull requests and their human review discussion, for the same five repositories, into `prs.db`. It runs after `commits` in the same pass (`FLOWS=commits,prs`).
+Pull requests and their human review discussion, for the same five repositories, into `prs.db`. It runs in the same pass as `commits` (`FLOWS=commits,prs`).
 
 **Selection.** By the PR's `authorAssociation`: OWNER, MEMBER, COLLABORATOR and CONTRIBUTOR are indexed. FIRST_TIME_CONTRIBUTOR, FIRST_TIMER, NONE, MANNEQUIN and deleted accounts (`author: null`, or `ghost`) are skipped. PRs opened by bots (`__typename == "Bot"` or the list below) are recorded as `bot` and never looked at again. On recent PRs, 21–30 of 40 per repository were MEMBER and 3 of 40 in O2Physics were first-timers.
 
@@ -114,7 +114,7 @@ The cocoindex SQLite target creates no secondary indexes, and they must not go i
 
 ## The ci-failures flow (`ci_failures_flow.py`)
 
-Every CI build log in `s3://alice-build-logs`, into `ci-failures.db`, so that PR authors (through the MCP server) and agents can ask: is this failure my PR's fault or a broken build or builder? Has this error been seen before, since when, on which PRs, checks and hosts? Is it flaky? Which builds of a PR ran where? It runs third in the pass (`FLOWS=commits,prs,ci-failures`).
+Every CI build log in `s3://alice-build-logs`, into `ci-failures.db`, so that PR authors (through the MCP server) and agents can ask: is this failure my PR's fault or a broken build or builder? Has this error been seen before, since when, on which PRs, checks and hosts? Is it flaky? Which builds of a PR ran where? It runs in the same pass as the other two (`FLOWS=commits,prs,ci-failures`).
 
 **The bucket.** `report-pr-errors` uploads, for every build, green or red, `<owner>/<repo>/<pr>/<sha>/<check context, every non-[A-Za-z0-9_-] -> _>/fullLog.txt` and `pretty.html`. Branch builds (the daily tags) put the branch name where the PR number goes, plus a `latest/` copy, which is skipped. Measured 2026-11-16: about 10.3k logs, 63 GiB (failed builds 1.9k, 11.6 GB), about 170 new per day, kept about 8 weeks; 54k objects in all (artifacts included), listed in 56 ListObjectsV2 pages in 7 s from the Mac. **A re-run of the same sha and check overwrites the same key**, so the bucket never holds more than the latest attempt.
 

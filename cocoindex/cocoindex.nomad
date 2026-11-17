@@ -418,9 +418,10 @@ job "cocoindex" {
         SKIP_VENV = "1"
         NODE_NAME = "${node.unique.name}"
 
-        # Flows run in this order, each to completion (or PASS_TIMEOUT) before
-        # the next.
+        # Flows run one at a time, each to completion (or PASS_TIMEOUT) before
+        # the next, in an order shuffled every pass (runner.sh pass_order).
         FLOWS = "commits,prs,ci-failures"
+        FLOW_ORDER = "random"   # shuffled every pass; "fixed": as FLOWS lists them
 
         PASS_SLEEP            = "3600"
         PASS_TIMEOUT          = "50m"
