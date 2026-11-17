@@ -155,6 +155,17 @@ async def exercise_cf(client, label, cache, st):
     L = f"[{label}/ci]"
     cdb = sqlite3.connect(f"file:{cache}/ci-failures.db?mode=ro", uri=True)
     cdb.row_factory = sqlite3.Row
+    # The published copy has no error text; the indexer's own db (left by
+    # cif_test next to the store) has, for ground truth and for leak checks.
+    rdb = sqlite3.connect(f"file:{Path(STORE.removeprefix('file://')).parent.parent}"
+                          "/hostA/flows/ci-failures/ci-failures.db?mode=ro", uri=True)
+    rdb.row_factory = sqlite3.Row
+    cols = [r[1] for r in cdb.execute("PRAGMA table_info(ci_errors)")]
+    check("sig_exact" not in cols and "sig_class" not in cols and "fingerprint" in cols,
+          f"{L} the served index has hashes and fingerprints, no signature text")
+    hidden = [r[0] for r in rdb.execute("SELECT DISTINCT sig_exact FROM ci_errors WHERE kind != 'crash'")
+              if len(r[0]) > 25]
+    seen: list[str] = []      # every CI tool reply, checked for hidden text at the end
     idx = {r[0] for r in cdb.execute("SELECT name FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL")}
     check({"ci_errors_sig", "ci_errors_class", "ci_builds_pr", "ci_builds_sha"} <= idx,
           f"{L} reader added the CI indexes to its copy")
@@ -168,14 +179,17 @@ async def exercise_cf(client, label, cache, st):
         return not any(t and t in dump for t in texts)
 
     # search: the flow's exact embedded text comes back at distance 0
-    s = cdb.execute("SELECT sig_hash, kind, sig_exact FROM ci_signatures WHERE kind = 'missing-system-dep' "
+    s = rdb.execute("SELECT sig_hash, kind, sig_exact FROM ci_signatures WHERE kind = 'missing-system-dep' "
                     "LIMIT 1").fetchone()
     r = payload(await client.call_tool("search_ci_failures", {"query": f"{s['kind']}: {s['sig_exact']}", "k": 3}))
+    seen.append(json.dumps(r))
     hit = r["results"][0]
     check(hit["sig_hash"] == s["sig_hash"] and hit["distance"] < 1e-4 and hit["infra"] and hit["prs"] >= 3,
           f"{L} search_ci_failures finds the GLUT signature exactly, infra, on >= 3 PRs ({hit['prs']})")
-    check(hit["untrusted"]["signature"] == s["sig_exact"][:400] and no_text_outside(hit, [s["sig_exact"]])
-          and "untrusted" in r["note"], f"{L} signature text only under 'untrusted', with a note")
+    check(hit["untrusted"]["fingerprint"] is None and s["sig_exact"] not in json.dumps(hit)
+          and "untrusted" in r["note"], f"{L} a CMake error is found by meaning but returned by hash only")
+    check(hit["latest"] and hit["latest"].startswith("https://ali-ci.cern.ch/alice-build-logs/") and "#L" in hit["latest"],
+          f"{L} search_ci_failures: each hit points at its newest log, at the line ({hit['latest']})")
     r = payload(await client.call_tool("search_ci_failures", {"query": "x", "repo": "O2Physics",
                                                               "check": "build/O2Physics/code", "k": 500}))["results"]
     want = {x[0] for x in cdb.execute("SELECT DISTINCT e.sig_hash FROM ci_errors e JOIN ci_signatures s USING "
@@ -193,9 +207,12 @@ async def exercise_cf(client, label, cache, st):
            ":4555:69: error: C-style casts are discouraged; use static_cast [google-readability-casting,"
            "-warnings-as-errors]")
     g = payload(await client.call_tool("ci_signature", {"sig": raw}))
-    gold = cdb.execute("SELECT sig_hash, count(*) n FROM ci_errors WHERE sig_exact = 'PWGLF/Tasks/Strangeness/"
+    seen.append(json.dumps(g))
+    gold = rdb.execute("SELECT sig_hash, count(*) n FROM ci_errors WHERE sig_exact = 'PWGLF/Tasks/Strangeness/"
                        "lambdaspincorrderived.cxx: error: C-style casts are discouraged; use static_cast "
                        "[google-readability-casting]' GROUP BY sig_hash").fetchone()
+    check(g["untrusted"]["fingerprint"] == "error: C-style casts are discouraged; use static_cast "
+          "[google-readability-casting]", f"{L} a compiler diagnostic keeps its template ({g['untrusted']})")
     check(g.get("match") == "exact" and g["sig_hash"] == gold["sig_hash"] and g["builds"] == gold["n"]
           and g["in_pr_files"]["yes"] >= 1, f"{L} ci_signature: a raw log line (absolute path, line:col) "
                                             f"matches its signature exactly ({g.get('match')}, {g.get('builds')})")
@@ -207,10 +224,20 @@ async def exercise_cf(client, label, cache, st):
                                                                             "Other/newTask")}))
     check(g3.get("match") == "class" and g3["class_hash"] == g["class_hash"] and g3["sig_hash"] is None,
           f"{L} ci_signature: same message in another file matches by class ({g3.get('match')})")
-    check(no_text_outside(g, [g["untrusted"]["example"], g["untrusted"]["signature"]]),
-          f"{L} ci_signature: log text only under 'untrusted'")
-    glut = cdb.execute("SELECT sig_hash FROM ci_errors WHERE kind = 'cmake' AND sig_exact LIKE '%GLUT%' LIMIT 1").fetchone()[0]
+    check(no_text_outside(g, [g["untrusted"]["fingerprint"]]) and set(g["untrusted"]) == {"fingerprint"},
+          f"{L} ci_signature: only the fingerprint, under 'untrusted'")
+    check(g["latest"]["log_url"].startswith("https://ali-ci.cern.ch/alice-build-logs/")
+          and isinstance(g["latest"]["line"], int) and g["latest"]["line"] > 0
+          and g["latest"]["location"] == f"{g['latest']['log_url']}#L{g['latest']['line']}",
+          f"{L} ci_signature: the newest occurrence as a pointer, log_url + line ({g['latest']})")
+    crash = cdb.execute("SELECT sig_hash, fingerprint FROM ci_errors WHERE kind = 'crash'").fetchone()
+    g = payload(await client.call_tool("ci_signature", {"sig": crash["sig_hash"]}))
+    check(g.get("kind") == "crash" and g["builds"] == 1 and g["untrusted"]["fingerprint"] == crash["fingerprint"]
+          and crash["fingerprint"].startswith("crash in lambda-task"),
+          f"{L} ci_signature: a crash fingerprint has a history like any error ({g.get('kind')})")
+    glut = rdb.execute("SELECT sig_hash FROM ci_errors WHERE kind = 'cmake' AND sig_exact LIKE '%GLUT%' LIMIT 1").fetchone()[0]
     g = payload(await client.call_tool("ci_signature", {"sig": glut}))
+    seen.append(json.dumps(g))
     want = cdb.execute("SELECT count(DISTINCT pr), min(uploaded_at), max(uploaded_at) FROM ci_errors "
                        "WHERE sig_hash = ?", (glut,)).fetchone()
     check(g["match"] == "exact" and g["prs"] == want[0] == 3 and g["first_seen"] == want[1]
@@ -226,6 +253,7 @@ async def exercise_cf(client, label, cache, st):
 
     # ci_pr_builds
     p = payload(await client.call_tool("ci_pr_builds", {"repo": "O2Physics", "pr": 18073}))
+    seen.append(json.dumps(p))
     want = cdb.execute("SELECT count(*) FROM ci_builds WHERE pr = 18073").fetchone()[0]
     stg = sorted((b["attempt"], b["state"], b["host"]) for b in p["builds"] if b["check"] == "build/O2Physics/staging")
     alloc = lambda h: "alloc-" + hashlib.sha256(h.encode()).hexdigest()[:8]   # as cif_test's logs record them
@@ -236,9 +264,12 @@ async def exercise_cf(client, label, cache, st):
     check(names and all(h.startswith("alloc-") for h in names),
           f"{L} published hosts are Nomad allocations, never machine names ({sorted(set(names))[:3]})")
     comp = [b for b in p["builds"] if b["check"] == "build/O2Physics/o2"][0]
-    check(comp["top_errors"] and comp["top_errors"][0]["untrusted"]["text"] and any(
-        e["in_pr_files"] == 1 for e in comp["top_errors"]) and all("text" not in e for e in comp["top_errors"]),
-          f"{L} ci_pr_builds: top errors, in_pr_files, text under 'untrusted'")
+    check(comp["top_errors"] and all(set(e["untrusted"]) == {"fingerprint"} for e in comp["top_errors"])
+          and comp["log_url"] and any(
+        e["in_pr_files"] == 1 for e in comp["top_errors"])
+          and all("text" not in e and "signature" not in e and e["line"]
+                  and e["location"] == f"{comp['log_url']}#L{e['line']}" for e in comp["top_errors"]),
+          f"{L} ci_pr_builds: top errors, in_pr_files, the line in log_url, fingerprint under 'untrusted'")
     p = payload(await client.call_tool("ci_pr_builds", {"repo": "AliceO2Group/AliceO2", "pr": 15895}))
     e = [x for b in p["builds"] for x in b.get("top_errors", []) if x["sig_hash"] == glut]
     check(e and e[0]["other_prs_3d"] == 2 and e[0]["in_pr_files"] == 0,
@@ -248,17 +279,23 @@ async def exercise_cf(client, label, cache, st):
           f"{L} ci_pr_builds: green and red builds, failing checks summarised")
     r = payload(await client.call_tool("ci_pr_builds", {"repo": "O2Physics", "pr": 999999}))
     check("no indexed CI build" in r.get("__error__", ""), f"{L} ci_pr_builds: unknown PR is an error")
+    r = payload(await client.call_tool("search_ci_failures", {"query": "x", "k": 50}))
+    seen.append(json.dumps(r))
+    leaked = [h[:60] for h in hidden if any(h in x for x in seen)]
+    check(hidden and not leaked, f"{L} no error text reaches the client, only hashes and fingerprints "
+                                 f"({len(hidden)} texts checked, leaked: {leaked[:2]})")
 
     # no planted secret reaches a tool, sql over cf, and the guards
     r = payload(await client.call_tool("ci_pr_builds", {"repo": "O2Physics", "pr": 18900, "errors_per_build": 10}))
     dump = json.dumps(r)
-    check("<redacted>" in dump and "hunter2" not in dump and "ghp_" not in dump and "AKIA" not in dump,
-          f"{L} the planted secrets come back redacted")
+    check(r["builds"] and "hunter2" not in dump and "ghp_" not in dump and "AKIA" not in dump
+          and "glpat-" not in dump and "BEGIN RSA" not in dump,
+          f"{L} the planted secrets do not come back, not even redacted: no error text is returned")
     s = payload(await client.call_tool("sql", {"query":
         "SELECT b.repo, count(*) FROM ci_builds b JOIN cf.ci_errors e USING (build_id) GROUP BY b.repo"}))
     check(s["rows"] and sum(x[1] for x in s["rows"]) == cdb.execute("SELECT count(*) FROM ci_errors").fetchone()[0],
           f"{L} sql over cf, qualified and unqualified")
-    for evil in ["DELETE FROM cf.ci_builds", "UPDATE ci_errors SET text = 'x'", "DETACH DATABASE cf"]:
+    for evil in ["DELETE FROM cf.ci_builds", "UPDATE ci_errors SET line = 1", "DETACH DATABASE cf"]:
         r = payload(await client.call_tool("sql", {"query": evil}))
         check("only SELECT" in r.get("__error__", ""), f"{L} sql refuses: {evil}")
 
