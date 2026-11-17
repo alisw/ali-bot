@@ -34,6 +34,10 @@ PROXY_TOKEN=${PROXY_TOKEN:-$CODE_DIR/proxy-token.py}
 RESTORE=${RESTORE:-auto}                      # auto | skip (= accept re-embedding)
 ONCE=${ONCE:-0}                               # 1 = a single pass, no sleep (tests)
 export COMMITS_REPOS=${COMMITS_REPOS:-AliceO2Group/AliceO2:dev,AliceO2Group/O2Physics:master,AliceO2Group/O2DPG:master,alisw/alidist:master,alisw/ali-bot:master}
+# Where the public templates of runtime error messages come from (srctemplates.py);
+# empty = none (ci-failures then publishes those errors by hash only).
+SRC_REPOS=${SRC_REPOS-AliceO2Group/AliceO2:dev,AliceO2Group/O2Physics:master,AliceO2Group/O2DPG:master,AliceO2Group/QualityControl:master,root-project/root:master,FairRootGroup/FairMQ:dev,FairRootGroup/FairRoot:dev}
+export SRCTEMPLATES="$COCO_ROOT/sources"
 
 export COCOINDEX_DISABLE_USAGE_TRACKING=1
 export GIT_TERMINAL_PROMPT=0
@@ -167,6 +171,39 @@ fetch_mirrors() {
   done
 }
 
+# ---------------------------------------------------------------- sources
+# Shallow, sparse working trees: C++, shell, Python and CMake files at the branch
+# head, nothing else (ROOT's interpreter/ alone is larger than all the rest).
+# A partial clone, so checkout fetches exactly those blobs, in one batch.
+# srctemplates.py rebuilds its index only when a head moved.
+SRC_SPARSE=('*.cxx' '*.cpp' '*.cc' '*.h' '*.hpp' '*.hxx' '*.C' '*.inl' '*.icc' 'CMakeLists.txt' '*.cmake' '*.sh' '*.py'
+            '!/interpreter/**' '!/roottest/**' '!/tutorials/**' '!**/test_data/**')   # "dir/**": a bare "dir/" excludes nothing
+fetch_sources() {
+  local spec r b w names=()
+  [ -n "$SRC_REPOS" ] || return 0
+  mkdir -p "$SRCTEMPLATES"
+  IFS=, read -r -a specs <<< "$SRC_REPOS"
+  for spec in "${specs[@]}"; do
+    r=${spec%%:*} b=${spec#*:}
+    w="$SRCTEMPLATES/${r//\//__}"
+    if [ ! -d "$w/.git" ]; then
+      log "cloning sources of $r ($b)"
+      rm -rf "$w.tmp"
+      { git clone -q --depth 1 --filter=blob:none --no-checkout -b "$b" "$GIT_BASE_URL/$r" "$w.tmp" &&
+        git -C "$w.tmp" sparse-checkout set --no-cone "${SRC_SPARSE[@]}" &&
+        git -C "$w.tmp" checkout -q "$b" && mv "$w.tmp" "$w"; } 2>/dev/null ||
+        { log "clone of the sources of $r failed"; rm -rf "$w.tmp"; continue; }
+    else
+      find "$w/.git" -name '*.lock' -not -path '*/objects/*' -delete 2>/dev/null || true
+      { git -C "$w" fetch -q --depth 1 origin "$b" && git -C "$w" checkout -q -f --detach FETCH_HEAD; } 2>/dev/null ||
+        log "fetch of the sources of $r failed; keeping the old tree"
+    fi
+    names+=("$r=$b")
+  done
+  "$VENV/bin/python" "$CODE_DIR/srctemplates.py" build "$SRCTEMPLATES" "${names[@]}" ||
+    log "srctemplates build failed; publishing with the previous index (or none)"
+}
+
 # ---------------------------------------------------------------- one flow
 child=""
 stopping=0
@@ -236,6 +273,7 @@ while :; do
   started=$(date +%s)
   resolve_endpoints || log "cannot resolve proxy endpoints; flows will fail this pass"
   [[ ",$FLOWS," == *,commits,* || ( ",$FLOWS," == *,prs,* && ${PRS_DIFFS:-1} = 1 ) ]] && fetch_mirrors
+  [[ ",$FLOWS," == *,ci-failures,* ]] && fetch_sources
   for f in ${FLOWS//,/ }; do
     [ "$stopping" = 1 ] && break
     resolve_endpoints || true      # a long previous flow may have outlived the token window

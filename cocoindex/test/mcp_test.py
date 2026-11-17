@@ -163,8 +163,9 @@ async def exercise_cf(client, label, cache, st):
     cols = [r[1] for r in cdb.execute("PRAGMA table_info(ci_errors)")]
     check("sig_exact" not in cols and "sig_class" not in cols and "fingerprint" in cols,
           f"{L} the served index has hashes and fingerprints, no signature text")
+    published = {r[0] for r in cdb.execute("SELECT fingerprint FROM ci_errors WHERE fingerprint IS NOT NULL")}
     hidden = [r[0] for r in rdb.execute("SELECT DISTINCT sig_exact FROM ci_errors WHERE kind != 'crash'")
-              if len(r[0]) > 25]
+              if len(r[0]) > 25 and r[0] not in published]
     seen: list[str] = []      # every CI tool reply, checked for hidden text at the end
     idx = {r[0] for r in cdb.execute("SELECT name FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL")}
     check({"ci_errors_sig", "ci_errors_class", "ci_builds_pr", "ci_builds_sha"} <= idx,
@@ -279,8 +280,31 @@ async def exercise_cf(client, label, cache, st):
           f"{L} ci_pr_builds: green and red builds, failing checks summarised")
     r = payload(await client.call_tool("ci_pr_builds", {"repo": "O2Physics", "pr": 999999}))
     check("no indexed CI build" in r.get("__error__", ""), f"{L} ci_pr_builds: unknown PR is an error")
+    # runtime messages: the format string of the public code that printed them
+    src = cdb.execute("SELECT sig_hash, fingerprint, fingerprint_src, template_id, filler_hash FROM ci_errors "
+                      "WHERE fingerprint_kind = 'source' LIMIT 1").fetchone()
+    check(src and src["fingerprint"] == "Requested resource does not exist: _"
+          and src["fingerprint_src"].startswith("https://github.com/AliceO2Group/AliceO2/blob/")
+          and src["fingerprint_src"].endswith("/CCDB/src/CcdbApi.cxx#L2") and len(src["filler_hash"] or "") == 16,
+          f"{L} a runtime message is published as its source template, with a permalink and a filler hash")
+    g = payload(await client.call_tool("ci_signature", {"sig": src["template_id"]}))
+    seen.append(json.dumps(g))
+    check(g.get("match") == "template" and g["untrusted"]["fingerprint"] == src["fingerprint"]
+          and g["fingerprint_src"] == src["fingerprint_src"] and g["filler_hash"] is None,
+          f"{L} ci_signature by template_id: every occurrence of that message ({g.get('match')})")
+    g = payload(await client.call_tool("ci_signature", {"sig": src["filler_hash"]}))
+    seen.append(json.dumps(g))
+    check(g.get("match") == "template+fillers" and g["filler_hash"] == src["filler_hash"],
+          f"{L} ci_signature by filler_hash: that message with the same values ({g.get('match')})")
+    t = cdb.execute("SELECT fingerprint FROM ci_errors WHERE fingerprint_kind = 'test'").fetchall()
+    check(("Test: CCDB/test/testCcdbApiHeaders.cxx ***Failed",) in [tuple(x) for x in t],
+          f"{L} a ctest failure whose test is in the public tree keeps its name ({[x[0] for x in t]})")
     r = payload(await client.call_tool("search_ci_failures", {"query": "x", "k": 50}))
     seen.append(json.dumps(r))
+    p = payload(await client.call_tool("ci_pr_builds", {"repo": "AliceO2Group/AliceO2", "pr": 16034,
+                                                        "errors_per_build": 10}))
+    seen.append(json.dumps(p))
+    check(not any("meide" in x for x in seen), f"{L} the CERN user name in the CCDB test paths reaches no reply")
     leaked = [h[:60] for h in hidden if any(h in x for x in seen)]
     check(hidden and not leaked, f"{L} no error text reaches the client, only hashes and fingerprints "
                                  f"({len(hidden)} texts checked, leaked: {leaked[:2]})")

@@ -221,6 +221,25 @@ def pr_files():
     }
 
 
+def build_src_origin():
+    """A public "AliceO2" with the statement that prints the fixture's CCDB error
+    and the test ctest names, for srctemplates.py (SRC_REPOS)."""
+    d = WORK / "origins" / "AliceO2Group" / "AliceO2"
+    files = {
+        "CCDB/src/CcdbApi.cxx": 'void f() {\n  LOG(error) << "Requested resource does not exist: " << url;\n}\n',
+        "CCDB/test/testCcdbApiHeaders.cxx": "int main() { return 0; }\n",
+        "CCDB/CMakeLists.txt": "o2_add_test(CcdbApiHeaders SOURCES test/testCcdbApiHeaders.cxx)\n",
+        "README.md": "not a source file: not checked out\n",
+    }
+    for rel, text in files.items():
+        (d / rel).parent.mkdir(parents=True, exist_ok=True)
+        (d / rel).write_text(text)
+    git = lambda *a: subprocess.run(["git", "-C", str(d), *a], check=True, capture_output=True)
+    git("init", "-q", "-b", "dev")
+    git("add", "-A")
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "sources")
+
+
 # ---------------------------------------------------------------- driver
 def main():
     if WORK.exists():
@@ -228,6 +247,7 @@ def main():
     WORK.mkdir(parents=True)
     heads, _ = prs_test.build_origin()
     build_bucket()
+    build_src_origin()
     eport, gport, sport = prs_test.free_port(), prs_test.free_port(), prs_test.free_port()
     elog, tlog, glog, slog = WORK / "embed.log", WORK / "texts.jsonl", WORK / "github.log", WORK / "s3.log"
     for f in (elog, tlog, glog, slog):
@@ -244,7 +264,8 @@ def main():
                     GIT_BASE_URL=f"file://{WORK}/origins",
                     GITHUB_GRAPHQL_URL=f"http://127.0.0.1:{gport}/graphql", GITHUB_TOKEN=TOKEN,
                     S3_ENDPOINT_URL=f"http://127.0.0.1:{sport}", AWS_ACCESS_KEY_ID=S3TOKEN,
-                    PRS_PAGE_SIZE="4", PRS_NESTED="3", CIF_FETCH_THREADS="2")
+                    PRS_PAGE_SIZE="4", PRS_NESTED="3", CIF_FETCH_THREADS="2",
+                    SRC_REPOS="AliceO2Group/AliceO2:dev", CIF_FILLER_KEY="cif-test-filler-key")
     texts = lambda: [json.loads(x) for x in tlog.read_text().splitlines()]
     s3reqs = lambda: [json.loads(x) for x in slog.read_text().splitlines()]
     ghreqs = lambda: [json.loads(x) for x in glog.read_text().splitlines()]
@@ -299,6 +320,10 @@ def main():
         rep = conn.execute("SELECT sum(pending), sum(builds), sum(extracted) FROM ci_repos").fetchone()
         check(tuple(rep) == (7, 10, 3), f"[1] ci_repos shows the bootstrap in progress {tuple(rep)}")
         check("left for later passes" in err, "[1] the flow says logs are left for later passes")
+        src = WORK / "hostA/sources/AliceO2Group__AliceO2"
+        check("srctemplates: 1 templates" in err and (src / "CCDB/src/CcdbApi.cxx").exists()
+              and not (src / "README.md").exists(),
+              "[1] the template sources are checked out sparse (C++ and CMake only) and indexed")
         print(f"     pass 1: {len(cif_texts(tt))} ci texts embedded, {len(s3r)} S3 requests", flush=True)
 
         # ---- 2: resume
@@ -464,6 +489,7 @@ def main():
               f"[4] no change: no downloads, listing only ({sorted({r['op'] for r in s3r})})")
         check(not tt, f"[4] no change: no embeddings ({len(tt)})")
         check("nothing published" in err, "[4] no change: no new snapshot")
+        check("heads unchanged, index kept" in err, "[4] no change: the template index is kept")
 
         # ---- 5: a new host restores
         err, tt, s3r, gh = run_pass("5", host="hostB")

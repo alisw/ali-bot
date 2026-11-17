@@ -81,7 +81,7 @@ c.execute("INSERT INTO scratch VALUES ('k', ?)", (LOGTEXT,))
 c.commit()
 c.close()
 
-stats = sanitize.sanitize_db(db)
+stats = sanitize.sanitize_db(db, templates=None)   # srctemplates has its own test
 print("stats:", stats)
 c = sqlite3.connect(db)
 hosts = dict(c.execute("SELECT build_id, host FROM ci_builds"))
@@ -105,9 +105,10 @@ check(c.execute("SELECT fingerprint, embedding FROM ci_signatures").fetchone() =
 objs = sorted(r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'"))
 check(objs == ["ci_builds", "ci_errors", "ci_signatures"], f"unlisted tables, views and indexes are dropped ({objs})")
 cols = {t: [r[1] for r in c.execute(f"PRAGMA table_info({t})")] for t in objs}
+FP = ["fingerprint", "fingerprint_kind", "fingerprint_src", "template_id", "filler_hash"]
 check(cols == {"ci_builds": ["build_id", "host", "log_url"],
-               "ci_errors": ["build_id", "sig_hash", "host", "kind", "file", "line", "fingerprint"],
-               "ci_signatures": ["sig_hash", "kind", "file", "embedding", "fingerprint"]},
+               "ci_errors": ["build_id", "sig_hash", "host", "kind", "file", "line", *FP],
+               "ci_signatures": ["sig_hash", "kind", "file", "embedding", *FP]},
       f"no log text, no signature text, no full allocation id ({cols})")
 c.close()
 check(stats.get("dropped column ci_errors.text") == 1 and stats.get("dropped column ci_errors.sig_exact") == 1
@@ -120,7 +121,7 @@ check(not left, f"no trace in the file's bytes, free pages included ({left})")
 
 again = work / "again.db"
 shutil.copyfile(db, again)
-check(sanitize.sanitize_db(again) == {}, "a published DB is left as it is")
+check(sanitize.sanitize_db(again, templates=None) == {}, "a published DB is left as it is")
 
 # A column the list does not name, which cannot be dropped, stops the publish.
 odd = work / "odd.db"
@@ -130,7 +131,7 @@ c.executescript("CREATE TABLE ci_builds (build_id TEXT, host TEXT, alloc TEXT);"
                 " PRIMARY KEY (build_id, secret_body));")
 c.close()
 try:
-    sanitize.sanitize_db(odd)
+    sanitize.sanitize_db(odd, templates=None)
     check(False, "an undroppable unlisted column must fail the publish")
 except Exception as e:
     check("secret_body" in str(e) or isinstance(e, sqlite3.OperationalError),

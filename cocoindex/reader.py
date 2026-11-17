@@ -65,6 +65,8 @@ INDEXES = {
                "CREATE INDEX IF NOT EXISTS prs_state ON prs(state, created_at)"],
     "ci-failures.db": ["CREATE INDEX IF NOT EXISTS ci_errors_sig ON ci_errors(sig_hash, uploaded_at)",
                        "CREATE INDEX IF NOT EXISTS ci_errors_class ON ci_errors(class_hash)",
+                       "CREATE INDEX IF NOT EXISTS ci_errors_template ON ci_errors(template_id, filler_hash)",
+                       "CREATE INDEX IF NOT EXISTS ci_errors_filler ON ci_errors(filler_hash)",
                        "CREATE INDEX IF NOT EXISTS ci_errors_pr ON ci_errors(repo, pr)",
                        "CREATE INDEX IF NOT EXISTS ci_builds_pr ON ci_builds(repo, pr, uploaded_at)",
                        "CREATE INDEX IF NOT EXISTS ci_builds_sha ON ci_builds(repo, sha, check_dir)"],
@@ -167,7 +169,11 @@ def sync(max_age: float = 0) -> dict:
         if INDEXES.get(db["name"]):
             with sqlite3.connect(tmp) as c:
                 for ddl in INDEXES[db["name"]]:
-                    c.execute(ddl)
+                    try:
+                        c.execute(ddl)
+                    except sqlite3.OperationalError as e:
+                        if "no such column" not in str(e):   # a snapshot older than the column
+                            raise
             c.close()
         # rename(): open connections keep reading the old inode until reopened.
         tmp.rename(dest)
