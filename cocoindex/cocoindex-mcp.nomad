@@ -15,9 +15,9 @@
 #
 # Clients: Claude Code / any MCP client, Streamable HTTP. Humans log in with CERN
 # SSO (OAuth, PKCE; ALICE members only), automation uses a static bearer token:
-#   claude mcp add --transport http --client-id <id> --callback-port <port> \
-#       cocoindex https://ali-ci.cern.ch/alice-mcp/mcp
-#   claude mcp add --transport http cocoindex https://ali-ci.cern.ch/alice-mcp/mcp \
+#   claude mcp add --transport http --client-id ali-ci-mcp --callback-port <port> \
+#       ali-ci https://ali-ci.cern.ch/mcp
+#   claude mcp add --transport http ali-ci https://ali-ci.cern.ch/mcp \
 #       --header "Authorization: Bearer <token>"
 # See DESIGN.md, "Auth (HTTP)", for the Application Portal registration.
 #
@@ -403,13 +403,14 @@ job "cocoindex-mcp" {
         MCP_TOKENS_FILE = "/secrets/mcp-tokens.json"
         # CERN SSO. Remove OIDC_ISSUER for tokens only.
         OIDC_ISSUER = "https://auth.cern.ch/auth/realms/cern"
-        # DECISION: the aud CERN puts in our access tokens. Assumed to be the
-        # Application Portal client id; VERIFY with a real token at deployment.
-        OIDC_AUDIENCE = "cocoindex-mcp"
+        # The aud CERN puts in our access tokens: the Application Portal client
+        # id, ali-ci-mcp (one application per ALICE MCP, so a token for another
+        # one is refused here). VERIFY with a real token at deployment.
+        OIDC_AUDIENCE = "ali-ci-mcp"
         # The portal role mapped to the e-group alice-member (claim cern_roles).
         OIDC_REQUIRED_ROLE = "alice-member"
         # Exactly the URL clients use: the RFC 9728 metadata's "resource".
-        MCP_PUBLIC_URL = "https://ali-ci.cern.ch/alice-mcp/mcp"
+        MCP_PUBLIC_URL = "https://ali-ci.cern.ch/mcp"
         # DECISION: the public host name, also in the Traefik rules below.
         MCP_ALLOWED_HOSTS = "ali-ci.cern.ch"
       }
@@ -479,14 +480,13 @@ job "cocoindex-mcp" {
         name = "cocoindex-mcp"
         port = "http"
         tags = [
-          # /alice-mcp/mcp outside -> /mcp inside. Apache on the frontends serves
-          # ali-ci.cern.ch and must list /alice-mcp in public_paths (DESIGN.md, 8).
-          "traefik.http.routers.cocoindex-mcp.rule=Host(`ali-ci.cern.ch`) && PathPrefix(`/alice-mcp`)",
-          "traefik.http.routers.cocoindex-mcp.middlewares=cocoindex-mcp-stripprefix",
-          "traefik.http.middlewares.cocoindex-mcp-stripprefix.stripprefix.prefixes=/alice-mcp",
-          # RFC 9728 metadata for https://ali-ci.cern.ch/alice-mcp/mcp lives at the
-          # host root, outside /alice-mcp: route that one path, unstripped.
-          "traefik.http.routers.cocoindex-mcp-prm.rule=Host(`ali-ci.cern.ch`) && Path(`/.well-known/oauth-protected-resource/alice-mcp/mcp`)",
+          # https://ali-ci.cern.ch/mcp, passed through as it is: the server
+          # answers on /mcp. Apache on the frontends serves ali-ci.cern.ch and
+          # must list /mcp in public_paths (DESIGN.md, 8).
+          "traefik.http.routers.cocoindex-mcp.rule=Host(`ali-ci.cern.ch`) && (Path(`/mcp`) || PathPrefix(`/mcp/`))",
+          # RFC 9728 metadata for https://ali-ci.cern.ch/mcp lives at the host
+          # root, outside /mcp: route that one path too.
+          "traefik.http.routers.cocoindex-mcp-prm.rule=Host(`ali-ci.cern.ch`) && Path(`/.well-known/oauth-protected-resource/mcp`)",
         ]
 
         check {
