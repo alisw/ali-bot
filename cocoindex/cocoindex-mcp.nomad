@@ -398,6 +398,11 @@ job "cocoindex-mcp" {
         EMBED_MODEL        = "openai/embeddinggemma-300m"
         SYNC_INTERVAL      = "300"
         MCP_MAX_CONCURRENT = "4"
+        # Query embeddings and sql() run in pools of their own, so a slow
+        # embedder or heavy SQL never holds the MCP_MAX_CONCURRENT slots.
+        MCP_MAX_EMBEDS      = "4"
+        MCP_EMBED_TIMEOUT_S = "20"
+        MCP_MAX_SQL         = "2"
         SQL_TIMEOUT_S      = "10"
         # Static tokens (automation). Remove for SSO only.
         MCP_TOKENS_FILE = "/secrets/mcp-tokens.json"

@@ -218,7 +218,7 @@ def embed_endpoint() -> tuple[str, str]:
 
 
 def embed_query(text: str, endpoint: tuple[str, str] | None = None,
-                as_document: bool = False) -> list[float]:
+                as_document: bool = False, timeout: float = 60) -> list[float]:
     """Embed a search text with the query prefix the index was built for, or
     with the document one to compare it with stored texts as one of them."""
     base, key = endpoint or embed_endpoint()
@@ -229,7 +229,7 @@ def embed_query(text: str, endpoint: tuple[str, str] | None = None,
                                                   else embedtext.query(text)]}).encode(),
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
                  "Accept-Encoding": "identity"})
-    with urllib.request.urlopen(req, timeout=60) as r:
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.load(r)["data"][0]["embedding"]
 
 

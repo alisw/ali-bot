@@ -281,6 +281,7 @@ Repo arguments accept short names (`O2Physics`). An unknown repo is an error lis
 - the connection is `mode=ro&immutable=1`;
 - an SQLite authorizer allows only SELECT, READ, FUNCTION and RECURSIVE, which refuses `ATTACH` of other files on the host, every `PRAGMA`, temp tables and `load_extension`;
 - a progress handler stops the query after `SQL_TIMEOUT_S` (10 s);
+- at most `MCP_MAX_SQL` (2) run at once, in a pool apart from the other tools' `MCP_MAX_CONCURRENT` slots, and a call waits at most `SQL_TIMEOUT_S` for its turn ("sql is busy" after that): four runaway queries used to hold every slot for 10 s, and `get_commit` waited behind them;
 - results are capped at 500 rows, cells at 2000 chars, and vectors print as `<768-d vector>`.
 
 The test runs eight hostile statements through it, including a runaway recursive CTE.
@@ -325,7 +326,7 @@ The test runs eight hostile statements through it, including a runaway recursive
 3. Under Roles, create the role `alice-member` and map it to the e-group `alice-member`. Optionally tick "role required to access", so that non-members are stopped at the login page rather than by the server's 403. The server checks the role either way.
 4. Log in once with a test client and decode the access token. Read `aud` and `cern_roles` from it and set `OIDC_AUDIENCE` and `OIDC_REQUIRED_ROLE` in the jobspec accordingly. The audience must name this application: `cern_roles` holds the roles of the application the token is for, so a token for another CERN application that also defines an `alice-member` role is refused by `aud`, not by the role check.
 
-The data itself is public: commit history of public GitHub repos. The token mainly protects the aigw quota (one embedding per search) and makes usage attributable. Per-user rate limiting is not implemented: `MCP_MAX_CONCURRENT` (4) bounds concurrent queries globally. Add it if one client turns out to dominate.
+The data itself is public: commit history of public GitHub repos. The token mainly protects the aigw quota (one embedding per search) and makes usage attributable. Per-user rate limiting is not implemented: `MCP_MAX_CONCURRENT` (4) bounds concurrent queries globally. A search's query embedding is computed before its query takes a slot, in a pool of its own (`MCP_MAX_EMBEDS`, 4, each bounded by `MCP_EMBED_TIMEOUT_S`, 20 s), so a slow embedder delays the searches only: with a 2 s embedder and 10 clients, `get_commit` went from 1.7 s to 2 ms at p50 (measured locally, 2026-11-17). Add it if one client turns out to dominate.
 
 **Adding a static token** (automation; the human runs these; the token travels to its user once and is stored nowhere else):
 

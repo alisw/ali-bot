@@ -225,6 +225,11 @@ async def exercise_cf(client, label, cache, st):
                                                                             "Other/newTask")}))
     check(g3.get("match") == "class" and g3["class_hash"] == g["class_hash"] and g3["sig_hash"] is None,
           f"{L} ci_signature: same message in another file matches by class ({g3.get('match')})")
+    g4 = payload(await client.call_tool("ci_signature", {"sig": "error: a message no build ever printed, "
+                                                                "about C-style casts in a new task"}))
+    check(str(g4.get("match", "")).startswith("nearest") and g4.get("sig_hash"),
+          f"{L} ci_signature: no hash matches, so the nearest error by meaning, embedded outside the "
+          f"query slot ({g4.get('match') or g4})")
     check(no_text_outside(g, [g["untrusted"]["fingerprint"]]) and set(g["untrusted"]) == {"fingerprint"},
           f"{L} ci_signature: only the fingerprint, under 'untrusted'")
     check(g["latest"]["log_url"].startswith("https://ali-ci.cern.ch/alice-build-logs/")
