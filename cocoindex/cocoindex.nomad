@@ -432,10 +432,17 @@ job "cocoindex" {
         PROXY_SOCK  = "/alloc/security-proxy/agent/agent.sock"
         PROXY_TOKEN = "/local/proxy-token.py"
 
-        # Throughput into aigw: see commits_flow.py. Neither is in a memo key.
+        # Throughput into aigw: see commits_flow.py. None is in a memo key
+        # (LiteLLMEmbedder's memo key is the model and its kwargs only).
+        # EMBED_TIMEOUT_S bounds one request of <= 64 texts, retries of fast
+        # failures included; a slow request is not retried, its component
+        # fails and the next pass redoes it. Seconds normally; 60 s, not 300,
+        # so a slow aigw does not park all 16 component slots for 5 minutes
+        # each (2026-11-17: commits and prs both sat at "16 short" for a whole
+        # PASS_TIMEOUT).
         COCOINDEX_MAX_INFLIGHT_COMPONENTS = "16"
         EMBED_MAX_INFLIGHT_REQUESTS       = "4"
-        EMBED_TIMEOUT_S                   = "300"
+        EMBED_TIMEOUT_S                   = "60"
         EMBED_MODEL                       = "openai/embeddinggemma-300m"
         DIFF_EMBED_SINCE                  = "2025-01-01"
         # prs flow: see prs_flow.py. PRS_FETCH_BUDGET_S bounds the GitHub half of
