@@ -370,6 +370,23 @@ To revoke, use `del(.["<name>"])` instead of `. + {…}`. The first time, start 
 4. Nothing changed: no embeddings, one list request, no snapshot.
 5. A fresh host restores from the snapshot, re-embeds nothing, scans incrementally and ends with the same rows.
 
+## Metrics (`metrics.py`, Grafana dashboard `ci-jobs/grafana/ali-ci-mcp.json`)
+
+Both jobs push OTLP gauges to MONIT, as `queue-metrics` and `bb-cache-metrics` do: through a `monit-otlp` proxy route (`https://monit-otlp.cern.ch:4319`, verified with the job's CERN CA bundle), whose credential `monit-otlp-auth` the bootstrap takes from `kv/data/cocoindex` `monit_otlp_auth`, else from `kv/data/ci` `queue_metrics_otlp_auth`. Without it the route answers 503 and nothing is sent; nothing else changes. A push that fails is logged once and dropped, never retried, never raised.
+
+| from | metrics (prefix `cocoindex_`) | when |
+|---|---|---|
+| `runner.sh` | `flow_seconds`, `flow_timed_out`, `flow_exit_code` {flow, position}; `pass_seconds` | after each flow, each pass |
+| the flows (litellm callbacks) | `embed_requests_started/ok/failed_count`, `embed_texts_count`/`_per_s`, `embed_request_seconds_p50/p95/max` {flow, route}; started − ok − failed is what cocoindex abandoned at `EMBED_TIMEOUT_S` | every minute while a flow runs |
+| `ci_failures_flow.py` | `cif_new_builds`, `cif_logs_extracted`, `cif_logs_pending`, `cif_extract_mb(_per_s)`, `cif_github_requests/points`, `cif_github_budget_exhausted`, `cif_builds`, `cif_signatures` | each pass |
+| `s3snap.py` | `snapshot_published_timestamp`, `snapshot_publish_seconds`, `snapshot_db_bytes` {flow}, `snapshot_signatures` {fingerprint: compiler, source, …, hash only} | each publish |
+| `runner.sh` probe | `embed_probe_seconds`, `embed_probe_ok` {route} for each of `EMBED_PROBE_ROUTES` | every `PROBE_INTERVAL` (300 s) between passes |
+| `mcp_server.py` | `mcp_calls_count` {tool, outcome: ok, bad_request, error}, `mcp_call_seconds_p50/p95/max` {tool}, `mcp_slot_wait_seconds_*`, `mcp_embed_seconds_*`, `mcp_embed_failed_count` {reason}, `mcp_sql_busy_count`, `mcp_snapshot_age_seconds`, `mcp_snapshot_ok`, `mcp_callers_1h`, `mcp_callers_24h` | every minute (`METRICS_INTERVAL_S`) |
+
+Windowed values (`_count`, `_per_s`, percentiles) cover the minute before the push; a counter seen before reads 0 in a quiet minute rather than leaving a gap. Attributes are flows, routes, tools, outcomes and fingerprint kinds only: callers are counted in the server and never named, and no query, SQL or log text is ever an attribute. `mcp_test.py` and `cif_test.py` check exactly that against a fake receiver (`test/fake_otlp.py`); `metrics_test.py` covers the windows, failures and the probe.
+
+Alerts worth setting in Grafana: `time() - max(last_over_time(cocoindex_snapshot_published_timestamp[2d])) > 6*3600` (the index is not being published), `max(cocoindex_mcp_snapshot_ok) == 0` for 30 min, and `sum(cocoindex_mcp_calls_count{outcome="error"}) > 0` for 15 min.
+
 ## Open decisions for you
 
 The MCP server adds 8 to 11; the prs flow adds 12 to 16; SSO adds 17 to 20; the ci-failures flow adds 21 to 27.

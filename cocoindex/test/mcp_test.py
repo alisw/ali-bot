@@ -26,6 +26,8 @@ HERE = Path(__file__).resolve().parent
 SERVER = HERE.parent / "mcp_server.py"
 sys.path.insert(0, str(HERE.parent))
 import embedtext  # noqa: E402
+sys.path.insert(0, str(HERE))
+import fake_otlp  # noqa: E402
 STORE = sys.argv[1]
 failures = []
 
@@ -424,6 +426,9 @@ async def exercise_prs(client, label, cache, st):
 
 async def main():
     work = Path(tempfile.mkdtemp(prefix="coco-mcp-"))
+    otlp_bodies: list = []
+    mport = free_port()
+    fake_otlp.serve(mport, otlp_bodies)
     eport = free_port()
     emb = subprocess.Popen([sys.executable, str(HERE / "fake_embedder.py"), str(eport), str(work / "embed.log"),
                             str(work / "embed-texts.log")])
@@ -446,7 +451,9 @@ async def main():
         port = free_port()
         srv = subprocess.Popen([sys.executable, str(SERVER), "--http", "--port", str(port)],
                                env=dict(env, COCO_CACHE=str(cache), MCP_TOKENS_FILE=str(tok_file),
-                                        MCP_ALLOWED_HOSTS="ali-ci.cern.ch"),
+                                        MCP_ALLOWED_HOSTS="ali-ci.cern.ch", METRICS_INTERVAL_S="1",
+                                        OTLP_METRICS_URL=f"http://127.0.0.1:{mport}/otlp/v1/metrics",
+                                        OTLP_WRITE_TOKEN="gate"),
                                stderr=open(work / "http.log", "w"))
         try:
             base = f"http://127.0.0.1:{port}"
@@ -485,6 +492,21 @@ async def main():
             srv.wait()
         log = (work / "http.log").read_text()
         check("alice POST /mcp" in log, "[http] caller name logged per request")
+        pts = fake_otlp.points(otlp_bodies)
+        names = {n for n, _, _ in pts}
+        calls = {a["tool"]: v for n, a, v in pts if n == "cocoindex_mcp_calls_count" and a["outcome"] == "ok"}
+        print(f"   metrics: {len(otlp_bodies)} push(es), {len(pts)} points, {sorted(names)[:6]}...")
+        check({"search_commits", "get_commit", "sql", "ci_signature"} <= set(calls)
+              and {"cocoindex_mcp_call_seconds_p95", "cocoindex_mcp_slot_wait_seconds_p95",
+                   "cocoindex_mcp_embed_seconds_p50", "cocoindex_mcp_snapshot_age_seconds"} <= names,
+              "[http] metrics: calls per tool and outcome, latencies, slot waits, embedding time, snapshot age")
+        check(any(n == "cocoindex_mcp_calls_count" and a["outcome"] == "bad_request" for n, a, _ in pts),
+              "[http] metrics: a caller's mistake counts as bad_request, apart from errors")
+        check(max((v for n, _, v in pts if n == "cocoindex_mcp_callers_1h"), default=0) == 1,
+              "[http] metrics: distinct callers are counted")
+        blob = json.dumps(otlp_bodies)
+        check(not any(x in blob for x in ("alice", "s3cret", "anything", "SELECT", "NoSuchRepo")),
+              "[http] metrics carry no caller name, token, query or SQL text")
         check("s3cret" not in log, "[http] token never logged")
         n = sum(int(x) for x in (work / "embed.log").read_text().split())
         print(f"embedding texts sent: {n}")

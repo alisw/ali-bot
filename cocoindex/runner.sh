@@ -21,6 +21,8 @@ CODE_DIR=${CODE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}
 FLOWS=${FLOWS:-commits}                       # comma list: commits, prs, ci-failures
 FLOW_ORDER=${FLOW_ORDER:-random}              # random: shuffled every pass; fixed: as listed
 PASS_SLEEP=${PASS_SLEEP:-3600}                # seconds between passes
+PROBE_INTERVAL=${PROBE_INTERVAL:-300}         # between passes, time one embedding per route this often
+EMBED_PROBE_ROUTES=${EMBED_PROBE_ROUTES:-aigw} # comma list of proxy routes to probe
 PASS_TIMEOUT=${PASS_TIMEOUT:-50m}             # per flow per pass; SIGINT, then KILL
 PASS_KILL_GRACE=${PASS_KILL_GRACE:-2m}
 SNAPSHOT_KEEP=${SNAPSHOT_KEEP:-12}            # run ids kept in the bucket
@@ -102,6 +104,37 @@ resolve_endpoints() {
     GITHUB_TOKEN=$(ask github token) || return 1
     export GITHUB_GRAPHQL_URL GITHUB_TOKEN PROXY_SOCK PROXY_TOKEN
   fi
+  # Metrics (metrics.py) go to MONIT through the monit-otlp route, when there
+  # is one: without it nothing is sent, and nothing else changes.
+  if OTLP_WRITE_TOKEN=$(ask monit-otlp token 2>/dev/null); then
+    OTLP_METRICS_URL="http://$host:$port/otlp/v1/metrics"
+    export OTLP_METRICS_URL OTLP_WRITE_TOKEN
+  else
+    unset OTLP_METRICS_URL OTLP_WRITE_TOKEN
+  fi
+}
+
+# One point to MONIT: metric NAME TAG=V ... -- FIELD=V ... (metrics.py push).
+# Best effort: a metric never fails the pass.
+metric() {
+  [ -n "${OTLP_METRICS_URL:-}" ] || return 0
+  "$VENV/bin/python" "$CODE_DIR/metrics.py" push "$@" >/dev/null 2>&1 || true
+}
+
+# Between passes: one short embedding per route in EMBED_PROBE_ROUTES, timed.
+# The indexer's own requests say how fast the embedder was under its load; this
+# says how fast it is at all, every PROBE_INTERVAL, whatever the indexer does.
+probe_embedders() {
+  [ -n "${OTLP_METRICS_URL:-}" ] && [ -n "$PROXY_SOCK" ] || return 0
+  local r k port host
+  port=$(ask aigw port 2>/dev/null) || return 0
+  host=$(ask aigw host 2>/dev/null) || host=127.0.0.1
+  for r in ${EMBED_PROBE_ROUTES//,/ }; do
+    k=${r^^}; k=${k//-/_}
+    export "PROBE_${k}_URL=http://$host:$port/$r/v1"
+    export "PROBE_${k}_TOKEN=$(ask "$r" token 2>/dev/null)"
+  done
+  "$VENV/bin/python" "$CODE_DIR/metrics.py" probe ${EMBED_PROBE_ROUTES//,/ } >/dev/null 2>&1 || true
 }
 
 # The proxy and its bootstrap are prestart sidecars: Nomad starts this task once
@@ -218,7 +251,8 @@ on_term() {
 trap on_term TERM INT
 
 run_flow() {
-  local f=$1 d rc=0 var
+  local f=$1 d rc=0 var t0
+  t0=$(date +%s)
   d="$COCO_ROOT/flows/$f"
   mkdir -p "$d"
   var=${f//-/_}
@@ -233,6 +267,8 @@ run_flow() {
   while kill -0 "$child" 2>/dev/null; do rc=0; wait "$child" || rc=$?; done
   child=""
   export "PASS_EXIT_$var=$rc"
+  metric cocoindex_flow "flow=$f" "position=${2:-0}" -- "seconds=$(( $(date +%s) - t0 ))" \
+    "timed_out=$(( rc == 124 ))" "exit_code=$rc"
   case $rc in
     0)   log "$f: done" ;;
     124) log "$f: hit PASS_TIMEOUT; memoized progress is kept, the next pass resumes" ;;
@@ -292,17 +328,27 @@ while :; do
   [[ ",$FLOWS," == *,ci-failures,* ]] && fetch_sources
   order=$(pass_order)
   log "pass order: $order"
+  pos=0
   for f in $order; do
     [ "$stopping" = 1 ] && break
     resolve_endpoints || true      # a long previous flow may have outlived the token window
-    run_flow "$f"
+    pos=$((pos + 1))
+    run_flow "$f" "$pos"
   done
   [ "$stopping" = 1 ] && { log "stopping before snapshot"; exit 0; }
   snapshot
+  metric cocoindex_pass -- "seconds=$(( $(date +%s) - started ))"
   [ "$ONCE" = 1 ] && exit 0
   log "pass took $(( $(date +%s) - started ))s; sleeping ${PASS_SLEEP}s"
-  sleep "$PASS_SLEEP" & child=$!
-  wait "$child" || true
-  child=""
+  until_next=$(( $(date +%s) + PASS_SLEEP ))
+  while [ "$stopping" != 1 ] && [ "$(date +%s)" -lt "$until_next" ]; do
+    resolve_endpoints >/dev/null 2>&1 || true
+    probe_embedders
+    nap=$(( until_next - $(date +%s) )); [ "$nap" -gt "$PROBE_INTERVAL" ] && nap=$PROBE_INTERVAL
+    [ "$nap" -gt 0 ] || break
+    sleep "$nap" & child=$!
+    wait "$child" || true
+    child=""
+  done
   [ "$stopping" = 1 ] && exit 0
 done

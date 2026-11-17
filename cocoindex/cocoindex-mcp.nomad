@@ -234,6 +234,9 @@ job "cocoindex-mcp" {
             {"name": "aigw", "prefix": "/aigw/",
              "upstream": "https://aigw.cern.ch",
              "inject_headers": {"Authorization": {"ingest": "aigw-key"}}},
+            {"name": "monit-otlp", "prefix": "/otlp/",
+             "upstream": "https://monit-otlp.cern.ch:4319",
+             "inject_headers": {"Authorization": {"ingest": "monit-otlp-auth"}}},
             {"name": "s3", "upstream": "https://s3.cern.ch",
              "s3": {"buckets": {
                       "alice-cocoindex": {"access_key": {"ingest": "s3-access"},
@@ -308,6 +311,13 @@ job "cocoindex-mcp" {
             | "$BIN/security-proxy-push" s3-access --socket "$SOCK" || return 1
           python3 /local/vault-field.py aws_secret_access_key "" kv/data/s3-services \
             | "$BIN/security-proxy-push" s3-secret --socket "$SOCK" || return 1
+          # Optional: the MONIT (Grafana) credential for the server's metrics,
+          # as in the indexer's bootstrap. Without it no metrics are sent.
+          if key=$(python3 /local/vault-field.py monit_otlp_auth "" kv/data/cocoindex 2>/dev/null) ||
+             key=$(python3 /local/vault-field.py queue_metrics_otlp_auth "" kv/data/ci 2>/dev/null); then
+            printf '%s' "$key" | "$BIN/security-proxy-push" monit-otlp-auth --socket "$SOCK" || return 1
+          fi
+          unset key
         }
 
         # Reprovision whenever the proxy rebinds its ingest socket (inode change),
@@ -317,7 +327,7 @@ job "cocoindex-mcp" {
           current=$(stat -c %i "$SOCK" 2>/dev/null || echo "")
           if [ -n "$current" ] && [ "$current" != "$provisioned" ] && push_all; then
             provisioned=$current
-            echo "provisioned grid-cert, aigw-key and s3 keys"
+            echo "provisioned grid-cert, aigw-key, s3 keys and monit-otlp-auth (if set)"
           fi
           sleep 5
         done
@@ -403,6 +413,8 @@ job "cocoindex-mcp" {
         MCP_MAX_EMBEDS      = "4"
         MCP_EMBED_TIMEOUT_S = "20"
         MCP_MAX_SQL         = "2"
+        METRICS_ROUTE       = "monit-otlp"
+        METRICS_SERVICE     = "cocoindex-mcp"
         SQL_TIMEOUT_S      = "10"
         # Static tokens (automation). Remove for SSO only.
         MCP_TOKENS_FILE = "/secrets/mcp-tokens.json"
@@ -454,6 +466,16 @@ job "cocoindex-mcp" {
         left_delimiter  = "[[%%"
         right_delimiter = "%%]]"
         data            = file("embedtext.py")
+      }
+
+      # Per-tool calls, latencies, errors, slot waits, embedding times, snapshot
+      # age and distinct callers (a count), to MONIT every minute.
+      template {
+        destination     = "local/metrics.py"
+        change_mode     = "restart"
+        left_delimiter  = "[[%%"
+        right_delimiter = "%%]]"
+        data            = file("metrics.py")
       }
 
       # Error-text normalisation for ci_signature (the same code the indexer

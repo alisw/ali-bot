@@ -103,6 +103,16 @@ import logscan  # noqa: E402
 
 sys.path.insert(0, str(_HERE))  # embedtext.py ships next to this file
 import embedtext  # noqa: E402
+import metrics  # noqa: E402
+
+# Embedding requests, texts and latency of this run, plus the sync's counts
+# below, to MONIT (metrics.py); nothing without OTLP_METRICS_URL.
+METRICS = metrics.install_litellm("ci-failures")
+
+
+def gauge(name: str, value: float) -> None:
+    if METRICS is not None:
+        METRICS.gauge(f"cocoindex_cif_{name}", value)
 
 FLOW_DB = os.environ.get("FLOW_DB", "ci-failures.db")
 STATE_DIR = pathlib.Path(os.environ.get("COCOINDEX_DB", "."))
@@ -567,6 +577,10 @@ def fetch_logs(s3: S3, db: sqlite3.Connection, seen: dict) -> None:
     left = len(todo) - done[0]
     log(f"extracted {done[0]} log(s), {done[1] / 1e6:.1f} MB in {dt:.1f}s "
         f"({done[1] / 1e6 / dt:.1f} MB/s); {left} left for later passes")
+    gauge("logs_extracted", done[0])
+    gauge("extract_mb", done[1] / 1e6)
+    gauge("extract_mb_per_s", done[1] / 1e6 / dt)
+    gauge("logs_pending", left)
     db.execute("INSERT OR REPLACE INTO meta VALUES ('fetch_rate_mb_s', ?)", (f"{done[1] / 1e6 / dt:.2f}",))
 
 
@@ -575,6 +589,7 @@ def enrich_github(db: sqlite3.Connection) -> None:
         log("GITHUB_GRAPHQL_URL unset: no status history, no PR files this pass")
         return
     gh = GitHub(time.time() + GH_BUDGET_S)
+    gauge("github_budget_exhausted", 0)
     n_st = n_pr = 0
     try:
         # Status history: per commit, and again whenever a new build of it has
@@ -613,6 +628,7 @@ def enrich_github(db: sqlite3.Connection) -> None:
             n_pr += len(got)
     except OutOfBudget as e:
         log(f"github: {e}; the rest next pass")
+        gauge("github_budget_exhausted", 1)
     except Exception as e:  # GitHub down: index what the cache holds
         log(f"github failed: {type(e).__name__}: {e}")
     finally:
@@ -620,6 +636,8 @@ def enrich_github(db: sqlite3.Connection) -> None:
             db.execute("ROLLBACK")
         log(f"github: {gh.requests} request(s), {gh.cost} GraphQL point(s); "
             f"{n_st} commit status histories, {n_pr} PR file lists")
+        gauge("github_requests", gh.requests)
+        gauge("github_points", gh.cost)
 
 
 def sync() -> None:
@@ -629,6 +647,7 @@ def sync() -> None:
         seen = list_bucket(s3, db)
         n = new_builds(db, seen)
         log(f"{n} new build(s)")
+        gauge("new_builds", n)
         read_pretty(s3, db, seen)
         fetch_logs(s3, db, seen)
         log(f"s3: {s3.requests} request(s), {s3.bytes / 1e6:.1f} MB")
@@ -1004,6 +1023,8 @@ async def app_main() -> None:
         repos.declare_row(row=r)
     log(f"indexing {sum(map(len, months.values()))} build(s) in {len(months)} month group(s), "
         f"{sum(map(len, groups.values()))} distinct failure signature(s)")
+    gauge("builds", sum(map(len, months.values())))
+    gauge("signatures", sum(map(len, groups.values())))
     await coco.mount_each(
         coco.component_subpath("builds"), process_month,
         [(f"{repo}@{m}", tuple(sorted(v))) for (repo, m), v in sorted(months.items())], tables)
