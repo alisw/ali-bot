@@ -27,7 +27,7 @@ Environment (beyond reader.py's COCO_STORE / COCO_CACHE / EMBED_MODEL):
     OIDC_AUDIENCE          comma list; the token's aud must contain one of them
     OIDC_REQUIRED_ROLE     a valid token without it in OIDC_ROLES_CLAIM gets 403
     OIDC_ROLES_CLAIM       list claim, dotted path allowed (default cern_roles)
-    MCP_PUBLIC_URL         the MCP URL clients use (https://ali-ci.cern.ch/alice-mcp/mcp):
+    MCP_PUBLIC_URL         the MCP URL clients use (https://ali-ci.cern.ch/mcp):
                            the RFC 9728 metadata's resource, and where it is served
     OIDC_SCOPES            scopes_supported in that metadata (default "openid")
     OIDC_JWKS_URL          default: jwks_uri of the issuer's discovery document

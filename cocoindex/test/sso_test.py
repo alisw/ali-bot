@@ -251,15 +251,15 @@ async def main():
         # ---- "SSO only", behind the planned public URL
         cache = work / "cache-sso"
         p, base2, log_sso = start(work, "sso-only", dict(env, **sso, COCO_CACHE=str(cache),
-                                                         MCP_PUBLIC_URL="https://ali-ci.cern.ch/alice-mcp/mcp",
+                                                         MCP_PUBLIC_URL="https://ali-ci.cern.ch/mcp",
                                                          MCP_ALLOWED_HOSTS="ali-ci.cern.ch"))
         procs.append(p)
-        r = httpx.get(base2 + "/.well-known/oauth-protected-resource/alice-mcp/mcp")
-        check(r.status_code == 200 and r.json()["resource"] == "https://ali-ci.cern.ch/alice-mcp/mcp",
-              "[sso-only] metadata at the path Traefik forwards unstripped: /.well-known/oauth-protected-resource/alice-mcp/mcp")
+        r = httpx.get(base2 + "/.well-known/oauth-protected-resource/mcp")
+        check(r.status_code == 200 and r.json()["resource"] == "https://ali-ci.cern.ch/mcp",
+              "[sso-only] metadata at the path Traefik forwards unstripped: /.well-known/oauth-protected-resource/mcp")
         r = post(base2)
         check(r.headers.get("www-authenticate") == 'Bearer resource_metadata="https://ali-ci.cern.ch/.well-known/'
-              'oauth-protected-resource/alice-mcp/mcp"', f"[sso-only] 401 points at the public metadata URL")
+              'oauth-protected-resource/mcp"', f"[sso-only] 401 points at the public metadata URL")
         check(post(base2, "s3cret").status_code == 401, "[sso-only] static token refused")
         check(post(base2, mint(), Host="ali-ci.cern.ch").status_code == 200, "[sso-only] member's token accepted")
         check(post(base2, mint(), Host="evil.example").status_code in (403, 421), "[sso-only] foreign Host still refused")
