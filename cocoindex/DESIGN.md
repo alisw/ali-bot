@@ -50,7 +50,7 @@ This was demonstrated locally. Restoring a state with a db that lacked one month
 
 | Failure | What happens |
 |---|---|
-| aigw down or slow | `LiteLLMEmbedder` retries inside `EMBED_TIMEOUT_S`. `PASS_TIMEOUT` bounds the pass (the earlier hang ran for more than 1.5h). Memoized progress is kept and the next pass resumes. |
+| aigw down or slow | `LiteLLMEmbedder` retries fast failures inside `EMBED_TIMEOUT_S` (60 s; a slow request is not retried, its component fails and the next pass redoes it). `PASS_TIMEOUT` bounds the pass (the earlier hang ran for more than 1.5h). Memoized progress is kept and the next pass resumes. With 300 s, a slow aigw parked all 16 component slots for a whole pass (2026-11-17). |
 | Pass killed (timeout, TERM, OOM) | LMDB and SQLite are each crash-safe, and cocoindex reconciles on the next pass. Tested: a copy of v1's interrupted `run/` reopened at another path, added the missing 631 commits, and the following pass was a no-op. Note that cocoindex exits **0** after INT, so `pass_exit` in the manifest does not reveal an interruption. |
 | Node lost / job purged | A new allocation on an empty disk restores the last pair. It loses at most the work since the last published snapshot. |
 | Snapshot upload fails | Only logged. The local pair is intact and the next pass publishes. `latest.json` still names a complete older run. |
