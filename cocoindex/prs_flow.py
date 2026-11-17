@@ -638,8 +638,8 @@ async def process_pr(item: tuple[int, str, bool], repo: str, tables: Tables) -> 
                     nd += 1
 
     vecs = await asyncio.gather(
-        embedder.embed(embedtext.doc((head + body)[:MAX_EMBED_CHARS])),
-        *(embedder.embed(embedtext.doc(f"{repo}#{number} {title}\n{kind}{' ' + path if path else ''}: {text}"[:MAX_EMBED_CHARS]))
+        embedtext.embed_doc(embedder, (head + body)[:MAX_EMBED_CHARS]),
+        *(embedtext.embed_doc(embedder, f"{repo}#{number} {title}\n{kind}{' ' + path if path else ''}: {text}"[:MAX_EMBED_CHARS])
           for kind, _, path, _, _, text in pieces))
     a = pr.get("author") or {}
     tables.prs.declare_row(row=PR(
