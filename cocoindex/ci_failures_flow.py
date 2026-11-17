@@ -31,7 +31,10 @@ each pass has two halves in app_main:
    - logs are downloaded (failed builds first, newest first) within
      CIF_FETCH_BUDGET_S per pass, scrubbed of secrets, and reduced to their
      header and up to CIF_MAX_ERRORS distinct errors by logscan.py (shared with
-     ci-mcp). Only that extraction is kept, never the log;
+     ci-mcp), crash stack traces to their fingerprints. Only that extraction is
+     kept (in the private cache), never the log; the index rows hold
+     signatures and the line of the log each came from (log_url + line), not
+     the text. A newer logscan.EXTRACT_VERSION re-reads the logs still there;
    - GitHub, through the job's github route and best effort: per commit, the
      REST status history (/commits/<sha>/statuses: the real check names, how
      many times a check ran on that sha and what each run said, which shows
@@ -123,13 +126,13 @@ EMBED_TIMEOUT_S = float(os.environ.get("EMBED_TIMEOUT_S", "300"))
 
 PRETTY_BYTES = 4096        # the verdict, host, times and allocation are in the first ~3 KB
 PRETTY_SKEW_S = 900        # pretty.html and fullLog.txt of one build are uploaded seconds apart
-TEXT_CHARS = 1500          # stored text per error (scrubbed, lines clipped)
+TEXT_CHARS = 1500          # text per error in the extraction cache only (scrubbed, lines clipped)
 EMBED_CHARS = 2000
 FILES_BATCH = 10           # PRs per GraphQL query for changed files
 REPO_PACKAGE = {"AliceO2Group/AliceO2": "O2"}   # aliBuild package of a repo, when not its name
 # Part of every build's fingerprint: bump when assemble() changes what a row
 # holds, so all builds are re-declared (cheap: no downloads, no embeddings).
-ROWS_VERSION = 4
+ROWS_VERSION = 5
 
 EMBEDDER = coco.ContextKey[LiteLLMEmbedder]("aigw_embedder", detect_change=True)
 DB = coco.ContextKey[sqlite.ManagedConnection]("cif_sqlite")
@@ -357,7 +360,7 @@ def open_cache() -> sqlite3.Connection:
         build_id TEXT PRIMARY KEY, key TEXT, etag TEXT, size INTEGER, last_modified TEXT,
         repo TEXT, ref TEXT, pr INTEGER, sha TEXT, check_dir TEXT,
         pretty TEXT,            -- JSON from pretty.html (verdict, host, times, alloc), NULL: not yet read
-        extracted INTEGER DEFAULT 0,
+        extracted INTEGER DEFAULT 0, -- logscan.EXTRACT_VERSION it was read with; 0: not yet
         header TEXT,            -- JSON from the log's own header
         failed_package TEXT, packages TEXT, n_errors INTEGER, n_distinct INTEGER, no_output INTEGER,
         errors TEXT,            -- JSON list, ranked, at most CIF_MAX_ERRORS
@@ -501,20 +504,23 @@ def read_pretty(s3: S3, db: sqlite3.Connection, seen: dict) -> None:
 
 
 def fetch_logs(s3: S3, db: sqlite3.Connection, seen: dict) -> None:
-    """Download and extract the current logs not extracted yet: failed (or
-    unknown) builds first, then green ones, newest first, until the budget or
+    """Download and extract the current logs not extracted yet, or extracted by
+    an older logscan.EXTRACT_VERSION: never-read logs before re-reads, failed
+    (or unknown) builds before green ones, newest first, until the budget or
     CIF_MAX_LOGS. A log overwritten since it was listed is still extracted, but
-    the etag of what was downloaded must match, or it waits for the next pass."""
+    the etag of what was downloaded must match, or it waits for the next pass.
+    A log that has left the bucket keeps what an older version extracted."""
     todo = []
-    for bid, key, size, lm, pretty in db.execute(
-            "SELECT build_id, key, size, last_modified, pretty FROM build WHERE extracted = 0"):
+    for bid, key, size, lm, pretty, ver in db.execute(
+            "SELECT build_id, key, size, last_modified, pretty, extracted FROM build WHERE extracted < ?",
+            (logscan.EXTRACT_VERSION,)):
         cur = seen.get(key)
         if not cur or _hash(key, cur[0]) != bid:
             continue  # overwritten or expired before it was ever read: the row keeps its pretty data
         verdict = (json.loads(pretty) or {}).get("verdict") if pretty else None
-        todo.append((verdict == "success", lm, bid, key, cur[0], size))
-    todo.sort(key=lambda t: t[1], reverse=True)  # newest first,
-    todo.sort(key=lambda t: t[0])                # failed/unknown before green (stable)
+        todo.append((ver > 0, verdict == "success", lm, bid, key, cur[0], size))
+    todo.sort(key=lambda t: t[2], reverse=True)  # newest first,
+    todo.sort(key=lambda t: t[:2])               # new before re-read, failed/unknown before green (stable)
     if MAX_LOGS:
         todo = todo[:MAX_LOGS]
     if not todo:
@@ -531,7 +537,7 @@ def fetch_logs(s3: S3, db: sqlite3.Connection, seen: dict) -> None:
         procs = ProcessPoolExecutor(EXTRACT_PROCS, mp_context=multiprocessing.get_context("spawn"))
 
     def one(item):
-        _, _, bid, key, etag, _ = item
+        _, _, _, bid, key, etag, _ = item
         if time.time() > deadline:
             return
         try:
@@ -544,10 +550,10 @@ def fetch_logs(s3: S3, db: sqlite3.Connection, seen: dict) -> None:
         ex = (procs.submit(logscan.extract_log, body, MAX_ERRORS, TEXT_CHARS).result()
               if procs is not None else extract(body))
         with lock:
-            db.execute("UPDATE build SET extracted = 1, header = ?, failed_package = ?, packages = ?, "
+            db.execute("UPDATE build SET extracted = ?, header = ?, failed_package = ?, packages = ?, "
                        "n_errors = ?, n_distinct = ?, no_output = ?, errors = ?, updated_at = ? "
                        "WHERE build_id = ?",
-                       (json.dumps(ex["header"]), ex["failed_package"], json.dumps(ex["packages"]),
+                       (logscan.EXTRACT_VERSION, json.dumps(ex["header"]), ex["failed_package"], json.dumps(ex["packages"]),
                         ex["n_errors"], ex["n_distinct"], ex["no_output"], json.dumps(ex["errors"]),
                         _iso(time.time()), bid))
             done[0] += 1
@@ -696,7 +702,9 @@ class CIError:
     section: str | None         # aliBuild log section the error was in
     in_pr_files: int | None     # 1/0: file among the PR's changed files; NULL: unknown
     count: int
-    text: str                   # scrubbed sample with body, lines clipped: UNTRUSTED
+    line: int | None            # 1-based line of the log (ci_builds.log_url) it was taken from;
+                                # NULL: extracted before lines were kept. The index holds the
+                                # signature, never the log text: the log is the pointer's target.
 
 
 @dataclass
@@ -717,7 +725,7 @@ class CIRepo:
     logs_in_bucket: int
     builds: int
     extracted: int
-    pending: int                # current logs not extracted yet (bootstrap progress)
+    pending: int                # current logs not extracted yet, or by an older logscan (re-read pending)
     oldest: str | None          # upload time of the oldest / newest build indexed
     newest: str | None
 
@@ -902,7 +910,7 @@ async def process_build(item: tuple[str, str, int, bool, bool], tables: Tables) 
             state=row["state"], kind=e["kind"], infra=bool(e["infra"]), fatal=bool(e["fatal"]),
             class_hash=e["class_hash"], sig_exact=e["sig_exact"], sig_class=e["sig_class"],
             file=e.get("file"), package=e.get("package"), section=e.get("section"),
-            in_pr_files=e["in_pr_files"], count=e["count"], text=e["text"]))
+            in_pr_files=e["in_pr_files"], count=e["count"], line=e.get("line")))
 
 
 @coco.fn(memo=True)
@@ -970,10 +978,10 @@ def plan() -> tuple[dict, dict, list]:
         groups[h[:2]].append(s)
     repos = []
     for r in c.execute("""
-            SELECT b.repo, count(*), sum(b.extracted), min(b.last_modified), max(b.last_modified),
-                   sum(o.key IS NOT NULL), sum(o.key IS NOT NULL AND b.extracted = 0)
+            SELECT b.repo, count(*), sum(b.extracted > 0), min(b.last_modified), max(b.last_modified),
+                   sum(o.key IS NOT NULL), sum(o.key IS NOT NULL AND b.extracted < ?)
             FROM build b LEFT JOIN obj o ON o.key = b.key AND o.etag = b.etag AND o.gone = 0
-            GROUP BY b.repo ORDER BY b.repo"""):
+            GROUP BY b.repo ORDER BY b.repo""", (logscan.EXTRACT_VERSION,)):
         repos.append(CIRepo(r[0], r[5], r[1], r[2], r[6], r[3], r[4]))
     c.close()
     return months, groups, repos
