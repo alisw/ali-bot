@@ -311,7 +311,8 @@ def publish(root: Path, flows: list[str], run_id: str, keep: int, min_interval: 
     pub = root / "published.json"
     last = json.loads(pub.read_text()) if pub.exists() else {"flows": {}}
 
-    entries, changed = {}, []
+    entries, changed, points = {}, [], []
+    t0 = time.time()
     for f in flows:
         _, state, db = flow_paths(root, f)
         if not has_state(state) or not db.exists():
@@ -343,6 +344,10 @@ def publish(root: Path, flows: list[str], run_id: str, keep: int, min_interval: 
                 log(f"{f}: WARNING: secret-like text redacted before publishing, which the "
                     f"extraction missed: {secrets}")
             log(f"{f}: sanitized for publishing: {stats or 'nothing to change'}")
+            for k, v in stats.items():     # "ci_signatures: fingerprint compiler", "...: hash only"
+                if k.startswith("ci_signatures: fingerprint ") or k == "ci_signatures: hash only":
+                    kind = k.removeprefix("ci_signatures: fingerprint ").removeprefix("ci_signatures: ")
+                    points.append(("cocoindex_snapshot_signatures", {"flow": f, "fingerprint": kind}, v))
         db_sha, db_content = sha256(out), content_sha256(out)
         if last["flows"].get(f, {}).get("db", {}).get("content_sha256") != db_content:
             changed.append(f)
@@ -394,6 +399,14 @@ def publish(root: Path, flows: list[str], run_id: str, keep: int, min_interval: 
     store.put_bytes(f"{prefix}/{run_id}/manifest.json", body)
     store.put_bytes(f"{prefix}/latest.json", body)  # the commit point
     log(f"published run {run_id} (changed: {changed})")
+    points += [("cocoindex_snapshot_published_timestamp", {}, time.time()),
+               ("cocoindex_snapshot_publish_seconds", {}, time.time() - t0)]
+    points += [("cocoindex_snapshot_db_bytes", {"flow": f}, ent["db"]["size"]) for f, ent in entries.items()]
+    try:
+        import metrics      # next to this file; nothing is sent without OTLP_METRICS_URL
+        metrics.send(points)
+    except Exception as e:
+        log(f"metrics not sent: {type(e).__name__}: {e}")
     man["published_at"] = time.time()
     pub.write_text(json.dumps(man, indent=1))
     shutil.rmtree(snap, ignore_errors=True)

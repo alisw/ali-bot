@@ -248,6 +248,9 @@ job "cocoindex" {
             {"name": "github", "prefix": "/github/",
              "upstream": "https://api.github.com",
              "inject_headers": {"Authorization": {"ingest": "github-token"}}},
+            {"name": "monit-otlp", "prefix": "/otlp/",
+             "upstream": "https://monit-otlp.cern.ch:4319",
+             "inject_headers": {"Authorization": {"ingest": "monit-otlp-auth"}}},
             {"name": "s3", "upstream": "https://s3.cern.ch",
              "s3": {"buckets": {
                       "alice-cocoindex": {"access_key": {"ingest": "s3-access"},
@@ -329,6 +332,16 @@ job "cocoindex" {
             | "$BIN/security-proxy-push" s3-access --socket "$SOCK" || return 1
           python3 /local/vault-field.py aws_secret_access_key "" kv/data/s3-services \
             | "$BIN/security-proxy-push" s3-secret --socket "$SOCK" || return 1
+          # Optional: the MONIT (Grafana) credential, for metrics.py. Its own
+          # field in kv/data/cocoindex if set there, else the one queue-metrics
+          # uses in kv/data/ci (if this job's role may read it). Without it the
+          # monit-otlp route answers 503 and no metrics are sent; nothing else
+          # changes.
+          if key=$(python3 /local/vault-field.py monit_otlp_auth "" kv/data/cocoindex 2>/dev/null) ||
+             key=$(python3 /local/vault-field.py queue_metrics_otlp_auth "" kv/data/ci 2>/dev/null); then
+            printf '%s' "$key" | "$BIN/security-proxy-push" monit-otlp-auth --socket "$SOCK" || return 1
+          fi
+          unset key
         }
 
         # Reprovision whenever the proxy rebinds its ingest socket (inode change),
@@ -338,7 +351,7 @@ job "cocoindex" {
           current=$(stat -c %i "$SOCK" 2>/dev/null || echo "")
           if [ -n "$current" ] && [ "$current" != "$provisioned" ] && push_all; then
             provisioned=$current
-            echo "provisioned grid-cert, aigw-key, github-token and s3 keys"
+            echo "provisioned grid-cert, aigw-key, github-token, s3 keys and monit-otlp-auth (if set)"
           fi
           sleep 5
         done
@@ -445,6 +458,12 @@ job "cocoindex" {
         EMBED_MAX_INFLIGHT_REQUESTS       = "4"
         EMBED_TIMEOUT_S                   = "60"
         EMBED_MODEL                       = "openai/embeddinggemma-300m"
+        # Between passes, one short embedding per route, timed, every
+        # PROBE_INTERVAL seconds (metrics.py probe): the embedder's own speed,
+        # apart from the indexer's load on it.
+        EMBED_PROBE_ROUTES                = "aigw"
+        PROBE_INTERVAL                    = "300"
+        METRICS_SERVICE                   = "cocoindex"
         DIFF_EMBED_SINCE                  = "2025-01-01"
         # prs flow: see prs_flow.py. PRS_FETCH_BUDGET_S bounds the GitHub half of
         # each pass, so a bootstrap spreads over a few passes and still embeds.
@@ -549,6 +568,16 @@ job "cocoindex" {
         left_delimiter  = "[[%%"
         right_delimiter = "%%]]"
         data            = file("embedtext.py")
+      }
+
+      # Gauges to MONIT (Grafana) through the monit-otlp route: passes, flows,
+      # embedding requests, the ci-failures sync, publishes, embedder probes.
+      template {
+        destination     = "local/metrics.py"
+        change_mode     = "noop"
+        left_delimiter  = "[[%%"
+        right_delimiter = "%%]]"
+        data            = file("metrics.py")
       }
 
       # The log extraction shared with ci-mcp, and the error regexes it lifts

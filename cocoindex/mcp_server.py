@@ -44,6 +44,11 @@ Environment (beyond reader.py's COCO_STORE / COCO_CACHE / EMBED_MODEL):
                          MCP_MAX_CONCURRENT slots: heavy SQL cannot hold them all.
                          A call waits at most SQL_TIMEOUT_S for its turn.
     SQL_TIMEOUT_S        wall-clock budget of one sql() call (default 10)
+    METRICS_ROUTE        HTTP only: the security-proxy route to MONIT (monit-otlp in
+                         the job) for per-tool call counts, latencies, errors, slot
+                         waits, embedding times, snapshot age and the number of
+                         distinct callers (never their names); or OTLP_METRICS_URL
+                         + OTLP_WRITE_TOKEN directly. Neither set: no metrics.
 """
 
 from __future__ import annotations
@@ -71,6 +76,7 @@ import jwt  # pyjwt[crypto], a dependency of mcp
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import reader  # noqa: E402
+import metrics  # noqa: E402
 
 # logscan.py (signatures of error text) ships next to this file in the job and
 # lives in ../ci-mcp in the ali-bot checkout. It is only needed by ci_signature;
@@ -240,19 +246,51 @@ _LIMIT = anyio.CapacityLimiter(MAX_CONCURRENT)
 _EMBED_LIMIT = anyio.CapacityLimiter(MAX_EMBEDS)
 _SQL_LIMIT = anyio.CapacityLimiter(MAX_SQL)
 
+# Metrics of the last minute (metrics.py), pushed by main() when METRICS_ROUTE or
+# OTLP_METRICS_URL is set. Attributes are tool names and outcomes only.
+M = metrics.Window()
+
+
+def timed(fn):
+    """Count a tool's calls by outcome (ok, bad_request, error) and time them."""
+    @functools.wraps(fn)
+    async def wrapper(*args, **kwargs):
+        t0, outcome = time.monotonic(), "error"
+        try:
+            out = await fn(*args, **kwargs)
+            outcome = "ok"
+            return out
+        except BadRequest:
+            outcome = "bad_request"
+            raise
+        finally:
+            M.count("cocoindex_mcp_calls", tool=fn.__name__, outcome=outcome)
+            M.observe("cocoindex_mcp_call_seconds", time.monotonic() - t0, tool=fn.__name__)
+    return wrapper
+
 
 async def _run(fn, *args):
     """Blocking SQLite work off the event loop, at most MAX_CONCURRENT at once."""
-    return await anyio.to_thread.run_sync(functools.partial(fn, *args), limiter=_LIMIT)
+    queued = time.monotonic()
+
+    def timed_fn():
+        M.observe("cocoindex_mcp_slot_wait_seconds", time.monotonic() - queued)
+        return fn(*args)
+    return await anyio.to_thread.run_sync(timed_fn, limiter=_LIMIT)
 
 
 async def _vec(text: str, as_document: bool = False) -> bytes:
     """A text's embedding, computed before the query that needs it takes a slot."""
+    t0 = time.monotonic()
     try:
-        return await anyio.to_thread.run_sync(functools.partial(_embed, text, as_document), limiter=_EMBED_LIMIT)
+        vec = await anyio.to_thread.run_sync(functools.partial(_embed, text, as_document), limiter=_EMBED_LIMIT)
+        M.observe("cocoindex_mcp_embed_seconds", time.monotonic() - t0)
+        return vec
     except (TimeoutError, urllib.error.URLError) as e:
         if isinstance(e, urllib.error.HTTPError):
+            M.count("cocoindex_mcp_embed_failed", reason=f"http_{e.code}")
             raise
+        M.count("cocoindex_mcp_embed_failed", reason="timeout_or_unreachable")
         raise BadRequest(f"the embedding service did not answer ({type(e).__name__}: "
                          f"{getattr(e, 'reason', e)}); retry later, or use find_commits, "
                          "ci_signature with a hash, or sql meanwhile") from None
@@ -872,6 +910,7 @@ RO = {"readOnlyHint": True, "openWorldHint": False}
 
 
 @server.tool(annotations=RO)
+@timed
 async def search_commits(query: str, repo: str | None = None, since: str | None = None,
                          until: str | None = None, k: int = 10) -> list[dict]:
     """Meaning-based search over commit messages (subject + body).
@@ -883,6 +922,7 @@ async def search_commits(query: str, repo: str | None = None, since: str | None 
 
 
 @server.tool(annotations=RO)
+@timed
 async def search_diffs(query: str, repo: str | None = None, path_prefix: str | None = None,
                        since: str | None = None, k: int = 10, chunk_chars: int = 800) -> list[dict]:
     """Meaning-based search over code changes (indexed diff chunks), returning the
@@ -896,6 +936,7 @@ async def search_diffs(query: str, repo: str | None = None, path_prefix: str | N
 
 
 @server.tool(annotations=RO)
+@timed
 async def find_commits(text: str | None = None, path: str | None = None, author: str | None = None,
                        repo: str | None = None, pr: int | None = None, since: str | None = None,
                        until: str | None = None, k: int = 20) -> list[dict]:
@@ -909,6 +950,7 @@ async def find_commits(text: str | None = None, path: str | None = None, author:
 
 
 @server.tool(annotations=RO)
+@timed
 async def similar_commits(sha: str, repo: str | None = None, k: int = 10,
                           same_repo: bool = False) -> dict:
     """Commits whose messages are closest to the given commit's: follow-ups, reverts,
@@ -917,6 +959,7 @@ async def similar_commits(sha: str, repo: str | None = None, k: int = 10,
 
 
 @server.tool(annotations=RO)
+@timed
 async def get_commit(sha: str, repo: str | None = None, diff: bool = False,
                      max_files: int = 100) -> dict:
     """One commit in full: message, author, dates, PR, changed files with line counts;
@@ -925,6 +968,7 @@ async def get_commit(sha: str, repo: str | None = None, diff: bool = False,
 
 
 @server.tool(annotations=RO)
+@timed
 async def search_prs(query: str, repo: str | None = None, state: str | None = None,
                      author: str | None = None, since: str | None = None, until: str | None = None,
                      k: int = 10) -> dict:
@@ -942,6 +986,7 @@ async def search_prs(query: str, repo: str | None = None, state: str | None = No
 
 
 @server.tool(annotations=RO)
+@timed
 async def get_pr(number: int, repo: str | None = None, discussion: bool = True,
                  max_chunks: int = 30) -> dict:
     """One pull request: state, author, dates, description, the commits it merged
@@ -953,6 +998,7 @@ async def get_pr(number: int, repo: str | None = None, discussion: bool = True,
 
 
 @server.tool(annotations=RO)
+@timed
 async def search_ci_failures(query: str, repo: str | None = None, check: str | None = None,
                              since: str | None = None, k: int = 10) -> dict:
     """Meaning-based search over the distinct errors of failed CI builds (one result
@@ -967,6 +1013,7 @@ async def search_ci_failures(query: str, repo: str | None = None, check: str | N
 
 
 @server.tool(annotations=RO)
+@timed
 async def ci_signature(sig: str, repo: str | None = None, max_prs: int = 20) -> dict:
     """History of one CI error: first and last seen, builds (failed / green), distinct PRs,
     checks, hosts, per week, how many failing builds later went green on the same sha
@@ -991,6 +1038,7 @@ async def ci_signature(sig: str, repo: str | None = None, max_prs: int = 20) -> 
 
 
 @server.tool(annotations=RO)
+@timed
 async def ci_pr_builds(repo: str, pr: int, errors_per_build: int = 3) -> dict:
     """Every CI build of one pull request, newest first: sha, check, host (the Nomad
     allocation that built it, alloc-<id>), state, attempt
@@ -1002,6 +1050,7 @@ async def ci_pr_builds(repo: str, pr: int, errors_per_build: int = 3) -> dict:
 
 
 @server.tool(annotations=RO)
+@timed
 async def sql(query: str, max_rows: int = 100) -> dict:
     """Read-only SQLite (one SELECT) over the index. Vectors print as placeholders.
 
@@ -1056,6 +1105,7 @@ async def sql(query: str, max_rows: int = 100) -> dict:
         with anyio.fail_after(SQL_TIMEOUT_S):
             await _SQL_LIMIT.acquire()
     except TimeoutError:
+        M.count("cocoindex_mcp_sql_busy")
         raise BadRequest(f"sql is busy ({MAX_SQL} queries running); retry shortly") from None
     try:
         return await anyio.to_thread.run_sync(functools.partial(
@@ -1065,6 +1115,7 @@ async def sql(query: str, max_rows: int = 100) -> dict:
 
 
 @server.tool(annotations=RO)
+@timed
 async def index_status() -> dict:
     """What is indexed and how fresh: snapshot run and age, per-repository commit
     counts and newest commit, the date the diff index starts, per-repository
@@ -1231,7 +1282,39 @@ class BearerAuth:
             return await self._send(send, err.status, f"{err}\n".encode(),
                                     [(b"www-authenticate", www)] if err.status == 401 else [])
         log.info("%s %s %s via=%s", name, scope["method"], scope["path"], via)
+        _seen(name)
         return await self.app(scope, receive, send)
+
+
+# ---------------------------------------------------------------- metrics
+# Callers by name, in memory only: what leaves is how many there were.
+_CALLERS: dict[str, float] = {}
+
+
+def _seen(name: str) -> None:
+    _CALLERS[name] = time.time()
+
+
+def _levels(w: metrics.Window) -> None:
+    """The gauges sampled at each push: snapshot age, distinct callers."""
+    now = time.time()
+    for k, v in list(_CALLERS.items()):
+        if now - v > 86400:
+            _CALLERS.pop(k, None)
+    w.gauge("cocoindex_mcp_callers_1h", sum(now - v <= 3600 for v in _CALLERS.values()))
+    w.gauge("cocoindex_mcp_callers_24h", len(_CALLERS))
+    man = SNAP.manifest
+    if man:
+        created = calendar.timegm(time.strptime(man["created"], "%Y-%m-%dT%H:%M:%SZ"))
+        w.gauge("cocoindex_mcp_snapshot_age_seconds", now - created)
+    w.gauge("cocoindex_mcp_snapshot_ok", int(bool(man) and SNAP.error is None))
+
+
+def _metrics_endpoint():
+    if os.environ.get("OTLP_METRICS_URL"):
+        return metrics.env_endpoint()
+    base, token = reader._proxy(os.environ["METRICS_ROUTE"])
+    return base + "/otlp/v1/metrics", token
 
 
 # ---------------------------------------------------------------- main
@@ -1267,6 +1350,10 @@ def main():
     if not tokens and not oidc and not anonymous:
         sys.exit("HTTP mode needs MCP_TOKENS_FILE and/or OIDC_ISSUER (or MCP_ALLOW_ANONYMOUS=1 for a local test)")
     log.info("auth: static tokens %s, CERN SSO %s", "on" if tokens else "off", oidc.issuer if oidc else "off")
+    if os.environ.get("METRICS_ROUTE") or os.environ.get("OTLP_METRICS_URL"):
+        metrics.Pusher(M, _metrics_endpoint, before=_levels)
+        log.info("metrics: every %gs via %s", metrics.INTERVAL_S,
+                 os.environ.get("METRICS_ROUTE") or "OTLP_METRICS_URL")
     hosts = [h for h in os.environ.get("MCP_ALLOWED_HOSTS", "").split(",") if h]
     hosts += [f"127.0.0.1:{a.port}", f"localhost:{a.port}", f"{a.host}:{a.port}"]
     app = server.streamable_http_app(

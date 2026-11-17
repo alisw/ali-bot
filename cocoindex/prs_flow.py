@@ -71,6 +71,11 @@ from numpy.typing import NDArray
 # embedtext.py (the embeddinggemma task prefixes) ships next to this file.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import embedtext  # noqa: E402
+import metrics  # noqa: E402
+
+# Embedding requests, texts and latency of this run, to MONIT (metrics.py);
+# nothing without OTLP_METRICS_URL.
+metrics.install_litellm("prs")
 
 FLOW_DB = os.environ.get("FLOW_DB", "prs.db")
 STATE_DIR = pathlib.Path(os.environ.get("COCOINDEX_DB", "."))

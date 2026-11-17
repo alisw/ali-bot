@@ -40,6 +40,7 @@ sys.path.insert(0, str(HERE))
 import prs_test  # noqa: E402  (build_origin, fixtures, helpers; its main() does not run on import)
 sys.path.insert(0, str(HERE.parent))
 import embedtext  # noqa: E402
+import fake_otlp  # noqa: E402
 sys.path.insert(0, str(HERE.parent.parent / "ci-mcp"))
 import logscan  # noqa: E402
 
@@ -256,8 +257,12 @@ def main():
              subprocess.Popen([sys.executable, str(HERE / "fake_github.py"), str(gport), str(glog), TOKEN]),
              subprocess.Popen([sys.executable, str(HERE / "fake_s3.py"), str(sport), str(WORK / "s3"), str(slog),
                                S3TOKEN, "7"])]
+    otlp_bodies: list = []
+    mport = prs_test.free_port()
+    fake_otlp.serve(mport, otlp_bodies)
     time.sleep(1)
-    base_env = dict(os.environ, VENV=str(Path(sys.executable).parent.parent), SKIP_VENV="1", ONCE="1",
+    base_env = dict(os.environ, OTLP_METRICS_URL=f"http://127.0.0.1:{mport}/otlp/v1/metrics",
+                    OTLP_WRITE_TOKEN="gate", VENV=str(Path(sys.executable).parent.parent), SKIP_VENV="1", ONCE="1",
                     STORE_URL=f"file://{WORK}/bucket", FLOWS="commits,prs,ci-failures",
                     OPENAI_API_BASE=f"http://127.0.0.1:{eport}/v1", OPENAI_API_KEY="fake",
                     COMMITS_REPOS=f"{prs_test.REPO}:master", DIFF_EMBED_SINCE="2026-09-01",
@@ -303,6 +308,25 @@ def main():
 
         # ---- 1: bootstrap, 3 logs per pass
         err, tt, s3r, gh = run_pass("1", CIF_MAX_LOGS="3")
+        pts = fake_otlp.points(otlp_bodies)
+        names = {n for n, _, _ in pts}
+        flows = {a["flow"] for n, a, _ in pts if n == "cocoindex_flow_seconds"}
+        texts_by_flow = {}
+        for n, a, v in pts:
+            if n == "cocoindex_embed_texts_count":
+                texts_by_flow[a["flow"]] = texts_by_flow.get(a["flow"], 0) + v
+        check(flows == {"commits", "prs", "ci-failures"} and {"cocoindex_flow_timed_out", "cocoindex_pass_seconds"} <= names,
+              f"[1] metrics: each flow's duration and timeout, and the pass's ({sorted(flows)})")
+        check(set(texts_by_flow) == {"commits", "prs", "ci-failures"} and all(texts_by_flow.values())
+              and "cocoindex_embed_request_seconds_p95" in names,
+              f"[1] metrics: embedding texts and request latency per flow ({texts_by_flow})")
+        check({"cocoindex_cif_new_builds", "cocoindex_cif_logs_pending", "cocoindex_cif_signatures",
+               "cocoindex_snapshot_published_timestamp", "cocoindex_snapshot_db_bytes"} <= names
+              and any(n == "cocoindex_snapshot_signatures" and a.get("fingerprint") == "hash only" for n, a, _ in pts),
+              "[1] metrics: the sync's counts, the publish, and signatures by fingerprint kind")
+        attrs = {k for _, a, _ in pts for k in a}
+        check(attrs <= {"flow", "route", "position", "fingerprint"},
+              f"[1] metrics carry only flows, routes and kinds as attributes ({sorted(attrs)})")
         conn = db()
         n_builds = conn.execute("SELECT count(*) FROM ci_builds").fetchone()[0]
         check(n_builds == 10, f"[1] one build per fullLog.txt key, the 'latest' copy skipped ({n_builds})")
