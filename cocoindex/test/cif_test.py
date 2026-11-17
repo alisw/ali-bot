@@ -35,6 +35,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import prs_test  # noqa: E402  (build_origin, fixtures, helpers; its main() does not run on import)
+sys.path.insert(0, str(HERE.parent))
+import embedtext  # noqa: E402
 
 RUNNER = HERE.parent / "runner.sh"
 FIX = HERE / "fixtures" / "ci-logs"
@@ -228,7 +230,9 @@ def main():
     s3reqs = lambda: [json.loads(x) for x in slog.read_text().splitlines()]
     ghreqs = lambda: [json.loads(x) for x in glog.read_text().splitlines()]
     # commits/prs texts start with the repo; "hello" is the embedder's dimension probe
-    cif_texts = lambda tt: [t for t in tt if not t.startswith(prs_test.REPO) and t != "hello"]
+    # Every text a flow embeds is a document (embedtext.doc); classify by what follows.
+    bare = lambda t: t.removeprefix(embedtext.DOC_PREFIX)
+    cif_texts = lambda tt: [bare(t) for t in tt if not bare(t).startswith(prs_test.REPO) and t != "hello"]
 
     def run_pass(label, host="hostA", **extra):
         t0, s0, g0 = len(texts()), len(s3reqs()), len(ghreqs())
@@ -347,6 +351,8 @@ def main():
         check(any("<redacted>" in x["text"] for x in e), "[2] secrets were replaced by <redacted>, the errors kept")
 
         # embeddings: one per distinct signature of a non-green build, nothing else
+        check(all(t.startswith(embedtext.DOC_PREFIX) for t in texts() if t != "hello"),
+              "[2] every text the flows embed carries the document prefix")
         ct = cif_texts(texts())
         nsig = conn.execute("SELECT count(*) FROM ci_signatures").fetchone()[0]
         want = conn.execute("SELECT count(DISTINCT sig_hash) FROM ci_errors WHERE state != 'success'").fetchone()[0]

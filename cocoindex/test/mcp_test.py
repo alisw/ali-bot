@@ -24,6 +24,8 @@ from mcp.client.streamable_http import streamable_http_client
 
 HERE = Path(__file__).resolve().parent
 SERVER = HERE.parent / "mcp_server.py"
+sys.path.insert(0, str(HERE.parent))
+import embedtext  # noqa: E402
 STORE = sys.argv[1]
 failures = []
 
@@ -352,7 +354,8 @@ async def exercise_prs(client, label, cache, st):
 async def main():
     work = Path(tempfile.mkdtemp(prefix="coco-mcp-"))
     eport = free_port()
-    emb = subprocess.Popen([sys.executable, str(HERE / "fake_embedder.py"), str(eport), str(work / "embed.log")])
+    emb = subprocess.Popen([sys.executable, str(HERE / "fake_embedder.py"), str(eport), str(work / "embed.log"),
+                            str(work / "embed-texts.log")])
     env = dict(os.environ, COCO_STORE=STORE, OPENAI_API_BASE=f"http://127.0.0.1:{eport}/v1",
                OPENAI_API_KEY="fake", SQL_TIMEOUT_S="2", PYTHONUNBUFFERED="1")
     try:
@@ -414,6 +417,14 @@ async def main():
         check("s3cret" not in log, "[http] token never logged")
         n = sum(int(x) for x in (work / "embed.log").read_text().split())
         print(f"embedding texts sent: {n}")
+        # Searches go out as queries; only ci_signature's nearest-error lookup
+        # compares a text with stored ones as one of them (embedtext.doc).
+        sent = [json.loads(x) for x in (work / "embed-texts.log").read_text().splitlines()]
+        q = [t for t in sent if t.startswith(embedtext.QUERY_PREFIX)]
+        d = [t for t in sent if t.startswith(embedtext.DOC_PREFIX)]
+        check(q and len(q) + len(d) == len(sent),
+              f"every text the server embeds carries a task prefix ({len(q)} queries, {len(d)} documents, "
+              f"{len(sent) - len(q) - len(d)} bare)")
     finally:
         emb.terminate()
     print(f"\n{len(failures)} failure(s)")

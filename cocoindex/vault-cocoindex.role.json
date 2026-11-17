@@ -1,0 +1,19 @@
+{
+  "role_type": "jwt",
+  "bound_audiences": ["vault.io"],
+  "user_claim": "/nomad_job_id",
+  "user_claim_json_pointer": true,
+  "bound_claims_type": "string",
+  "bound_claims": {
+    "nomad_namespace": ["default"],
+    "nomad_job_id": ["cocoindex", "cocoindex-mcp"]
+  },
+  "claim_mappings": {
+    "nomad_job_id": "nomad_job_id",
+    "nomad_namespace": "nomad_namespace",
+    "nomad_task": "nomad_task"
+  },
+  "token_type": "service",
+  "token_policies": ["cocoindex"],
+  "token_period": "30m"
+}

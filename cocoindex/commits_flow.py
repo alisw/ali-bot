@@ -40,6 +40,7 @@ import asyncio
 import os
 import pathlib
 import re
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
@@ -49,6 +50,10 @@ import cocoindex as coco
 from cocoindex.connectors import sqlite
 from cocoindex.ops.litellm import LiteLLMEmbedder
 from numpy.typing import NDArray
+
+# embedtext.py (the embeddinggemma task prefixes) ships next to this file.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import embedtext  # noqa: E402
 
 FLOW_DB = os.environ.get("FLOW_DB", "commits.db")
 MIRRORS = pathlib.Path(os.environ.get("COMMITS_MIRRORS", "mirrors"))
@@ -195,7 +200,7 @@ async def process_commit(sha: str, repo: str, tables: Tables) -> None:
     tables.commits.declare_row(row=Commit(
         repo, sha, parents.strip(), an, ae, datetime.fromisoformat(ad), commit_date,
         subject, body.strip(), int(pr.group(1)) if pr else None, nfiles, ins, dels,
-        await embedder.embed(text),
+        await embedder.embed(embedtext.doc(text)),
     ))
     # Diff chunks: only for single-parent commits newer than DIFF_EMBED_SINCE.
     if len(parents.split()) != 1 or cd[:10] < DIFF_EMBED_SINCE:
@@ -209,7 +214,7 @@ async def process_commit(sha: str, repo: str, tables: Tables) -> None:
             pieces.append((path, i, fdiff[i * MAX_EMBED_CHARS:(i + 1) * MAX_EMBED_CHARS]))
     # Concurrent embed() calls are batched by CocoIndex (up to 64 texts/request).
     vecs = await asyncio.gather(*(
-        embedder.embed(f"{repo} {path}: {subject}\n{piece}"[:MAX_EMBED_CHARS])
+        embedder.embed(embedtext.doc(f"{repo} {path}: {subject}\n{piece}"[:MAX_EMBED_CHARS]))
         for path, _, piece in pieces))
     for (path, i, piece), vec in zip(pieces, vecs):
         tables.chunks.declare_row(row=DiffChunk(repo, sha, path, i, commit_date, piece, vec))

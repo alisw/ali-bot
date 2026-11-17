@@ -6,7 +6,7 @@ One Nomad **service** job, `cocoindex` (`cocoindex.nomad`), one allocation, thre
 
 - `proxy`: security-proxy sidecar with three routes. `aigw` is for embeddings. `github` is GraphQL for the prs flow, and REST status history plus GraphQL PR files for the ci-failures flow. `s3` is an allowlist of two buckets: `alice-cocoindex` for snapshots, and `alice-build-logs`, which the ci-failures flow only reads.
 - `bootstrap`: sidecar that pushes the grid cert, the aigw key, the GitHub PAT and the S3 keys from Vault into the proxy. It pushes again whenever the proxy restarts.
-- `index`: `python:3.12-bookworm`. It runs `runner.sh` as uid 1000 in group 8485, which gives it access to the agent socket.
+- `index`: `registry.cern.ch/alisw/cocoindex` (alisw/docks `cocoindex/`, pinned by digest; the MCP job uses the same one). Python 3.12, git, and the hash-locked venv of `requirements-linux.lock` in `/opt/cocoindex/venv`; the code ships as jobspec templates. It runs `runner.sh` as uid 1000 in group 8485, which gives it access to the agent socket.
 
 All state lives in the sticky `ephemeral_disk` under `/alloc/data/cocoindex` (`sticky = true`, `migrate = false`). The job has no host volume and no Postgres.
 
@@ -18,12 +18,12 @@ flows/prs/prs.db           output, SQLite + sqlite-vec                 } cache i
 flows/ci-failures/state/   LMDB + s3/logs.db (extraction cache of every build log ever seen) } same rule
 flows/ci-failures/ci-failures.db   output, SQLite + sqlite-vec                                 }
 mirrors/<owner>__<repo>.git   bare, branches + refs/pull/<n>/head of indexed unmerged PRs, --filter=blob:none
-venv/   published.json   snap/ (scratch)
+published.json   snap/ (scratch)
 ```
 
 ## Data flow (runner.sh)
 
-1. **Start.** Install the venv if its pin changed. For each flow in `FLOWS` that has no local state+db pair, `s3snap.py restore` fetches **both** from the run that `latest.json` names. Before a file is used, its size and sha256 are checked against the manifest. The pair is extracted into `flows/F.restoring/` and put in place with one `rename()`. If only half a pair is on disk, it is moved aside and the flow is restored.
+1. **Start.** For each flow in `FLOWS` that has no local state+db pair, `s3snap.py restore` fetches **both** from the run that `latest.json` names. Before a file is used, its size and sha256 are checked against the manifest. The pair is extracted into `flows/F.restoring/` and put in place with one `rename()`. If only half a pair is on disk, it is moved aside and the flow is restored.
 2. **Pass.** The runner resolves the proxy port and gate tokens, then fetches the mirrors (`git fetch --prune`, then `git gc --auto`). It then runs `cocoindex update -f <flow>.py` once per flow, in order. Each run has its own `timeout --signal=INT PASS_TIMEOUT` (50m), after which it is killed.
 3. **Snapshot.** Nothing is running at this point. For each flow:
    - copy the db with `VACUUM INTO snap/<db>`, never `cp`;
@@ -69,6 +69,7 @@ This was demonstrated locally. Restoring a state with a db that lacked one month
 ## Throughput
 
 - **Concurrency limits:** `COCOINDEX_MAX_INFLIGHT_COMPONENTS` (default 16) and `EMBED_MAX_INFLIGHT_REQUESTS` (default 4). Neither setting is in a memo key, so both can be tuned without invalidating cached vectors.
+- **Task prefixes** (`embedtext.py`, decided 2026-11-17). embeddinggemma was trained with them: every stored text is embedded as `title: none | text: …` and every search as `task: search result | query: …`. The one exception is `ci_signature`'s nearest-error lookup, which compares a pasted error with stored ones as a document. On 400 O2 commits (query = subject, document = the rest of the message) MRR went from 0.791 bare to 0.810, R@1 from 0.710 to 0.738. The flows and `reader.py` import the strings from that one module; changing them changes every vector, so the index is then rebuilt from scratch. The first deployment was restarted from an empty state for exactly this.
 - **Endpoint and key** come only from the environment (`OPENAI_API_BASE`/`OPENAI_API_KEY`). `OPENAI_BASE_URL` is unset because litellm would prefer it.
 - **How to size the defaults:** watch the first pass's texts/s and any 429/5xx, then raise the requests setting until aigw degrades.
 - **Measured 2026-11-16** (from the Mac, `embeddinggemma-300m`, texts of ~900 chars): one request of 64 texts took 17 s (3.7 texts/s); 4 requests in parallel gave 7.7 texts/s, so aigw scales sublinearly. The bootstrap of commits plus PRs (~200k texts) is then about 7 h of embedding. With `PASS_TIMEOUT` 50m per flow and `PASS_SLEEP` 1h it spreads over roughly 5–8 passes, i.e. most of a day. The only other names tried (`qwen3-embedding-*`, `bge-m3`, `nomic-embed-text`, `text-embedding-3-small`) are not available to the key.
@@ -355,7 +356,7 @@ The MCP server adds 8 to 11; the prs flow adds 12 to 16; SSO adds 17 to 20; the 
 3. **Public-read bucket?** If it is public, readers need no credentials (`COCO_STORE=https://s3.cern.ch/<bucket>/cocoindex`). Otherwise the Mac's proxy needs that bucket in its `s3.buckets` map.
 4. **Blobless vs. full mirrors.** Given the lazy-fetch cost above, full branch-only mirrors (`MIRROR_FILTER=`) are a one-line switch.
 5. **Where the code lives.** It currently ships inside the jobspec via `file()`. A pinned clone (e.g. ali-bot/cocoindex at a commit) is the alternative.
-6. **Image and pinning.** The `python:3.12-bookworm` digest still needs pinning. Confirm that the pinned security-proxy image supports `s3.buckets`.
+6. **Image and pinning.** Decided 2026-11-16: both jobs run `registry.cern.ch/alisw/cocoindex@sha256:2643b976…` (docks run 43866765519), built from `requirements-linux.lock` at ali-bot 7c56be43; a lock change needs a new image and a digest bump in both jobspecs. The security-proxy sidecar is pinned to `security-proxy@sha256:39464dfb…` (amd64, 2026-10-27, ali-bot f7f4df6c), which has the per-bucket keypairs the `s3` route uses; the older `be422fab` that queue-metrics pins does not.
 7. **Snapshot settings.** `SNAPSHOT_KEEP`=12 and `SNAPSHOT_MIN_INTERVAL`=0. Raising the interval trades less upload churn for more work lost on node loss.
 8. **The MCP server's URL.** Decided 2026-11-15: `https://ali-ci.cern.ch/alice-mcp/mcp`. Requests reach Apache on the `alibuild-frontend` nodes first, which terminates TLS and proxies to Traefik on `localhost:8090`; Traefik then routes on the Consul tags of `cocoindex-mcp.nomad`. Apache protects all of `ali-ci` with its own CERN SSO (mod_auth_openidc, client `ali-ci`) and answers a bearer token for another client with its own 401, before the MCP server is reached. So `it-puppet-hostgroup-alibuild`, `data/hostgroup/alibuild/frontend.yaml`, lists `/alice-mcp` and `/.well-known/oauth-protected-resource/alice-mcp` in the `ali-ci` service's `public_paths`, as it does for `/github`, and the MCP server does the authentication itself.
 9. **Vault.** Create `kv/data/cocoindex-mcp` with `tokens='{}'`, and let the `nomad` role read it.
