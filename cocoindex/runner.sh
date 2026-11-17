@@ -18,7 +18,8 @@ set -euo pipefail
 
 : "${COCO_ROOT:?COCO_ROOT must point at the sticky ephemeral disk}"
 CODE_DIR=${CODE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}
-FLOWS=${FLOWS:-commits}                       # comma list, run in order: commits, prs, ci-failures
+FLOWS=${FLOWS:-commits}                       # comma list: commits, prs, ci-failures
+FLOW_ORDER=${FLOW_ORDER:-random}              # random: shuffled every pass; fixed: as listed
 PASS_SLEEP=${PASS_SLEEP:-3600}                # seconds between passes
 PASS_TIMEOUT=${PASS_TIMEOUT:-50m}             # per flow per pass; SIGINT, then KILL
 PASS_KILL_GRACE=${PASS_KILL_GRACE:-2m}
@@ -249,6 +250,21 @@ snapshot() {
     log "snapshot $run_id failed; local state is intact, the next pass retries"
 }
 
+# The flows of one pass, in the order they run. Shuffled every pass, so a flow
+# that hits PASS_TIMEOUT (commits and prs, while the embedder is slow) does not
+# always run before the others: each gets to go first, with the GitHub budget
+# untouched and its data freshest when the pass publishes.
+pass_order() {
+  local -a a=(${FLOWS//,/ })
+  local i j t
+  if [ "$FLOW_ORDER" = random ]; then
+    for (( i = ${#a[@]} - 1; i > 0; i-- )); do
+      j=$(( RANDOM % (i + 1) )); t=${a[i]}; a[i]=${a[j]}; a[j]=$t
+    done
+  fi
+  echo "${a[*]}"
+}
+
 # ---------------------------------------------------------------- main
 mkdir -p "$COCO_ROOT/flows"
 for f in ${FLOWS//,/ }; do
@@ -274,7 +290,9 @@ while :; do
   resolve_endpoints || log "cannot resolve proxy endpoints; flows will fail this pass"
   [[ ",$FLOWS," == *,commits,* || ( ",$FLOWS," == *,prs,* && ${PRS_DIFFS:-1} = 1 ) ]] && fetch_mirrors
   [[ ",$FLOWS," == *,ci-failures,* ]] && fetch_sources
-  for f in ${FLOWS//,/ }; do
+  order=$(pass_order)
+  log "pass order: $order"
+  for f in $order; do
     [ "$stopping" = 1 ] && break
     resolve_endpoints || true      # a long previous flow may have outlived the token window
     run_flow "$f"
