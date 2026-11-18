@@ -474,6 +474,11 @@ job "cocoindex" {
         # prs flow: see prs_flow.py. PRS_FETCH_BUDGET_S bounds the GitHub half of
         # each pass, so a bootstrap spreads over a few passes and still embeds.
         PRS_FETCH_BUDGET_S                = "1200"
+        # The token is alibuild's, whose 5000 GraphQL points an hour every CI
+        # claim worker also lists its work with. Stop (until the next pass)
+        # with 1500 still left for them, not 500: GitHub reported 477-498
+        # left at the start of several prs passes on 2026-11-18, and once 0.
+        PRS_RATE_RESERVE                  = "1500"
         PRS_DIFFS                         = "1"
         # ci-failures flow: see ci_failures_flow.py. The download budget spreads
         # the bootstrap (~10k logs, ~65 GB) over a few passes; failed builds first.
