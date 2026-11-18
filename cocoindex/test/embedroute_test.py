@@ -34,11 +34,24 @@ work = Path(tempfile.mkdtemp(prefix="embedroute-"))
 procs = []
 
 
+delays = {}
+
+
 def fake(salt=""):
     port = free_port()
-    procs.append(subprocess.Popen([sys.executable, str(HERE / "fake_embedder.py"), str(port), os.devnull],
+    log = work / f"embed-{port}.log"
+    procs.append(subprocess.Popen([sys.executable, str(HERE / "fake_embedder.py"), str(port), str(log)],
                                   env=dict(os.environ, FAKE_EMBED_SALT=salt)))
-    return f"http://127.0.0.1:{port}/v1"
+    url = f"http://127.0.0.1:{port}/v1"
+    delays[url] = Path(str(log) + ".delay")       # fake_embedder waits while it exists
+    return url
+
+
+def slow(url, seconds):
+    if seconds:
+        delays[url].write_text(str(seconds))
+    else:
+        delays[url].unlink(missing_ok=True)
 
 
 try:
@@ -74,6 +87,15 @@ try:
     got, _ = pick(same)
     check(got == "fast" and json.loads(ref.read_text())["model"] == "embeddinggemma-300m",
           f"a reference from another model is ignored and replaced ({got})")
+    # Response time: the fastest compatible route, whatever the order.
+    slow(same, 1.2)
+    got, err = pick(same)
+    check(got == "aigw" and "using aigw" in err, f"a compatible but slower fast route: aigw answers first and is used ({got})")
+    slow(same, 0)
+    slow(aigw, 1.2)
+    got, _ = pick(same)
+    check(got == "fast", f"aigw slower: the fast route ({got})")
+    slow(aigw, 0)
 
     # ---- the MCP server: query embeddings through the fast route, aigw as fallback
     os.environ.update(MCP_EMBED_ROUTES="fast,aigw", MCP_EMBED_FAST_TIMEOUT_S="2", MCP_EMBED_TIMEOUT_S="5",
@@ -97,25 +119,40 @@ try:
             return e, list(used)
 
     S._route_verdict.clear()
+    S._route_ewma.clear()
     v_fast, u = query(same)
     check(isinstance(v_fast, bytes) and u == [("cocoindex_mcp_embed_route", "fast")],
           f"MCP: a checked fast route answers the query ({u})")
     S._route_verdict.clear()
+    S._route_ewma.clear()
     v_other, u = query(other)
     check(u == [("cocoindex_mcp_embed_route", "aigw")] and v_other == v_fast,
           f"MCP: a fast route with other vectors is skipped; aigw's vector, the same as the fast one's ({u})")
     S._route_verdict.clear()
-    query(same)                                   # verdict: fast is fine
-    _, u = query(dead)                            # ...then it dies
+    S._route_ewma.clear()
+    slow(aigw, 0.3)                               # fast leads once both are measured
+    query(same, text="a")                         # verdict: fast is fine, and measured
+    query(same, text="b")                         # aigw measured too: slower
+    _, u = query(dead)                            # ...then fast dies
     check(("cocoindex_mcp_embed_fallback", "fast") in u and ("cocoindex_mcp_embed_route", "aigw") in u,
           f"MCP: the fast route failing in use falls back to aigw at once ({u})")
     _, u = query(dead)
+    slow(aigw, 0)
     check(u == [("cocoindex_mcp_embed_route", "aigw")],
           f"MCP: and is not tried again until the next check ({u})")
     S._route_verdict.clear()
+    S._route_ewma.clear()
     _, u = query(same, canonical=dead)
-    check(u == [("cocoindex_mcp_embed_route", "fast")],
+    check(("cocoindex_mcp_embed_route", "fast") in u,
           f"MCP: aigw down, the fast route checked against the kept reference answers ({u})")
+    # Fastest first: a slow fast route is tried once, then aigw leads.
+    S._route_verdict.clear()
+    S._route_ewma.clear()
+    slow(same, 1.0)
+    seq = [query(same, text=f"q{i}")[1] for i in range(3)]
+    slow(same, 0)
+    check([u[-1][1] for u in seq] == ["fast", "aigw", "aigw"],
+          f"MCP: routes are tried fastest first; a slower route is measured once, then aigw leads ({seq})")
 finally:
     for p in procs:
         p.terminate()
