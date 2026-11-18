@@ -289,7 +289,11 @@ echo "==> config (root-owned; cert+secrets are pushed at runtime, not stored her
 # certificate -- it looks exactly like an authorization failure and is not one.
 # Measured: no UA -> 200, identifying UA -> 200, curl/httpx UA -> 403. Just dropping
 # the header does not work, because httpx then supplies its own default.
-# laya, glm and aigw are only reachable from inside CERN. Outside, they fall back
+# alice-embed (ALICE's embedding server, today pcapiserv12.cern.ch:8100, with the same
+# model as aigw, used by cocoindex) offers no TLS: insecure_http_upstream, so its key --
+# the aligrid-key slot, the same key -- crosses the network in clear text (inside the
+# tunnel when outside CERN).
+# laya, glm, alice-embed and aigw are only reachable from inside CERN. Outside, they fall back
 # to the SOCKS forward through lxtunnel that `lxtunnel-socks up` opens (2FA), and
 # only when the direct connection fails: see UPSTREAM_VIA_SOCKS.md.
 CONFIG_TMP=$(mktemp "$ETC/config.json.XXXXXX")
@@ -364,6 +368,9 @@ cat > "$CONFIG_TMP" <<JSON
     {"name": "glm", "prefix": "/glm/", "upstream": "https://pcapiserv12.cern.ch:8081",
      "via": "socks5h://127.0.0.1:1080",
      "inject_headers": {"Authorization": {"ingest": "glm-key"}}},
+    {"name": "alice-embed", "prefix": "/alice-embed/", "upstream": "http://pcapiserv12.cern.ch:8100",
+     "insecure_http_upstream": true, "via": "socks5h://127.0.0.1:1080",
+     "inject_headers": {"Authorization": {"ingest": "aligrid-key"}}},
     {"name": "aigw", "prefix": "/aigw/", "upstream": "https://aigw.cern.ch",
      "via": "socks5h://127.0.0.1:1080",
      "inject_headers": {"Authorization": {"ingest": "aigw-key"}}}

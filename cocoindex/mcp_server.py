@@ -40,6 +40,11 @@ Environment (beyond reader.py's COCO_STORE / COCO_CACHE / EMBED_MODEL):
                          computed before a query takes its slot, so a slow
                          embedding service delays the searches, not every tool.
     MCP_EMBED_TIMEOUT_S  how long one query embedding may take (default 20)
+    MCP_EMBED_ROUTES     embedding routes in order of preference (default aigw),
+                         e.g. "alice-embed,aigw": a route before the last one is
+                         given MCP_EMBED_FAST_TIMEOUT_S (default 5) and is used
+                         only once its vectors are checked to be aigw's
+                         (embedroute.py; checked again every 10 minutes).
     MCP_MAX_SQL          sql() calls running at once (default 2), apart from the
                          MCP_MAX_CONCURRENT slots: heavy SQL cannot hold them all.
                          A call waits at most SQL_TIMEOUT_S for its turn.
@@ -77,6 +82,7 @@ import jwt  # pyjwt[crypto], a dependency of mcp
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import reader  # noqa: E402
 import metrics  # noqa: E402
+import embedroute  # noqa: E402
 
 # logscan.py (signatures of error text) ships next to this file in the job and
 # lives in ../ci-mcp in the ali-bot checkout. It is only needed by ci_signature;
@@ -100,6 +106,9 @@ MAX_CONCURRENT = int(os.environ.get("MCP_MAX_CONCURRENT", "4"))
 SQL_TIMEOUT_S = float(os.environ.get("SQL_TIMEOUT_S", "10"))
 MAX_EMBEDS = int(os.environ.get("MCP_MAX_EMBEDS", "4"))
 EMBED_TIMEOUT_S = float(os.environ.get("MCP_EMBED_TIMEOUT_S", "20"))
+EMBED_ROUTES = [r for r in os.environ.get("MCP_EMBED_ROUTES", "aigw").split(",") if r]
+FAST_TIMEOUT_S = float(os.environ.get("MCP_EMBED_FAST_TIMEOUT_S", "5"))
+ROUTE_RECHECK_S = 600
 MAX_SQL = int(os.environ.get("MCP_MAX_SQL", "2"))
 MAX_K = 50
 MAX_SQL_ROWS = 500
@@ -326,18 +335,64 @@ def _url(repo: str, sha: str) -> str:
     return f"https://github.com/{repo}/commit/{sha}"
 
 
+# A route other than the canonical one is used only once its vectors are
+# checked to be the canonical route's (embedroute.Picker), and checked again
+# every ROUTE_RECHECK_S. The canonical vector is kept next to the snapshots,
+# so a fast route can still be checked while aigw is down.
+_picker: embedroute.Picker | None = None
+_route_verdict: dict[str, tuple[bool, float]] = {}
+_route_lock = threading.Lock()
+
+
+def _route_ok(route: str) -> bool:
+    global _picker
+    if route == embedroute.CANONICAL:
+        return True
+    with _route_lock:
+        ok, at = _route_verdict.get(route, (False, 0.0))
+        if time.monotonic() - at < ROUTE_RECHECK_S:
+            return ok
+        if _picker is None:
+            os.environ.setdefault("EMBED_REF_FILE", str(reader.CACHE / "embed-reference.json"))
+            _picker = embedroute.Picker(lookup=reader.route_endpoint)
+        why = _picker.check(route, FAST_TIMEOUT_S)
+        now_ok = why == "ok"
+        if now_ok != ok or route not in _route_verdict:
+            log.info("embedding route %s: %s", route, "in use" if now_ok else why)
+        _route_verdict[route] = (now_ok, time.monotonic())
+        return now_ok
+
+
 @functools.lru_cache(maxsize=2048)
 def _embed_cached(text: str, as_document: bool = False) -> bytes:
     import sqlite_vec
-    # The gate token rotates daily: resolve per miss, and once more on a 401/403
-    # (a token that expired between resolving and sending).
-    try:
-        vec = reader.embed_query(text, as_document=as_document, timeout=EMBED_TIMEOUT_S)
-    except urllib.error.HTTPError as e:
-        if e.code not in (401, 403):
-            raise
-        vec = reader.embed_query(text, reader.embed_endpoint(), as_document=as_document, timeout=EMBED_TIMEOUT_S)
-    return sqlite_vec.serialize_float32(vec)
+    err: Exception | None = None
+    for i, route in enumerate(EMBED_ROUTES):
+        last = i == len(EMBED_ROUTES) - 1
+        if not last and not _route_ok(route):
+            continue
+        timeout = EMBED_TIMEOUT_S if last else FAST_TIMEOUT_S
+        try:
+            # The gate token rotates daily: resolve per miss, and once more on a
+            # 401/403 (a token that expired between resolving and sending).
+            try:
+                vec = reader.embed_query(text, reader.route_endpoint(route), as_document=as_document, timeout=timeout)
+            except urllib.error.HTTPError as e:
+                if e.code not in (401, 403):
+                    raise
+                vec = reader.embed_query(text, reader.route_endpoint(route), as_document=as_document, timeout=timeout)
+            M.count("cocoindex_mcp_embed_route", route=route)
+            return sqlite_vec.serialize_float32(vec)
+        except (TimeoutError, urllib.error.URLError) as e:
+            err = e
+            if not last:
+                # Not tried again before the next check (ROUTE_RECHECK_S): each
+                # query would otherwise wait FAST_TIMEOUT_S on a dead route.
+                with _route_lock:
+                    _route_verdict[route] = (False, time.monotonic())
+                M.count("cocoindex_mcp_embed_fallback", route=route)
+                log.info("embedding route %s failed (%s); next route", route, type(e).__name__)
+    raise err or RuntimeError("no embedding route configured")
 
 
 def _embed(text: str, as_document: bool = False) -> bytes:

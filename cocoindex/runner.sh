@@ -23,6 +23,11 @@ FLOW_ORDER=${FLOW_ORDER:-random}              # random: shuffled every pass; fix
 PASS_SLEEP=${PASS_SLEEP:-3600}                # seconds between passes
 PROBE_INTERVAL=${PROBE_INTERVAL:-300}         # between passes, time one embedding per route this often
 EMBED_PROBE_ROUTES=${EMBED_PROBE_ROUTES:-aigw} # comma list of proxy routes to probe
+# Proxy routes serving /v1/embeddings, in order of preference: before each flow
+# the first that answers AND gives aigw's vectors is used (embedroute.py), aigw
+# as the last resort. Not in a memo key: same vectors, same cache.
+EMBED_ROUTES=${EMBED_ROUTES:-aigw}
+EMBED_ROUTE=aigw
 PASS_TIMEOUT=${PASS_TIMEOUT:-50m}             # per flow per pass; SIGINT, then KILL
 PASS_KILL_GRACE=${PASS_KILL_GRACE:-2m}
 SNAPSHOT_KEEP=${SNAPSHOT_KEEP:-36}            # run ids kept in the bucket (up to one per flow and pass)
@@ -94,8 +99,14 @@ resolve_endpoints() {
   ask() { python3 "$PROXY_TOKEN" "$PROXY_SOCK" "$1" "$2"; }
   port=$(ask aigw port) || return 1
   host=$(ask aigw host 2>/dev/null) || host=127.0.0.1
-  OPENAI_API_BASE="http://$host:$port/aigw/v1"
-  OPENAI_API_KEY=$(ask aigw token) || return 1
+  local r k
+  for r in ${EMBED_ROUTES//,/ } ${EMBED_PROBE_ROUTES//,/ }; do
+    k=${r^^}; k=${k//-/_}
+    export "ROUTE_${k}_URL=http://$host:$port/$r/v1"
+    export "ROUTE_${k}_TOKEN=$(ask "$r" token 2>/dev/null)"
+  done
+  OPENAI_API_BASE="http://$host:$port/$EMBED_ROUTE/v1"
+  OPENAI_API_KEY=$(ask "$EMBED_ROUTE" token) || return 1
   S3_ENDPOINT_URL="http://$host:$port"
   AWS_ACCESS_KEY_ID=$(ask s3 token) || return 1
   AWS_SECRET_ACCESS_KEY=unused
@@ -120,6 +131,23 @@ resolve_endpoints() {
 metric() {
   [ -n "${OTLP_METRICS_URL:-}" ] || return 0
   "$VENV/bin/python" "$CODE_DIR/metrics.py" push "$@" >/dev/null 2>&1 || true
+}
+
+# Before a flow: the embedding route it uses (embedroute.py pick), and
+# OPENAI_API_BASE/KEY pointed at it. One route configured: nothing to pick.
+choose_embed_route() {
+  local f=$1 r k url tok
+  case $EMBED_ROUTES in *,*) ;; *) return 0 ;; esac
+  r=$("$VENV/bin/python" "$CODE_DIR/embedroute.py" pick ${EMBED_ROUTES//,/ }) || r=aigw
+  k=${r^^}; k=${k//-/_}
+  url=ROUTE_${k}_URL
+  if [ -n "${!url:-}" ]; then
+    EMBED_ROUTE=$r
+    tok=ROUTE_${k}_TOKEN
+    OPENAI_API_BASE=${!url} OPENAI_API_KEY=${!tok:-unused}
+    export OPENAI_API_BASE OPENAI_API_KEY EMBED_ROUTE
+  fi
+  log "$f: embeddings via $EMBED_ROUTE"
 }
 
 # Between passes: one short embedding per route in EMBED_PROBE_ROUTES, timed.
@@ -356,6 +384,7 @@ while :; do
   for f in $order; do
     [ "$stopping" = 1 ] && break
     resolve_endpoints || true      # a long previous flow may have outlived the token window
+    choose_embed_route "$f"
     pos=$((pos + 1))
     run_flow "$f" "$pos"
     # A stop arrived during the flow: Nomad's kill_timeout (30 s) is shorter
