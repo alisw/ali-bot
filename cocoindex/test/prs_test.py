@@ -310,6 +310,16 @@ def main():
         check(n_texts == 3, f"[3] only changed texts re-embedded ({n_texts}, expected 3)")
         rep = conn.execute("SELECT indexed, skipped FROM pr_repos").fetchone()
         check(rep == (9, 1), f"[3] pr_repos {rep}")
+        # Per-flow publishing (s3snap format 2): only prs changed, so only prs
+        # went into a new run; commits keeps the run it was published in, and
+        # step 5 restores a host from these two different runs.
+        man = json.loads((WORK / "bucket/cocoindex/latest.json").read_text())
+        runs = {f: e["run_id"] for f, e in man["flows"].items()}
+        newest = sorted(p.name for p in (WORK / "bucket/cocoindex").iterdir() if p.is_dir())[-1]
+        check(man["format"] == 2 and runs.get("prs") == newest and runs.get("commits") not in (None, newest)
+              and sorted(p.name for p in (WORK / "bucket/cocoindex" / newest).iterdir())
+              == ["manifest.json", "prs.db", "state-prs.tar.zst"],
+              f"[3] per-flow publish: prs in a new run with only its files, commits still in its own ({runs})")
 
         # ---- 4: nothing changed
         err, n_texts, reqs = run_pass("4")

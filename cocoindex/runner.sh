@@ -25,7 +25,7 @@ PROBE_INTERVAL=${PROBE_INTERVAL:-300}         # between passes, time one embeddi
 EMBED_PROBE_ROUTES=${EMBED_PROBE_ROUTES:-aigw} # comma list of proxy routes to probe
 PASS_TIMEOUT=${PASS_TIMEOUT:-50m}             # per flow per pass; SIGINT, then KILL
 PASS_KILL_GRACE=${PASS_KILL_GRACE:-2m}
-SNAPSHOT_KEEP=${SNAPSHOT_KEEP:-12}            # run ids kept in the bucket
+SNAPSHOT_KEEP=${SNAPSHOT_KEEP:-36}            # run ids kept in the bucket (up to one per flow and pass)
 SNAPSHOT_MIN_INTERVAL=${SNAPSHOT_MIN_INTERVAL:-0}
 MIRROR_FILTER=${MIRROR_FILTER-blob:none}      # empty = full mirrors
 GIT_BASE_URL=${GIT_BASE_URL:-https://github.com}  # where mirrors clone from (tests: file://)
@@ -277,12 +277,20 @@ run_flow() {
   esac
 }
 
+# Publishes the given flows (default: all), each into the new run if it
+# changed; latest.json keeps the other flows' runs (s3snap.py, format 2).
+# Called after every flow, so a pass stopped half-way (a redeploy, the node
+# going away) loses at most the flow that was running.
+last_run_id=
 snapshot() {
-  local run_id
+  local run_id flows=${1:-$FLOWS}
   run_id=$(date -u +%Y%m%dT%H%M%SZ)
+  # Run ids are per second; two publishes never share one.
+  [ "$run_id" = "$last_run_id" ] && { sleep 1; run_id=$(date -u +%Y%m%dT%H%M%SZ); }
+  last_run_id=$run_id
   resolve_endpoints || { log "cannot resolve S3 endpoint; snapshot skipped"; return 0; }
   COCOINDEX_VERSION=$("$VENV/bin/python" -c 'import importlib.metadata as m; print(m.version("cocoindex"))') \
-    "$VENV/bin/python" "$CODE_DIR/s3snap.py" publish --root "$COCO_ROOT" --flows "$FLOWS" \
+    "$VENV/bin/python" "$CODE_DIR/s3snap.py" publish --root "$COCO_ROOT" --flows "$flows" \
       --run-id "$run_id" --keep "$SNAPSHOT_KEEP" --min-interval "$SNAPSHOT_MIN_INTERVAL" ||
     log "snapshot $run_id failed; local state is intact, the next pass retries"
 }
@@ -335,9 +343,12 @@ while :; do
     resolve_endpoints || true      # a long previous flow may have outlived the token window
     pos=$((pos + 1))
     run_flow "$f" "$pos"
+    # A stop arrived during the flow: Nomad's kill_timeout (30 s) is shorter
+    # than a publish (~40 s for all three). The next run publishes it.
+    [ "$stopping" = 1 ] && { log "$f: stopping before its snapshot"; exit 0; }
+    snapshot "$f"
   done
-  [ "$stopping" = 1 ] && { log "stopping before snapshot"; exit 0; }
-  snapshot
+  [ "$stopping" = 1 ] && exit 0
   metric cocoindex_pass -- "seconds=$(( $(date +%s) - started ))"
   [ "$ONCE" = 1 ] && exit 0
   log "pass took $(( $(date +%s) - started ))s; sleeping ${PASS_SLEEP}s"

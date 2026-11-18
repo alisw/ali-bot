@@ -438,7 +438,7 @@ job "cocoindex" {
 
         PASS_SLEEP            = "3600"
         PASS_TIMEOUT          = "50m"
-        SNAPSHOT_KEEP         = "12"
+        SNAPSHOT_KEEP         = "36"   # run ids: one per flow publish, ~3 a pass
         SNAPSHOT_MIN_INTERVAL = "0"
         # DECISION: bucket name. Must match the proxy route's allowlist above.
         STORE_URL = "s3://alice-cocoindex/cocoindex"
