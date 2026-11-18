@@ -44,10 +44,13 @@ Environment (beyond reader.py's COCO_STORE / COCO_CACHE / EMBED_MODEL):
                          (cpu: the job's own CPU embedding servers, listed in
                          ROUTE_CPU_URLS_FILE; see reader.route_endpoint):
                          tried fastest first (a moving average of each route's
-                         response times; the order given until measured). A
-                         route other than aigw is used only once its vectors are
-                         checked to be aigw's (embedroute.py; checked again every
-                         10 minutes, with MCP_EMBED_TIMEOUT_S). Every route but
+                         response times; routes not measured yet last, in the
+                         order given). A background thread checks every route at
+                         start and every 10 minutes (30 s after a failure), with
+                         MCP_EMBED_TIMEOUT_S: a route other than aigw is used
+                         only once its vectors are aigw's (embedroute.py), and
+                         each check times the route with a fresh text. Searches
+                         never wait for a check. Every route but
                          the last tried gets MCP_EMBED_FAST_TIMEOUT_S (default
                          12: the ALICE server took 1.5-17 s per text, 2026-11-18).
     MCP_MAX_SQL          sql() calls running at once (default 2), apart from the
@@ -114,6 +117,7 @@ EMBED_TIMEOUT_S = float(os.environ.get("MCP_EMBED_TIMEOUT_S", "20"))
 EMBED_ROUTES = [r for r in os.environ.get("MCP_EMBED_ROUTES", "aigw").split(",") if r]
 FAST_TIMEOUT_S = float(os.environ.get("MCP_EMBED_FAST_TIMEOUT_S", "12"))
 NO_INSTANCE_RECHECK_S = 30
+ROUTE_CHECK_TICK_S = 5
 ROUTE_RECHECK_S = 600
 MAX_SQL = int(os.environ.get("MCP_MAX_SQL", "2"))
 MAX_K = 50
@@ -342,13 +346,20 @@ def _url(repo: str, sha: str) -> str:
 
 
 # A route other than the canonical one is used only once its vectors are
-# checked to be the canonical route's (embedroute.Picker), and checked again
-# every ROUTE_RECHECK_S. The canonical vector is kept next to the snapshots,
-# so a fast route can still be checked while aigw is down.
+# checked to be the canonical route's (embedroute.Picker). The checks run in a
+# background thread (_route_checker), never in a search: on 2026-11-18 a check
+# of the ALICE server took 14 s inside a lock every search needed, and every
+# search waited for it. Each check also times the route with a fresh text (a
+# caching server cannot answer it from its cache), so the fastest route is
+# known without spending real searches on measuring slow ones. The canonical
+# vector is kept next to the snapshots, so a route can still be checked while
+# aigw is down.
 _picker: embedroute.Picker | None = None
-_route_verdict: dict[str, tuple[bool, float]] = {}
+_route_verdict: dict[str, tuple[bool, float]] = {}   # route -> (usable, when decided)
+_route_due: dict[str, float] = {}                    # route -> when to check it next (monotonic)
 _route_lock = threading.Lock()
 _route_ewma: dict[str, float] = {}      # route -> moving average of its response time (s)
+_route_wake = threading.Event()         # a search marked a route failed: check it sooner
 
 
 def _observe(route: str, seconds: float) -> None:
@@ -358,37 +369,102 @@ def _observe(route: str, seconds: float) -> None:
 
 
 def _route_order() -> list[str]:
-    """Fastest first; a route not measured yet first of all (so it gets
-    measured), in the configured order."""
+    """Fastest first, by the checks' and the searches' response times; a route
+    not measured yet after the measured ones, in the configured order."""
     with _route_lock:
-        return sorted(EMBED_ROUTES, key=lambda r: (_route_ewma.get(r, 0.0), EMBED_ROUTES.index(r)))
+        return sorted(EMBED_ROUTES, key=lambda r: (r not in _route_ewma, _route_ewma.get(r, 0.0),
+                                                   EMBED_ROUTES.index(r)))
 
 
 def _route_ok(route: str) -> bool:
-    global _picker
+    """Whether a search may use the route now: the canonical one always (the
+    last resort), any other once the background check has passed it. Reads
+    only; never checks."""
     if route == embedroute.CANONICAL:
         return True
     with _route_lock:
-        ok, at = _route_verdict.get(route, (False, 0.0))
-        if time.monotonic() - at < ROUTE_RECHECK_S:
-            return ok
+        return _route_verdict.get(route, (False, 0.0))[0]
+
+
+def _get_picker() -> embedroute.Picker:
+    global _picker
+    with _route_lock:
         if _picker is None:
             os.environ.setdefault("EMBED_REF_FILE", str(reader.CACHE / "embed-reference.json"))
             _picker = embedroute.Picker(lookup=reader.route_endpoint)
-        # The full timeout: a slow but correct server must pass (it took 9.8 s
-        # for the reference text, 2026-11-18), and a check runs at most every
-        # ROUTE_RECHECK_S.
-        why = _picker.check(route, EMBED_TIMEOUT_S)
-        now_ok = why == "ok"
-        if now_ok != ok or route not in _route_verdict:
-            log.info("embedding route %s: %s", route, "in use" if now_ok else why)
-        at = time.monotonic()
-        if "NoInstance" in why:
-            # Its instances are not registered yet (they start next to this
-            # server): look again in NO_INSTANCE_RECHECK_S, not ROUTE_RECHECK_S.
-            at -= ROUTE_RECHECK_S - NO_INSTANCE_RECHECK_S
-        _route_verdict[route] = (now_ok, at)
-        return now_ok
+        return _picker
+
+
+def _check_route(route: str) -> None:
+    """One check: embed the reference text (plus a fresh sentence) through the
+    route, with the full MCP_EMBED_TIMEOUT_S (a slow but correct server must
+    pass), compare it with the canonical vector, record verdict and time."""
+    pk = _get_picker()
+    v, dt, err = pk._timed(route, EMBED_TIMEOUT_S)
+    why = err or "ok"
+    if v is not None:
+        if route == embedroute.CANONICAL:
+            pk.ref = v
+            if pk.persist:
+                embedroute.save_ref(v)
+        else:
+            ref = pk.ref if pk.ref is not None else pk.reference(EMBED_TIMEOUT_S)
+            if ref is None:
+                why = f"cannot be checked: no reference vector from {embedroute.CANONICAL} yet"
+            elif (c := embedroute.cosine(v, ref)) < embedroute.MIN_COSINE:
+                why = f"vectors differ from {embedroute.CANONICAL}'s (cosine {c:.4f} < {embedroute.MIN_COSINE})"
+    ok = why == "ok"
+    if ok:
+        _observe(route, dt)
+    now = time.monotonic()
+    with _route_lock:
+        prev = _route_verdict.get(route)
+        _route_verdict[route] = (ok, now)
+        # Its instances are not registered yet (they start next to this
+        # server): look again in NO_INSTANCE_RECHECK_S, not ROUTE_RECHECK_S.
+        _route_due[route] = now + (NO_INSTANCE_RECHECK_S if "NoInstance" in why else ROUTE_RECHECK_S)
+    if prev is None or prev[0] != ok:
+        log.info("embedding route %s: %s (%.1f s)", route, "in use" if ok else why, dt)
+
+
+def _route_checker(stop: threading.Event) -> None:
+    """Checks every route when it is due, each in a thread of its own, so a
+    hanging route delays no other; at once at start."""
+    running: set[str] = set()
+    lock = threading.Lock()
+
+    def run(route):
+        try:
+            _check_route(route)
+        except Exception as e:  # noqa: BLE001 -- a check must never end the loop
+            log.warning("embedding route %s: check failed: %s", route, e)
+            with _route_lock:
+                _route_due[route] = time.monotonic() + NO_INSTANCE_RECHECK_S
+        finally:
+            with lock:
+                running.discard(route)
+
+    while not stop.is_set():
+        now = time.monotonic()
+        with _route_lock:
+            due = [r for r in EMBED_ROUTES if _route_due.get(r, 0.0) <= now]
+        for r in due:
+            with lock:
+                if r in running:
+                    continue
+                running.add(r)
+            threading.Thread(target=run, args=(r,), daemon=True, name=f"route-check-{r}").start()
+        _route_wake.wait(ROUTE_CHECK_TICK_S)
+        _route_wake.clear()
+
+
+def _route_failed(route: str, e: Exception) -> None:
+    """A search's call to the route failed: not used again until a check
+    passes it; checked again soon, not after ROUTE_RECHECK_S."""
+    with _route_lock:
+        _route_verdict[route] = (False, time.monotonic())
+        _route_due[route] = time.monotonic() + NO_INSTANCE_RECHECK_S
+    _route_wake.set()
 
 
 @functools.lru_cache(maxsize=2048)
@@ -420,13 +496,9 @@ def _embed_cached(text: str, as_document: bool = False) -> bytes:
             _observe(route, 2 * timeout)        # a failure counts as very slow
             M.count("cocoindex_mcp_embed_route_failed", route=route)
             if not last:
-                # Not tried again before the next check (ROUTE_RECHECK_S): each
-                # query would otherwise wait FAST_TIMEOUT_S on a dead route.
-                with _route_lock:
-                    at = time.monotonic()
-                    if isinstance(e, reader.NoInstance):
-                        at -= ROUTE_RECHECK_S - NO_INSTANCE_RECHECK_S
-                    _route_verdict[route] = (False, at)
+                # Not tried again until a check passes it: each query would
+                # otherwise wait FAST_TIMEOUT_S on a dead route.
+                _route_failed(route, e)
                 M.count("cocoindex_mcp_embed_fallback", route=route)
                 log.info("embedding route %s failed (%s); next route", route, type(e).__name__)
     raise err or RuntimeError("no embedding route configured")
@@ -1462,6 +1534,9 @@ def main():
     # stdio clients get their handshake at once and tools answer from the old
     # cache (or say "no snapshot yet") until it lands.
     threading.Thread(target=lambda: (SNAP.refresh(force=True), _sync_loop(stop)), daemon=True).start()
+    # Embedding routes: checked and timed in the background, at once and then
+    # every ROUTE_RECHECK_S; searches only read the verdicts.
+    threading.Thread(target=_route_checker, args=(stop,), daemon=True, name="route-checker").start()
 
     if not a.http:
         server.run("stdio")

@@ -157,41 +157,82 @@ try:
         except Exception as e:
             return e, list(used)
 
-    S._route_verdict.clear()
-    S._route_ewma.clear()
+    import threading
+
+    def reset():
+        S._route_verdict.clear()
+        S._route_ewma.clear()
+        S._route_due.clear()
+
+    def checked(fast, canonical=aigw, routes=("fast", "aigw")):
+        """As the background checker would leave it: every route checked once."""
+        reset()
+        os.environ.update(ROUTE_FAST_URL=fast, ROUTE_AIGW_URL=canonical)
+        for r in routes:
+            S._check_route(r)
+
+    slow(aigw, 0.3)                               # so the fast route is measurably faster
+    checked(same)
+    slow(aigw, 0)
     v_fast, u = query(same)
     check(isinstance(v_fast, bytes) and u == [("cocoindex_mcp_embed_route", "fast")],
           f"MCP: a checked fast route answers the query ({u})")
-    S._route_verdict.clear()
-    S._route_ewma.clear()
+    reset()
+    _, u = query(same, text="before any check")
+    check(u == [("cocoindex_mcp_embed_route", "aigw")],
+          f"MCP: a route not checked yet is not used; aigw answers ({u})")
+    checked(other)
     v_other, u = query(other)
     check(u == [("cocoindex_mcp_embed_route", "aigw")] and v_other == v_fast,
-          f"MCP: a fast route with other vectors is skipped; aigw's vector, the same as the fast one's ({u})")
-    S._route_verdict.clear()
-    S._route_ewma.clear()
-    slow(aigw, 0.3)                               # fast leads once both are measured
-    query(same, text="a")                         # verdict: fast is fine, and measured
-    query(same, text="b")                         # aigw measured too: slower
+          f"MCP: a fast route with other vectors is refused by its check; aigw's vector, the same as the fast one's ({u})")
+    slow(aigw, 0.3)
+    checked(same)                                 # fast measured faster than aigw
     _, u = query(dead)                            # ...then fast dies
     check(("cocoindex_mcp_embed_fallback", "fast") in u and ("cocoindex_mcp_embed_route", "aigw") in u,
           f"MCP: the fast route failing in use falls back to aigw at once ({u})")
     _, u = query(dead)
     slow(aigw, 0)
-    check(u == [("cocoindex_mcp_embed_route", "aigw")],
-          f"MCP: and is not tried again until the next check ({u})")
-    S._route_verdict.clear()
-    S._route_ewma.clear()
+    due = S._route_due.get("fast", 0) - time.monotonic()
+    check(u == [("cocoindex_mcp_embed_route", "aigw")] and 0 < due <= S.NO_INSTANCE_RECHECK_S,
+          f"MCP: and is not tried again until a check passes it, due in {due:.0f} s ({u})")
+    checked(same, canonical=dead)
     _, u = query(same, canonical=dead)
     check(("cocoindex_mcp_embed_route", "fast") in u,
           f"MCP: aigw down, the fast route checked against the kept reference answers ({u})")
-    # Fastest first: a slow fast route is tried once, then aigw leads.
-    S._route_verdict.clear()
-    S._route_ewma.clear()
+    # Fastest first, by the checks' timings: no search is spent measuring.
     slow(same, 1.0)
+    checked(same)
     seq = [query(same, text=f"q{i}")[1] for i in range(3)]
     slow(same, 0)
-    check([u[-1][1] for u in seq] == ["fast", "aigw", "aigw"],
-          f"MCP: routes are tried fastest first; a slower route is measured once, then aigw leads ({seq})")
+    check([u[-1][1] for u in seq] == ["aigw", "aigw", "aigw"],
+          f"MCP: a slower fast route, timed by its check, is not used while aigw is faster ({seq})")
+    # A check never holds up a search (2026-11-18: a 14 s check of the ALICE
+    # server inside the lock every search needed).
+    checked(same)
+    slow(same, 3)
+    th = threading.Thread(target=S._check_route, args=("fast",))
+    th.start()
+    time.sleep(0.3)                               # the check is now waiting on the slow route
+    S._embed_cached.cache_clear()
+    used.clear()
+    slow(same, 0)                                 # the search itself is answered fast
+    t0 = time.monotonic()
+    S._embed_cached("during a check")
+    took = time.monotonic() - t0
+    th.join()
+    check(took < 1.5, f"MCP: a search while a slow check runs is not held up ({took:.2f} s, {used})")
+    # The checker loop: every route checked at once at start.
+    reset()
+    os.environ.update(ROUTE_FAST_URL=same, ROUTE_AIGW_URL=aigw)
+    S.ROUTE_CHECK_TICK_S = 0.2
+    stop = threading.Event()
+    threading.Thread(target=S._route_checker, args=(stop,), daemon=True).start()
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < 10 and not (S._route_ok("fast") and "aigw" in S._route_ewma):
+        time.sleep(0.1)
+    stop.set()
+    check(S._route_ok("fast") and set(S._route_ewma) == {"fast", "aigw"},
+          f"MCP: the checker checks and times every route at start ({time.monotonic() - t0:.1f} s)")
 
     # ---- a route served by several instances (the job's CPU servers):
     # ROUTE_<R>_URLS_FILE, kept up to date by a Nomad template.
@@ -208,23 +249,23 @@ try:
         except Exception as e:
             return e, list(used)
 
-    S._route_verdict.clear()
-    S._route_ewma.clear()
+    reset()
     urls.write_text("")
+    S._check_route("fast")
+    slow(aigw, 0.3)                               # so the instances are measurably faster
+    S._check_route("aigw")
+    slow(aigw, 0)
     _, u = query_file("no instance yet")
-    v = S._route_verdict.get("fast")
-    check(u == [("cocoindex_mcp_embed_route", "aigw")] and v and not v[0]
-          and time.monotonic() - v[1] > S.ROUTE_RECHECK_S - S.NO_INSTANCE_RECHECK_S - 5,
-          f"MCP: no instance registered yet: aigw, and the route is looked at again within "
-          f"{S.NO_INSTANCE_RECHECK_S} s, not {S.ROUTE_RECHECK_S} ({u})")
+    due = S._route_due.get("fast", 0) - time.monotonic()
+    check(u == [("cocoindex_mcp_embed_route", "aigw")] and not S._route_ok("fast") and 0 < due <= S.NO_INSTANCE_RECHECK_S,
+          f"MCP: no instance registered yet: aigw, and the route is checked again in {due:.0f} s, "
+          f"not {S.ROUTE_RECHECK_S} ({u})")
     urls.write_text(f"{same}\n{same}\n")
-    S._route_verdict.clear()
-    S._route_ewma.clear()
+    S._check_route("fast")
     _, u = query_file("instances registered")
     check(u == [("cocoindex_mcp_embed_route", "fast")],
           f"MCP: once instances are listed, they are checked and answer the query ({u})")
     urls.write_text(f"{dead}\n")
-    S._route_ewma["fast"] = 0.0
     _, u = query_file("instance gone")
     check(("cocoindex_mcp_embed_route_failed", "fast") in u and ("cocoindex_mcp_embed_route", "aigw") in u,
           f"MCP: an instance gone: the query falls back to aigw at once ({u})")
