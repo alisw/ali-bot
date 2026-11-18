@@ -417,7 +417,7 @@ job "cocoindex" {
           set -e
           mkdir -p /alloc/data/cocoindex/home
           chown 1000:1000 /alloc/data/cocoindex /alloc/data/cocoindex/home
-          exec setpriv --reuid=1000 --regid=1000 --groups=8485 -- /bin/bash /local/runner.sh
+          exec setpriv --reuid=1000 --regid=1000 --groups=8485 -- /bin/bash /local/driver.sh
         EOA
         ]
       }
@@ -426,6 +426,19 @@ job "cocoindex" {
         HOME      = "/alloc/data/cocoindex/home"
         COCO_ROOT = "/alloc/data/cocoindex"
         CODE_DIR  = "/local"
+        # driver.sh runs runner.sh from the code the Nomad variable
+        # nomad/jobs/cocoindex (item "ref": a sha or branch on ali-bot master)
+        # names, rendered into DEPLOY_ENV, and reloads it between flows when
+        # the variable changes; without the variable, from SHIPPED (the files
+        # this jobspec ships). Ordinary code changes are deployed with
+        #   nomad-rw var put -force nomad/jobs/cocoindex ref=<sha>
+        # (effective at the next flow boundary, no flow lost). `nomad-rw job
+        # run` only for what cannot wait or cannot go that way: an urgent fix
+        # (set the variable first: the restart runs its ref), a change to this
+        # jobspec, or to the image's venv. See DESIGN.md, "Deploying code
+        # without restarting the job".
+        DEPLOY_ENV  = "/local/deploy.env"
+        SHIPPED     = "/local"
         # The image's venv; runner.sh must not build its own.
         VENV      = "/opt/cocoindex/venv"
         SKIP_VENV = "1"
@@ -509,8 +522,29 @@ job "cocoindex" {
 
       # The code ships inside the jobspec (file() reads it at submit time), so
       # a code change is a new job version and nothing is fetched at runtime.
+      # The deploy ref (driver.sh). A job reads its own nomad/jobs/<job>
+      # variables without any ACL policy. No variable, or no "ref" item: an
+      # empty file, and the shipped code runs. "noop": driver.sh and runner.sh
+      # read the file at their safe points; nothing is restarted.
+      template {
+        destination = "local/deploy.env"
+        change_mode = "noop"
+        data        = <<-EOT
+        {{ if nomadVarExists "nomad/jobs/cocoindex" }}{{ with nomadVar "nomad/jobs/cocoindex" }}{{ with .ref }}DEPLOY_REF={{ . }}{{ end }}{{ end }}{{ end }}
+        EOT
+      }
+
       # Delimiters are set to something no file contains, so consul-template
       # passes the files through untouched.
+      template {
+        destination     = "local/driver.sh"
+        perms           = "0755"
+        change_mode     = "noop"
+        left_delimiter  = "[[%%"
+        right_delimiter = "%%]]"
+        data            = file("driver.sh")
+      }
+
       template {
         destination     = "local/runner.sh"
         perms           = "0755"

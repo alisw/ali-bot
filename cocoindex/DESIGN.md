@@ -6,7 +6,7 @@ One Nomad **service** job, `cocoindex` (`cocoindex.nomad`), one allocation, thre
 
 - `proxy`: security-proxy sidecar with three routes. `aigw` is for embeddings. `github` is GraphQL for the prs flow, and REST status history plus GraphQL PR files for the ci-failures flow. `s3` is an allowlist of two buckets: `alice-cocoindex` for snapshots, and `alice-build-logs`, which the ci-failures flow only reads.
 - `bootstrap`: sidecar that pushes the grid cert, the aigw key, the GitHub PAT and the S3 keys from Vault into the proxy. It pushes again whenever the proxy restarts.
-- `index`: `registry.cern.ch/alisw/cocoindex` (alisw/docks `cocoindex/`, pinned by digest; the MCP job uses the same one). Python 3.12, git, and the hash-locked venv of `requirements-linux.lock` in `/opt/cocoindex/venv`; the code ships as jobspec templates. It runs `runner.sh` as uid 1000 in group 8485, which gives it access to the agent socket.
+- `index`: `registry.cern.ch/alisw/cocoindex` (alisw/docks `cocoindex/`, pinned by digest; the MCP job uses the same one). Python 3.12, git, and the hash-locked venv of `requirements-linux.lock` in `/opt/cocoindex/venv`; the code ships as jobspec templates, or comes from ali-bot at the ref the deploy variable names (below). It runs `driver.sh`, which runs `runner.sh`, as uid 1000 in group 8485, which gives it access to the agent socket.
 
 All state lives in the sticky `ephemeral_disk` under `/alloc/data/cocoindex` (`sticky = true`, `migrate = false`). The job has no host volume and no Postgres.
 
@@ -38,6 +38,28 @@ published.json   snap/ (scratch)
 4. **Prune** (the job does it, not an S3 lifecycle rule). Keep the newest `SNAPSHOT_KEEP` (36: up to one run per flow and pass) run ids, plus every run `latest.json` names. Then sleep `PASS_SLEEP` (1h). The runner traps TERM and forwards INT to cocoindex.
 
 **Why the job prunes rather than a lifecycle rule:** CERN S3 lifecycle rules expire objects by age and cannot express "keep the last N". If the job stalled for longer than the expiry (aigw down, cluster maintenance), the rule would delete the snapshot that `latest.json` points to, leaving nothing to restore. Lifecycle rules also need bucket-owner credentials, which never go in the proxy, so a human would have to apply them. An optional lifecycle rule that only aborts stale multipart uploads is harmless and could be added by hand.
+
+## Deploying code without restarting the job (`driver.sh`, since 2026-11-18)
+
+A `nomad job run` stops the running pass; on 2026-11-18 four passes in a row were stopped that way before they could publish. Code is therefore deployed through a Nomad variable instead.
+
+**How to deploy, as a rule.** Every ordinary code change goes through the variable: it takes effect at the next flow boundary (at most one flow, ≤ 50 min, later) and never costs a flow's work. A proper `nomad-rw job run cocoindex.nomad` is for the cases that cannot wait or cannot go through the variable:
+- the change must take effect **now** (a fix for a flow that is misbehaving or leaking, a credential that must stop being used): the job restart stops the running flow, whose progress the next run resumes, and every other flow has already been published after it finished;
+- the **jobspec itself** changed: environment, resources, proxy routes, credentials, templates (including `driver.sh` and anything else the jobspec ships);
+- the **image** changed (`requirements-linux.lock`, the venv);
+- the variable path is broken (the driver keeps refusing a ref you need).
+
+While the variable is set, a `job run` restarts the driver, which then runs **the variable's** ref, not the files the jobspec ships. So an immediate code fix is: push it to master, set the variable to it, then `nomad-rw job run cocoindex.nomad` (the restart picks it up at once instead of at the next flow boundary). A jobspec or image change with the variable set runs the variable's code on the new jobspec; purge the variable first if the jobspec's own files are what should run.
+
+```sh
+nomad-rw var put -force nomad/jobs/cocoindex ref=<sha or branch>   # deploy
+nomad-rw var purge nomad/jobs/cocoindex                             # back to the jobspec's code
+```
+
+- A `template` renders the variable's `ref` into `local/deploy.env` (`change_mode = "noop"`); a job reads its own `nomad/jobs/<job>` variables without an ACL policy. No variable: an empty file.
+- `driver.sh` is the task's entry point. With no ref it runs `runner.sh` from the files the jobspec ships (`SHIPPED`, as before). With one, it fetches ali-bot into `$COCO_ROOT/ali-bot` on the sticky disk and runs `cocoindex/runner.sh` from that commit, **only if the commit is on `master`**: nothing that is not on master runs with the job's credentials. A ref that cannot be fetched, is not on master or is malformed is logged, and the code already running keeps running.
+- `runner.sh` checks at its safe points, after each flow's snapshot and while sleeping between passes, whether `deploy.env` still names the ref it was started with; if not it exits 75 and the driver reloads. A deploy therefore never interrupts a flow: it takes effect at the next flow boundary, at most one flow's length (≤ 50 min) later.
+- `test/driver_test.py`: a local git origin and a stub runner; no ref, a sha, a branch, a commit not on master (refused), an unknown and a malformed ref (current code kept, no reload loop), back to a sha, TERM.
 
 ## Why state and db must come from the same run
 
