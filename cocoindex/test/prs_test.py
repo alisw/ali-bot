@@ -328,6 +328,38 @@ def main():
         a, b = db("hostA"), db("hostB")
         q = "SELECT repo, number, kind, chunk, text FROM pr_chunks ORDER BY 1, 2, 3, 4"
         check(a.execute(q).fetchall() == b.execute(q).fetchall(), "[5] restored host has the same rows")
+
+        # ---- 6: a run killed at PASS_TIMEOUT (a slow embedder) still updates pr_repos
+        fx = fixtures(heads, edited=True)
+        fx[REPO].append(pr(12, "frank", "MEMBER", "Add QC task for ITS clusters", "Adds a QC task.",
+                           "2026-10-25T10:00:00Z"))
+        control(gport, {"repos": fx})
+        delay = Path(str(elog) + ".delay")
+        delay.write_text("60")
+        try:
+            # Both flows, as every pass: the snapshot it publishes is what mcp_test.py reads.
+            # commits has nothing new, so it never waits on the slow embedder.
+            out = subprocess.run(["bash", str(RUNNER)], env=dict(base_env, COCO_ROOT=str(WORK / "hostA"),
+                                                                 PASS_TIMEOUT="15s"),
+                                 capture_output=True, text=True)
+        finally:
+            delay.unlink()
+        (WORK / "pass-6.log").write_text(out.stdout + out.stderr)
+        check("prs: hit PASS_TIMEOUT" in out.stderr, "[6] the slow embedder holds prs until PASS_TIMEOUT kills it")
+        conn = db()
+        check(conn.execute("SELECT count(*) FROM prs WHERE number = 12").fetchone()[0] == 0,
+              "[6] #12 not indexed: its embedding never came back")
+        rep = conn.execute("SELECT indexed, fetched_through FROM pr_repos").fetchone()
+        check(rep == (10, "2026-10-25T10:00:00Z"),
+              f"[6] pr_repos updated by the killed run: 10 indexed, new watermark {rep}")
+
+        # ---- 7: the next pass, embedder back: #12 indexed (and the store mcp_test reads is whole again)
+        err, n_texts, reqs = run_pass("7")
+        conn = db()
+        check(conn.execute("SELECT count(*) FROM prs WHERE number = 12").fetchone()[0] == 1
+              and conn.execute("SELECT indexed FROM pr_repos").fetchone()[0]
+              == conn.execute("SELECT count(*) FROM prs").fetchone()[0] == 10,
+              f"[7] the pass after the killed one indexes #12 ({n_texts} texts)")
     finally:
         for p in procs:
             p.terminate()

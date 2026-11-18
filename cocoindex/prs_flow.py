@@ -665,6 +665,17 @@ async def process_month(items: tuple[tuple[int, str, bool], ...], repo: str, tab
     await coco.mount_each(process_pr, [(n, (n, fp, h)) for n, fp, h in items], repo, tables)
 
 
+@coco.fn
+async def declare_repo_status(rows: tuple[PRRepo, ...], target) -> None:
+    """pr_repos, in a component of its own. Rows declared by app_main itself
+    are only written when the whole update completes, and a prs run stopped at
+    PASS_TIMEOUT never does: pr_repos then kept the first pass's values (no
+    watermark, 0 indexed) for days. A child component is written as soon as it
+    returns, killed run or not."""
+    for r in rows:
+        target.declare_row(row=r)
+
+
 @coco.lifespan
 async def coco_lifespan(builder: coco.EnvironmentBuilder) -> AsyncIterator[None]:
     builder.provide(EMBEDDER, LiteLLMEmbedder(
@@ -687,20 +698,25 @@ async def app_main() -> None:
     heads = await asyncio.to_thread(fetch_pull_heads) if DIFFS else {}
     db = open_fetch_db()
     try:
+        status, work = [], []
         for repo in REPOS:
             months: dict[str, list[tuple[int, str, bool]]] = defaultdict(list)
             counts = defaultdict(int)
-            for number, status, fp, created in db.execute(
+            for number, st, fp, created in db.execute(
                     "SELECT number, status, fp, json_extract(data, '$.createdAt') FROM pr WHERE repo = ?", (repo,)):
-                counts[status] += 1
-                if status == "index":
+                counts[st] += 1
+                if st == "index":
                     months[created[:7]].append((number, fp, heads.get((repo, number), False)))
             sc = db.execute("SELECT watermark, after FROM scan WHERE repo = ?", (repo,)).fetchone() or (None, None)
-            repos.declare_row(row=PRRepo(repo, sc[0], sc[1] is not None or sc[0] is None,
-                                         counts["index"], counts["skip"], counts["bot"]))
-            await coco.mount_each(
-                coco.component_subpath("repo", repo), process_month,
-                [(m, tuple(sorted(v))) for m, v in sorted(months.items())], repo, tables)
+            status.append(PRRepo(repo, sc[0], sc[1] is not None or sc[0] is None,
+                                 counts["index"], counts["skip"], counts["bot"]))
+            work.append((repo, [(m, tuple(sorted(v))) for m, v in sorted(months.items())]))
+        # First, and waited for: the status is written even if the embedding
+        # below runs into PASS_TIMEOUT.
+        await (await coco.mount(coco.component_subpath("repo_status"), declare_repo_status,
+                                tuple(status), repos)).ready()
+        for repo, months_items in work:
+            await coco.mount_each(coco.component_subpath("repo", repo), process_month, months_items, repo, tables)
     finally:
         db.close()
 

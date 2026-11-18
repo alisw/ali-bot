@@ -16,7 +16,7 @@ with the same text land close together. Here they land on the same vector, and
 searching for a stored text still finds it at distance 0. TEXTLOG keeps the
 texts as sent, prefixes included.
 """
-import hashlib, http.server, json, os, sys
+import hashlib, http.server, json, os, sys, time
 
 import numpy as np
 
@@ -25,6 +25,7 @@ import embedtext  # noqa: E402
 
 PORT, LOG = int(sys.argv[1]), sys.argv[2]
 TEXTLOG = sys.argv[3] if len(sys.argv) > 3 else None
+DELAY = LOG + ".delay"   # if present: seconds to wait before answering (a slow aigw)
 
 
 def vec(text: str) -> list[float]:
@@ -44,6 +45,8 @@ class H(http.server.BaseHTTPRequestHandler):
         if TEXTLOG:
             with open(TEXTLOG, "a") as f:
                 f.writelines(json.dumps(t) + "\n" for t in inputs)
+        if os.path.exists(DELAY):
+            time.sleep(float(open(DELAY).read()))
         out = {"object": "list", "model": body.get("model"),
                "data": [{"object": "embedding", "index": i, "embedding": vec(t)}
                         for i, t in enumerate(inputs)],

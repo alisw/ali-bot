@@ -496,7 +496,10 @@ async def main():
         names = {n for n, _, _ in pts}
         calls = {a["tool"]: v for n, a, v in pts if n == "cocoindex_mcp_calls_count" and a["outcome"] == "ok"}
         print(f"   metrics: {len(otlp_bodies)} push(es), {len(pts)} points, {sorted(names)[:6]}...")
-        check({"search_commits", "get_commit", "sql", "ci_signature"} <= set(calls)
+        # ci_signature is only exercised on a store with ci-failures.db (cif_test's).
+        want = {"search_commits", "get_commit", "sql"} | (
+            {"ci_signature"} if (cache / "ci-failures.db").exists() else set())
+        check(want <= set(calls)
               and {"cocoindex_mcp_call_seconds_p95", "cocoindex_mcp_slot_wait_seconds_p95",
                    "cocoindex_mcp_embed_seconds_p50", "cocoindex_mcp_snapshot_age_seconds"} <= names,
               "[http] metrics: calls per tool and outcome, latencies, slot waits, embedding time, snapshot age")
