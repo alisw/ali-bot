@@ -440,6 +440,7 @@ job "cocoindex-mcp" {
         # while its vectors are aigw's) and aigw (CERN's), the other as fallback
         # (embedroute.py).
         MCP_EMBED_ROUTES    = "alice-embed,aigw"
+        MCP_EMBED_FAST_TIMEOUT_S = "12"
         MCP_MAX_SQL         = "2"
         METRICS_ROUTE       = "monit-otlp"
         METRICS_SERVICE     = "cocoindex-mcp"
@@ -503,6 +504,16 @@ job "cocoindex-mcp" {
         left_delimiter  = "[[%%"
         right_delimiter = "%%]]"
         data            = file("embedroute.py")
+      }
+
+      # aigw's vector for embedroute's reference text: lets a fresh process
+      # check the ALICE server before aigw has answered once.
+      template {
+        destination     = "local/embed-reference.json"
+        change_mode     = "restart"
+        left_delimiter  = "[[%%"
+        right_delimiter = "%%]]"
+        data            = file("embed-reference.json")
       }
 
       # Per-tool calls, latencies, errors, slot waits, embedding times, snapshot
