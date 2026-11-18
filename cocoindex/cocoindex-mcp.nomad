@@ -39,13 +39,18 @@
 locals {
   alice_embed_upstream = "http://pcapiserv12.cern.ch:8100"
 
-  # Query embeddings on CPU, in this job (group "embed-cpu"): the MCP server's
-  # first route. Measured 2026-11-18 on alimetal01 (bench/embed-cpu-bench.nomad,
-  # 4 threads, on CPU shares next to the CI builds): 42 ms for a short query,
-  # ~23 per second; 309 ms for 205 tokens; cosine to aigw 0.99956. ALICE's GPU
-  # server took ~5 s through its queue. Raise the count to scale; the MCP
-  # server finds the instances itself (Nomad service discovery), no restart.
-  embed_cpu_count = 1
+  # Query embeddings on CPU. Measured 2026-11-18 on alimetal01
+  # (bench/embed-cpu-bench.nomad, 4 threads, on CPU shares next to the CI
+  # builds): 42 ms for a short query, ~23 per second; 309 ms for 205 tokens;
+  # cosine to aigw 0.99956. ALICE's GPU server took ~5 s through its queue.
+  # Two places, both llama-server on the same GGUF:
+  #   * task "embed-local" in the mcp group, route "local", on 127.0.0.1: always
+  #     there with the MCP server, no hop between nodes, first by default;
+  #   * group "embed-cpu", route "cpu", on other nodes: extra capacity. 0 for
+  #     now; raise the count to scale, the MCP server finds the instances itself
+  #     (Nomad service discovery), no restart, and the routes' response times
+  #     spread the searches (local slows down under load, cpu takes over).
+  embed_cpu_count = 0
   # llama.cpp b12030 (2026-11-01), CPU build of llama-server.
   llama_image = "ghcr.io/ggml-org/llama.cpp@sha256:e67d88af487390098c76d7982b1761484339fa147b7e41d3c64ae1318759f78b"
   # The GGUF ALICE's server runs: ggml-org's conversion keeps the dense layers
@@ -95,6 +100,7 @@ job "cocoindex-mcp" {
 
     network {
       port "http" {}
+      port "embed" {}      # embed-local, bound to 127.0.0.1
     }
 
     ephemeral_disk {
@@ -282,6 +288,48 @@ job "cocoindex-mcp" {
     }
 
     # ---- slot provisioning (sidecar: refills the proxy if it restarts) ------
+    # ---- query embeddings, on this allocation's CPU ---------------------------
+    # llama-server, CPU only, on 127.0.0.1: route "local", the MCP server's first.
+    # A prestart sidecar, so it is up when the server starts checking routes.
+    task "embed-local" {
+      driver = "docker"
+
+      lifecycle {
+        hook    = "prestart"
+        sidecar = true
+      }
+
+      # Into the sticky alloc dir: a restart on the same node reuses it.
+      artifact {
+        source      = local.embed_model_url
+        destination = "local/model.gguf"
+        mode        = "file"
+        options {
+          checksum = local.embed_model_sum
+        }
+      }
+
+      config {
+        image        = local.llama_image
+        network_mode = "host"
+        ports        = ["embed"]
+        # As embed-cpu, as measured: 4 threads, 4 slots, 2048 tokens per slot.
+        args = ["-m", "/local/model.gguf", "--embeddings", "--host", "127.0.0.1",
+                "--port", "${NOMAD_PORT_embed}", "-t", "4", "-tb", "4", "-ngl", "0",
+                "--parallel", "4", "-c", "8192", "-ub", "2048", "-b", "2048"]
+      }
+
+      resources {
+        cpu    = 6000
+        memory = 1536
+      }
+
+      logs {
+        max_files     = 2
+        max_file_size = 10
+      }
+    }
+
     task "bootstrap" {
       driver = "docker"
 
@@ -448,14 +496,17 @@ job "cocoindex-mcp" {
         MCP_MAX_CONCURRENT = "4"
         # Query embeddings and sql() run in pools of their own, so a slow
         # embedder or heavy SQL never holds the MCP_MAX_CONCURRENT slots.
-        # 4 slots per CPU instance, and 4 for the remote routes behind them.
-        MCP_MAX_EMBEDS      = "${4 + 4 * local.embed_cpu_count}"
+        # 4 slots in embed-local, 4 per embed-cpu instance, 4 for the remote
+        # routes behind them.
+        MCP_MAX_EMBEDS      = "${8 + 4 * local.embed_cpu_count}"
         MCP_EMBED_TIMEOUT_S = "20"
-        # Query embeddings, fastest first: cpu (this job's own CPU servers,
-        # group embed-cpu, listed in ROUTE_CPU_URLS_FILE), alice-embed (ALICE's
-        # GPU server) and aigw (CERN's), each but aigw only while its vectors
-        # are aigw's (embedroute.py); the others as fallbacks.
-        MCP_EMBED_ROUTES    = "cpu,alice-embed,aigw"
+        # Query embeddings, fastest first: local (task embed-local, this
+        # allocation), cpu (group embed-cpu, listed in ROUTE_CPU_URLS_FILE;
+        # none while its count is 0), alice-embed (ALICE's GPU server) and aigw
+        # (CERN's), each but aigw only while its vectors are aigw's
+        # (embedroute.py); the others as fallbacks.
+        MCP_EMBED_ROUTES    = "local,cpu,alice-embed,aigw"
+        ROUTE_LOCAL_URL     = "http://127.0.0.1:${NOMAD_PORT_embed}/v1"
         ROUTE_CPU_URLS_FILE = "/local/embed-cpu-urls"
         MCP_EMBED_FAST_TIMEOUT_S = "12"
         MCP_MAX_SQL         = "2"
