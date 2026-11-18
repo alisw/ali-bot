@@ -311,15 +311,20 @@ def main():
         pts = fake_otlp.points(otlp_bodies)
         names = {n for n, _, _ in pts}
         flows = {a["flow"] for n, a, _ in pts if n == "cocoindex_flow_seconds"}
-        texts_by_flow = {}
+        texts_by_flow, tokens_by_flow = {}, {}
         for n, a, v in pts:
             if n == "cocoindex_embed_texts_count":
                 texts_by_flow[a["flow"]] = texts_by_flow.get(a["flow"], 0) + v
+            if n == "cocoindex_embed_tokens_count":
+                tokens_by_flow[a["flow"]] = tokens_by_flow.get(a["flow"], 0) + v
         check(flows == {"commits", "prs", "ci-failures"} and {"cocoindex_flow_timed_out", "cocoindex_pass_seconds"} <= names,
               f"[1] metrics: each flow's duration and timeout, and the pass's ({sorted(flows)})")
         check(set(texts_by_flow) == {"commits", "prs", "ci-failures"} and all(texts_by_flow.values())
               and "cocoindex_embed_request_seconds_p95" in names,
               f"[1] metrics: embedding texts and request latency per flow ({texts_by_flow})")
+        check(set(tokens_by_flow) == set(texts_by_flow)
+              and all(tokens_by_flow[f] > texts_by_flow[f] for f in texts_by_flow),
+              f"[1] metrics: tokens embedded per flow, as the server reports them ({tokens_by_flow})")
         check({"cocoindex_cif_new_builds", "cocoindex_cif_logs_pending", "cocoindex_cif_signatures",
                "cocoindex_snapshot_published_timestamp", "cocoindex_snapshot_db_bytes"} <= names
               and any(n == "cocoindex_snapshot_signatures" and a.get("fingerprint") == "hash only" for n, a, _ in pts),
