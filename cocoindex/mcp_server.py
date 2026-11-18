@@ -827,7 +827,7 @@ def q_ci_signature(sig, repo, max_prs, vec=None):
     return out
 
 
-def q_ci_pr_builds(repo, pr, errors_per_build):
+def q_ci_pr_builds(repo, pr, errors_per_build, max_builds=20, since=None, current_only=False):
     conn = _cf_conn()
     r = _repo(conn, repo, "cf.ci_builds")
     hits = conn.execute("SELECT DISTINCT repo FROM cf.ci_builds WHERE pr = :pr AND (:repo IS NULL OR repo = :repo)",
@@ -837,12 +837,31 @@ def q_ci_pr_builds(repo, pr, errors_per_build):
     if len(hits) > 1:
         raise BadRequest(f"#{pr} has builds in several repos ({', '.join(h[0] for h in hits)}); pass repo")
     r = hits[0][0]
+    def where_of(t=""):
+        return (f"{t}repo = :r AND {t}pr = :pr AND (:since IS NULL OR {t}uploaded_at >= :since)"
+                + (f" AND {t}current = 1" if current_only else ""))
+    where = where_of()
+    args = dict(r=r, pr=pr, since=since)
+    # The summary over every build in the window; the list, with errors, over the newest max_builds
+    # (2026-11-18: an alidist PR's 170 builds came back as 309k characters, unusable for an agent).
+    allb = _rows(conn.execute(f'SELECT build_id, check_name AS "check", host, state, current, infra_kinds '
+                              f"FROM cf.ci_builds WHERE {where}", args))
+    top = _rows(conn.execute(
+        f"""SELECT e.sig_hash, e.kind, e.infra, max(e.in_pr_files) AS in_pr_files, e.fingerprint_kind,
+                   substr(max(e.fingerprint), 1, 200) AS fingerprint, count(DISTINCT e.build_id) AS builds,
+                   count(DISTINCT e.check_name) AS checks
+            FROM cf.ci_errors e JOIN cf.ci_builds b USING (build_id)
+            WHERE {where_of("b.")} AND e.state = 'failure' AND e.rank <= 3
+            GROUP BY e.sig_hash ORDER BY builds DESC LIMIT 5""", args))
+    for e in top:
+        e["infra"] = bool(e["infra"])
+        e["untrusted"] = {"fingerprint": e.pop("fingerprint")}
     builds = _rows(conn.execute(
-        """SELECT build_id, substr(sha, 1, 10) AS sha, check_name AS "check", host, substr(alidist, 1, 10) AS alidist, state,
+        f"""SELECT build_id, substr(sha, 1, 10) AS sha, check_name AS "check", host, substr(alidist, 1, 10) AS alidist, state,
                   state_source, attempt,
                   current, uploaded_at, started_at, finished_at, failed_package, infra_kinds, n_errors,
                   errors_in_pr_files, errors_with_file, gh_runs, gh_failures, gh_state, extracted, log_url
-           FROM cf.ci_builds WHERE repo = ? AND pr = ? ORDER BY uploaded_at DESC LIMIT 200""", (r, pr)))
+           FROM cf.ci_builds WHERE {where} ORDER BY uploaded_at DESC LIMIT :n""", dict(args, n=max_builds)))
     for b in builds:
         b["current"], b["extracted"] = bool(b["current"]), bool(b["extracted"])
         if b["state"] == "success" or not b["extracted"]:
@@ -863,11 +882,18 @@ def q_ci_pr_builds(repo, pr, errors_per_build):
             e["location"] = _location(b["log_url"], e["line"])
             e["untrusted"] = {"fingerprint": e.pop("fingerprint")}
         b["top_errors"] = errs
-    failed = [b for b in builds if b["state"] == "failure"]
-    return {"repo": r, "pr": pr, "builds": builds,
-            "summary": {"builds": len(builds), "failed": len(failed),
-                        "failing_checks": sorted({b["check"] for b in failed if b["current"]}),
-                        "hosts": sorted({b["host"] for b in builds if b["host"]})},
+    by_state: dict[str, int] = {}
+    infra: dict[str, int] = {}
+    for b in allb:
+        by_state[b["state"]] = by_state.get(b["state"], 0) + 1
+        for k in filter(None, (b["infra_kinds"] or "").split(",")):
+            infra[k] = infra.get(k, 0) + 1
+    return {"repo": r, "pr": pr, "builds": builds, "omitted_builds": max(0, len(allb) - len(builds)),
+            "summary": {"builds": len(allb), "by_state": by_state,
+                        "failing_checks": sorted({b["check"] for b in allb if b["state"] == "failure" and b["current"]}),
+                        "hosts": len({b["host"] for b in allb if b["host"]}),
+                        "infra_kinds": infra,
+                        "most_frequent_errors": top},
             "note": CI_UNTRUSTED_NOTE + f"; other_prs_3d = other PRs with the same error within "
                                         f"{CI_WINDOW_DAYS} days (many: probably not this PR's fault)"}
 
@@ -1120,14 +1146,22 @@ async def ci_signature(sig: str, repo: str | None = None, max_prs: int = 20) -> 
 
 @server.tool(annotations=RO)
 @timed
-async def ci_pr_builds(repo: str, pr: int, errors_per_build: int = 3) -> dict:
-    """Every CI build of one pull request, newest first: sha, check, host (the Nomad
+async def ci_pr_builds(repo: str, pr: int, errors_per_build: int = 3, max_builds: int = 20,
+                       since: str | None = None, current_only: bool = False) -> dict:
+    """The CI builds of one pull request, newest first: sha, check, host (the Nomad
     allocation that built it, alloc-<id>), state, attempt
     (a re-run of the same sha and check is attempt 2), and for failed builds the top
     errors with in_pr_files (1: in a file the PR changed) and other_prs_3d (how many
     OTHER PRs hit the same error within 3 days), and the error's line in the build's
-    log_url (the index holds no log text). Fingerprints are under "untrusted"."""
-    return await _run(q_ci_pr_builds, repo, int(pr), max(1, min(int(errors_per_build), 10)))
+    log_url (the index holds no log text). Fingerprints are under "untrusted".
+
+    max_builds: builds listed (default 20, at most 200); since: ISO date, builds
+    uploaded from then on; current_only: only the current result of each sha and
+    check. The summary always covers ALL the PR's builds (in the since window):
+    counts by state, failing checks, hosts, infra kinds and the PR's most frequent
+    errors -- read it first; omitted_builds says how many are not listed."""
+    return await _run(q_ci_pr_builds, repo, int(pr), max(1, min(int(errors_per_build), 10)),
+                      max(1, min(int(max_builds), 200)), _date(since, "since"), bool(current_only))
 
 
 @server.tool(annotations=RO)
