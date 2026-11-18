@@ -183,6 +183,8 @@ try:
           f"MCP: a route not checked yet is not used; aigw answers ({u})")
     checked(other)
     v_other, u = query(other)
+    due = S._route_due.get("fast", 0) - time.monotonic()
+    check(0 < due <= S.ROUTE_RETRY_S, f"MCP: a route that failed its check is checked again in {due:.0f} s")
     check(u == [("cocoindex_mcp_embed_route", "aigw")] and v_other == v_fast,
           f"MCP: a fast route with other vectors is refused by its check; aigw's vector, the same as the fast one's ({u})")
     slow(aigw, 0.3)
@@ -193,7 +195,7 @@ try:
     _, u = query(dead)
     slow(aigw, 0)
     due = S._route_due.get("fast", 0) - time.monotonic()
-    check(u == [("cocoindex_mcp_embed_route", "aigw")] and 0 < due <= S.NO_INSTANCE_RECHECK_S,
+    check(u == [("cocoindex_mcp_embed_route", "aigw")] and 0 < due <= S.ROUTE_RETRY_S,
           f"MCP: and is not tried again until a check passes it, due in {due:.0f} s ({u})")
     checked(same, canonical=dead)
     _, u = query(same, canonical=dead)
@@ -257,7 +259,7 @@ try:
     slow(aigw, 0)
     _, u = query_file("no instance yet")
     due = S._route_due.get("fast", 0) - time.monotonic()
-    check(u == [("cocoindex_mcp_embed_route", "aigw")] and not S._route_ok("fast") and 0 < due <= S.NO_INSTANCE_RECHECK_S,
+    check(u == [("cocoindex_mcp_embed_route", "aigw")] and not S._route_ok("fast") and 0 < due <= S.ROUTE_RETRY_S,
           f"MCP: no instance registered yet: aigw, and the route is checked again in {due:.0f} s, "
           f"not {S.ROUTE_RECHECK_S} ({u})")
     urls.write_text(f"{same}\n{same}\n")
