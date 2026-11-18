@@ -170,6 +170,13 @@ FATAL_RE = re.compile(
     r"ninja: build stopped:|make.*: \*\*\*|^\s*ERROR:|\[FATAL\]"
     r"|internal compiler error|fatal error: Killed signal")
 
+#: A build tool's summary that the build failed: it follows the error that
+#: caused it and says nothing about it. Ranked after every specific error
+#: (severity), or 147 failed builds of 2026-11-10..17 showed "ninja: build
+#: stopped" as their top error, the real one (a compiler error) second.
+SUMMARY_RE = re.compile(r"ninja: build stopped:|\bmake(?:\[\d+\])?: \*\*\* |collect2: error: ld returned"
+                        r"|linker command failed with exit code|\d+% tests passed, \d+ tests failed out of")
+
 #: Kinds that are always serious (ranked first).
 SERIOUS_KINDS = ("killed", "cmake", "test", "fst-timeout", "fst-logfile", "fst-command", "crash")
 
@@ -260,6 +267,12 @@ def severity(entry):
     LAST one, since everything after it is teardown. So: the kinds that are
     always serious first, then anything that looks build-stopping, then
     latest-first within each tier. Count is reported but never ranks.
+
+    A build tool's summary (SUMMARY_RE: ninja/make stopped, ld returned N,
+    the ctest summary) is the last line of a failed build, so latest-first
+    put it on top of the error it reports -- and a plain compiler error is
+    not FATAL_RE, so it sat a tier below ninja's line. A summary ranks after
+    every specific error: first only when nothing more specific was found.
     """
     count, sample, kind, position = entry
     if kind in SERIOUS_KINDS or kind in INFRA_KINDS:
@@ -268,6 +281,8 @@ def severity(entry):
         tier = 1
     else:
         tier = 2
+    if isinstance(sample, str) and SUMMARY_RE.search(sample.split("\n", 1)[0]):
+        tier = 3
     return (tier, -position)
 
 
@@ -817,7 +832,8 @@ def scrub(text: str) -> str:
 #: What extract_log() keeps, by version. The indexer stores the version a log
 #: was extracted with and re-extracts the logs still in the bucket that an
 #: older one read. 2: crash fingerprints, and each error's line in the log.
-EXTRACT_VERSION = 2
+#: 3: build-tool summaries ranked after the errors they report (severity).
+EXTRACT_VERSION = 3
 
 
 def extract_log(raw: bytes, max_errors: int = 40, text_chars: int = 1500) -> dict:
@@ -867,6 +883,13 @@ def extract_log(raw: bytes, max_errors: int = 40, text_chars: int = 1500) -> dic
             sig, kind=kind, infra=int(kind in INFRA_KINDS), fatal=fatal, count=count,
             rank=len(errors) + 1, section=package_at(secs, pos), line=first_pos + 1,
             text="\n".join(clip(l) for l in sample.splitlines())[:text_chars])
+    # A fatal summary (ninja/make stopped, ld returned N) says the build died of
+    # an error it does not name; the top-ranked specific error, ranked above it
+    # (severity), is that error: fatal too, and the failed package is its own.
+    if any(e["fatal"] and SUMMARY_RE.search(e["text"].split("\n", 1)[0]) for e in errors.values()):
+        top = next((e for e in errors.values() if not SUMMARY_RE.search(e["text"].split("\n", 1)[0])), None)
+        if top is not None:
+            top["fatal"] = 1
     first_fatal = next((e for e in errors.values() if e["fatal"]), None)
     return {"header": hdr, "no_output": 0, "packages": [s[0] for s in secs],
             "failed_package": (first_fatal or {}).get("section") or (secs[-1][0] if secs else None),
