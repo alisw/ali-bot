@@ -322,7 +322,10 @@ INFRA_RULES = {
     "disk-full": re.compile(r"No space left on device|errno=28\b"),
     "gpu-unavailable": re.compile(r"Could not load GPUReconstruction for specified device"
                                   r"|GPU detection failed"),
-    "remote-cache": re.compile(r"Failed to download output blob .*Blob absent"),
+    # recc giving up on the build cache: a blob it needs is absent, or it ran out
+    # of retries talking to it (4 PRs on 2026-11-17/18, 3 of them green on a re-run).
+    "remote-cache": re.compile(r"Failed to download output blob .*Blob absent"
+                               r"|Retry limit \(\d+\) exceeded for .*last gRPC error was"),
     "missing-system-dep": re.compile(r"The required package \S+ was not found\.\s+Please install it"
                                      r"|^\s*Could NOT find \S+ \(missing:"
                                      r"|REQUIRED package\(s\) are missing"),
@@ -839,7 +842,8 @@ def scrub(text: str) -> str:
 #: was extracted with and re-extracts the logs still in the bucket that an
 #: older one read. 2: crash fingerprints, and each error's line in the log.
 #: 3: build-tool summaries ranked after the errors they report (severity).
-EXTRACT_VERSION = 3
+#: 4: recc's gRPC retry limit is remote-cache (infra).
+EXTRACT_VERSION = 4
 
 
 def extract_log(raw: bytes, max_errors: int = 40, text_chars: int = 1500) -> dict:

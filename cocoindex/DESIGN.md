@@ -164,7 +164,7 @@ Every CI build log in `s3://alice-build-logs`, into `ci-failures.db`, so that PR
   | `disk-full` | 33 | "No space left on device", errno 28 (18 on one macOS check) |
   | `missing-system-dep` | ~75 | a system package missing from the builder image (GLUT, GIF, LibLZMA, ...) |
   | `alidist-sync` | 29 | "FindO2GPU.cmake differs ... compared to alidist" |
-  | `remote-cache` | 16 | recc "Blob absent" |
+  | `remote-cache` | 16 | recc "Blob absent"; since 2026-11-18 also recc's `Retry limit (_) exceeded for "_", last gRPC error was _` (4 PRs on 2026-11-17/18) |
   | `killed` | 0 | OOM; kept from report-pr-errors |
   | `git-fetch` | (new) | aliBuild could not update a mirror: "Git command for package 'ONNXRuntime' failed." |
 
