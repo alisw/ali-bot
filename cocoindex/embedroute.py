@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import random
 import sys
 import threading
 import time
@@ -54,19 +55,24 @@ def model() -> str:
     return os.environ.get("EMBED_MODEL", "openai/embeddinggemma-300m").split("/", 1)[-1]
 
 
-def embed(route: str, text: str, timeout: float, lookup=None) -> list[float]:
+def embed(route: str, text: str, timeout: float, lookup=None, fresh: bool = False) -> list[float]:
     """route's normalised embedding of text; lookup(route) -> (base, token) or
-    None, by default from ROUTE_<R>_URL/_TOKEN (the MCP server asks its proxy)."""
+    None, by default from ROUTE_<R>_URL/_TOKEN (the MCP server asks its proxy).
+    fresh: send a random sentence along in the same request, so that a server
+    caching answers (aigw is a LiteLLM gateway) cannot answer from its cache:
+    on 2026-11-18 aigw answered the fixed reference text in 0.4 s while it
+    took 42 s on average, or never answered, for any new text."""
     ep = (lookup or endpoint)(route)
     if not ep:
         raise RuntimeError(f"no endpoint for route {route}")
     url, token = ep
+    inputs = [text] + ([f"route check {random.random():.12f}: the time a new text takes"] if fresh else [])
     req = urllib.request.Request(url.rstrip("/") + "/embeddings", method="POST",
-                                 data=json.dumps({"model": model(), "input": [text]}).encode(),
+                                 data=json.dumps({"model": model(), "input": inputs}).encode(),
                                  headers={"Content-Type": "application/json",
                                           **({"Authorization": f"Bearer {token}"} if token else {})})
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        v = json.load(r)["data"][0]["embedding"]
+        v = min(json.load(r)["data"], key=lambda d: d.get("index", 0))["embedding"]
     n = sum(x * x for x in v) ** 0.5
     if not v or not n:
         raise RuntimeError(f"{route}: empty embedding")
@@ -153,7 +159,7 @@ class Picker:
     def _timed(self, route: str, timeout: float):
         t0 = time.monotonic()
         try:
-            return embed(route, REF_TEXT, timeout, self.lookup), time.monotonic() - t0, None
+            return embed(route, REF_TEXT, timeout, self.lookup, fresh=True), time.monotonic() - t0, None
         except Exception as e:
             return None, time.monotonic() - t0, f"no answer ({type(e).__name__}: {str(e)[:120]})"
 
