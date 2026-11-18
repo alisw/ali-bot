@@ -183,6 +183,14 @@ class LogTest(unittest.TestCase):
                      "ERROR: O2 exit code is 1"):
             self.assertLess(dev, L.severity((1, line, "error", 9)), line)
 
+    def test_recc_retry_limit_is_remote_cache(self):
+        line = ('Retry limit (4) exceeded for "FindMissingBlobs", last gRPC error was '
+                '14: failed to connect to all addresses')
+        kinds = L.classify_kinds()
+        hit = next((k for k, rx in kinds.items() if rx.search(line)), None)
+        self.assertEqual(hit, "remote-cache")
+        self.assertIn("remote-cache", L.INFRA_KINDS)
+
     def test_alidist_header(self):
         sha = "0123456789abcdef0123456789abcdef01234567"
         text = ("Finished building on ci-efba6f.example.org at 2026-11-16-10:00:00\n"

@@ -610,7 +610,7 @@ class Templates:
         if kind in ("error", "test"):
             r = self._test(first)
             fk = "test" if r else None
-        if r is None and kind in ("error", "test"):
+        if r is None and kind in ("error", "test", "remote-cache"):
             msg = message_of(sig_exact)
             for _name, rx, text in TOOLS:
                 t = rx.match(msg)
