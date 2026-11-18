@@ -295,6 +295,21 @@ snapshot() {
     log "snapshot $run_id failed; local state is intact, the next pass retries"
 }
 
+# Under driver.sh: the deploy ref the Nomad variable names now differs from the
+# one this runner was started with. Checked only where stopping costs nothing:
+# after a flow's snapshot and while sleeping. Exit 75 asks the driver to reload.
+reload_requested() {
+  [ -n "${DEPLOY_ENV:-}" ] && [ "${DEPLOYED_REF+set}" = set ] || return 1
+  local now
+  now=$(sed -n 's/^DEPLOY_REF=//p' "$DEPLOY_ENV" 2>/dev/null | tail -1)
+  [ "$now" != "$DEPLOYED_REF" ]
+}
+reload_if_requested() {
+  reload_requested || return 0
+  log "deploy ref changed (${DEPLOYED_REF:-jobspec code} -> $(sed -n 's/^DEPLOY_REF=//p' "$DEPLOY_ENV" | tail -1)); reloading"
+  exit 75
+}
+
 # The flows of one pass, in the order they run. Shuffled every pass, so a flow
 # that hits PASS_TIMEOUT (commits and prs, while the embedder is slow) does not
 # always run before the others: each gets to go first, with the GitHub budget
@@ -347,6 +362,7 @@ while :; do
     # than a publish (~40 s for all three). The next run publishes it.
     [ "$stopping" = 1 ] && { log "$f: stopping before its snapshot"; exit 0; }
     snapshot "$f"
+    reload_if_requested
   done
   [ "$stopping" = 1 ] && exit 0
   metric cocoindex_pass -- "seconds=$(( $(date +%s) - started ))"
@@ -355,6 +371,7 @@ while :; do
   until_next=$(( $(date +%s) + PASS_SLEEP ))
   while [ "$stopping" != 1 ] && [ "$(date +%s)" -lt "$until_next" ]; do
     resolve_endpoints >/dev/null 2>&1 || true
+    reload_if_requested
     probe_embedders
     nap=$(( until_next - $(date +%s) )); [ "$nap" -gt "$PROBE_INTERVAL" ] && nap=$PROBE_INTERVAL
     [ "$nap" -gt 0 ] || break
