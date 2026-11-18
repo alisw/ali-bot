@@ -60,6 +60,14 @@ async def main():
     except ContextWindowExceededError:
         check(len(f.sent) == 3, "too long even at 1000: the error is raised")
 
+    class BadRequestError(Exception):
+        """litellm's, as llama.cpp's refusal arrives (ALICE's server)."""
+
+    f = Fake(2600, error=BadRequestError, message="litellm.BadRequestError: OpenAIException - Error code: 400 - "
+             "input (2130 tokens) is larger than the max context size (2048 tokens). skipping")
+    check(await embedtext.embed_doc(f, "t" * 5000) == p + 2500 and [len(t) - p for t in f.sent] == [5000, 2500],
+          "llama.cpp's wording (ALICE's server) is recognised too: retried at 2500")
+
     f = Fake(10, error=RuntimeError, message="Error code: 500 - upstream unavailable")
     try:
         await embedtext.embed_doc(f, "u" * 5000)
