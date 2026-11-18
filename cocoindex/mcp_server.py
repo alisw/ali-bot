@@ -116,7 +116,7 @@ MAX_EMBEDS = int(os.environ.get("MCP_MAX_EMBEDS", "4"))
 EMBED_TIMEOUT_S = float(os.environ.get("MCP_EMBED_TIMEOUT_S", "20"))
 EMBED_ROUTES = [r for r in os.environ.get("MCP_EMBED_ROUTES", "aigw").split(",") if r]
 FAST_TIMEOUT_S = float(os.environ.get("MCP_EMBED_FAST_TIMEOUT_S", "12"))
-NO_INSTANCE_RECHECK_S = 30
+ROUTE_RETRY_S = 30
 ROUTE_CHECK_TICK_S = 5
 ROUTE_RECHECK_S = 600
 MAX_SQL = int(os.environ.get("MCP_MAX_SQL", "2"))
@@ -420,9 +420,11 @@ def _check_route(route: str) -> None:
     with _route_lock:
         prev = _route_verdict.get(route)
         _route_verdict[route] = (ok, now)
-        # Its instances are not registered yet (they start next to this
-        # server): look again in NO_INSTANCE_RECHECK_S, not ROUTE_RECHECK_S.
-        _route_due[route] = now + (NO_INSTANCE_RECHECK_S if "NoInstance" in why else ROUTE_RECHECK_S)
+        # A route that failed its check is looked at again in ROUTE_RETRY_S, not
+        # ROUTE_RECHECK_S: its instances may not be registered yet, or the proxy
+        # not ready (2026-11-18: alice-embed and aigw answered 503 at start,
+        # 0.1 s after it, and would have stayed out for 10 minutes).
+        _route_due[route] = now + (ROUTE_RECHECK_S if ok else ROUTE_RETRY_S)
     if prev is None or prev[0] != ok:
         log.info("embedding route %s: %s (%.1f s)", route, "in use" if ok else why, dt)
 
@@ -439,7 +441,7 @@ def _route_checker(stop: threading.Event) -> None:
         except Exception as e:  # noqa: BLE001 -- a check must never end the loop
             log.warning("embedding route %s: check failed: %s", route, e)
             with _route_lock:
-                _route_due[route] = time.monotonic() + NO_INSTANCE_RECHECK_S
+                _route_due[route] = time.monotonic() + ROUTE_RETRY_S
         finally:
             with lock:
                 running.discard(route)
@@ -463,7 +465,7 @@ def _route_failed(route: str, e: Exception) -> None:
     passes it; checked again soon, not after ROUTE_RECHECK_S."""
     with _route_lock:
         _route_verdict[route] = (False, time.monotonic())
-        _route_due[route] = time.monotonic() + NO_INSTANCE_RECHECK_S
+        _route_due[route] = time.monotonic() + ROUTE_RETRY_S
     _route_wake.set()
 
 
