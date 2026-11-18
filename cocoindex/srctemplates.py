@@ -43,8 +43,9 @@ EXTS = (".cxx", ".cpp", ".cc", ".h", ".hpp", ".hxx", ".C", ".inl", ".icc")
 SH_EXTS, PY_EXTS = (".sh",), (".py",)
 SKIP_DIRS = {".git", "build", "doc", "docs", "tutorials", "roottest", "test_data", "interpreter"}
 INDEX = "templates.json"
-INDEX_VERSION = 4   # 2: signposts, ROOT-named calls read both ways; 3: shell, Python, ROOT class prefix;
-                    # 4: no comments, no function definitions
+INDEX_VERSION = 5   # 2: signposts, ROOT-named calls read both ways; 3: shell, Python, ROOT class prefix;
+                    # 4: no comments, no function definitions; 5: one template per line of a
+                    # message, Python's %r and <...log...>.write()
 
 CALL_RE = re.compile(
     r"\b(?P<log>LOG|LOGP|LOGF|LOG_IF|LOGP_IF|LOGF_IF|ILOG|QcInfoLogger::\w+|throw\s+(?:[\w:]+::)?"
@@ -58,7 +59,7 @@ CALL_RE = re.compile(
     # leak anything; at worst it attributes a message to the wrong call.
     r"|\b(?P<gen>\w*(?:[Rr]eport|[Ff]atal|[Ee]rror|[Ww]arn|[Ee]xception|[Mm]essage|[Ff]ail|[Pp]rint)\w*)\s*\(")
 STR_RE = re.compile(r'(?:u8|L|u|U)?"((?:[^"\\\n]|\\.)*)"')
-FMT_RE = re.compile(r"%\{[^{}]*\}[A-Za-z]|\{[^{}]*\}|%[-+ #0]*(?:\d+|\*)?(?:\.(?:\d+|\*))?(?:hh|h|ll|l|L|q|j|z|t)?[diouxXeEfFgGaAcspn]")
+FMT_RE = re.compile(r"%\{[^{}]*\}[A-Za-z]|\{[^{}]*\}|%[-+ #0]*(?:\d+|\*)?(?:\.(?:\d+|\*))?(?:hh|h|ll|l|L|q|j|z|t)?[diouxXeEfFgGaAcspnr]")
 HOLE = "\x00"
 CLS = "\x01"   # ROOT prints Error() locations as "<Class::method>": an optional, unshown class prefix
 SPECIAL = (HOLE, CLS)
@@ -207,7 +208,7 @@ def _sh_pieces(lit: str, printf: bool) -> list[str]:
 # Python: print(...), raise X(...), logging/logger calls and helpers whose name
 # says they report; f-string {...} and %-formats are values, as is any code
 # between two literals.
-PY_CALL_RE = re.compile(r"\b(?:print|raise\s+[\w.]+|(?:logging|logger|log|self\.\w*log\w*)\.\w+"
+PY_CALL_RE = re.compile(r"\b(?:print|raise\s+[\w.]+|(?:logging|logger|log|self\.\w*log\w*)\.\w+|\w*log\w*\.write"
                         r"|\w*(?:[Ee]rror|[Ww]arn|[Ff]atal|[Ff]ail|[Dd]ie)\w*)\s*\(")
 PY_STR_RE = re.compile(r"""[rRbBuUfF]{0,2}("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')""")
 
@@ -229,6 +230,27 @@ def _py_args(src: str, start: int) -> str | None:
             depth -= 1
             if depth == 0:
                 return src[start:i]
+        i += 1
+    return None
+
+
+def _after_first_arg(args: str) -> str | None:
+    """A call's arguments without the first one (up to its top-level comma)."""
+    depth, i = 0, 0
+    while i < len(args):
+        ch = args[i]
+        if ch in "\"'":
+            m = PY_STR_RE.match(args, i)
+            if not m:
+                return None
+            i = m.end()
+            continue
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            return args[i + 1:]
         i += 1
     return None
 
@@ -279,6 +301,26 @@ def _keep(pcs: list[str] | None) -> list[str] | None:
     return pcs
 
 
+def _keep_lines(pcs: list[str] | None) -> list[list[str]]:
+    """One template per line of a message: logscan matches a log line by line,
+    so a literal holding newlines ("%s command for package %r failed.\\n
+    Command: %s ...", aliBuild's workarea.py) would never match as a whole.
+    A message with only a trailing newline gives the one template it gave
+    before. Lines too short to anchor a match are dropped (_keep)."""
+    if not pcs:
+        return []
+    lines: list[list[str]] = [[]]
+    for p in pcs:
+        if p in SPECIAL or "\n" not in p:
+            lines[-1].append(p)
+            continue
+        first, *rest = p.split("\n")
+        lines[-1].append(first)
+        for q in rest:
+            lines.append([q])
+    return [k for k in (_keep(_merge(l)) for l in lines) if k]
+
+
 def extract(repo: str, root: str) -> list[dict]:
     out = []
     for d, f in _walk(root):
@@ -292,15 +334,15 @@ def extract(repo: str, root: str) -> list[dict]:
         rel = os.path.relpath(p, root)
         if f.endswith(SH_EXTS):
             for m in SH_CALL_RE.finditer(src):
-                pcs = _keep(_sh_pieces(m.group(1), src[m.start():m.start() + 6] == "printf"))
-                if pcs:
+                for pcs in _keep_lines(_sh_pieces(m.group(1), src[m.start():m.start() + 6] == "printf")):
                     out.append({"repo": repo, "path": rel, "line": src.count("\n", 0, m.start()) + 1, "pieces": pcs})
             continue
         if f.endswith(PY_EXTS):
             for m in PY_CALL_RE.finditer(src):
                 args = _py_args(src, m.end())
-                pcs = _keep(_py_pieces(args)) if args is not None else None
-                if pcs:
+                if args is not None and m.group(0).startswith("dieOnError"):
+                    args = _after_first_arg(args)   # aliBuild's dieOnError(condition, message)
+                for pcs in _keep_lines(_py_pieces(args)) if args is not None else ():
                     out.append({"repo": repo, "path": rel, "line": src.count("\n", 0, m.start()) + 1, "pieces": pcs})
             continue
         if not CALL_RE.search(src):
@@ -326,9 +368,8 @@ def extract(repo: str, root: str) -> list[dict]:
             else:
                 variants = [_pieces(st, head, None)]
             line = src.count("\n", 0, m.start()) + 1
-            for pcs in map(_keep, variants):
-                if pcs:
-                    out.append({"repo": repo, "path": rel, "line": line, "pieces": pcs})
+            for pcs in (k for v in variants for k in _keep_lines(v)):
+                out.append({"repo": repo, "path": rel, "line": line, "pieces": pcs})
     return out
 
 
@@ -428,6 +469,12 @@ def message_of(sig_exact: str) -> str:
         return first[m.end():].strip()
     i = first.find("Error in <")
     return first[i:] if i >= 0 else first.strip()
+
+
+#: The kinds whose message may be printed by public code: compiler and runtime
+#: errors, and aliBuild's own failed source updates (logscan "git-fetch",
+#: printed by aliBuild's workarea.py).
+SOURCE_KINDS = ("error", "git-fetch")
 
 
 class Templates:
@@ -568,7 +615,7 @@ class Templates:
                 if t:
                     r, fk = (text, None, None, None, list(t.groups())), "tool"
                     break
-        if r is None and kind == "error":
+        if r is None and kind in SOURCE_KINDS:
             r = self._source(message_of(sig_exact))
             fk = "source" if r else None
         if r is None:

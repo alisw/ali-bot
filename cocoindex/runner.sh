@@ -38,8 +38,9 @@ RESTORE=${RESTORE:-auto}                      # auto | skip (= accept re-embeddi
 ONCE=${ONCE:-0}                               # 1 = a single pass, no sleep (tests)
 export COMMITS_REPOS=${COMMITS_REPOS:-AliceO2Group/AliceO2:dev,AliceO2Group/O2Physics:master,AliceO2Group/O2DPG:master,alisw/alidist:master,alisw/ali-bot:master}
 # Where the public templates of runtime error messages come from (srctemplates.py);
-# empty = none (ci-failures then publishes those errors by hash only).
-SRC_REPOS=${SRC_REPOS-AliceO2Group/AliceO2:dev,AliceO2Group/O2Physics:master,AliceO2Group/O2DPG:master,AliceO2Group/QualityControl:master,root-project/root:master,FairRootGroup/FairMQ:dev,FairRootGroup/FairRoot:dev}
+# empty = none (ci-failures then publishes those errors by hash only). aliBuild
+# for its own messages in the logs (a failed mirror update, logscan git-fetch).
+SRC_REPOS=${SRC_REPOS-AliceO2Group/AliceO2:dev,AliceO2Group/O2Physics:master,AliceO2Group/O2DPG:master,AliceO2Group/QualityControl:master,root-project/root:master,FairRootGroup/FairMQ:dev,FairRootGroup/FairRoot:dev,alisw/alibuild:master}
 export SRCTEMPLATES="$COCO_ROOT/sources"
 
 export COCOINDEX_DISABLE_USAGE_TRACKING=1
