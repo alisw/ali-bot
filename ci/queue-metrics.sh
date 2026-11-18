@@ -119,11 +119,16 @@ done
 # directory, so it does not collide with another pool's collector.
 graphql_budget=$PWD/.graphql-budget
 # The lister writes the file only when it actually queries GitHub; a listing
-# answered from the shared cache (another pool's collector asked first) leaves
-# it alone. Remove it first, so that only a reading taken in THIS cycle is
-# published: before 2026-11-18 each of the ~15 collectors re-pushed whatever it
-# last saw, up to an hour old, and the one series mixed fresh and stale values
-# (4404 and 3142 within seconds of each other).
+# answered from the shared cache (an earlier pool in this round asked first)
+# leaves it alone. Remove it first, so that only a reading taken by THIS run is
+# published, not the previous pool's again.
+#
+# Two levels in the series (e.g. 4806 and 4098 seconds apart) are not stale
+# readings: GitHub answers rateLimit from two counters for the same account,
+# each with its own resetAt and each counting only the requests it serves
+# (measured 2026-11-18). A request that lands on an empty counter is refused
+# while the other still has points, so the lower level is the one to watch:
+# min_over_time(ci_github_api_graphql_remaining[5m]).
 rm -f "$graphql_budget"
 if queue=$(WORKER_INDEX=0 WORKERS_POOL_SIZE=1 \
            short_timeout list-branch-pr --all-groups --no-status \
