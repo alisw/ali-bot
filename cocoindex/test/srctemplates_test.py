@@ -65,7 +65,18 @@ DPGSRC = {
                                     'raise ValueError("Unknown collision system " + system)\n'
                                     "logger.error('Anchoring failed for run %d after %d tries', run, n)\n",
 }
-for repo, files in (("AliceO2Group/AliceO2", SRC), ("root-project/root", ROOTSRC), ("AliceO2Group/O2DPG", DPGSRC)):
+# aliBuild's own messages (alibuild_helpers/workarea.py, logged_scm): one
+# literal over several lines, %r, written with logf.write, and dieOnError.
+ALIBUILDSRC = {
+    "alibuild_helpers/workarea.py":
+        '      logf.write("%s command for package %r failed.\\n"\n'
+        '                 "Command: %s %s\\nIn directory: %s\\nExit code: %d\\n" %\n'
+        '                 (scm.name, package, scm.name.lower(), " ".join(command), directory, err))\n'
+        '  dieOnError(err, "Error during %s %s for reference repo for %s." %\n'
+        '             (scm.name.lower(), command[0], package))\n',
+}
+for repo, files in (("AliceO2Group/AliceO2", SRC), ("root-project/root", ROOTSRC), ("AliceO2Group/O2DPG", DPGSRC),
+                    ("alisw/alibuild", ALIBUILDSRC)):
     d = work / repo.replace("/", "__")
     for rel, text in files.items():
         (d / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -74,7 +85,7 @@ for repo, files in (("AliceO2Group/AliceO2", SRC), ("root-project/root", ROOTSRC
     subprocess.run(["git", "-C", str(d), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(d), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "i"], check=True)
 
-REPOS = ["AliceO2Group/AliceO2", "root-project/root", "AliceO2Group/O2DPG"]
+REPOS = ["AliceO2Group/AliceO2", "root-project/root", "AliceO2Group/O2DPG", "alisw/alibuild"]
 idx = S.build(str(work), REPOS)
 texts = {"".join("_" if p == S.HOLE else "" if p == S.CLS else p for p in t["pieces"]).strip() for t in idx["templates"]}
 print("   ", sorted(texts))
@@ -97,6 +108,10 @@ check(line["Message after a block comment"] == 10, f"line numbers hold across co
 check({"Test _: _ with generator _ -> FAILED", "Workflow _ finished with _ errors", "Cannot create workflow: _ has no generator",
        "Unknown collision system _", "Anchoring failed for run _ after _ tries"} <= texts,
       "shell echo/printf and Python print/raise/logging give templates")
+check({"_ command for package _ failed.", "Error during _ _ for reference repo for _."} <= texts
+      and not any("Exit code" in t for t in texts),
+      "aliBuild: one template per line of a multi-line literal (%r included), logf.write and dieOnError; "
+      "lines too short to anchor a match dropped")
 check(S.build(str(work), REPOS) is None, "same heads: the index is kept")
 
 key = b"k" * 32
@@ -161,6 +176,11 @@ check(m and m["fingerprint"] == 'fatal error: in "timestamptest": critical check
 m = T.match("error", 'CCDB/test/testCcdbApi.cxx: error: in "timestamptest": difference{nan} between a{1} and b{2} exceeds 1%')
 check(m and m["fingerprint"] == 'error: in "timestamptest": _' and m["filler_hash"], f"another Boost.Test message ({m})")
 check(T.match("cmake", "Requested resource does not exist: x") is None, "only error and test kinds are matched")
+g = T.match("git-fetch", "Git command for package 'ONNXRuntime' failed.")
+check(g and g["fingerprint"] == "_ command for package _ failed." and g["fingerprint_kind"] == "source"
+      and "alisw/alibuild" in g["fingerprint_src"] and "workarea.py#L1" in g["fingerprint_src"]
+      and g["filler_hash"],
+      f"logscan's git-fetch (aliBuild could not update a mirror) gets aliBuild's own template ({g})")
 
 shutil.rmtree(work)
 print(f"\n{len(failures)} failure(s)")
