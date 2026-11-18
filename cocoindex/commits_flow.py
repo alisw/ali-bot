@@ -54,11 +54,13 @@ from numpy.typing import NDArray
 # embedtext.py (the embeddinggemma task prefixes) ships next to this file.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import embedtext  # noqa: E402
+import embedroute  # noqa: E402
 import metrics  # noqa: E402
 
 # Embedding requests, texts and latency of this run, to MONIT (metrics.py);
 # nothing without OTLP_METRICS_URL.
 metrics.install_litellm("commits")
+embedroute.start_repicker("commits")
 
 FLOW_DB = os.environ.get("FLOW_DB", "commits.db")
 MIRRORS = pathlib.Path(os.environ.get("COMMITS_MIRRORS", "mirrors"))

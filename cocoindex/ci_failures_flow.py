@@ -103,11 +103,13 @@ import logscan  # noqa: E402
 
 sys.path.insert(0, str(_HERE))  # embedtext.py ships next to this file
 import embedtext  # noqa: E402
+import embedroute  # noqa: E402
 import metrics  # noqa: E402
 
 # Embedding requests, texts and latency of this run, plus the sync's counts
 # below, to MONIT (metrics.py); nothing without OTLP_METRICS_URL.
 METRICS = metrics.install_litellm("ci-failures")
+embedroute.start_repicker("ci-failures")
 
 
 def gauge(name: str, value: float) -> None:

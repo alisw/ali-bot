@@ -135,6 +135,50 @@ try:
           f"aigw hanging: the fast route answers and is used without waiting for aigw ({got}, {took:.1f} s)")
     slow(aigw, 0)
 
+    # ---- mid-pass re-pick (a running flow's background thread)
+    import importlib.util as _ilu
+    _spec = _ilu.spec_from_file_location("er2", HERE.parent / "embedroute.py")
+    er2 = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(er2)
+    os.environ.update(ROUTE_FAST_URL=same, ROUTE_AIGW_URL=aigw, ROUTE_FAST_TOKEN="t", ROUTE_AIGW_TOKEN="t",
+                      EMBED_REF_FILE=str(work / "repick-ref.json"))
+    pk = er2.Picker()
+    slow(same, 1.5)
+    new, times = er2.repick(pk, ["fast", "aigw"], "fast", 5)
+    check(new == "aigw", f"re-pick: the current route clearly slower: move to aigw ({new}, {times})")
+    slow(same, 1.0)
+    slow(aigw, 1.5)
+    new, times = er2.repick(pk, ["fast", "aigw"], "aigw", 5)
+    check(new is None, f"re-pick: the other route faster, but not twice as fast: stay ({times})")
+    slow(same, 0)
+    slow(aigw, 0.5)
+    new, times = er2.repick(pk, ["fast", "aigw"], "aigw", 5)
+    slow(aigw, 0)
+    check(new is None, f"re-pick: many times faster, but by less than {er2.SWITCH_MIN_GAIN_S} s: stay ({times})")
+    new, times = er2.repick(pk, ["fast", "aigw"], "gone", 5)
+    check(new in ("fast", "aigw"), f"re-pick: the current route not answering: move ({new})")
+    os.environ["ROUTE_FAST_URL"] = other
+    slow(aigw, 1.5)
+    new, times = er2.repick(pk, ["fast", "aigw"], "aigw", 5)
+    slow(aigw, 0)
+    check(new is None and "fast" not in times,
+          f"re-pick: a faster route with other vectors is never a candidate ({new}, {sorted(times)})")
+    os.environ["ROUTE_FAST_URL"] = same
+    # The switch itself: litellm reads the endpoint at every request, so a
+    # running flow's embeddings follow os.environ (nothing in a memo key moves).
+    import asyncio
+    import litellm
+    os.environ.pop("OPENAI_BASE_URL", None)
+    before = {u: (work / f"embed-{u.split(':')[2].split('/')[0]}.log").read_text().count("\n") for u in (same, aigw)}
+    er2.use_route("aigw")
+    asyncio.run(litellm.aembedding(model="openai/embeddinggemma-300m", input=["one"]))
+    er2.use_route("fast")
+    asyncio.run(litellm.aembedding(model="openai/embeddinggemma-300m", input=["two"]))
+    after = {u: (work / f"embed-{u.split(':')[2].split('/')[0]}.log").read_text().count("\n") for u in (same, aigw)}
+    check(after[aigw] - before[aigw] == 1 and after[same] - before[same] == 1 and os.environ["EMBED_ROUTE"] == "fast",
+          f"re-pick: litellm follows the switch at the next request (aigw +{after[aigw] - before[aigw]}, "
+          f"fast +{after[same] - before[same]})")
+
     # ---- the MCP server: query embeddings through the fast route, aigw as fallback
     os.environ.update(MCP_EMBED_ROUTES="fast,aigw", MCP_EMBED_FAST_TIMEOUT_S="2", MCP_EMBED_TIMEOUT_S="5",
                       COCO_CACHE=str(work / "cache"), COCO_STORE=f"file://{work}/store",
