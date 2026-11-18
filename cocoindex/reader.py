@@ -35,6 +35,7 @@ import argparse
 import hashlib
 import json
 import os
+import random
 import shutil
 import sqlite3
 import subprocess
@@ -219,10 +220,25 @@ def embed_endpoint() -> tuple[str, str]:
     return addr + "/aigw/v1", token
 
 
+class NoInstance(LookupError):
+    """A route served by instances (ROUTE_<R>_URLS_FILE) has none right now."""
+
+
 def route_endpoint(route: str) -> tuple[str, str]:
-    """(base, key) for an embedding route: ROUTE_<R>_URL/_TOKEN when set (tests),
-    OPENAI_API_BASE/KEY for aigw when set, else the security-proxy route."""
+    """(base, key) for an embedding route: ROUTE_<R>_URLS_FILE when set, one of
+    the base URLs it lists (one per line, picked at random: the instances of a
+    scalable group, the file kept up to date by a Nomad template, no key);
+    ROUTE_<R>_URL/_TOKEN when set (tests); OPENAI_API_BASE/KEY for aigw when
+    set; else the security-proxy route."""
     k = route.upper().replace("-", "_")
+    if os.environ.get(f"ROUTE_{k}_URLS_FILE"):
+        try:
+            urls = [u.strip() for u in Path(os.environ[f"ROUTE_{k}_URLS_FILE"]).read_text().splitlines() if u.strip()]
+        except OSError:
+            urls = []
+        if not urls:
+            raise NoInstance(f"route {route}: no instance registered")
+        return random.choice(urls), os.environ.get(f"ROUTE_{k}_TOKEN", "")
     if os.environ.get(f"ROUTE_{k}_URL"):
         return os.environ[f"ROUTE_{k}_URL"], os.environ.get(f"ROUTE_{k}_TOKEN", "")
     if route == "aigw":

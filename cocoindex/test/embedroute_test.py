@@ -192,6 +192,42 @@ try:
     slow(same, 0)
     check([u[-1][1] for u in seq] == ["fast", "aigw", "aigw"],
           f"MCP: routes are tried fastest first; a slower route is measured once, then aigw leads ({seq})")
+
+    # ---- a route served by several instances (the job's CPU servers):
+    # ROUTE_<R>_URLS_FILE, kept up to date by a Nomad template.
+    urls = work / "cpu-urls"
+    os.environ.pop("ROUTE_FAST_URL", None)
+    os.environ["ROUTE_FAST_URLS_FILE"] = str(urls)
+    os.environ["ROUTE_AIGW_URL"] = aigw
+
+    def query_file(text):
+        S._embed_cached.cache_clear()
+        used.clear()
+        try:
+            return S._embed_cached(text), list(used)
+        except Exception as e:
+            return e, list(used)
+
+    S._route_verdict.clear()
+    S._route_ewma.clear()
+    urls.write_text("")
+    _, u = query_file("no instance yet")
+    v = S._route_verdict.get("fast")
+    check(u == [("cocoindex_mcp_embed_route", "aigw")] and v and not v[0]
+          and time.monotonic() - v[1] > S.ROUTE_RECHECK_S - S.NO_INSTANCE_RECHECK_S - 5,
+          f"MCP: no instance registered yet: aigw, and the route is looked at again within "
+          f"{S.NO_INSTANCE_RECHECK_S} s, not {S.ROUTE_RECHECK_S} ({u})")
+    urls.write_text(f"{same}\n{same}\n")
+    S._route_verdict.clear()
+    S._route_ewma.clear()
+    _, u = query_file("instances registered")
+    check(u == [("cocoindex_mcp_embed_route", "fast")],
+          f"MCP: once instances are listed, they are checked and answer the query ({u})")
+    urls.write_text(f"{dead}\n")
+    S._route_ewma["fast"] = 0.0
+    _, u = query_file("instance gone")
+    check(("cocoindex_mcp_embed_route_failed", "fast") in u and ("cocoindex_mcp_embed_route", "aigw") in u,
+          f"MCP: an instance gone: the query falls back to aigw at once ({u})")
 finally:
     for p in procs:
         p.terminate()
