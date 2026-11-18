@@ -219,6 +219,18 @@ def embed_endpoint() -> tuple[str, str]:
     return addr + "/aigw/v1", token
 
 
+def route_endpoint(route: str) -> tuple[str, str]:
+    """(base, key) for an embedding route: ROUTE_<R>_URL/_TOKEN when set (tests),
+    OPENAI_API_BASE/KEY for aigw when set, else the security-proxy route."""
+    k = route.upper().replace("-", "_")
+    if os.environ.get(f"ROUTE_{k}_URL"):
+        return os.environ[f"ROUTE_{k}_URL"], os.environ.get(f"ROUTE_{k}_TOKEN", "")
+    if route == "aigw":
+        return embed_endpoint()
+    addr, token = _proxy(route)
+    return f"{addr}/{route}/v1", token
+
+
 def embed_query(text: str, endpoint: tuple[str, str] | None = None,
                 as_document: bool = False, timeout: float = 60) -> list[float]:
     """Embed a search text with the query prefix the index was built for, or

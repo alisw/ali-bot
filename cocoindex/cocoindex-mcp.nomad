@@ -33,6 +33,13 @@
 #   * decide the public URL (DECISION below) and whether it is reachable from
 #     outside CERN.
 
+# The ALICE embedding server: the same model as aigw (CERN's gateway), tried
+# first when it answers faster (embedroute.py). Change the machine here; the
+# route keeps its name, alice-embed, in the code, the metrics and the logs.
+locals {
+  alice_embed_upstream = "http://pcapiserv12.cern.ch:8100"
+}
+
 job "cocoindex-mcp" {
   datacenters = ["meyrin"]
   type        = "service"
@@ -219,6 +226,11 @@ job "cocoindex-mcp" {
       }
 
       # JSON has no comments: explanations stay above, never inside the heredoc.
+      # alice-embed: ALICE's embedding server (local.alice_embed_upstream), with
+      # aigw's model, used when it answers first (embedroute.py: only while its
+      # vectors are aigw's). It offers no TLS, hence insecure_http_upstream:
+      # its key crosses the CERN network in clear text; the proxy warns about
+      # the route at startup.
       template {
         destination = "local/config.json"
         change_mode = "restart"
@@ -234,6 +246,9 @@ job "cocoindex-mcp" {
             {"name": "aigw", "prefix": "/aigw/",
              "upstream": "https://aigw.cern.ch",
              "inject_headers": {"Authorization": {"ingest": "aigw-key"}}},
+            {"name": "alice-embed", "prefix": "/alice-embed/",
+             "upstream": "${local.alice_embed_upstream}", "insecure_http_upstream": true,
+             "inject_headers": {"Authorization": {"ingest": "alice-embed-key"}}},
             {"name": "monit-otlp", "prefix": "/otlp/",
              "upstream": "https://monit-otlp.cern.ch:4319",
              "inject_headers": {"Authorization": {"ingest": "monit-otlp-auth"}}},
@@ -318,6 +333,15 @@ job "cocoindex-mcp" {
             printf '%s' "$key" | "$BIN/security-proxy-push" monit-otlp-auth --socket "$SOCK" || return 1
           fi
           unset key
+          # Optional: the key of the ALICE embedding server (alice-embed):
+          # kv/data/cocoindex alice_embed_key, else aligrid_key (the same key
+          # today). Without it that route answers 401 and aigw serves every
+          # embedding.
+          if key=$(python3 /local/vault-field.py alice_embed_key "Bearer " kv/data/cocoindex 2>/dev/null) ||
+             key=$(python3 /local/vault-field.py aligrid_key "Bearer " kv/data/cocoindex 2>/dev/null); then
+            printf '%s' "$key" | "$BIN/security-proxy-push" alice-embed-key --socket "$SOCK" || return 1
+          fi
+          unset key
         }
 
         # Reprovision whenever the proxy rebinds its ingest socket (inode change),
@@ -327,7 +351,7 @@ job "cocoindex-mcp" {
           current=$(stat -c %i "$SOCK" 2>/dev/null || echo "")
           if [ -n "$current" ] && [ "$current" != "$provisioned" ] && push_all; then
             provisioned=$current
-            echo "provisioned grid-cert, aigw-key, s3 keys and monit-otlp-auth (if set)"
+            echo "provisioned grid-cert, aigw-key, s3 keys, monit-otlp-auth and alice-embed-key (if set)"
           fi
           sleep 5
         done
@@ -412,6 +436,10 @@ job "cocoindex-mcp" {
         # embedder or heavy SQL never holds the MCP_MAX_CONCURRENT slots.
         MCP_MAX_EMBEDS      = "4"
         MCP_EMBED_TIMEOUT_S = "20"
+        # Query embeddings: the faster of alice-embed (ALICE's server, only
+        # while its vectors are aigw's) and aigw (CERN's), the other as fallback
+        # (embedroute.py).
+        MCP_EMBED_ROUTES    = "alice-embed,aigw"
         MCP_MAX_SQL         = "2"
         METRICS_ROUTE       = "monit-otlp"
         METRICS_SERVICE     = "cocoindex-mcp"
@@ -466,6 +494,15 @@ job "cocoindex-mcp" {
         left_delimiter  = "[[%%"
         right_delimiter = "%%]]"
         data            = file("embedtext.py")
+      }
+
+      # Which embedding route to use, and the check that its vectors are aigw's.
+      template {
+        destination     = "local/embedroute.py"
+        change_mode     = "restart"
+        left_delimiter  = "[[%%"
+        right_delimiter = "%%]]"
+        data            = file("embedroute.py")
       }
 
       # Per-tool calls, latencies, errors, slot waits, embedding times, snapshot

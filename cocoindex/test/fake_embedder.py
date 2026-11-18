@@ -28,10 +28,15 @@ TEXTLOG = sys.argv[3] if len(sys.argv) > 3 else None
 DELAY = LOG + ".delay"   # if present: seconds to wait before answering (a slow aigw)
 
 
+#: FAKE_EMBED_SALT: another, incompatible model -- the same text gets another
+#: vector (embedroute.py must refuse such a server).
+SALT = os.environ.get("FAKE_EMBED_SALT", "")
+
+
 def vec(text: str) -> list[float]:
     for prefix in (embedtext.DOC_PREFIX, embedtext.QUERY_PREFIX):
         text = text.removeprefix(prefix)
-    seed = int.from_bytes(hashlib.sha256(text.encode()).digest()[:8], "little")
+    seed = int.from_bytes(hashlib.sha256((SALT + text).encode()).digest()[:8], "little")
     v = np.random.default_rng(seed).standard_normal(768).astype(np.float32)
     return (v / np.linalg.norm(v)).tolist()
 

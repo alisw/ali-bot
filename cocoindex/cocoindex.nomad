@@ -26,6 +26,13 @@
 #   * kv/data/cocoindex must hold aigw_key (the aigw API key, bare) and
 #     github_token (a PAT for the prs flow; public repos, so no scopes needed);
 
+# The ALICE embedding server: the same model as aigw (CERN's gateway), tried
+# first when it answers faster (embedroute.py). Change the machine here; the
+# route keeps its name, alice-embed, in the code, the metrics and the logs.
+locals {
+  alice_embed_upstream = "http://pcapiserv12.cern.ch:8100"
+}
+
 job "cocoindex" {
   datacenters = ["meyrin"]
   type        = "service"
@@ -230,6 +237,11 @@ job "cocoindex" {
       }
 
       # JSON has no comments: explanations stay above, never inside the heredoc.
+      # alice-embed: ALICE's embedding server (local.alice_embed_upstream), with
+      # aigw's model, used when it answers first (embedroute.py: only while its
+      # vectors are aigw's). It offers no TLS, hence insecure_http_upstream:
+      # its key crosses the CERN network in clear text; the proxy warns about
+      # the route at startup.
       template {
         destination = "local/config.json"
         change_mode = "restart"
@@ -245,6 +257,9 @@ job "cocoindex" {
             {"name": "aigw", "prefix": "/aigw/",
              "upstream": "https://aigw.cern.ch",
              "inject_headers": {"Authorization": {"ingest": "aigw-key"}}},
+            {"name": "alice-embed", "prefix": "/alice-embed/",
+             "upstream": "${local.alice_embed_upstream}", "insecure_http_upstream": true,
+             "inject_headers": {"Authorization": {"ingest": "alice-embed-key"}}},
             {"name": "github", "prefix": "/github/",
              "upstream": "https://api.github.com",
              "inject_headers": {"Authorization": {"ingest": "github-token"}}},
@@ -342,6 +357,15 @@ job "cocoindex" {
             printf '%s' "$key" | "$BIN/security-proxy-push" monit-otlp-auth --socket "$SOCK" || return 1
           fi
           unset key
+          # Optional: the key of the ALICE embedding server (alice-embed):
+          # kv/data/cocoindex alice_embed_key, else aligrid_key (the same key
+          # today). Without it that route answers 401 and aigw serves every
+          # embedding.
+          if key=$(python3 /local/vault-field.py alice_embed_key "Bearer " kv/data/cocoindex 2>/dev/null) ||
+             key=$(python3 /local/vault-field.py aligrid_key "Bearer " kv/data/cocoindex 2>/dev/null); then
+            printf '%s' "$key" | "$BIN/security-proxy-push" alice-embed-key --socket "$SOCK" || return 1
+          fi
+          unset key
         }
 
         # Reprovision whenever the proxy rebinds its ingest socket (inode change),
@@ -351,7 +375,7 @@ job "cocoindex" {
           current=$(stat -c %i "$SOCK" 2>/dev/null || echo "")
           if [ -n "$current" ] && [ "$current" != "$provisioned" ] && push_all; then
             provisioned=$current
-            echo "provisioned grid-cert, aigw-key, github-token, s3 keys and monit-otlp-auth (if set)"
+            echo "provisioned grid-cert, aigw-key, github-token, s3 keys, monit-otlp-auth and alice-embed-key (if set)"
           fi
           sleep 5
         done
@@ -479,7 +503,10 @@ job "cocoindex" {
         # Between passes, one short embedding per route, timed, every
         # PROBE_INTERVAL seconds (metrics.py probe): the embedder's own speed,
         # apart from the indexer's load on it.
-        EMBED_PROBE_ROUTES                = "aigw"
+        EMBED_PROBE_ROUTES                = "aigw,alice-embed"
+        # Before each flow, whichever of these answers first with aigw's
+        # vectors (embedroute.py): alice-embed is ALICE's server, aigw CERN's.
+        EMBED_ROUTES                      = "alice-embed,aigw"
         PROBE_INTERVAL                    = "300"
         METRICS_SERVICE                   = "cocoindex"
         DIFF_EMBED_SINCE                  = "2025-01-01"
@@ -612,6 +639,15 @@ job "cocoindex" {
         left_delimiter  = "[[%%"
         right_delimiter = "%%]]"
         data            = file("embedtext.py")
+      }
+
+      # Which embedding route to use, and the check that its vectors are aigw's.
+      template {
+        destination     = "local/embedroute.py"
+        change_mode     = "noop"
+        left_delimiter  = "[[%%"
+        right_delimiter = "%%]]"
+        data            = file("embedroute.py")
       }
 
       # Gauges to MONIT (Grafana) through the monit-otlp route: passes, flows,
