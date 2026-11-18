@@ -34,11 +34,16 @@ def query(text: str) -> str:
 # rather than truncating. Ordinary text and code run 3-4 characters per token; a
 # squashed-commit log of hashes and dates, or hundreds of "* 1" WIP bullets, runs
 # nearer 2, and 5000 characters of it does not fit. Such a text is retried shorter.
+# ALICE's server (llama.cpp) says it differently, as a plain BadRequestError:
+# "input (2130 tokens) is larger than the max context size (2048 tokens)". Until
+# 2026-11-18 that was not recognised, and the whole PR failed (11 in one pass).
 RETRY_CHARS = (2500, 1000)
 
 
 def _too_long(e: BaseException) -> bool:
-    return "ContextWindowExceeded" in type(e).__name__ or "maximum context length" in str(e)
+    m = str(e)
+    return ("ContextWindowExceeded" in type(e).__name__ or "maximum context length" in m
+            or "larger than the max context size" in m)
 
 
 async def embed_doc(embedder, text: str):
