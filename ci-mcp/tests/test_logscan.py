@@ -175,6 +175,13 @@ class LogTest(unittest.TestCase):
         self.assertLess(err, ninja)
         self.assertLess(err, ld)
         self.assertLess(failed, ctest)
+        # DPL's end-of-run lines and the Hyperloop runner's exit line, after
+        # the device's own error.
+        dev = L.severity((1, "[1:task]: [15:47:33][ERROR] Exception while running: boom. Rethrowing.", "error", 1))
+        for line in ("[ERROR] Workflow crashed - PID 12 (task) did not exit correctly however it's not clear why.",
+                     "[ERROR] SEVERE: Device task (12) returned with 1", "[ERROR]  - Device task: pid 12 (exit 1)",
+                     "ERROR: O2 exit code is 1"):
+            self.assertLess(dev, L.severity((1, line, "error", 9)), line)
 
     def test_alidist_header(self):
         sha = "0123456789abcdef0123456789abcdef01234567"

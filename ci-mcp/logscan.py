@@ -174,8 +174,14 @@ FATAL_RE = re.compile(
 #: caused it and says nothing about it. Ranked after every specific error
 #: (severity), or 147 failed builds of 2026-11-10..17 showed "ninja: build
 #: stopped" as their top error, the real one (a compiler error) second.
+#: DPL's own end-of-run lines (runDataProcessing.cxx) and the Hyperloop test
+#: runner's exit line are summaries too: 230+ of 268 failed Hyperloop tests
+#: (2026-11-18 sample) had one of them on top of the device's actual error.
 SUMMARY_RE = re.compile(r"ninja: build stopped:|\bmake(?:\[\d+\])?: \*\*\* |collect2: error: ld returned"
-                        r"|linker command failed with exit code|\d+% tests passed, \d+ tests failed out of")
+                        r"|linker command failed with exit code|\d+% tests passed, \d+ tests failed out of"
+                        r"|Workflow crashed - PID \d+ \(|SEVERE: Device \S+ \([^)]*\) (?:returned with"
+                        r"|had at least one message above severity)|(?:^|\] |: )\s*- Device \S+: pid \d+ \(exit"
+                        r"|(?:^|\] |: )\s*- First error: |^ERROR: O2 exit code is \d+")
 
 #: Kinds that are always serious (ranked first).
 SERIOUS_KINDS = ("killed", "cmake", "test", "fst-timeout", "fst-logfile", "fst-command", "crash")
