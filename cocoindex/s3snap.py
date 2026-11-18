@@ -17,9 +17,17 @@ Layout in the store (STORE_URL = s3://bucket/prefix  or  file:///dir for tests):
 Protocol. publish uploads every file of the run, then the run's manifest, and
 only then overwrites latest.json; a reader that starts from latest.json can
 therefore never see a run id whose files are still being written. restore
-takes a flow's state and DB from the SAME run id (the one latest.json names) or
-not at all. prune keeps the newest --keep run ids and, unconditionally, the one
-latest.json names.
+takes a flow's state and DB from the SAME run id or not at all. prune keeps
+the newest --keep run ids and, unconditionally, every run latest.json names.
+
+Per flow (format 2, 2026-11-18). The runner publishes after each flow, not
+once a pass, so a pass stopped by a redeploy loses at most the flow that was
+running, and readers get each flow's progress when it finishes. A run holds
+only the flows published in it; latest.json lists every flow, each entry with
+the run_id its files are in. publish merges into the current latest.json: the
+flows it publishes point at the new run, the others keep theirs. The pairing
+rule is per flow: a flow's state and DB are always the same run's. A format-1
+manifest (one run_id for all flows) reads as every entry in that run.
 
 S3 access goes through the job's security-proxy sidecar: S3_ENDPOINT_URL is the
 proxy, AWS_ACCESS_KEY_ID its gate token, AWS_SECRET_ACCESS_KEY anything. The
@@ -216,6 +224,12 @@ def flow_paths(root: Path, flow: str):
     return d, d / "state", d / FLOW_DBS[flow]
 
 
+def flow_runs(man: dict) -> dict:
+    """{flow: entry}, each entry with the run_id its files are in (format 2), a
+    format-1 manifest's entries all taking the manifest's run_id."""
+    return {f: {**ent, "run_id": ent.get("run_id", man["run_id"])} for f, ent in man["flows"].items()}
+
+
 def has_state(state: Path) -> bool:
     # cocoindex 1.2 keeps its LMDB environment in <COCOINDEX_DB>/mdb/.
     return state.is_dir() and any(state.rglob("data.mdb"))
@@ -251,12 +265,13 @@ def restore(root: Path, flows: list[str]) -> int:
         log(f"no {prefix}/latest.json: first run, starting {todo} from scratch")
         return 0
     man = json.loads(raw)
-    run_id = man["run_id"]
+    entries = flow_runs(man)
     for f in todo:
-        ent = man["flows"].get(f)
+        ent = entries.get(f)
         if ent is None:
-            log(f"{f}: not in snapshot {run_id} (new flow?), starting from scratch")
+            log(f"{f}: not in snapshot {man['run_id']} (new flow?), starting from scratch")
             continue
+        run_id = ent["run_id"]
         d, state, db = flow_paths(root, f)
         tmp = d.with_name(f"{f}.restoring")
         shutil.rmtree(tmp, ignore_errors=True)
@@ -294,9 +309,9 @@ def restore(root: Path, flows: list[str]) -> int:
     pub = root / "published.json"
     old = json.loads(pub.read_text()) if pub.exists() else {"flows": {}}
     for f in todo:
-        if f in man["flows"]:
-            old["flows"][f] = man["flows"][f]
-    old["run_id"] = run_id
+        if f in entries:
+            old["flows"][f] = entries[f]
+    old["run_id"] = man["run_id"]
     pub.write_text(json.dumps(old, indent=1))
     return 0
 
@@ -349,8 +364,14 @@ def publish(root: Path, flows: list[str], run_id: str, keep: int, min_interval: 
                     kind = k.removeprefix("ci_signatures: fingerprint ").removeprefix("ci_signatures: ")
                     points.append(("cocoindex_snapshot_signatures", {"flow": f, "fingerprint": kind}, v))
         db_sha, db_content = sha256(out), content_sha256(out)
-        if last["flows"].get(f, {}).get("db", {}).get("content_sha256") != db_content:
-            changed.append(f)
+        if last["flows"].get(f, {}).get("db", {}).get("content_sha256") == db_content:
+            # Unchanged: latest.json keeps this flow's entry and run as they are.
+            log(f"{f}: unchanged since its last snapshot, not published")
+            for x in (out, raw):
+                if x is not None:
+                    x.unlink()
+            continue
+        changed.append(f)
         # The LMDB dir is quiescent (cocoindex has exited), so a plain tar of
         # data.mdb is a consistent copy. lock.mdb is per-process and rebuilt.
         plain = snap / f"state-{f}.tar"
@@ -364,6 +385,7 @@ def publish(root: Path, flows: list[str], run_id: str, keep: int, min_interval: 
         zstd_compress(plain, tz)
         plain.unlink()
         entries[f] = {
+            "run_id": run_id,
             "db": {"name": dbname, "size": out.stat().st_size, "sha256": db_sha,
                    "content_sha256": db_content},
             "state": {"name": tz.name, "size": tz.stat().st_size, "sha256": sha256(tz)},
@@ -381,16 +403,22 @@ def publish(root: Path, flows: list[str], run_id: str, keep: int, min_interval: 
         return 0
 
     store, prefix = open_store()
+    # The flows not published now keep the entries (and runs) latest.json gives
+    # them; an unchanged flow among those passed in is not re-uploaded either.
+    raw = store.get(f"{prefix}/latest.json")
+    current = flow_runs(json.loads(raw)) if raw else {}
+    merged = {**current, **{f: entries[f] for f in changed}}
     man = {
-        "format": 1,
+        "format": 2,
         "run_id": run_id,
         "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "producer": {k: os.environ.get(k, "") for k in ("NOMAD_JOB_NAME", "NOMAD_ALLOC_ID", "NODE_NAME")},
         "cocoindex_version": os.environ.get("COCOINDEX_VERSION", ""),
         "changed": changed,
-        "flows": entries,
+        "flows": merged,
     }
-    for f, ent in entries.items():
+    for f in changed:
+        ent = entries[f]
         for kind in ("db", "state"):
             key = f"{prefix}/{run_id}/{ent[kind]['name']}"
             log(f"uploading {key} ({ent[kind]['size']} bytes)")
@@ -401,7 +429,7 @@ def publish(root: Path, flows: list[str], run_id: str, keep: int, min_interval: 
     log(f"published run {run_id} (changed: {changed})")
     points += [("cocoindex_snapshot_published_timestamp", {}, time.time()),
                ("cocoindex_snapshot_publish_seconds", {}, time.time() - t0)]
-    points += [("cocoindex_snapshot_db_bytes", {"flow": f}, ent["db"]["size"]) for f, ent in entries.items()]
+    points += [("cocoindex_snapshot_db_bytes", {"flow": f}, entries[f]["db"]["size"]) for f in changed]
     try:
         import metrics      # next to this file; nothing is sent without OTLP_METRICS_URL
         metrics.send(points)
@@ -416,9 +444,9 @@ def publish(root: Path, flows: list[str], run_id: str, keep: int, min_interval: 
 
 def prune(store, prefix: str, keep: int):
     raw = store.get(f"{prefix}/latest.json")
-    current = json.loads(raw)["run_id"] if raw else None
+    live = {e["run_id"] for e in flow_runs(json.loads(raw)).values()} if raw else set()
     runs = [r for r in store.run_ids(prefix) if RUN_ID_RE.match(r)]
-    doomed = [r for r in runs[:-keep] if r != current] if keep > 0 else []
+    doomed = [r for r in runs[:-keep] if r not in live] if keep > 0 else []
     for r in doomed:
         log(f"pruning run {r}")
         store.delete_run(prefix, r)

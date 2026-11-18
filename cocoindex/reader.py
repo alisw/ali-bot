@@ -153,8 +153,10 @@ def sync(max_age: float = 0) -> dict:
         return json.loads(local.read_text())
     store = _Store(STORE)
     man = json.loads(store.get("latest.json"))
-    run = man["run_id"]
     for flow, ent in man["flows"].items():
+        # Each flow's files are in the run its entry names (format 2, one run
+        # per flow publish); a format-1 manifest has one run for all.
+        run = ent.get("run_id", man["run_id"])
         db = ent["db"]
         dest = CACHE / db["name"]
         if dest.exists() and (CACHE / (db["name"] + ".sha256")).exists() and \
