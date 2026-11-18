@@ -10,6 +10,9 @@ is within MIN_COSINE of the canonical route's vector for that text. The
 canonical vector is kept in REF_FILE, so a candidate can still be checked
 while aigw itself is down; it is refreshed whenever aigw answers.
 
+A running flow re-times the routes every EMBED_REPICK_S and moves to a clearly
+faster one (start_repicker, repick, use_route).
+
     embedroute.py pick ROUTE...      prints the route to use: all are asked for
                                      the reference text at once, and the first
                                      answer that qualifies wins -- without
@@ -210,6 +213,92 @@ class Picker:
             log(f"{r2}: cannot be checked: no reference vector from {CANONICAL} yet")
         log(f"no route qualified; using {CANONICAL}")
         return CANONICAL
+
+#: How often a running flow re-times the routes (EMBED_REPICK_S; 0: never).
+REPICK_S = float(os.environ.get("EMBED_REPICK_S", "600"))
+#: A route replaces the current one only when at least this much faster: the
+#: current route carries the flow's own requests, so it always looks slower,
+#: and a smaller margin would flip between routes every few minutes.
+SWITCH_FACTOR = 2.0
+#: ...and by at least this many seconds: 0.3 s against 0.1 s is not worth a move.
+SWITCH_MIN_GAIN_S = 1.0
+
+
+def repick(picker: Picker, routes: list[str], current: str, timeout: float) -> tuple[str | None, dict]:
+    """Times every route at once with a fresh text and checks each against the
+    reference vector. Returns (the route to switch to, or None to stay; the
+    qualifying routes' times). Waits for all: the current route's time is
+    the point of the comparison."""
+    results: dict = {}
+    threads = [threading.Thread(target=lambda r=r: results.__setitem__(r, picker._timed(r, timeout)), daemon=True)
+               for r in routes]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout + 5)
+    if (c := results.get(CANONICAL)) and c[0] is not None:
+        picker.ref = c[0]
+        if picker.persist:
+            save_ref(c[0])
+    ok = {}
+    for r, (v, dt, err) in list(results.items()):
+        if v is not None and (r == CANONICAL or (picker.ref is not None and cosine(v, picker.ref) >= MIN_COSINE)):
+            ok[r] = dt
+    if not ok:
+        return None, ok
+    best = min(ok, key=ok.get)
+    if best == current:
+        return None, ok
+    if current not in ok or (ok[best] * SWITCH_FACTOR < ok[current]
+                             and ok[current] - ok[best] >= SWITCH_MIN_GAIN_S):
+        return best, ok
+    return None, ok
+
+
+def use_route(route: str) -> bool:
+    """Points this process's embeddings at route: litellm reads OPENAI_API_BASE
+    and OPENAI_API_KEY at every request (they are kept out of the embedder's
+    memo key for that reason), so nothing cached is invalidated."""
+    ep = endpoint(route)
+    if not ep:
+        return False
+    os.environ["OPENAI_API_BASE"], os.environ["OPENAI_API_KEY"] = ep[0], ep[1] or "unused"
+    os.environ["EMBED_ROUTE"] = route
+    return True
+
+
+def start_repicker(flow: str) -> threading.Thread | None:
+    """In a flow's process: every REPICK_S, re-time the routes in EMBED_ROUTES
+    and move the flow's embeddings to a clearly faster one. The runner picks
+    once per flow, from one race at its start; both servers change speed by
+    the minute, and on 2026-11-18 a pick at a bad moment kept a 50-minute
+    commits pass on alice-embed at 0.5 texts/s (64 commits past their deadline)
+    while aigw had done 1.1 texts/s the pass before."""
+    routes = [r for r in os.environ.get("EMBED_ROUTES", "").split(",") if r]
+    if len(routes) < 2 or REPICK_S <= 0 or not os.environ.get("OPENAI_API_BASE"):
+        return None
+    timeout = float(os.environ.get("EMBED_PICK_TIMEOUT_S", "20"))
+
+    def loop():
+        picker = Picker()
+        while True:
+            time.sleep(REPICK_S)
+            current = os.environ.get("EMBED_ROUTE", CANONICAL)
+            try:
+                new, times = repick(picker, routes, current, timeout)
+            except Exception as e:  # noqa: BLE001 -- never take the flow down
+                log(f"{flow}: re-pick failed: {e}")
+                continue
+            shown = ", ".join(f"{r} {t:.1f} s" for r, t in sorted(times.items(), key=lambda x: x[1])) or "none answered"
+            if new and use_route(new):
+                log(f"{flow}: embeddings move {current} -> {new} ({shown})")
+            else:
+                log(f"{flow}: embeddings stay on {current} ({shown})")
+
+    t = threading.Thread(target=loop, daemon=True, name=f"repick-{flow}")
+    t.start()
+    return t
+
 
 def main(argv: list[str]) -> int:
     if argv[:1] != ["pick"] or len(argv) < 2:

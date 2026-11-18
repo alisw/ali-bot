@@ -180,9 +180,12 @@ def install_litellm(flow: str, route: str | None = None) -> Window | None:
         from litellm.integrations.custom_logger import CustomLogger
     except ImportError:
         return None
-    route = route or os.environ.get("EMBED_ROUTE", "aigw")
     w = Window()
-    tags = dict(flow=flow, route=route)
+
+    def tags() -> dict:
+        """flow, and the route as it is when the event is logged: a flow can
+        move its embeddings to another route mid-pass (embedroute.start_repicker)."""
+        return dict(flow=flow, route=route or os.environ.get("EMBED_ROUTE", "aigw"))
 
     def texts(kwargs) -> int:
         x = kwargs.get("input")
@@ -206,16 +209,16 @@ def install_litellm(flow: str, route: str | None = None) -> Window | None:
     class Counter(CustomLogger):
         def log_pre_api_call(self, model, messages, kwargs):
             # litellm calls only this one (not the async variant) for aembedding
-            w.count("cocoindex_embed_requests_started", **tags)
+            w.count("cocoindex_embed_requests_started", **tags())
 
         async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
-            w.count("cocoindex_embed_requests_ok", **tags)
-            w.count("cocoindex_embed_texts", texts(kwargs), **tags)
-            w.count("cocoindex_embed_tokens", tokens(kwargs, response_obj), **tags)
-            w.observe("cocoindex_embed_request_seconds", (end_time - start_time).total_seconds(), **tags)
+            w.count("cocoindex_embed_requests_ok", **tags())
+            w.count("cocoindex_embed_texts", texts(kwargs), **tags())
+            w.count("cocoindex_embed_tokens", tokens(kwargs, response_obj), **tags())
+            w.observe("cocoindex_embed_request_seconds", (end_time - start_time).total_seconds(), **tags())
 
         async def async_log_failure_event(self, kwargs, response_obj, start_time, end_time):
-            w.count("cocoindex_embed_requests_failed", **tags)
+            w.count("cocoindex_embed_requests_failed", **tags())
 
     litellm.callbacks = [*getattr(litellm, "callbacks", []), Counter()]
     Pusher(w)
