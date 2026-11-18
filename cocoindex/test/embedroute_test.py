@@ -58,13 +58,16 @@ try:
     aigw, same, other = fake(), fake(), fake("another model")
     dead = f"http://127.0.0.1:{free_port()}/v1"
     time.sleep(1)
+    # The first qualifying answer wins: aigw a little slower than the fast
+    # route, so the checks about compatibility do not depend on a race.
+    slow(aigw, 0.4)
     ref = work / "ref.json"
 
-    def pick(fast, canonical=aigw):
+    def pick(fast, canonical=aigw, timeout="3"):
         r = subprocess.run(PICK, capture_output=True, text=True, timeout=60,
                            env=dict(os.environ, ROUTE_FAST_URL=fast, ROUTE_AIGW_URL=canonical,
                                     ROUTE_FAST_TOKEN="t", ROUTE_AIGW_TOKEN="t",
-                                    EMBED_REF_FILE=str(ref), EMBED_PICK_TIMEOUT_S="3"))
+                                    EMBED_REF_FILE=str(ref), EMBED_PICK_TIMEOUT_S=timeout))
         return r.stdout.strip(), r.stderr
 
     got, _ = pick(same)
@@ -95,6 +98,13 @@ try:
     slow(aigw, 1.2)
     got, _ = pick(same)
     check(got == "fast", f"aigw slower: the fast route ({got})")
+    # aigw hanging: the fast route's answer is used at once, not after aigw's timeout.
+    slow(aigw, 8)
+    t0 = time.monotonic()
+    got, err = pick(same, timeout="20")
+    took = time.monotonic() - t0
+    check(got == "fast" and took < 3,
+          f"aigw hanging: the fast route answers and is used without waiting for aigw ({got}, {took:.1f} s)")
     slow(aigw, 0)
 
     # ---- the MCP server: query embeddings through the fast route, aigw as fallback
