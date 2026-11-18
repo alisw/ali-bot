@@ -66,7 +66,9 @@ def embed(route: str, text: str, timeout: float, lookup=None, fresh: bool = Fals
     if not ep:
         raise RuntimeError(f"no endpoint for route {route}")
     url, token = ep
-    inputs = [text] + ([f"route check {random.random():.12f}: the time a new text takes"] if fresh else [])
+    # The fresh sentence carries the query prefix, as every text sent does.
+    inputs = [text] + ([embedtext.query(f"route check {random.random():.12f}: the time a new text takes")]
+                       if fresh else [])
     req = urllib.request.Request(url.rstrip("/") + "/embeddings", method="POST",
                                  data=json.dumps({"model": model(), "input": inputs}).encode(),
                                  headers={"Content-Type": "application/json",
