@@ -150,6 +150,32 @@ class LogTest(unittest.TestCase):
         bare = L.FETCH_SECTION_RE.sub("", text)
         self.assertTrue(L.is_no_output(bare))
 
+    def test_tool_summary_ranks_below_the_error_it_reports(self):
+        head = ("Finished building on ci-efba6f.example.org at 2026-11-16-10:00:00\n"
+                "Built commit %s from https://github.com/AliceO2Group/O2Physics/pull/1\n"
+                "## Begin BUILD/O2Physics-latest/log\n" % ("f" * 40))
+        cc = "/sw/SOURCES/O2Physics/0/PWGHF/Tasks/taskX.cxx:12:3: error: 'fooBar' was not declared in this scope\n"
+        ex = L.extract_log((head + cc + "[812/3400] Building CXX object x.o\n"
+                            "ninja: build stopped: subcommand failed.\n").encode())
+        kinds = [e["sig_exact"] for e in ex["errors"]]
+        self.assertIn("was not declared in this scope", kinds[0])
+        self.assertTrue(any(k.startswith("ninja: build stopped") for k in kinds[1:]), kinds)
+        # ...and the error ninja stopped for is the fatal one, in its package.
+        self.assertEqual((ex["errors"][0]["fatal"], ex["failed_package"]), (1, "O2Physics"))
+        # The summary alone is still reported.
+        only = L.extract_log((head + "ninja: build stopped: subcommand failed.\n").encode())
+        self.assertTrue(only["errors"][0]["sig_exact"].startswith("ninja: build stopped"))
+        # severity() itself: a summary after every specific error, even an
+        # earlier one of a lower tier (a plain compiler error is not FATAL_RE).
+        err = L.severity((1, "error: 'x' was not declared", "error", 1))
+        ninja = L.severity((1, "ninja: build stopped: subcommand failed.", "error", 2))
+        ld = L.severity((1, "collect2: error: ld returned 1 exit status", "error", 3))
+        ctest = L.severity((1, "90% tests passed, 1 tests failed out of 10", "test", 3))
+        failed = L.severity((1, "Test: testFoo ***Failed", "test", 2))
+        self.assertLess(err, ninja)
+        self.assertLess(err, ld)
+        self.assertLess(failed, ctest)
+
     def test_alidist_header(self):
         sha = "0123456789abcdef0123456789abcdef01234567"
         text = ("Finished building on ci-efba6f.example.org at 2026-11-16-10:00:00\n"
