@@ -118,6 +118,13 @@ done
 # Where the lister leaves the GraphQL budget for us to publish. Under the work
 # directory, so it does not collide with another pool's collector.
 graphql_budget=$PWD/.graphql-budget
+# The lister writes the file only when it actually queries GitHub; a listing
+# answered from the shared cache (another pool's collector asked first) leaves
+# it alone. Remove it first, so that only a reading taken in THIS cycle is
+# published: before 2026-11-18 each of the ~15 collectors re-pushed whatever it
+# last saw, up to an hour old, and the one series mixed fresh and stale values
+# (4404 and 3142 within seconds of each other).
+rm -f "$graphql_budget"
 if queue=$(WORKER_INDEX=0 WORKERS_POOL_SIZE=1 \
            short_timeout list-branch-pr --all-groups --no-status \
                          --cache-ttl "${QUEUE_METRICS_CACHE_TTL:-110}" \
