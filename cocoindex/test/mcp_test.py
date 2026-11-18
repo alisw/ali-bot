@@ -268,6 +268,13 @@ async def exercise_cf(client, label, cache, st):
     check(len(p["builds"]) == want == 3 and stg == [(1, "failure", alloc("ci-2f787c.example.org")),
                                                     (2, "success", alloc("ci-11e07d.example.org"))],
           f"{L} ci_pr_builds: every build, the re-run as attempt 2 on another allocation {stg}")
+    one = payload(await client.call_tool("ci_pr_builds", {"repo": "O2Physics", "pr": 18073, "max_builds": 1}))
+    sm = one["summary"]
+    check(len(one["builds"]) == 1 and one["omitted_builds"] == want - 1 and sm["builds"] == want
+          and sum(sm["by_state"].values()) == want and sm["most_frequent_errors"]
+          and all(set(e["untrusted"]) == {"fingerprint"} for e in sm["most_frequent_errors"]),
+          f"{L} ci_pr_builds max_builds=1: one build listed, the summary over all {want} "
+          f"({sm['by_state']}, {len(sm['most_frequent_errors'])} frequent errors)")
     names = [h for (h,) in cdb.execute("SELECT host FROM ci_builds UNION SELECT host FROM ci_errors") if h]
     check(names and all(h.startswith("alloc-") for h in names),
           f"{L} published hosts are Nomad allocations, never machine names ({sorted(set(names))[:3]})")
