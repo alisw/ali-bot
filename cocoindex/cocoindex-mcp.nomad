@@ -38,6 +38,20 @@
 # route keeps its name, alice-embed, in the code, the metrics and the logs.
 locals {
   alice_embed_upstream = "http://pcapiserv12.cern.ch:8100"
+
+  # Query embeddings on CPU, in this job (group "embed-cpu"): the MCP server's
+  # first route. Measured 2026-11-18 on alimetal01 (bench/embed-cpu-bench.nomad,
+  # 4 threads, on CPU shares next to the CI builds): 42 ms for a short query,
+  # ~23 per second; 309 ms for 205 tokens; cosine to aigw 0.99956. ALICE's GPU
+  # server took ~5 s through its queue. Raise the count to scale; the MCP
+  # server finds the instances itself (Nomad service discovery), no restart.
+  embed_cpu_count = 1
+  # llama.cpp b12030 (2026-11-01), CPU build of llama-server.
+  llama_image = "ghcr.io/ggml-org/llama.cpp@sha256:e67d88af487390098c76d7982b1761484339fa147b7e41d3c64ae1318759f78b"
+  # The GGUF ALICE's server runs: ggml-org's conversion keeps the dense layers
+  # (unsloth's does not: cosine ~0 to aigw).
+  embed_model_url = "https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/main/embeddinggemma-300M-Q8_0.gguf"
+  embed_model_sum = "sha256:b5ce9d77a3fc4b3b39ccb5643c36777911cc4eb46a66962eadfa3f5f60490d63"
 }
 
 job "cocoindex-mcp" {
@@ -434,12 +448,15 @@ job "cocoindex-mcp" {
         MCP_MAX_CONCURRENT = "4"
         # Query embeddings and sql() run in pools of their own, so a slow
         # embedder or heavy SQL never holds the MCP_MAX_CONCURRENT slots.
-        MCP_MAX_EMBEDS      = "4"
+        # 4 slots per CPU instance, and 4 for the remote routes behind them.
+        MCP_MAX_EMBEDS      = "${4 + 4 * local.embed_cpu_count}"
         MCP_EMBED_TIMEOUT_S = "20"
-        # Query embeddings: the faster of alice-embed (ALICE's server, only
-        # while its vectors are aigw's) and aigw (CERN's), the other as fallback
-        # (embedroute.py).
-        MCP_EMBED_ROUTES    = "alice-embed,aigw"
+        # Query embeddings, fastest first: cpu (this job's own CPU servers,
+        # group embed-cpu, listed in ROUTE_CPU_URLS_FILE), alice-embed (ALICE's
+        # GPU server) and aigw (CERN's), each but aigw only while its vectors
+        # are aigw's (embedroute.py); the others as fallbacks.
+        MCP_EMBED_ROUTES    = "cpu,alice-embed,aigw"
+        ROUTE_CPU_URLS_FILE = "/local/embed-cpu-urls"
         MCP_EMBED_FAST_TIMEOUT_S = "12"
         MCP_MAX_SQL         = "2"
         METRICS_ROUTE       = "monit-otlp"
@@ -498,6 +515,18 @@ job "cocoindex-mcp" {
       }
 
       # Which embedding route to use, and the check that its vectors are aigw's.
+      # The embed-cpu instances, one base URL per line, as Nomad registers
+      # them; re-read per query, so scaling needs no restart.
+      template {
+        destination = "local/embed-cpu-urls"
+        change_mode = "noop"
+        data        = <<-EOT
+          {{- range nomadService "cocoindex-embed-cpu" }}
+          http://{{ .Address }}:{{ .Port }}/v1
+          {{- end }}
+        EOT
+      }
+
       template {
         destination     = "local/embedroute.py"
         change_mode     = "restart"
@@ -581,6 +610,81 @@ job "cocoindex-mcp" {
       logs {
         max_files     = 3
         max_file_size = 20
+      }
+    }
+  }
+
+  # ---- query embeddings on CPU ------------------------------------------------
+  # llama-server, CPU only, the GGUF ALICE's GPU server runs. A group of its own,
+  # so it scales apart from the MCP server (count above) and lands where there
+  # is CPU to spare. alimetal* only: Puppet opens those nodes' ports to each
+  # other (hg_alibuild fullaccess); hand-managed nodes have firewalls of their own.
+  group "embed-cpu" {
+    count = local.embed_cpu_count
+
+    constraint {
+      attribute = "${node.unique.name}"
+      operator  = "regexp"
+      value     = "^alimetal[0-9]+\\.cern\\.ch$"
+    }
+    constraint {
+      operator = "distinct_hosts"
+      value    = "true"
+    }
+
+    # Keeps the 334 MB model across restarts and updates on the same node.
+    ephemeral_disk {
+      sticky = true
+      size   = 1024
+    }
+
+    network {
+      port "http" {}
+    }
+
+    service {
+      provider = "nomad"
+      name     = "cocoindex-embed-cpu"
+      port     = "http"
+      check {
+        type     = "http"
+        path     = "/health"
+        interval = "15s"
+        timeout  = "3s"
+      }
+    }
+
+    task "llama-server" {
+      driver = "docker"
+
+      artifact {
+        source      = local.embed_model_url
+        destination = "local/model.gguf"
+        mode        = "file"
+        options {
+          checksum = local.embed_model_sum
+        }
+      }
+
+      config {
+        image        = local.llama_image
+        network_mode = "host"
+        ports        = ["http"]
+        # 4 threads, 4 slots: as measured. 2048 tokens per slot hold the
+        # longest query the MCP server sends (4000 characters + prefix).
+        args = ["-m", "/local/model.gguf", "--embeddings", "--host", "0.0.0.0",
+                "--port", "${NOMAD_PORT_http}", "-t", "4", "-tb", "4", "-ngl", "0",
+                "--parallel", "4", "-c", "8192", "-ub", "2048", "-b", "2048"]
+      }
+
+      resources {
+        cpu    = 6000
+        memory = 1536
+      }
+
+      logs {
+        max_files     = 2
+        max_file_size = 10
       }
     }
   }

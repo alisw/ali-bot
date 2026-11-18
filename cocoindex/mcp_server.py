@@ -40,7 +40,9 @@ Environment (beyond reader.py's COCO_STORE / COCO_CACHE / EMBED_MODEL):
                          computed before a query takes its slot, so a slow
                          embedding service delays the searches, not every tool.
     MCP_EMBED_TIMEOUT_S  how long one query embedding may take (default 20)
-    MCP_EMBED_ROUTES     embedding routes (default aigw), e.g. "alice-embed,aigw":
+    MCP_EMBED_ROUTES     embedding routes (default aigw), e.g. "cpu,alice-embed,aigw"
+                         (cpu: the job's own CPU embedding servers, listed in
+                         ROUTE_CPU_URLS_FILE; see reader.route_endpoint):
                          tried fastest first (a moving average of each route's
                          response times; the order given until measured). A
                          route other than aigw is used only once its vectors are
@@ -111,6 +113,7 @@ MAX_EMBEDS = int(os.environ.get("MCP_MAX_EMBEDS", "4"))
 EMBED_TIMEOUT_S = float(os.environ.get("MCP_EMBED_TIMEOUT_S", "20"))
 EMBED_ROUTES = [r for r in os.environ.get("MCP_EMBED_ROUTES", "aigw").split(",") if r]
 FAST_TIMEOUT_S = float(os.environ.get("MCP_EMBED_FAST_TIMEOUT_S", "12"))
+NO_INSTANCE_RECHECK_S = 30
 ROUTE_RECHECK_S = 600
 MAX_SQL = int(os.environ.get("MCP_MAX_SQL", "2"))
 MAX_K = 50
@@ -379,7 +382,12 @@ def _route_ok(route: str) -> bool:
         now_ok = why == "ok"
         if now_ok != ok or route not in _route_verdict:
             log.info("embedding route %s: %s", route, "in use" if now_ok else why)
-        _route_verdict[route] = (now_ok, time.monotonic())
+        at = time.monotonic()
+        if "NoInstance" in why:
+            # Its instances are not registered yet (they start next to this
+            # server): look again in NO_INSTANCE_RECHECK_S, not ROUTE_RECHECK_S.
+            at -= ROUTE_RECHECK_S - NO_INSTANCE_RECHECK_S
+        _route_verdict[route] = (now_ok, at)
         return now_ok
 
 
@@ -407,7 +415,7 @@ def _embed_cached(text: str, as_document: bool = False) -> bytes:
             M.observe("cocoindex_mcp_embed_route_seconds", dt, route=route)
             M.count("cocoindex_mcp_embed_route", route=route)
             return sqlite_vec.serialize_float32(vec)
-        except (TimeoutError, urllib.error.URLError) as e:
+        except (TimeoutError, urllib.error.URLError, ConnectionError, reader.NoInstance) as e:
             err = e
             _observe(route, 2 * timeout)        # a failure counts as very slow
             M.count("cocoindex_mcp_embed_route_failed", route=route)
@@ -415,7 +423,10 @@ def _embed_cached(text: str, as_document: bool = False) -> bytes:
                 # Not tried again before the next check (ROUTE_RECHECK_S): each
                 # query would otherwise wait FAST_TIMEOUT_S on a dead route.
                 with _route_lock:
-                    _route_verdict[route] = (False, time.monotonic())
+                    at = time.monotonic()
+                    if isinstance(e, reader.NoInstance):
+                        at -= ROUTE_RECHECK_S - NO_INSTANCE_RECHECK_S
+                    _route_verdict[route] = (False, at)
                 M.count("cocoindex_mcp_embed_fallback", route=route)
                 log.info("embedding route %s failed (%s); next route", route, type(e).__name__)
     raise err or RuntimeError("no embedding route configured")
