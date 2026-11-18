@@ -55,7 +55,10 @@ class H(http.server.BaseHTTPRequestHandler):
         out = {"object": "list", "model": body.get("model"),
                "data": [{"object": "embedding", "index": i, "embedding": vec(t)}
                         for i, t in enumerate(inputs)],
-               "usage": {"prompt_tokens": 0, "total_tokens": 0}}
+               # One "token" per word: plausible, and distinguishable from
+               # metrics.py's fallback estimate (characters / 4).
+               "usage": {"prompt_tokens": sum(len(t.split()) for t in inputs),
+                         "total_tokens": sum(len(t.split()) for t in inputs)}}
         data = json.dumps(out).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")

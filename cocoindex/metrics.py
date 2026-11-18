@@ -188,6 +188,21 @@ def install_litellm(flow: str, route: str | None = None) -> Window | None:
         x = kwargs.get("input")
         return len(x) if isinstance(x, list) else 1
 
+    def tokens(kwargs, response_obj) -> float:
+        """Tokens embedded, as the server reports them (usage.prompt_tokens in
+        the OpenAI-compatible answer), else estimated at 4 characters each:
+        what a paid embedding service would have charged for (dashboard:
+        cost at Voyage AI prices; Anthropic offers no embedding model)."""
+        usage = getattr(response_obj, "usage", None)
+        if usage is None and isinstance(response_obj, dict):
+            usage = response_obj.get("usage")
+        n = (usage.get("prompt_tokens") or usage.get("total_tokens")) if isinstance(usage, dict) else \
+            (getattr(usage, "prompt_tokens", None) or getattr(usage, "total_tokens", None))
+        if n:
+            return float(n)
+        x = kwargs.get("input")
+        return sum(len(t) for t in (x if isinstance(x, list) else [x]) if isinstance(t, str)) / 4
+
     class Counter(CustomLogger):
         def log_pre_api_call(self, model, messages, kwargs):
             # litellm calls only this one (not the async variant) for aembedding
@@ -196,6 +211,7 @@ def install_litellm(flow: str, route: str | None = None) -> Window | None:
         async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
             w.count("cocoindex_embed_requests_ok", **tags)
             w.count("cocoindex_embed_texts", texts(kwargs), **tags)
+            w.count("cocoindex_embed_tokens", tokens(kwargs, response_obj), **tags)
             w.observe("cocoindex_embed_request_seconds", (end_time - start_time).total_seconds(), **tags)
 
         async def async_log_failure_event(self, kwargs, response_obj, start_time, end_time):
