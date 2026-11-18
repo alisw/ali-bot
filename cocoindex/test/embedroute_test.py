@@ -74,6 +74,9 @@ try:
 
     got, _ = pick(same)
     check(got == "fast" and ref.exists(), f"a fast route with aigw's vectors is used, the reference is kept ({got})")
+    sizes = (work / f"embed-{same.split(':')[2].split('/')[0]}.log").read_text().split()
+    check(sizes and sizes[-1] == "2",
+          f"the race sends a fresh sentence along, so a caching server cannot answer from its cache ({sizes[-3:]})")
     got, err = pick(other)
     check(got == "aigw" and "vectors differ" in err,
           f"a fast route with other vectors (another model) is refused: aigw ({got})")
