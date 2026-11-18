@@ -492,6 +492,21 @@ class Logs(object):
                       "    nomad alloc logs -stderr -tail -f %s" %
                       os.getenv("NOMAD_SHORT_ALLOC_ID", os.environ["NOMAD_ALLOC_ID"]),
                       sep="\n", file=logf)
+            # aliBuild's record of the git/sapling commands that failed while it
+            # updated its mirrors (alibuild_helpers/workarea.py, logged_scm:
+            # command, directory and exit code only, written to be safe to
+            # publish). It was only in pretty.html; a build that fails there
+            # never reaches a package log, so fullLog.txt said "No logs found"
+            # and nothing else -- as for every ONNXRuntime build on 2026-11-18,
+            # when github.com/microsoft/onnxruntime went away.
+            try:
+                with open(self.fetch_log, encoding="utf-8", errors="replace") as fetch_logf:
+                    fetch_log = fetch_logf.read().strip()
+            except OSError:
+                fetch_log = ""
+            if fetch_log:
+                print("## Begin aliBuild fetch-log.txt", fetch_log, "## End aliBuild fetch-log.txt",
+                      sep="\n", file=logf)
             if self.all_logs:
                 print("The following files (oldest first) are present in the log:", file=logf)
                 for log in self.all_logs:

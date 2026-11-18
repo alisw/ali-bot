@@ -20,7 +20,7 @@ Contents:
   clip, with_body, strip_alibuild_prefix
   scan_lines()             the per-line classification loop both callers run
   INFRA_RULES              evidence-based "the builder broke, not the PR" kinds
-  parse_header(), sections(), is_no_output()
+  parse_header(), sections(), is_no_output(), fetch_failures()
   signature()              sig_exact / sig_class of one error, plus the file it names
   crashes()                fingerprints of the stack traces of crashed processes
   public_fingerprint()     the readable part of a signature that may be published
@@ -184,7 +184,7 @@ def clip(line):
 #: CMake does the opposite: "CMake Error at FetchContent.cmake:2106 (message):"
 #: says only WHERE, and every word of WHY is on the lines beneath it -- reported
 #: alone it is unactionable, which is exactly how it first came back here.
-BODY_LINES = {"cmake": 6, "test": 1, "fst-command": 2, "missing-dependency": 6}
+BODY_LINES = {"cmake": 6, "test": 1, "fst-command": 2, "missing-dependency": 6, "git-fetch": 3}
 
 
 def with_body(lines, position, kind):
@@ -287,7 +287,13 @@ def severity(entry):
 # Not seen in 8 weeks, but kept because report-pr-errors/ci-mcp encode them:
 # killed (OOM: "fatal error: Killed signal terminated program") and the FST
 # timeouts. Network/DNS/git-fetch failures did not appear in fullLog.txt at
-# all: report-pr-errors puts the fetch log into pretty.html, not fullLog.txt.
+# all: report-pr-errors put the fetch log into pretty.html only. Since
+# 2026-11-18 it also writes it into fullLog.txt, between "## Begin/End aliBuild
+# fetch-log.txt" (FETCH_SECTION_RE), and such a log is not no-output:
+#   git-fetch                 aliBuild could not update a mirror: "Git command
+#                             for package 'ONNXRuntime' failed." when
+#                             github.com/microsoft/onnxruntime went away
+#                             (736 builds read as no-output, 2026-11-17/18)
 # alidist-sync is listed but is not infra in the strict sense: it says O2 and
 # alidist disagree, which a PR touching FindO2GPU.cmake can cause itself.
 # ---------------------------------------------------------------------------
@@ -300,6 +306,9 @@ INFRA_RULES = {
                                      r"|^\s*Could NOT find \S+ \(missing:"
                                      r"|REQUIRED package\(s\) are missing"),
     "alidist-sync": re.compile(r"differs in \S+ compared to alidist, please sync"),
+    # aliBuild's logged_scm(): "<Git|Sapling> command for package '<pkg>' failed."
+    # followed by Command:, In directory: and Exit code: (BODY_LINES).
+    "git-fetch": re.compile(r"^\w+ command for package '[^']*' failed\.$"),
 }
 INFRA_KINDS = frozenset(INFRA_RULES) | {"no-output", "killed"}
 
@@ -329,10 +338,22 @@ _ALIDIST_RE = re.compile(r"^Built with alidist ([0-9a-f]{40})$", re.M)  # since 
 _SECTION_RE = re.compile(r"^## Begin (?:\S*/)?BUILD/(\S+?)-latest[^/\s]*/log\b")
 
 
+FETCH_SECTION_RE = re.compile(r"^## Begin aliBuild fetch-log\.txt\n(.*?)^## End aliBuild fetch-log\.txt$",
+                              re.M | re.S)
+
+
+def fetch_failures(text: str) -> str:
+    """aliBuild's record of the source updates that failed, as report-pr-errors
+    writes it into the log (empty if none): command, directory and exit code."""
+    m = FETCH_SECTION_RE.search(text)
+    return m.group(1).strip() if m else ""
+
+
 def is_no_output(text: str) -> bool:
     """A few hundred bytes ending in "No logs found" is not a failed PR, it is a
-    broken machine: the build produced nothing at all."""
-    return len(text) < 2000 and "No logs found" in text
+    broken machine: the build produced nothing at all. Unless aliBuild said
+    why: a failed source update (fetch_failures) is the reason, not silence."""
+    return len(text) < 2000 and "No logs found" in text and not fetch_failures(text)
 
 
 def parse_header(text: str) -> dict:

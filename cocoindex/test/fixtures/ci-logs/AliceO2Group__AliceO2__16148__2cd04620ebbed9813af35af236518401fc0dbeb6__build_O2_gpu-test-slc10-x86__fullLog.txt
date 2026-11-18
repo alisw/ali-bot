@@ -1,0 +1,17 @@
+Finished building on ci-efba6f.example.org at 2026-11-18-08:53:19
+Built commit 2cd04620ebbed9813af35af236518401fc0dbeb6 from https://github.com/AliceO2Group/AliceO2/pull/16148
+Built with alidist 0b2a22a14af714d940b000f5ae6987decc4998d2
+Nomad allocation:
+    https://alinomad.cern.ch/ui/allocations/6fb6f564-0e5b-7ccf-fc08-7ec81c9e25d8
+To log into the build machine, use:
+    nomad alloc exec 6fb6f564 bash
+To stream logs from the CI process, use:
+    nomad alloc logs -stderr -tail -f 6fb6f564
+## Begin aliBuild fetch-log.txt
+Git command for package 'ONNXRuntime' failed.
+Command: git fetch -f --prune --filter=tree:0 https://github.com/microsoft/onnxruntime +refs/tags/*:refs/tags/* +refs/heads/*:refs/heads/*
+In directory: /home/build/nomad/alloc/6fb6f564-0e5b-7ccf-fc08-7ec81c9e25d8/ci/local/slc10/o2-fullci/sw/MIRROR/onnxruntime
+Exit code: 128
+## End aliBuild fetch-log.txt
+No logs found. Please check the aurora log.
+See http://alisw.github.io/infrastructure-pr-testing for more instructions.

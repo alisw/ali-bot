@@ -125,6 +125,31 @@ class LogTest(unittest.TestCase):
         # Written before report-pr-errors recorded the alidist commit.
         self.assertIsNone(ex["header"]["alidist"])
 
+    FETCH = ("AliceO2Group__AliceO2__16148__2cd04620ebbed9813af35af236518401fc0dbeb6__"
+             "build_O2_gpu-test-slc10-x86__fullLog.txt")
+
+    def test_git_fetch_is_the_reason_not_no_output(self):
+        # 2026-11-18: github.com/microsoft/onnxruntime went away, aliBuild failed
+        # to update the mirror before any package log existed. report-pr-errors
+        # now writes aliBuild's fetch-log.txt into the log.
+        raw = self.read(self.FETCH)
+        text = raw.decode()
+        self.assertIn("Command: git fetch", L.fetch_failures(text))
+        self.assertFalse(L.is_no_output(text))
+        ex = L.extract_log(raw)
+        self.assertEqual(ex["no_output"], 0)
+        e = ex["errors"][0]
+        self.assertEqual((e["kind"], e["infra"], e["fatal"]), ("git-fetch", 1, 1))
+        self.assertIn("Exit code: 128", e["text"])
+        self.assertEqual(e["line"], 11)
+        # The same failure on another worker: another allocation in the
+        # directory, the same signature (the body is not part of it).
+        other = text.replace("6fb6f564-0e5b-7ccf-fc08-7ec81c9e25d8", "0123abcd-1111-2222-3333-444455556666")
+        self.assertEqual(L.extract_log(other.encode())["errors"][0]["sig_hash"], e["sig_hash"])
+        # Without the section, the same log is still no-output.
+        bare = L.FETCH_SECTION_RE.sub("", text)
+        self.assertTrue(L.is_no_output(bare))
+
     def test_alidist_header(self):
         sha = "0123456789abcdef0123456789abcdef01234567"
         text = ("Finished building on ci-efba6f.example.org at 2026-11-16-10:00:00\n"

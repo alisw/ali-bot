@@ -1243,6 +1243,15 @@ def ci_build_log(repo: str, pr: int, check_name: str, sha: str = "",
     # A few hundred bytes ending in "No logs found" is not a failed PR, it is a
     # broken machine: the build produced nothing at all. That was the signature
     # of the missing-SDK failure, and it reads as an ordinary red check.
+    # aliBuild could not update its sources (report-pr-errors writes its
+    # fetch-log.txt into the log): the reason, not the PR's fault.
+    fetch = logscan.fetch_failures(log)
+    if fetch:
+        out.append("")
+        out.append("  *** ALIBUILD COULD NOT UPDATE ITS SOURCES -- an upstream or mirror "
+                   "problem, not the PR (unless the PR changed that package's source):")
+        out.extend("  " + clip(logscan.scrub(l)) for l in fetch.splitlines()[:20])
+
     if logscan.is_no_output(log):
         out.append("")
         out.append("  *** THE BUILD PRODUCED NO OUTPUT (%d bytes, 'No logs "
