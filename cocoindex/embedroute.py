@@ -10,11 +10,12 @@ is within MIN_COSINE of the canonical route's vector for that text. The
 canonical vector is kept in REF_FILE, so a candidate can still be checked
 while aigw itself is down; it is refreshed whenever aigw answers.
 
-    embedroute.py pick ROUTE...      prints the route to use: of the routes whose
-                                     vectors qualify, the one that answered the
-                                     reference text fastest (all are asked at
-                                     once; ties go to the order given); the
-                                     canonical one if no other qualifies
+    embedroute.py pick ROUTE...      prints the route to use: all are asked for
+                                     the reference text at once, and the first
+                                     answer that qualifies wins -- without
+                                     waiting for the others (a hanging aigw
+                                     costs nothing once another route has
+                                     answered); the canonical one if none does
 
 Per route R (upper case, '-' as '_'): ROUTE_<R>_URL (an OpenAI-compatible base,
 .../v1) and ROUTE_<R>_TOKEN. EMBED_MODEL as the flows. EMBED_CANONICAL_ROUTE
@@ -24,9 +25,10 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import sys
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 import urllib.request
 from pathlib import Path
 
@@ -143,39 +145,50 @@ class Picker:
             return None, time.monotonic() - t0, f"no answer ({type(e).__name__}: {str(e)[:120]})"
 
     def pick(self, routes: list[str], timeout: float) -> str:
-        """All routes embed the reference text at once; of those that answered
-        with the canonical route's vectors, the fastest. One timing is noisy,
-        but a pick is per flow (minutes to an hour), and a route that is slow
-        now is likely slow for the flow too."""
-        with ThreadPoolExecutor(max(1, len(routes))) as ex:
-            res = dict(zip(routes, ex.map(lambda r: self._timed(r, timeout), routes)))
-        canon = res.get(CANONICAL)
-        if canon and canon[0] is not None:
-            self.ref = canon[0]
-            if self.persist:
-                save_ref(canon[0])
-        ok = []
-        for i, r in enumerate(routes):
-            v, dt, err = res[r]
+        """All routes embed the reference text at once; the first answer that
+        qualifies wins, without waiting for the others: it is the fastest, and
+        a pick is per flow (minutes to an hour), so a route slow now is likely
+        slow for the flow too. Daemon threads, so a route still hanging does
+        not keep the process alive. A candidate that answers before any
+        reference vector exists waits for the canonical answer to be checked
+        against, and still wins if it passes: it was faster."""
+        answers: queue.Queue = queue.Queue()
+        for r in routes:
+            threading.Thread(target=lambda r=r: answers.put((r, *self._timed(r, timeout))), daemon=True).start()
+        unchecked = []                 # candidates that answered before any reference existed
+        deadline = time.monotonic() + timeout + 5
+        for _ in routes:
+            try:
+                r, v, dt, err = answers.get(timeout=max(0.1, deadline - time.monotonic()))
+            except queue.Empty:
+                break
             if err:
                 log(f"{r}: {err}")
                 continue
-            if r != CANONICAL:
-                if self.ref is None:
-                    log(f"{r}: cannot be checked: no reference vector from {CANONICAL} yet")
-                    continue
-                c = cosine(v, self.ref)
-                if c < MIN_COSINE:
-                    log(f"{r}: vectors differ from {CANONICAL}'s (cosine {c:.4f} < {MIN_COSINE})")
-                    continue
-            ok.append((round(dt, 1), i, r))
-        if not ok:
-            log(f"no route qualified; using {CANONICAL}")
-            return CANONICAL
-        ok.sort()
-        log("answered: " + ", ".join(f"{r} {dt:.1f} s" for dt, _, r in ok) + f"; using {ok[0][2]}")
-        return ok[0][2]
-
+            if r == CANONICAL:
+                self.ref = v
+                if self.persist:
+                    save_ref(v)
+                for r2, v2, dt2 in unchecked:
+                    if cosine(v2, v) >= MIN_COSINE:
+                        log(f"{r2} answered first ({dt2:.1f} s), checked against {r}; using {r2}")
+                        return r2
+                    log(f"{r2}: vectors differ from {CANONICAL}'s (cosine {cosine(v2, v):.4f} < {MIN_COSINE})")
+                log(f"{r} answered first ({dt:.1f} s); using {r}")
+                return r
+            if self.ref is None:
+                unchecked.append((r, v, dt))
+                continue
+            c = cosine(v, self.ref)
+            if c < MIN_COSINE:
+                log(f"{r}: vectors differ from {CANONICAL}'s (cosine {c:.4f} < {MIN_COSINE})")
+                continue
+            log(f"{r} answered first ({dt:.1f} s); using {r}")
+            return r
+        for r2, _, _ in unchecked:
+            log(f"{r2}: cannot be checked: no reference vector from {CANONICAL} yet")
+        log(f"no route qualified; using {CANONICAL}")
+        return CANONICAL
 
 def main(argv: list[str]) -> int:
     if argv[:1] != ["pick"] or len(argv) < 2:
