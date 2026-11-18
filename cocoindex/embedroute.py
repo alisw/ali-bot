@@ -81,12 +81,25 @@ def ref_file() -> Path:
     return Path(os.environ.get("EMBED_REF_FILE") or Path(os.environ.get("COCO_ROOT", ".")) / "embed-reference.json")
 
 
+#: aigw's vector for REF_TEXT, recorded once and shipped with the code: a fresh
+#: process (the MCP server after a restart) can then check a candidate route
+#: even if aigw has not answered since it started -- exactly when the candidate
+#: is needed (2026-11-18: aigw hung, and the MCP server, never having seen an
+#: aigw answer, kept the ALICE server blocked).
+SHIPPED_REF = Path(os.environ.get("EMBED_SHIPPED_REF_FILE") or Path(__file__).resolve().parent / "embed-reference.json")
+
+
 def load_ref() -> list[float] | None:
-    try:
-        d = json.loads(ref_file().read_text())
-        return d["vector"] if d.get("model") == model() and d.get("text") == REF_TEXT else None
-    except (OSError, ValueError, KeyError):
-        return None
+    """The kept reference (REF_FILE, refreshed whenever aigw answers), else
+    the shipped one; neither, or one for another model or text: None."""
+    for p in (ref_file(), SHIPPED_REF):
+        try:
+            d = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        if d.get("model") == model() and d.get("text") == REF_TEXT and d.get("vector"):
+            return d["vector"]
+    return None
 
 
 def save_ref(v: list[float]) -> None:

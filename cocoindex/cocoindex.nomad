@@ -650,6 +650,16 @@ job "cocoindex" {
         data            = file("embedroute.py")
       }
 
+      # aigw's vector for embedroute's reference text: lets a fresh process
+      # check the ALICE server before aigw has answered once.
+      template {
+        destination     = "local/embed-reference.json"
+        change_mode     = "noop"
+        left_delimiter  = "[[%%"
+        right_delimiter = "%%]]"
+        data            = file("embed-reference.json")
+      }
+
       # Gauges to MONIT (Grafana) through the monit-otlp route: passes, flows,
       # embedding requests, the ci-failures sync, publishes, embedder probes.
       template {

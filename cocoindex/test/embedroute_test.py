@@ -62,12 +62,14 @@ try:
     # route, so the checks about compatibility do not depend on a race.
     slow(aigw, 0.4)
     ref = work / "ref.json"
+    shipped = work / "shipped-ref.json"        # absent unless a check writes it
 
     def pick(fast, canonical=aigw, timeout="3"):
         r = subprocess.run(PICK, capture_output=True, text=True, timeout=60,
                            env=dict(os.environ, ROUTE_FAST_URL=fast, ROUTE_AIGW_URL=canonical,
                                     ROUTE_FAST_TOKEN="t", ROUTE_AIGW_TOKEN="t",
-                                    EMBED_REF_FILE=str(ref), EMBED_PICK_TIMEOUT_S=timeout))
+                                    EMBED_REF_FILE=str(ref), EMBED_PICK_TIMEOUT_S=timeout,
+                                    EMBED_SHIPPED_REF_FILE=str(shipped)))
         return r.stdout.strip(), r.stderr
 
     got, _ = pick(same)
@@ -86,6 +88,29 @@ try:
     got, err = pick(same, canonical=dead)
     check(got == "aigw" and "cannot be checked" in err,
           f"aigw down and no reference yet: the fast route cannot be checked, not used ({got})")
+    # The reference shipped with the code: a fresh process can check the fast
+    # route although aigw has never answered it (the MCP server, 2026-11-18).
+    shipped.write_text(json.dumps({"model": "embeddinggemma-300m", "text": json.loads(
+        subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, %r); import embedroute, json; "
+                        "print(json.dumps(embedroute.REF_TEXT))" % str(HERE.parent)],
+                       capture_output=True, text=True).stdout), "vector": None}))
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("er", HERE.parent / "embedroute.py")
+    er = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(er)
+    os.environ.update(ROUTE_AIGW_URL=aigw, ROUTE_AIGW_TOKEN="t")
+    d = json.loads(shipped.read_text())
+    d["vector"] = er.embed("aigw", er.REF_TEXT, 5)    # what aigw answers for it (the fakes are deterministic)
+    shipped.write_text(json.dumps(d))
+    got, err = pick(same, canonical=dead)
+    check(got == "fast" and not ref.exists(),
+          f"aigw down, nothing kept, but a shipped reference: the fast route is checked and used ({got})")
+    other_shipped = dict(d, vector=er.embed("aigw", er.REF_TEXT + " x", 5))
+    shipped.write_text(json.dumps(other_shipped))
+    got, err = pick(same, canonical=dead)
+    check(got == "aigw" and "vectors differ" in err,
+          f"...and a shipped reference that does not match still refuses it ({got})")
+    shipped.unlink()
     ref.write_text(json.dumps({"model": "something-else", "text": "x", "vector": [1.0]}))
     got, _ = pick(same)
     check(got == "fast" and json.loads(ref.read_text())["model"] == "embeddinggemma-300m",
@@ -110,7 +135,8 @@ try:
     # ---- the MCP server: query embeddings through the fast route, aigw as fallback
     os.environ.update(MCP_EMBED_ROUTES="fast,aigw", MCP_EMBED_FAST_TIMEOUT_S="2", MCP_EMBED_TIMEOUT_S="5",
                       COCO_CACHE=str(work / "cache"), COCO_STORE=f"file://{work}/store",
-                      ROUTE_FAST_TOKEN="t", ROUTE_AIGW_TOKEN="t", EMBED_REF_FILE=str(work / "mcp-ref.json"))
+                      ROUTE_FAST_TOKEN="t", ROUTE_AIGW_TOKEN="t", EMBED_REF_FILE=str(work / "mcp-ref.json"),
+                      EMBED_SHIPPED_REF_FILE=str(work / "no-shipped-ref.json"))
     (work / "cache").mkdir()
     sys.path.insert(0, str(HERE.parent))
     import mcp_server as S  # noqa: E402

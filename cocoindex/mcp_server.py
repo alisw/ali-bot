@@ -45,8 +45,9 @@ Environment (beyond reader.py's COCO_STORE / COCO_CACHE / EMBED_MODEL):
                          response times; the order given until measured). A
                          route other than aigw is used only once its vectors are
                          checked to be aigw's (embedroute.py; checked again every
-                         10 minutes). Every route but the last tried gets
-                         MCP_EMBED_FAST_TIMEOUT_S (default 5).
+                         10 minutes, with MCP_EMBED_TIMEOUT_S). Every route but
+                         the last tried gets MCP_EMBED_FAST_TIMEOUT_S (default
+                         12: the ALICE server took 1.5-17 s per text, 2026-11-18).
     MCP_MAX_SQL          sql() calls running at once (default 2), apart from the
                          MCP_MAX_CONCURRENT slots: heavy SQL cannot hold them all.
                          A call waits at most SQL_TIMEOUT_S for its turn.
@@ -109,7 +110,7 @@ SQL_TIMEOUT_S = float(os.environ.get("SQL_TIMEOUT_S", "10"))
 MAX_EMBEDS = int(os.environ.get("MCP_MAX_EMBEDS", "4"))
 EMBED_TIMEOUT_S = float(os.environ.get("MCP_EMBED_TIMEOUT_S", "20"))
 EMBED_ROUTES = [r for r in os.environ.get("MCP_EMBED_ROUTES", "aigw").split(",") if r]
-FAST_TIMEOUT_S = float(os.environ.get("MCP_EMBED_FAST_TIMEOUT_S", "5"))
+FAST_TIMEOUT_S = float(os.environ.get("MCP_EMBED_FAST_TIMEOUT_S", "12"))
 ROUTE_RECHECK_S = 600
 MAX_SQL = int(os.environ.get("MCP_MAX_SQL", "2"))
 MAX_K = 50
@@ -371,7 +372,10 @@ def _route_ok(route: str) -> bool:
         if _picker is None:
             os.environ.setdefault("EMBED_REF_FILE", str(reader.CACHE / "embed-reference.json"))
             _picker = embedroute.Picker(lookup=reader.route_endpoint)
-        why = _picker.check(route, FAST_TIMEOUT_S)
+        # The full timeout: a slow but correct server must pass (it took 9.8 s
+        # for the reference text, 2026-11-18), and a check runs at most every
+        # ROUTE_RECHECK_S.
+        why = _picker.check(route, EMBED_TIMEOUT_S)
         now_ok = why == "ok"
         if now_ok != ok or route not in _route_verdict:
             log.info("embedding route %s: %s", route, "in use" if now_ok else why)
@@ -397,12 +401,16 @@ def _embed_cached(text: str, as_document: bool = False) -> bytes:
                 if e.code not in (401, 403):
                     raise
                 vec = reader.embed_query(text, reader.route_endpoint(route), as_document=as_document, timeout=timeout)
-            _observe(route, time.monotonic() - t0)
+            dt = time.monotonic() - t0
+            _observe(route, dt)
+            # Per route, so the ALICE server and aigw read apart on the dashboard.
+            M.observe("cocoindex_mcp_embed_route_seconds", dt, route=route)
             M.count("cocoindex_mcp_embed_route", route=route)
             return sqlite_vec.serialize_float32(vec)
         except (TimeoutError, urllib.error.URLError) as e:
             err = e
             _observe(route, 2 * timeout)        # a failure counts as very slow
+            M.count("cocoindex_mcp_embed_route_failed", route=route)
             if not last:
                 # Not tried again before the next check (ROUTE_RECHECK_S): each
                 # query would otherwise wait FAST_TIMEOUT_S on a dead route.
