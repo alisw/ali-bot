@@ -455,12 +455,11 @@ job "cocoindex" {
         # each (2026-11-17: commits and prs both sat at "16 short" for a whole
         # PASS_TIMEOUT).
         # The deadline also runs while a batch waits for one of the
-        # EMBED_MAX_INFLIGHT_REQUESTS permits. 16 components (a commit since
-        # 2025 or a PR has up to 40-70 texts) queued ~10-17 batches behind 4
-        # permits, and the back of the queue reached aigw with seconds left:
-        # 46% of commits' and 27% of prs' requests timed out (2026-11-18).
-        # 6 keeps about one round of batches queued.
-        COCOINDEX_MAX_INFLIGHT_COMPONENTS = "6"
+        # EMBED_MAX_INFLIGHT_REQUESTS permits, but fewer components did not
+        # help: with 6 (2026-11-18, 09:17-09:47) 44% of commits' requests still
+        # timed out (46% with 16) and throughput fell to 747 texts in 30 min.
+        # aigw itself was slow: the idle probe averaged 19 s, up to 57 s.
+        COCOINDEX_MAX_INFLIGHT_COMPONENTS = "16"
         EMBED_MAX_INFLIGHT_REQUESTS       = "4"
         EMBED_TIMEOUT_S                   = "60"
         EMBED_MODEL                       = "openai/embeddinggemma-300m"
