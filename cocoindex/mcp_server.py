@@ -40,11 +40,13 @@ Environment (beyond reader.py's COCO_STORE / COCO_CACHE / EMBED_MODEL):
                          computed before a query takes its slot, so a slow
                          embedding service delays the searches, not every tool.
     MCP_EMBED_TIMEOUT_S  how long one query embedding may take (default 20)
-    MCP_EMBED_ROUTES     embedding routes in order of preference (default aigw),
-                         e.g. "alice-embed,aigw": a route before the last one is
-                         given MCP_EMBED_FAST_TIMEOUT_S (default 5) and is used
-                         only once its vectors are checked to be aigw's
-                         (embedroute.py; checked again every 10 minutes).
+    MCP_EMBED_ROUTES     embedding routes (default aigw), e.g. "alice-embed,aigw":
+                         tried fastest first (a moving average of each route's
+                         response times; the order given until measured). A
+                         route other than aigw is used only once its vectors are
+                         checked to be aigw's (embedroute.py; checked again every
+                         10 minutes). Every route but the last tried gets
+                         MCP_EMBED_FAST_TIMEOUT_S (default 5).
     MCP_MAX_SQL          sql() calls running at once (default 2), apart from the
                          MCP_MAX_CONCURRENT slots: heavy SQL cannot hold them all.
                          A call waits at most SQL_TIMEOUT_S for its turn.
@@ -342,6 +344,20 @@ def _url(repo: str, sha: str) -> str:
 _picker: embedroute.Picker | None = None
 _route_verdict: dict[str, tuple[bool, float]] = {}
 _route_lock = threading.Lock()
+_route_ewma: dict[str, float] = {}      # route -> moving average of its response time (s)
+
+
+def _observe(route: str, seconds: float) -> None:
+    with _route_lock:
+        prev = _route_ewma.get(route)
+        _route_ewma[route] = seconds if prev is None else 0.7 * prev + 0.3 * seconds
+
+
+def _route_order() -> list[str]:
+    """Fastest first; a route not measured yet first of all (so it gets
+    measured), in the configured order."""
+    with _route_lock:
+        return sorted(EMBED_ROUTES, key=lambda r: (_route_ewma.get(r, 0.0), EMBED_ROUTES.index(r)))
 
 
 def _route_ok(route: str) -> bool:
@@ -367,11 +383,11 @@ def _route_ok(route: str) -> bool:
 def _embed_cached(text: str, as_document: bool = False) -> bytes:
     import sqlite_vec
     err: Exception | None = None
-    for i, route in enumerate(EMBED_ROUTES):
-        last = i == len(EMBED_ROUTES) - 1
-        if not last and not _route_ok(route):
-            continue
+    order = [r for r in _route_order() if _route_ok(r)]
+    for i, route in enumerate(order):
+        last = i == len(order) - 1
         timeout = EMBED_TIMEOUT_S if last else FAST_TIMEOUT_S
+        t0 = time.monotonic()
         try:
             # The gate token rotates daily: resolve per miss, and once more on a
             # 401/403 (a token that expired between resolving and sending).
@@ -381,10 +397,12 @@ def _embed_cached(text: str, as_document: bool = False) -> bytes:
                 if e.code not in (401, 403):
                     raise
                 vec = reader.embed_query(text, reader.route_endpoint(route), as_document=as_document, timeout=timeout)
+            _observe(route, time.monotonic() - t0)
             M.count("cocoindex_mcp_embed_route", route=route)
             return sqlite_vec.serialize_float32(vec)
         except (TimeoutError, urllib.error.URLError) as e:
             err = e
+            _observe(route, 2 * timeout)        # a failure counts as very slow
             if not last:
                 # Not tried again before the next check (ROUTE_RECHECK_S): each
                 # query would otherwise wait FAST_TIMEOUT_S on a dead route.
