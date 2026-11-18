@@ -99,7 +99,7 @@ Pull requests and their human review discussion, for the same five repositories,
 **Output tables.**
 - `prs(repo, number, title, author, author_association, state, draft, created_at, updated_at, closed_at, merged_at, base, head, head_sha, url, body, n_comments, embedding)`. `state` is `open`, `closed` (not merged) or `merged`.
 - `pr_chunks(repo, number, kind, chunk, author, path, line, created_at, text, embedding)`.
-- `pr_repos(repo, fetched_through, scan_in_progress, indexed, skipped, bots)`. `index_status` uses it to say when the bootstrap is still running.
+- `pr_repos(repo, fetched_through, scan_in_progress, indexed, skipped, bots)`. `index_status` uses it to say when the bootstrap is still running. `indexed` counts the PRs selected for indexing after the GitHub sync, not those already embedded. The rows are declared in a child component of their own (`declare_repo_status`), mounted before the per-month work and waited for. Rows declared by `app_main` itself are only written when the whole update completes, and a run stopped at `PASS_TIMEOUT` never does: until 2026-11-18 `pr_repos` kept the first pass's values (no watermark, 0 indexed) for every repository.
 
 The cocoindex SQLite target creates no secondary indexes, and they must not go into the indexer's live db: SQLite refuses `ALTER TABLE DROP COLUMN` on an indexed column, which a cocoindex schema change may issue. `reader.sync()` therefore adds them to its verified copy before the `rename()`: `prs(created_at)`, `prs(author COLLATE NOCASE, created_at)`, `prs(state, created_at)` and `commits(repo, pr_number)`.
 
@@ -216,7 +216,7 @@ They join to `prs` on `(repo, pr = number)` and to `commits` on `(repo, sha)`. R
   6. A log extracted by an older `EXTRACT_VERSION`: only it is downloaded again, nothing embedded, the same rows.
 
   Pass 2 also checks a DPL crash's fingerprint (indexed and embedded), that every error's `line` points at that error in its log, and that `ci_errors` has no text column.
-- **`test/mcp_test.py`** on that store: 157 checks (109 + 24 CI checks per transport). **`sso_test.py`**: 89 on the prs store, 113 on the cif store. **ci-mcp:** `tests/test_logscan.py` (scrubber per secret kind, signatures, header, real fixtures) brings it to 30 unit tests.
+- **`test/mcp_test.py`** on that store: 188 checks (the 114 of the prs store plus the CI checks). **`sso_test.py`**: 89 on the prs store, 113 on the cif store. **ci-mcp:** `tests/test_logscan.py` (scrubber per secret kind, signatures, header, real fixtures) brings it to 30 unit tests.
 
 
 ## What a published ci-failures.db contains (`sanitize.py`)
@@ -355,7 +355,7 @@ To revoke, use `del(.["<name>"])` instead of `. + {…}`. The first time, start 
 - "SSO only" behind `https://ali-ci.cern.ch/mcp`: the metadata path Traefik forwards, the public URL in the 401, a static token refused, a foreign Host refused;
 - user names and mechanism in the log, and none of the 19 tokens or their signatures in it.
 
-**Tests** (`test/mcp_test.py <store-url>`; the URL must be an absolute `file://` URL): fake embedder plus the file:// snapshot from the end-to-end test, driven through the real MCP client, over stdio and over HTTP with a token file. 61 checks on a commits-only store; 109 on the store of `test/prs_test.py`, which adds 24 PR checks per transport; 157 on the store of `test/cif_test.py`, which adds 24 CI checks per transport (exact search hit, filters, a pasted log line matching exactly, another builder's copy of it, a class match, the GLUT error on 3 PRs, red-then-green counted, `ci_pr_builds` attempts and hosts, `other_prs_3d` = 2, secrets redacted, `sql` over `cf`, refused writes). The server now logs one plain line per record (`logging.basicConfig(force=True)`): the SDK's rich handler wrapped long lines at the terminal width, which split a refusal reason across two lines once this file grew, and `sso_test`'s log check failed on that alone.
+**Tests** (`test/mcp_test.py <store-url>`; the URL must be an absolute `file://` URL): fake embedder plus the file:// snapshot from the end-to-end test, driven through the real MCP client, over stdio and over HTTP with a token file. 61 checks on a commits-only store; 114 on the store of `test/prs_test.py`, which adds 24 PR checks per transport; 188 on the store of `test/cif_test.py`, which adds 24 CI checks per transport (exact search hit, filters, a pasted log line matching exactly, another builder's copy of it, a class match, the GLUT error on 3 PRs, red-then-green counted, `ci_pr_builds` attempts and hosts, `other_prs_3d` = 2, secrets redacted, `sql` over `cf`, refused writes). The server now logs one plain line per record (`logging.basicConfig(force=True)`): the SDK's rich handler wrapped long lines at the terminal width, which split a refusal reason across two lines once this file grew, and `sso_test`'s log check failed on that alone.
 - every tool, with ground truth taken from the cached db (with the fake embedder, the flow's exact text comes back at distance 0);
 - LIKE escaping, the repo short-name mapping and the `k` cap;
 - the eight refused `sql` statements, and the db intact afterwards;
@@ -363,12 +363,14 @@ To revoke, use `del(.["<name>"])` instead of `. + {…}`. The first time, start 
 - `/healthz` answers a Consul-style `Host: <ip>:<port>`.
 - prs: the reader's indexes; exact-text hits on a description and a review-thread chunk; the `state`, `author` and `repo` filters; that no PR text appears outside `untrusted`; `get_pr`'s merged commits, caps and diff files; the PR on `get_commit`; the commits⋈prs join in `sql`; four more refused statements (`DETACH`, writes into `pr`, `pragma_database_list`).
 
-**Tests of the prs flow** (`test/prs_test.py <workdir>`): fully offline. A local git origin, which the mirrors clone through `GIT_BASE_URL`, holds `refs/pull/<n>/head`. `test/fake_github.py` serves fixture PRs to the flow's five fixed queries, dispatched on `operationName`, with keyset cursors, nested pages, `nodes(ids:)` and injected rate limits. Five runner passes with `FLOWS=commits,prs`, 50 checks:
+**Tests of the prs flow** (`test/prs_test.py <workdir>`): fully offline. A local git origin, which the mirrors clone through `GIT_BASE_URL`, holds `refs/pull/<n>/head`. `test/fake_github.py` serves fixture PRs to the flow's five fixed queries, dispatched on `operationName`, with keyset cursors, nested pages, `nodes(ids:)` and injected rate limits. Seven runner passes with `FLOWS=commits,prs`, 55 checks:
 1. The bootstrap is cut at 2 pages.
 2. The next pass resumes from the saved cursor, through a 403, a `RATE_LIMITED` and a low `remaining`. Members, contributors and collaborators are indexed; the first-timer, the ghost and dependabot are not. Bot, linter, `alibuild` and minimized comments and HTML template comments are absent. Overflowing comments are paged in. The thread chunk carries path and line. The closed-unmerged and open PRs have diffs and the merged ones do not.
 3. One comment is edited and one deleted, and the first-timer becomes CONTRIBUTOR without their PR being updated. The edit and the deletion are reflected, the PR is indexed, and exactly 3 texts are re-embedded.
 4. Nothing changed: no embeddings, one list request, no snapshot.
 5. A fresh host restores from the snapshot, re-embeds nothing, scans incrementally and ends with the same rows.
+6. A new PR, and an embedder that does not answer (`fake_embedder.py` waits while `<log>.delay` exists): `PASS_TIMEOUT` (15 s) kills prs. The PR is not indexed, but `pr_repos` has the new count and watermark. Against the previous `app_main` this check fails with the old values, as in production.
+7. The next pass, embedder back, indexes the PR.
 
 ## Metrics (`metrics.py`, Grafana dashboard `ci-jobs/grafana/ali-ci-mcp.json`)
 
