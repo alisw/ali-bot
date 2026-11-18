@@ -413,6 +413,8 @@ BOOST_CHECK_RE = re.compile(r"^(?P<crit>critical )?check (?P<expr>.+?) has faile
 # (name, pattern over the message, template)
 TOOLS = [(n, re.compile(rx), t) for n, rx, t in [
     ("ninja", r"^ninja: build stopped: subcommand failed\.$", "ninja: build stopped: subcommand failed."),
+    # The Hyperloop test runner's last line when o2 failed (a summary, see logscan.SUMMARY_RE).
+    ("hyperloop", r"^ERROR: O2 exit code is (\d+)$", "ERROR: O2 exit code is _"),
     ("ninja", r"^ninja: build stopped: cannot make progress due to previous errors\.$",
      "ninja: build stopped: cannot make progress due to previous errors."),
     ("ninja", r"^ninja: error: (.+)$", "ninja: error: _"),
@@ -618,6 +620,17 @@ class Templates:
         if r is None and kind in SOURCE_KINDS:
             r = self._source(message_of(sig_exact))
             fk = "source" if r else None
+            # A wrapper ("Exception while running: _. Rethrowing.", "...device
+            # shutting down. Reason: _") whose last value is itself a message
+            # with a template: that message is the error, the wrapper only
+            # carries it. Two levels at most; the inner match is anchored on
+            # the whole value, as every match is.
+            for _ in range(2):
+                inner = next((self._source(f.strip()) for f in reversed(r[4]) if len(f.strip()) >= MIN_LITERAL),
+                             None) if r else None
+                if not inner:
+                    break
+                r = inner
         if r is None:
             return None
         text, repo, path, line, fillers = r

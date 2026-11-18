@@ -176,6 +176,15 @@ check(m and m["fingerprint"] == 'fatal error: in "timestamptest": critical check
 m = T.match("error", 'CCDB/test/testCcdbApi.cxx: error: in "timestamptest": difference{nan} between a{1} and b{2} exceeds 1%')
 check(m and m["fingerprint"] == 'error: in "timestamptest": _' and m["filler_hash"], f"another Boost.Test message ({m})")
 check(T.match("cmake", "Requested resource does not exist: x") is None, "only error and test kinds are matched")
+w = T.match("error", "[ERROR] Exception while running: Requested resource does not exist: http://ccdb/x/y. Rethrowing.")
+check(w and w["fingerprint"] == "Requested resource does not exist: _" and "CcdbApi.cxx" in w["fingerprint_src"],
+      f"a DPL wrapper carrying a known message: the inner message is the fingerprint ({w and w['fingerprint']})")
+w = T.match("error", "[ERROR] Exception while running: something nobody prints anywhere. Rethrowing.")
+check(w and w["fingerprint"] == "Exception while running: _. Rethrowing.",
+      f"a wrapper carrying an unknown message keeps the wrapper's template ({w and w['fingerprint']})")
+h = T.match("error", "ERROR: O2 exit code is 1")
+check(h and h["fingerprint"] == "ERROR: O2 exit code is _" and h["fingerprint_kind"] == "tool",
+      f"the Hyperloop runner's exit line is a tool message ({h})")
 g = T.match("git-fetch", "Git command for package 'ONNXRuntime' failed.")
 check(g and g["fingerprint"] == "_ command for package _ failed." and g["fingerprint_kind"] == "source"
       and "alisw/alibuild" in g["fingerprint_src"] and "workarea.py#L1" in g["fingerprint_src"]
