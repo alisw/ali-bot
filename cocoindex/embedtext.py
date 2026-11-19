@@ -23,6 +23,7 @@ import asyncio
 import math
 import os
 import sys
+import threading
 import time
 
 DOC_PREFIX = "title: none | text: "
@@ -85,6 +86,11 @@ def _timed_out(e: BaseException) -> bool:
     return isinstance(e, TimeoutError) or "DeadlineExceeded" in n or "Timeout" in n
 
 
+def _route() -> str:
+    """The route this process embeds through now (embedroute moves it mid-flow)."""
+    return os.environ.get("EMBED_ROUTE", "aigw")
+
+
 class AdaptiveLimit:
     """At most int(limit) texts in flight; additive increase, multiplicative decrease."""
 
@@ -112,15 +118,19 @@ class AdaptiveLimit:
         if int(self.limit) // 16 > old // 16:
             self.log(f"texts in flight up to {int(self.limit)}")
 
-    def timeout(self, started: float) -> bool:
-        """A request started at `started` timed out; True if that cut the limit."""
+    def congested(self, started: float, why: str = "a timeout") -> bool:
+        """A request started at `started` (time.monotonic()) timed out or was
+        refused; True if that cut the limit. Only a request started after the
+        last cut can cut again: a wave of failures is one signal."""
         if started < self.last_cut:
             return False
         old = int(self.limit)
         self.limit = max(self.lo, self.limit / 2)
         self.last_cut = time.monotonic()
-        self.log(f"texts in flight {old} -> {int(self.limit)} after a timeout")
+        self.log(f"texts in flight {old} -> {int(self.limit)} after {why}")
         return True
+
+    timeout = congested
 
 
 _limits: dict = {}
@@ -133,7 +143,123 @@ def _limit():
     loop = asyncio.get_running_loop()
     if loop not in _limits:
         _limits[loop] = AdaptiveLimit()
+        _install_error_hook()
     return _limits[loop]
+
+
+def current_limit() -> tuple[float, int] | None:
+    """(limit, texts in flight) of this process's limit, for the metrics; None if
+    there is none yet."""
+    for lim in list(_limits.values()):
+        return lim.limit, lim.inflight
+    return None
+
+
+# Health of each route, in texts, since embedroute last took it (every
+# EMBED_REPICK_S): texts a server embedded (litellm's success callback: memo
+# hits make no request and do not count), and texts lost to a timeout or a
+# refused request. The repicker leaves a route only when it is unhealthy: a single
+# timed text says how fast an idle server answers one request, not how much a
+# loaded one gets done (2026-11-19 08:54: alice-embed had embedded 19,563 texts
+# in 10 minutes, at 1.4 s a batch, when one probe text (0.2 s against 2.5 s)
+# moved the flow to aigw, which then embedded 585, 961 and 0).
+_health_lock = threading.Lock()
+_health: dict[str, list[int]] = {}
+
+
+def note(route: str, ok: int = 0, failed: int = 0) -> None:
+    with _health_lock:
+        h = _health.setdefault(route, [0, 0])
+        h[0] += ok
+        h[1] += failed
+
+
+def take_health() -> dict[str, tuple[int, int]]:
+    """{route: (texts embedded, texts failed)} since the last call, and reset."""
+    global _health
+    with _health_lock:
+        h, _health = _health, {}
+    return {r: (ok, failed) for r, (ok, failed) in h.items()}
+
+
+# Refused requests (2026-11-19, 09:30-09:40: alice-embed failed 176 requests
+# that CocoIndex then retried, unseen by embed_doc) are congestion too: a 429,
+# a 5xx or a failed connection cuts the limit like a timeout. A 400 does not:
+# that is a text too long, retried shorter by embed_doc. litellm reports every
+# failed attempt to its callbacks; the statuses are logged once a minute.
+ERROR_LOG_S = 60.0
+_errors: dict[str, dict[str, int]] = {}
+_errors_logged = [-math.inf]   # the first refusal is logged at once, then once a minute
+
+
+def _congestion_code(e) -> str | None:
+    """'HTTP 503', 'HTTP 429', 'ConnectionError'..., or None if e is not congestion."""
+    if e is None or _timed_out(e):
+        return None             # timeouts are seen by _embed itself
+    code = getattr(e, "status_code", None)
+    if isinstance(code, int):
+        return f"HTTP {code}" if code == 429 or code >= 500 else None
+    n = type(e).__name__
+    return n if any(k in n for k in ("Connection", "ServiceUnavailable", "RateLimit", "InternalServer")) else None
+
+
+def request_failed(e, n_texts: int, seconds: float, route: str | None = None) -> None:
+    """A request of n_texts that took `seconds` failed with e (from litellm's
+    failure callback, any thread)."""
+    why = _congestion_code(e)
+    if why is None:
+        return
+    route = route or _route()
+    note(route, failed=n_texts)
+    started = time.monotonic() - max(0.0, seconds)
+    for lim in list(_limits.values()):
+        lim.congested(started, f"{route}: {why}")
+    with _health_lock:
+        c = _errors.setdefault(route, {})
+        c[why] = c.get(why, 0) + 1
+        now = time.monotonic()
+        if now - _errors_logged[0] < ERROR_LOG_S:
+            return
+        errs, _errors_logged[0] = dict(_errors), now
+        _errors.clear()
+    for r, c in errs.items():
+        shown = ", ".join(f"{k}×{v}" for k, v in sorted(c.items(), key=lambda x: -x[1]))
+        n = sum(c.values())
+        _log(f"{r}: {n} request{'s' if n != 1 else ''} refused in the last {ERROR_LOG_S:.0f} s: {shown}")
+
+
+_hooked = [False]
+
+
+def _install_error_hook() -> None:
+    """Report litellm's failed requests to request_failed (once per process)."""
+    if _hooked[0]:
+        return
+    _hooked[0] = True
+    try:
+        import litellm
+        from litellm.integrations.custom_logger import CustomLogger
+    except ImportError:
+        return
+
+    def n_texts(kwargs) -> int:
+        x = kwargs.get("input")
+        return len(x) if isinstance(x, list) else 1
+
+    class Hook(CustomLogger):
+        async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
+            # Health counts only texts a server embedded: texts CocoIndex answers
+            # from its memo make no request and would make a dead server look busy.
+            note(_route(), ok=n_texts(kwargs))
+
+        async def async_log_failure_event(self, kwargs, response_obj, start_time, end_time):
+            try:
+                secs = (end_time - start_time).total_seconds()
+            except Exception:  # noqa: BLE001
+                secs = 0.0
+            request_failed(kwargs.get("exception"), n_texts(kwargs), secs)
+
+    litellm.callbacks = [*getattr(litellm, "callbacks", []), Hook()]
 
 
 async def _embed(embedder, text: str):
@@ -146,7 +272,8 @@ async def _embed(embedder, text: str):
             v = await embedder.embed(text)
         except Exception as e:
             if _timed_out(e):
-                lim.timeout(started)
+                note(_route(), failed=1)
+                lim.congested(started)
                 if attempt == 1:
                     continue
             raise

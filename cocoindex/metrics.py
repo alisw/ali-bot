@@ -171,8 +171,11 @@ class Pusher:
 def install_litellm(flow: str, route: str | None = None) -> Window | None:
     """Count every embedding request litellm makes in this process (cocoindex's
     LiteLLMEmbedder goes through litellm.aembedding): requests started,
-    succeeded and failed, texts embedded, and request latency. Started minus
-    finished is what cocoindex abandoned at its deadline (EMBED_TIMEOUT_S)."""
+    succeeded and failed, failed requests by status code (request_errors,
+    attribute code: "503", "429", or the exception's name), texts embedded, and
+    request latency; and, at each push, embedtext's adaptive limit on texts in
+    flight and the texts in flight (inflight_limit, inflight_texts). Started
+    minus finished is what cocoindex abandoned at its deadline (EMBED_TIMEOUT_S)."""
     if not env_endpoint():
         return None
     try:
@@ -219,9 +222,25 @@ def install_litellm(flow: str, route: str | None = None) -> Window | None:
 
         async def async_log_failure_event(self, kwargs, response_obj, start_time, end_time):
             w.count("cocoindex_embed_requests_failed", **tags())
+            e = kwargs.get("exception")
+            code = getattr(e, "status_code", None)
+            w.count("cocoindex_embed_request_errors", code=str(code) if isinstance(code, int) else type(e).__name__,
+                    **tags())
+
+    def limit(win: Window) -> None:
+        """The adaptive limit on texts in flight (embedtext.AdaptiveLimit) and the
+        texts in flight, as they are at each push."""
+        try:
+            import embedtext  # noqa: PLC0415 -- ships next to this file
+        except ImportError:
+            return
+        cur = embedtext.current_limit()
+        if cur:
+            win.gauge("cocoindex_embed_inflight_limit", cur[0], flow=flow)
+            win.gauge("cocoindex_embed_inflight_texts", cur[1], flow=flow)
 
     litellm.callbacks = [*getattr(litellm, "callbacks", []), Counter()]
-    Pusher(w)
+    Pusher(w, before=limit)
     return w
 
 

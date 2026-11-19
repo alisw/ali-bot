@@ -224,11 +224,13 @@ SWITCH_FACTOR = 2.0
 SWITCH_MIN_GAIN_S = 1.0
 
 
-def repick(picker: Picker, routes: list[str], current: str, timeout: float) -> tuple[str | None, dict]:
+def repick(picker: Picker, routes: list[str], current: str, timeout: float,
+           health: tuple[int, int] | None = None) -> tuple[str | None, dict]:
     """Times every route at once with a fresh text and checks each against the
     reference vector. Returns (the route to switch to, or None to stay; the
     qualifying routes' times). Waits for all: the current route's time is
-    the point of the comparison."""
+    the point of the comparison, unless the current route's `health` (texts
+    embedded, texts failed since the last re-pick) settles it: see decide()."""
     results: dict = {}
     threads = [threading.Thread(target=lambda r=r: results.__setitem__(r, picker._timed(r, timeout)), daemon=True)
                for r in routes]
@@ -244,15 +246,47 @@ def repick(picker: Picker, routes: list[str], current: str, timeout: float) -> t
     for r, (v, dt, err) in list(results.items()):
         if v is not None and (r == CANONICAL or (picker.ref is not None and cosine(v, picker.ref) >= MIN_COSINE)):
             ok[r] = dt
-    if not ok:
-        return None, ok
-    best = min(ok, key=ok.get)
+    return decide(current, ok, health), ok
+
+
+#: A route the flow is using counts as unhealthy when at least this share of
+#: its texts failed (timed out or refused) since the last re-pick.
+UNHEALTHY_SHARE = 0.5
+
+
+def healthy(health: tuple[int, int] | None) -> bool | None:
+    """True/False from (texts embedded, texts failed) since the last re-pick;
+    None when the route did no work to judge it by."""
+    if not health or sum(health) == 0:
+        return None
+    ok, failed = health
+    return ok > 0 and failed / (ok + failed) < UNHEALTHY_SHARE
+
+
+def decide(current: str, times: dict, health: tuple[int, int] | None) -> str | None:
+    """The route to move to, or None to stay. A healthy current route is kept
+    whatever the probe says: one timed text measures an idle server's answer,
+    while the current route carries the flow's load (2026-11-19 08:54: a probe
+    of 0.2 s against 2.5 s moved the commits flow from alice-embed, 19,563
+    texts in 10 minutes, to aigw, which then embedded 585, 961 and 0). An
+    unhealthy one is left for the fastest other route that qualified. With no
+    work to judge by, the old rule: clearly faster (SWITCH_FACTOR and
+    SWITCH_MIN_GAIN_S) or the current route did not answer."""
+    if not times:
+        return None
+    h = healthy(health)
+    if h is True:
+        return None
+    others = {r: t for r, t in times.items() if r != current}
+    if h is False:
+        return min(others, key=others.get) if others else None
+    best = min(times, key=times.get)
     if best == current:
-        return None, ok
-    if current not in ok or (ok[best] * SWITCH_FACTOR < ok[current]
-                             and ok[current] - ok[best] >= SWITCH_MIN_GAIN_S):
-        return best, ok
-    return None, ok
+        return None
+    if current not in times or (times[best] * SWITCH_FACTOR < times[current]
+                                and times[current] - times[best] >= SWITCH_MIN_GAIN_S):
+        return best
+    return None
 
 
 def use_route(route: str) -> bool:
@@ -280,16 +314,21 @@ def start_repicker(flow: str) -> threading.Thread | None:
     timeout = float(os.environ.get("EMBED_PICK_TIMEOUT_S", "20"))
 
     def loop():
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import embedtext  # noqa: PLC0415 -- ships next to this file; only flows need it
         picker = Picker()
         while True:
             time.sleep(REPICK_S)
             current = os.environ.get("EMBED_ROUTE", CANONICAL)
+            health = embedtext.take_health().get(current)
             try:
-                new, times = repick(picker, routes, current, timeout)
+                new, times = repick(picker, routes, current, timeout, health)
             except Exception as e:  # noqa: BLE001 -- never take the flow down
                 log(f"{flow}: re-pick failed: {e}")
                 continue
             shown = ", ".join(f"{r} {t:.1f} s" for r, t in sorted(times.items(), key=lambda x: x[1])) or "none answered"
+            if health and sum(health):
+                shown += f"; {current} embedded {health[0]} texts, {health[1]} failed, since the last check"
             if new and use_route(new):
                 log(f"{flow}: embeddings move {current} -> {new} ({shown})")
             else:

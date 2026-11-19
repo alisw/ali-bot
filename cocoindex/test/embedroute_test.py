@@ -319,5 +319,57 @@ finally:
     for p in procs:
         p.terminate()
 
+# decide(): a healthy current route is kept whatever one probe text says.
+D = er2.decide
+check(D("alice-embed", {"aigw": 0.2, "alice-embed": 2.5}, (19563, 13)) is None,
+      "decide: the 08:54 case: alice-embed embedded 19,563 texts, 13 failed: stays, though aigw's probe was faster")
+check(D("alice-embed", {"aigw": 0.2, "alice-embed": 2.5}, (10, 600)) == "aigw",
+      "decide: most texts failed: moves to the fastest other route")
+check(D("alice-embed", {"alice-embed": 2.5}, (0, 50)) is None,
+      "decide: unhealthy but no other route answered: stays")
+check(D("alice-embed", {"aigw": 0.2, "alice-embed": 2.5}, (0, 0)) == "aigw",
+      "decide: no work to judge by: the old rule (clearly faster) applies")
+check(D("alice-embed", {"aigw": 2.0, "alice-embed": 2.5}, None) is None,
+      "decide: no work, not clearly faster: stays")
+check(D("alice-embed", {"aigw": 1.0}, (0, 30)) == "aigw" and D("alice-embed", {"aigw": 1.0}, None) == "aigw",
+      "decide: the current route did not answer the probe and has nothing to show: moves")
+check(D("aigw", {}, (0, 30)) is None, "decide: nothing answered: stays")
+
+# embedtext: refused requests are congestion; their statuses are summarised.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import asyncio  # noqa: E402
+import embedtext  # noqa: E402
+
+
+class E(Exception):
+    def __init__(self, code):
+        self.status_code = code
+
+
+async def errors():
+    logs = []
+    lim = embedtext.AdaptiveLimit(start=64, lo=4, hi=256, log=logs.append)
+    embedtext._limits.clear()
+    embedtext._limits[asyncio.get_running_loop()] = lim
+    embedtext.take_health()
+    embedtext._log = logs.append
+    embedtext._errors_logged[0] = time.monotonic() - 3600
+    embedtext.request_failed(E(503), 64, 1.0, route="alice-embed")
+    embedtext.request_failed(E(503), 64, 1.0, route="alice-embed")   # same wave: started before the cut
+    check(int(lim.limit) == 32, f"embedtext: HTTP 503 cuts the limit, once per wave: 64 -> {int(lim.limit)}")
+    embedtext.request_failed(E(400), 64, 1.0, route="alice-embed")
+    embedtext.request_failed(TimeoutError(), 64, 1.0, route="alice-embed")
+    check(int(lim.limit) == 32, "embedtext: a 400 (too long) and a timeout seen by litellm do not cut here")
+    check(embedtext.take_health() == {"alice-embed": (0, 128)},
+          "embedtext: refused requests count as failed texts in the route's health")
+    check(any("alice-embed: 1 request refused" in m and "HTTP 503" in m for m in logs),
+          f"embedtext: the statuses are logged ({[m for m in logs if 'refused' in m]})")
+    embedtext.request_failed(E(429), 64, 0.0, route="aigw")  # a later wave: started after the cut
+    check(int(lim.limit) == 16, f"embedtext: a later 429 cuts again: {int(lim.limit)}")
+    embedtext._limits.clear()
+
+
+asyncio.run(errors())
+
 print(f"\n{len(failures)} failure(s)")
 sys.exit(1 if failures else 0)
