@@ -469,7 +469,7 @@ job "cocoindex" {
 
         # Flows run one at a time, each to completion (or PASS_TIMEOUT) before
         # the next, in an order shuffled every pass (runner.sh pass_order).
-        FLOWS = "commits,prs,ci-failures"
+        FLOWS = "commits,prs,ci-failures,hyperloop,hyperloop-perf"
         FLOW_ORDER = "random"   # shuffled every pass; "fixed": as FLOWS lists them
 
         PASS_SLEEP            = "3600"
