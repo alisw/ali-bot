@@ -612,6 +612,37 @@ job "cocoindex" {
         data            = file("ci_failures_flow.py")
       }
 
+      # The hyperloop flow (Hyperloop wagon tests from alimonitor's public test
+      # folders, HYPERLOOP_TESTS.md): runs when FLOWS names it.
+      template {
+        destination     = "local/hyperloop_flow.py"
+        change_mode     = "noop"
+        left_delimiter  = "[[%%"
+        right_delimiter = "%%]]"
+        data            = file("hyperloop_flow.py")
+      }
+      template {
+        destination     = "local/hyperloop_perf_flow.py"
+        change_mode     = "noop"
+        left_delimiter  = "[[%%"
+        right_delimiter = "%%]]"
+        data            = file("hyperloop_perf_flow.py")
+      }
+      template {
+        destination     = "local/hlperf.py"
+        change_mode     = "noop"
+        left_delimiter  = "[[%%"
+        right_delimiter = "%%]]"
+        data            = file("hlperf.py")
+      }
+      template {
+        destination     = "local/hyperloop.py"
+        change_mode     = "noop"
+        left_delimiter  = "[[%%"
+        right_delimiter = "%%]]"
+        data            = file("hyperloop.py")
+      }
+
       # What a published ci-failures.db may not contain (secrets, machine
       # names): s3snap.py runs it on the copy it uploads.
       template {

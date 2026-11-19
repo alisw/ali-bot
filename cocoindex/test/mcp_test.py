@@ -71,7 +71,7 @@ async def exercise(client, label, cache):
     tools = {t.name for t in (await client.list_tools()).tools}
     check(tools == {"search_commits", "search_diffs", "find_commits", "similar_commits",
                     "get_commit", "sql", "index_status", "search_prs", "get_pr",
-                    "search_ci_failures", "ci_signature", "ci_pr_builds"}, f"[{label}] tool list {sorted(tools)}")
+                    "search_ci_failures", "ci_signature", "ci_pr_builds", "ci_hyperloop"}, f"[{label}] tool list {sorted(tools)}")
 
     # Ground truth straight from the cached DB the server downloaded.
     db = sqlite3.connect(f"file:{cache}/commits.db?mode=ro", uri=True)
@@ -148,6 +148,8 @@ async def exercise(client, label, cache):
     check(s["rows"][0][0] == n, f"[{label}] database intact after the attempts ({n} rows)")
     if (Path(cache) / "ci-failures.db").exists():
         await exercise_cf(client, label, cache, st)
+    if (Path(cache) / "hyperloop.db").exists():
+        await exercise_hl(client, label, cache, st)
     if (Path(cache) / "prs.db").exists():
         await exercise_prs(client, label, cache, st)
     else:
@@ -340,6 +342,72 @@ async def exercise_cf(client, label, cache, st):
     for evil in ["DELETE FROM cf.ci_builds", "UPDATE ci_errors SET line = 1", "DETACH DATABASE cf"]:
         r = payload(await client.call_tool("sql", {"query": evil}))
         check("only SELECT" in r.get("__error__", ""), f"{L} sql refuses: {evil}")
+
+
+
+async def exercise_hl(client, label, cache, st):
+    """The hyperloop flow's tests (cif_test's fake alimonitor: 809001 passed, 808999 failed,
+    809000 the same failure in other wagons on the same tag, with a user's dataset)."""
+    L = f"[{label}/hl]"
+    cdb = sqlite3.connect(f"file:{cache}/hyperloop.db?mode=ro", uri=True)
+    h = st.get("hyperloop") or {}
+    check(h.get("tests") == 3 and h.get("failed") == 2 and h.get("passed") == 1 and h.get("wagons"),
+          f"{L} index_status: Hyperloop tests by state, and wagons ({h})")
+    t = payload(await client.call_tool("ci_hyperloop", {"test_id": 808999}))
+    check(t["test"]["state"] == "failure" and t["test"]["tag"].startswith("O2Physics::") and t["wagons"],
+          f"{L} ci_hyperloop(test): state, tag, wagons")
+    devs = {e["device"] for e in t["errors"]}
+    check("hf-correlator-dplus-dplus-reduced" in devs and all(e["location"].startswith(t["test"]["folder_url"])
+                                                               for e in t["errors"]),
+          f"{L} ci_hyperloop(test): errors with their device and their line in the public log ({devs})")
+    same = [(e["other_tests_same_tag"], e["other_tests_same_tag_no_wagon_in_common"]) for e in t["errors"]]
+    check(same and all(x == (1, 1) for x in same),
+          f"{L} ci_hyperloop(test): 809000 counted among other tests on the same tag, sharing no wagon {same}")
+    check(all(set(e["untrusted"]) == {"fingerprint"} for e in t["errors"]) and "sig_exact" not in json.dumps(t),
+          f"{L} ci_hyperloop(test): fingerprints under untrusted, no error text")
+    ok = payload(await client.call_tool("ci_hyperloop", {"test_id": 809001}))
+    check(ok["test"]["state"] == "success" and ok["largest_memory"] and ok["most_cpu"]
+          and any(c["workflow"] == "o2-analysis-pid-tof-merge" and c["ccdb_fail"] == 4 for c in ok["ccdb_failures"]),
+          f"{L} ci_hyperloop(test, passed): largest memory, most CPU, CCDB failures (hyperloop-perf)")
+    wf = ok.get("workflows") or []
+    check(len(wf) >= 8 and all(w["pss_p95_mb"] is not None for w in wf[:3])
+          and wf == sorted(wf, key=lambda w: -(w["pss_p95_mb"] or 0)) and ok.get("train_resources"),
+          f"{L} ci_hyperloop(test, passed): per workflow memory and CPU statistics, most memory first ({len(wf)})")
+    wg = payload(await client.call_tool("ci_hyperloop", {"wagon_id": 12925}))
+    check(any(t.get("resources") and t["resources"]["pss_max_mb"] for t in wg["tests"]),
+          f"{L} ci_hyperloop(wagon): its workflows' memory and CPU per test")
+    shared = {w["wagon_id"] for w in ok["wagons"]}       # service wagons run in both trains
+    wid = next(w["wagon_id"] for w in t["wagons"] if w["wagon_id"] not in shared)
+    w = payload(await client.call_tool("ci_hyperloop", {"wagon_id": wid}))
+    check(w["summary"]["tests"] == 1 and w["summary"]["failed"] == 1 and w["tests"][0]["test_id"] == 808999
+          and w["top_errors"], f"{L} ci_hyperloop(wagon): its tests and top errors")
+    r = payload(await client.call_tool("ci_hyperloop", {"test_id": 1}))
+    check("no indexed Hyperloop test" in r.get("__error__", ""), f"{L} ci_hyperloop: an unknown test is a clear error")
+    top = t["errors"][0]["sig_hash"]
+    sg = payload(await client.call_tool("ci_signature", {"sig": top}))
+    check(sg["hyperloop"]["tests"] == 2 and sg["builds"] == 0,
+          f"{L} ci_signature: a Hyperloop-only error, with its 2 tests ({sg.get('hyperloop', {}).get('tests')})")
+    hist = sg["hyperloop"].get("history") or {}
+    check(hist.get("tests") == 2 and hist.get("days_seen") == 1 and hist.get("first_day")
+          and list(hist["per_day"].values())[0]["wagons"] >= 2
+          and sorted(list(hist["per_day"].values())[0]["test_ids"]) == [808999, 809000],
+          f"{L} ci_signature: the daily summary, tests and wagons per day ({hist.get('per_day')})")
+    et = payload(await client.call_tool("sql", {"query": f"SELECT test_id FROM hl.hl_error_tests WHERE sig_hash = '{top}' "
+                                                          "ORDER BY test_id"}))
+    check([r[0] for r in et["rows"]] == [808999, 809000], f"{L} sql: hl_error_tests, the summary's test ids as rows")
+    hst = payload(await client.call_tool("index_status", {}))["hyperloop"]
+    check(hst.get("summary_from") and hst.get("summary_tests") == 3,
+          f"{L} index_status: how far back the daily summary reaches ({hst.get('summary_from')})")
+    sr = payload(await client.call_tool("search_ci_failures", {"query": "Input feature feature1 not available", "k": 50}))
+    hit = [x for x in sr["results"] if x["sig_hash"] == top]
+    check(hit and hit[0]["hyperloop"]["tests"] == 2 and hit[0]["latest"],
+          f"{L} search_ci_failures: Hyperloop-only errors are found, with their tests and newest line")
+    ds = payload(await client.call_tool("sql", {"query": "SELECT test_id, dataset FROM hl.hl_tests ORDER BY test_id"}))
+    check(dict(ds["rows"])[809000] == "/alice/cern.ch/user/_/_/derived/run3",
+          f"{L} published: a grid user's login is hidden in the dataset")
+    cols = {r[1] for r in cdb.execute("PRAGMA table_info(hl_errors)")}
+    check("sig_exact" not in cols and "fingerprint" in cols, f"{L} published hl_errors: no error text")
+    check(h.get("signatures_embedded"), f"{L} index_status: the hyperloop flow's own embedded signatures")
 
 
 async def exercise_prs(client, label, cache, st):

@@ -18,7 +18,7 @@ set -euo pipefail
 
 : "${COCO_ROOT:?COCO_ROOT must point at the sticky ephemeral disk}"
 CODE_DIR=${CODE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}
-FLOWS=${FLOWS:-commits}                       # comma list: commits, prs, ci-failures
+FLOWS=${FLOWS:-commits}                       # comma list: commits, prs, ci-failures, hyperloop, hyperloop-perf
 FLOW_ORDER=${FLOW_ORDER:-random}              # random: shuffled every pass; fixed: as listed
 PASS_SLEEP=${PASS_SLEEP:-3600}                # seconds between passes
 PROBE_INTERVAL=${PROBE_INTERVAL:-300}         # between passes, time one embedding per route this often
@@ -65,6 +65,8 @@ flow_file() {
     commits)     echo commits_flow.py ;;
     prs)         echo prs_flow.py ;;
     ci-failures) echo ci_failures_flow.py ;;
+    hyperloop)   echo hyperloop_flow.py ;;
+    hyperloop-perf) echo hyperloop_perf_flow.py ;;
     *) return 1 ;;
   esac
 }
@@ -73,6 +75,8 @@ flow_db() {
     commits)     echo commits.db ;;
     prs)         echo prs.db ;;
     ci-failures) echo ci-failures.db ;;
+    hyperloop)   echo hyperloop.db ;;
+    hyperloop-perf) echo hyperloop-perf.db ;;
     *) return 1 ;;
   esac
 }

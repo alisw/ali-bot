@@ -1,0 +1,1226 @@
+PACKAGES = VO_ALICE@O2Physics::daily-20261119-0000-1
+Acquiring lock and downloading input files from /alice/cern.ch/user/a/alihyperloop/jobs/0601/hy_6016488 at Thu Nov 19 11:13:28 AM CET 2026
+Acquired lock and started downloading at Thu Nov 19 11:13:28 AM CET 2026
+Finished downloading at Thu Nov 19 11:13:41 AM CET 2026
+
+This job will run over the following files (note that not all of them may be processed because the test is gracefully stopped after a few minutes):
+/home/alitrain/train-workdir/testdata/LFN/alice/cern.ch/user/a/alihyperloop/jobs/0601/hy_6016488/5063/AO2D.root
+/home/alitrain/train-workdir/testdata/LFN/alice/cern.ch/user/a/alihyperloop/jobs/0601/hy_6016488/4492/AO2D.root
+
+You can directly access these files with the following URLs (while they are cached):
+http://alimonitor.cern.ch/train-workdir/testdata/LFN/alice/cern.ch/user/a/alihyperloop/jobs/0601/hy_6016488/5063/AO2D.root
+http://alimonitor.cern.ch/train-workdir/testdata/LFN/alice/cern.ch/user/a/alihyperloop/jobs/0601/hy_6016488/4492/AO2D.root
+
+The corresponding AliEn paths are:
+alien:///alice/cern.ch/user/a/alihyperloop/jobs/0601/hy_6016488/5063/AO2D.root
+alien:///alice/cern.ch/user/a/alihyperloop/jobs/0601/hy_6016488/4492/AO2D.root
+
+O2 job script starts at Thu Nov 19 11:13:41 AM CET 2026
+O2 is taken from: /cvmfs/alice.cern.ch/el9-x86_64/Packages/O2/daily-20261119-0000-1
+O2Physics is taken from: /cvmfs/alice.cern.ch/el9-x86_64/Packages/O2Physics/daily-20261119-0000-1
+Running on 1 cores and configuring with shared memory 7500000000, rate limit 209715200, readers 1
+
+Generating O2 command. Adding the following options:
+Input files: --aod-file @input_data.txt
+Reader/Spawner configuration: --readers 1
+Output configuration: --aod-writer-json OutputDirector.json
+Memory options: --aod-memory-rate-limit 209715200 --shm-segment-size 7500000000
+Time limit: --time-limit 300
+Timeframe limit: --timeframes-rate-limit 2 --timeframes-rate-limit-ipcid 808850
+Session: --session 808850
+Parent level access: --aod-parent-access-level 1 --aod-parent-base-path-replacement "alien://;/home/alitrain/train-workdir/testdata/LFN"
+Limiting throughput to: 1000 MB/s
+Monitoring: --resources-monitoring 5 --resources-monitoring-dump-interval 600
+Benchmarking prefix: perf record -F 99 -g --call-graph dwarf --user-callchains 
+
+Global options (given once): --aod-file @input_data.txt --aod-writer-json OutputDirector.json --aod-parent-access-level 1 --aod-parent-base-path-replacement "alien://;/home/alitrain/train-workdir/testdata/LFN" --readers 1 --aod-memory-rate-limit 209715200 --shm-segment-size 7500000000 --time-limit 300 --resources-monitoring 5 --resources-monitoring-dump-interval 600 
+Workflow options (given for each workflow): -b --configuration json://configuration.json  --session 808850 --timeframes-rate-limit 2 --timeframes-rate-limit-ipcid 808850  
+
+Adding o2-analysis-hf-correlator-dplus-dplus-reduced
+Adding o2-analysis-hf-pid-creator
+Adding o2-analysis-hf-mc-pid-tof
+Adding o2-analysis-multcenttable
+Adding o2-analysis-event-selection-service
+Adding o2-analysis-propagationservice
+Adding o2-analysis-pid-tpc-service
+Adding o2-analysis-hf-candidate-creator-3prong
+Adding o2-analysis-hf-candidate-selector-dplus-to-pi-k-pi
+Adding o2-analysis-ft0-corrected-table
+
+The following O2 command will be executed: 
+o2-analysis-hf-correlator-dplus-dplus-reduced -b --configuration json://configuration.json --session 808850 --timeframes-rate-limit 2 --timeframes-rate-limit-ipcid 808850 | o2-analysis-hf-pid-creator -b --configuration json://configuration.json --session 808850 --timeframes-rate-limit 2 --timeframes-rate-limit-ipcid 808850 | o2-analysis-hf-mc-pid-tof -b --configuration json://configuration.json --session 808850 --timeframes-rate-limit 2 --timeframes-rate-limit-ipcid 808850 | o2-analysis-multcenttable -b --configuration json://configuration.json --session 808850 --timeframes-rate-limit 2 --timeframes-rate-limit-ipcid 808850 | o2-analysis-event-selection-service -b --configuration json://configuration.json --session 808850 --timeframes-rate-limit 2 --timeframes-rate-limit-ipcid 808850 | o2-analysis-propagationservice -b --configuration json://configuration.json --session 808850 --timeframes-rate-limit 2 --timeframes-rate-limit-ipcid 808850 | o2-analysis-pid-tpc-service -b --configuration json://configuration.json --session 808850 --timeframes-rate-limit 2 --timeframes-rate-limit-ipcid 808850 | o2-analysis-hf-candidate-creator-3prong -b --configuration json://configuration.json --session 808850 --timeframes-rate-limit 2 --timeframes-rate-limit-ipcid 808850 | o2-analysis-hf-candidate-selector-dplus-to-pi-k-pi -b --configuration json://configuration.json --session 808850 --timeframes-rate-limit 2 --timeframes-rate-limit-ipcid 808850 | perf record -F 99 -g --call-graph dwarf --user-callchains o2-analysis-ft0-corrected-table -b --configuration json://configuration.json --session 808850 --timeframes-rate-limit 2 --timeframes-rate-limit-ipcid 808850 --aod-file @input_data.txt --aod-writer-json OutputDirector.json --aod-parent-access-level 1 --aod-parent-base-path-replacement "alien://;/home/alitrain/train-workdir/testdata/LFN" --readers 1 --aod-memory-rate-limit 209715200 --shm-segment-size 7500000000 --time-limit 300 --resources-monitoring 5 --resources-monitoring-dump-interval 600
+
+However, if for local debugging you want to run the same workflow, you can achieve this with the following reduced command line:
+o2-analysis-hf-correlator-dplus-dplus-reduced -b --configuration json://configuration.json | o2-analysis-hf-pid-creator -b --configuration json://configuration.json | o2-analysis-hf-mc-pid-tof -b --configuration json://configuration.json | o2-analysis-multcenttable -b --configuration json://configuration.json | o2-analysis-event-selection-service -b --configuration json://configuration.json | o2-analysis-propagationservice -b --configuration json://configuration.json | o2-analysis-pid-tpc-service -b --configuration json://configuration.json | o2-analysis-hf-candidate-creator-3prong -b --configuration json://configuration.json | o2-analysis-hf-candidate-selector-dplus-to-pi-k-pi -b --configuration json://configuration.json | o2-analysis-ft0-corrected-table -b --configuration json://configuration.json --aod-file @input_data.txt --aod-writer-json OutputDirector.json --aod-parent-access-level 1 --aod-parent-base-path-replacement "alien://;/home/alitrain/train-workdir/testdata/LFN"
+
+If you want to follow this execution live, you can open the remote GUI by opening the following URL (this link only works within CERN. From outside, please click the link Remote GUI in the wagon test modal):
+http://alihyperloop.cern.ch/train-workdir/remote-gui/remote.html?10001
+More details about the DebugGUI can be found here: https://github.com/AliceO2Group/AliceO2/blob/dev/Framework/Core/COOKBOOK.md#debug-gui
+
+
+[INFO] Loading metadata from file file:///home/alitrain/train-workdir/testdata/LFN/alice/cern.ch/user/a/alihyperloop/jobs/0601/hy_6016488/5063/AO2D.root in PID 2538585
+[INFO] No metadata found in file "/home/alitrain/train-workdir/testdata/LFN/alice/cern.ch/user/a/alihyperloop/jobs/0601/hy_6016488/5063/AO2D.root", checking in its parents.
+[INFO] Metadata for file "/home/alitrain/train-workdir/testdata/LFN/alice/sim/2025/LHC25g1b/0/559423/AOD/5634/AO2D.root":
+[INFO] - AnchorPassName: apass1
+[INFO] - AnchorProduction: LHC24aq
+[INFO] - DataType: MC
+[INFO] - LPMProductionTag: LHC25g1b
+[INFO] - O2Version: 1.2.0
+[INFO] - ROOTVersion: 6.32.06
+[INFO] - RecoPassName: 
+[INFO] - Run: 3
+[INFO] Event selection autoconfiguring from metadata. Availability of info for Run 2/3 is 0
+[WARN] Metadata info missing or incomplete. Make sure --aod-file is provided at the end of the last workflow and that the AO2D has metadata stored.
+[WARN] Initializing with Run 3 data as default. Please note you will not be able to change settings manually.
+[WARN] You should instead make sure the metadata is read in correctly.
+[INFO] Initialising O2 Data Processing Layer. Driver PID: 2538585.
+[INFO] Driver listening on port: 10001
+[INFO] Rate limiting set up at 209 MB and 2 timeframes distributed over 1 readers
+[INFO] O2 Data Processing Layer initialised. We brake for nobody.
+[INFO] Optimised build. O2DEBUG / LOG(debug) / LOGF(debug) / assert statement will not be shown.
+[INFO] Redeployment of configuration asked.
+[INFO] Starting internal-dpl-clock on pid 2538979
+[INFO] Starting internal-dpl-aod-reader on pid 2538980
+[INFO] Starting internal-dpl-aod-spawner on pid 2538988
+[INFO] Starting internal-dpl-aod-index-builder on pid 2538990
+[INFO] Starting eventselection-run3 on pid 2538997
+[INFO] Starting tof-signal on pid 2539007
+[INFO] Starting pid-tpc-service on pid 2539008
+[INFO] Starting ft0-corrected-table on pid 2539023
+[INFO] Starting propagation-service on pid 2539034
+[INFO] Starting tof-event-time on pid 2539062
+[INFO] Starting mult-cent-table on pid 2539067
+[INFO] Starting mc-pid-tof on pid 2539085
+[INFO] Starting hf-pid-creator on pid 2539117
+[INFO] Starting hf-candidate-creator-3prong on pid 2539140
+[INFO] Starting hf-candidate-creator-3prong-expressions on pid 2539166
+[INFO] Starting hf-candidate-selector-dplus-to-pi-k-pi on pid 2539184
+[INFO] Starting hf-correlator-dplus-dplus-reduced on pid 2539214
+[INFO] Starting internal-dpl-aod-global-analysis-file-sink on pid 2539273
+[INFO] Starting internal-dpl-aod-writer on pid 2539332
+[INFO] Starting internal-dpl-injected-dummy-sink on pid 2539356
+[INFO] Redeployment of configuration done.
+[2538990:internal-dpl-aod-index-builder]: [INFO] Setting metadata AnchorPassName to 'apass1'
+[2538990:internal-dpl-aod-index-builder]: [INFO] Setting metadata AnchorProduction to 'LHC24aq'
+[2538990:internal-dpl-aod-index-builder]: [INFO] Setting metadata DataType to 'MC'
+[2538990:internal-dpl-aod-index-builder]: [INFO] Setting metadata LPMProductionTag to 'LHC25g1b'
+[2538990:internal-dpl-aod-index-builder]: [INFO] Setting metadata O2Version to '1.2.0'
+[2538990:internal-dpl-aod-index-builder]: [INFO] Setting metadata ROOTVersion to '6.32.06'
+[2538990:internal-dpl-aod-index-builder]: [INFO] Setting metadata RecoPassName to ''
+[2538990:internal-dpl-aod-index-builder]: [INFO] Setting metadata Run to '3'
+[2538997:eventselection-run3]: [INFO] Setting metadata AnchorPassName to 'apass1'
+[2538997:eventselection-run3]: [INFO] Setting metadata AnchorProduction to 'LHC24aq'
+[2538997:eventselection-run3]: [INFO] Setting metadata DataType to 'MC'
+[2538997:eventselection-run3]: [INFO] Setting metadata LPMProductionTag to 'LHC25g1b'
+[2538997:eventselection-run3]: [INFO] Setting metadata O2Version to '1.2.0'
+[2538997:eventselection-run3]: [INFO] Setting metadata ROOTVersion to '6.32.06'
+[2538997:eventselection-run3]: [INFO] Setting metadata RecoPassName to ''
+[2538997:eventselection-run3]: [INFO] Setting metadata Run to '3'
+[2538997:eventselection-run3]: [INFO] Event selection autoconfiguring from metadata. Availability of info for Run 2/3 is 1
+[2538997:eventselection-run3]: [INFO] Metadata successfully read in. Is this Run 3? 1 - will self-configure.
+[2539008:pid-tpc-service]: [INFO] Setting metadata AnchorPassName to 'apass1'
+[2539008:pid-tpc-service]: [INFO] Setting metadata AnchorProduction to 'LHC24aq'
+[2539008:pid-tpc-service]: [INFO] Setting metadata DataType to 'MC'
+[2539008:pid-tpc-service]: [INFO] Setting metadata LPMProductionTag to 'LHC25g1b'
+[2539008:pid-tpc-service]: [INFO] Setting metadata O2Version to '1.2.0'
+[2539008:pid-tpc-service]: [INFO] Setting metadata ROOTVersion to '6.32.06'
+[2539008:pid-tpc-service]: [INFO] Setting metadata RecoPassName to ''
+[2539008:pid-tpc-service]: [INFO] Setting metadata Run to '3'
+[2539067:mult-cent-table]: [INFO] Setting metadata AnchorPassName to 'apass1'
+[2539067:mult-cent-table]: [INFO] Setting metadata AnchorProduction to 'LHC24aq'
+[2539067:mult-cent-table]: [INFO] Setting metadata DataType to 'MC'
+[2539067:mult-cent-table]: [INFO] Setting metadata LPMProductionTag to 'LHC25g1b'
+[2539067:mult-cent-table]: [INFO] Setting metadata O2Version to '1.2.0'
+[2539067:mult-cent-table]: [INFO] Setting metadata ROOTVersion to '6.32.06'
+[2539067:mult-cent-table]: [INFO] Setting metadata RecoPassName to ''
+[2539067:mult-cent-table]: [INFO] Setting metadata Run to '3'
+[2538979:internal-dpl-clock]: [INFO] Instrumenting crash signals
+[2538990:internal-dpl-aod-index-builder]: [INFO] Instrumenting crash signals
+[2538988:internal-dpl-aod-spawner]: [INFO] Instrumenting crash signals
+[2538980:internal-dpl-aod-reader]: [INFO] Instrumenting crash signals
+[2538997:eventselection-run3]: [INFO] Instrumenting crash signals
+[2539007:tof-signal]: [INFO] Setting metadata AnchorPassName to 'apass1'
+[2539007:tof-signal]: [INFO] Setting metadata AnchorProduction to 'LHC24aq'
+[2539007:tof-signal]: [INFO] Setting metadata DataType to 'MC'
+[2539007:tof-signal]: [INFO] Setting metadata LPMProductionTag to 'LHC25g1b'
+[2539007:tof-signal]: [INFO] Setting metadata O2Version to '1.2.0'
+[2539007:tof-signal]: [INFO] Setting metadata ROOTVersion to '6.32.06'
+[2539007:tof-signal]: [INFO] Setting metadata RecoPassName to ''
+[2539007:tof-signal]: [INFO] Setting metadata Run to '3'
+[2539023:ft0-corrected-table]: [INFO] Instrumenting crash signals
+[2539008:pid-tpc-service]: [INFO] Instrumenting crash signals
+[2539062:tof-event-time]: [INFO] Setting metadata AnchorPassName to 'apass1'
+[2539062:tof-event-time]: [INFO] Setting metadata AnchorProduction to 'LHC24aq'
+[2539062:tof-event-time]: [INFO] Setting metadata DataType to 'MC'
+[2539062:tof-event-time]: [INFO] Setting metadata LPMProductionTag to 'LHC25g1b'
+[2539062:tof-event-time]: [INFO] Setting metadata O2Version to '1.2.0'
+[2539062:tof-event-time]: [INFO] Setting metadata ROOTVersion to '6.32.06'
+[2539062:tof-event-time]: [INFO] Setting metadata RecoPassName to ''
+[2539062:tof-event-time]: [INFO] Setting metadata Run to '3'
+[2539034:propagation-service]: [INFO] Instrumenting crash signals
+[2539067:mult-cent-table]: [INFO] Instrumenting crash signals
+[2539117:hf-pid-creator]: [INFO] Instrumenting crash signals
+[2539085:mc-pid-tof]: [INFO] Setting metadata AnchorPassName to 'apass1'
+[2539085:mc-pid-tof]: [INFO] Setting metadata AnchorProduction to 'LHC24aq'
+[2539085:mc-pid-tof]: [INFO] Setting metadata DataType to 'MC'
+[2539085:mc-pid-tof]: [INFO] Setting metadata LPMProductionTag to 'LHC25g1b'
+[2539085:mc-pid-tof]: [INFO] Setting metadata O2Version to '1.2.0'
+[2539085:mc-pid-tof]: [INFO] Setting metadata ROOTVersion to '6.32.06'
+[2539085:mc-pid-tof]: [INFO] Setting metadata RecoPassName to ''
+[2539085:mc-pid-tof]: [INFO] Setting metadata Run to '3'
+[2538990:internal-dpl-aod-index-builder]: [INFO] Spawning new device internal-dpl-aod-index-builder in process with pid 2538990
+[2538990:internal-dpl-aod-index-builder]: [11:13:51][INFO] 
+[2538990:internal-dpl-aod-index-builder]:       ______      _    _______  _________ 
+[2538990:internal-dpl-aod-index-builder]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2538990:internal-dpl-aod-index-builder]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2538990:internal-dpl-aod-index-builder]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2538990:internal-dpl-aod-index-builder]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2538990:internal-dpl-aod-index-builder]: 
+[2538990:internal-dpl-aod-index-builder]: [11:13:51][STATE] Starting FairMQ state machine --> IDLE
+[2538979:internal-dpl-clock]: [INFO] Spawning new device internal-dpl-clock in process with pid 2538979
+[2538979:internal-dpl-clock]: [11:13:51][INFO] 
+[2538979:internal-dpl-clock]:       ______      _    _______  _________ 
+[2538979:internal-dpl-clock]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2538979:internal-dpl-clock]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2538979:internal-dpl-clock]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2538979:internal-dpl-clock]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2538979:internal-dpl-clock]: 
+[2538979:internal-dpl-clock]: [11:13:51][STATE] Starting FairMQ state machine --> IDLE
+[2538980:internal-dpl-aod-reader]: [INFO] Spawning new device internal-dpl-aod-reader in process with pid 2538980
+[2538980:internal-dpl-aod-reader]: [11:13:51][INFO] 
+[2538980:internal-dpl-aod-reader]:       ______      _    _______  _________ 
+[2538980:internal-dpl-aod-reader]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2538980:internal-dpl-aod-reader]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2538980:internal-dpl-aod-reader]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2538980:internal-dpl-aod-reader]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2538980:internal-dpl-aod-reader]: 
+[2538980:internal-dpl-aod-reader]: [11:13:51][STATE] Starting FairMQ state machine --> IDLE
+[2538988:internal-dpl-aod-spawner]: [INFO] Spawning new device internal-dpl-aod-spawner in process with pid 2538988
+[2538988:internal-dpl-aod-spawner]: [11:13:51][INFO] 
+[2538988:internal-dpl-aod-spawner]:       ______      _    _______  _________ 
+[2538988:internal-dpl-aod-spawner]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2538988:internal-dpl-aod-spawner]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2538988:internal-dpl-aod-spawner]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2538988:internal-dpl-aod-spawner]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2538988:internal-dpl-aod-spawner]: 
+[2538988:internal-dpl-aod-spawner]: [11:13:51][STATE] Starting FairMQ state machine --> IDLE
+[2539140:hf-candidate-creator-3prong]: [INFO] Instrumenting crash signals
+[2538990:internal-dpl-aod-index-builder]: [11:13:51][STATE] IDLE ---> INITIALIZING DEVICE
+[2539007:tof-signal]: [INFO] Instrumenting crash signals
+[2539166:hf-candidate-creator-3prong-expressions]: [INFO] Instrumenting crash signals
+[2538990:internal-dpl-aod-index-builder]: [11:13:51][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2538979:internal-dpl-clock]: [11:13:51][STATE] IDLE ---> INITIALIZING DEVICE
+[2538979:internal-dpl-clock]: [11:13:51][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [INFO] Instrumenting crash signals
+[2538979:internal-dpl-clock]: [11:13:51][STATE] INITIALIZED ---> BINDING
+[2538979:internal-dpl-clock]: [11:13:51][STATE] BINDING ---> BOUND
+[2538990:internal-dpl-aod-index-builder]: [11:13:51][STATE] INITIALIZED ---> BINDING
+[2538990:internal-dpl-aod-index-builder]: [11:13:51][STATE] BINDING ---> BOUND
+[2538990:internal-dpl-aod-index-builder]: [11:13:51][STATE] BOUND ---> CONNECTING
+[2538990:internal-dpl-aod-index-builder]: [11:13:51][STATE] CONNECTING ---> DEVICE READY
+[2538990:internal-dpl-aod-index-builder]: [11:13:51][STATE] DEVICE READY ---> INITIALIZING TASK
+[2538979:internal-dpl-clock]: [11:13:51][STATE] BOUND ---> CONNECTING
+[2538979:internal-dpl-clock]: [11:13:51][STATE] CONNECTING ---> DEVICE READY
+[2539214:hf-correlator-dplus-dplus-reduced]: [INFO] Instrumenting crash signals
+[2538979:internal-dpl-clock]: [11:13:51][STATE] DEVICE READY ---> INITIALIZING TASK
+[2538979:internal-dpl-clock]: [11:13:51][STATE] INITIALIZING TASK ---> READY
+[2538979:internal-dpl-clock]: [11:13:51][STATE] READY ---> RUNNING
+[2538979:internal-dpl-clock]: [11:13:51][INFO] fair::mq::Device running...
+[2538979:internal-dpl-clock]: [11:13:51][INFO] LHCPeriod is not available, using current month NOV
+[2538979:internal-dpl-clock]: [11:13:51][INFO] Correctly handshaken websocket connection.
+[INFO] Controller for internal-dpl-aod-reader not yet available.
+[2538990:internal-dpl-aod-index-builder]: [11:13:51][STATE] INITIALIZING TASK ---> READY
+[2538990:internal-dpl-aod-index-builder]: [11:13:51][STATE] READY ---> RUNNING
+[2538990:internal-dpl-aod-index-builder]: [11:13:51][INFO] fair::mq::Device running...
+[2538990:internal-dpl-aod-index-builder]: [11:13:51][INFO] LHCPeriod is not available, using current month NOV
+[2538990:internal-dpl-aod-index-builder]: [11:13:51][INFO] Correctly handshaken websocket connection.
+[2538997:eventselection-run3]: [INFO] Spawning new device eventselection-run3 in process with pid 2538997
+[2538997:eventselection-run3]: [11:13:51][INFO] 
+[2538997:eventselection-run3]:       ______      _    _______  _________ 
+[2538997:eventselection-run3]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2538997:eventselection-run3]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2538997:eventselection-run3]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2538997:eventselection-run3]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2538997:eventselection-run3]: 
+[2538997:eventselection-run3]: [11:13:51][STATE] Starting FairMQ state machine --> IDLE
+[2538980:internal-dpl-aod-reader]: [11:13:51][STATE] IDLE ---> INITIALIZING DEVICE
+[2538980:internal-dpl-aod-reader]: [11:13:51][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2538988:internal-dpl-aod-spawner]: [11:13:51][STATE] IDLE ---> INITIALIZING DEVICE
+[2538980:internal-dpl-aod-reader]: [11:13:51][STATE] INITIALIZED ---> BINDING
+[2538988:internal-dpl-aod-spawner]: /local/workspace/DailyBuilds/DailyO2Physics-slc9/daily-tags.WHZSyFfSIW/BUILD/694b03e5c4784b344e1c586dd26b17cab82e6dab/arrow/src_tmp/cpp/src/gandiva/cache.cc:58: Creating gandiva cache with capacity of 5000
+[2538988:internal-dpl-aod-spawner]: /local/workspace/DailyBuilds/DailyO2Physics-slc9/daily-tags.WHZSyFfSIW/BUILD/694b03e5c4784b344e1c586dd26b17cab82e6dab/arrow/src_tmp/cpp/src/gandiva/engine.cc:324: Detected CPU Name : skylake-avx512
+[2538988:internal-dpl-aod-spawner]: /local/workspace/DailyBuilds/DailyO2Physics-slc9/daily-tags.WHZSyFfSIW/BUILD/694b03e5c4784b344e1c586dd26b17cab82e6dab/arrow/src_tmp/cpp/src/gandiva/engine.cc:325: Detected CPU Features: [ +prfchw -cldemote +avx +aes +sahf +pclmul -xop +crc32 -amx-fp8 +xsaves -avx512fp16 -usermsr -sm4 -egpr +sse4.1 -avx512ifma +xsave +sse4.2 -tsxldtrk -sm3 -ptwrite -widekl -movrs +invpcid +64bit +xsavec -avx10.1-512 -avx512vpopcntdq +cmov -avx512vp2intersect +avx512cd +movbe -avxvnniint8 -ccmp -amx-int8 -kl -avx10.1-256 +evex512 -avxvnni +rtm +adx +avx2 -hreset -movdiri -serialize -sha512 -vpclmulqdq +avx512vl -uintr -cf +clflushopt -raoint -cmpccxadd +bmi -amx-tile +sse -avx10.2-256 -gfni -avxvnniint16 -amx-fp16 -zu -ndd +xsaveopt +rdrnd +avx512f -amx-bf16 -avx512bf16 -avx512vnni -push2pop2 +cx8 +avx512bw +sse3 +pku -nf -amx-tf32 -amx-avx512 +fsgsbase -clzero -mwaitx -lwp +lzcnt -sha -movdir64b -ppx -wbnoinvd -enqcmd -amx-transpose -avx10.2-512 -avxneconvert -tbm -pconfig -amx-complex +ssse3 +cx16 +bmi2 +fma +popcnt -avxifma +f16c -avx512bitalg -rdpru +clwb +mmx +sse2 +rdseed -avx512vbmi2 -prefetchi -amx-movrs -rdpid -fma4 -avx512vbmi -shstk -vaes -waitpkg -sgx +fxsr +avx512dq -sse4a]
+[2538980:internal-dpl-aod-reader]: [11:13:51][STATE] BINDING ---> BOUND
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [INFO] Instrumenting crash signals
+[2538980:internal-dpl-aod-reader]: [11:13:52][STATE] BOUND ---> CONNECTING
+[2538980:internal-dpl-aod-reader]: [11:13:52][STATE] CONNECTING ---> DEVICE READY
+[2538980:internal-dpl-aod-reader]: [11:13:52][STATE] DEVICE READY ---> INITIALIZING TASK
+[2539023:ft0-corrected-table]: [INFO] Spawning new device ft0-corrected-table in process with pid 2539023
+[2539023:ft0-corrected-table]: [11:13:52][INFO] 
+[2539023:ft0-corrected-table]:       ______      _    _______  _________ 
+[2539023:ft0-corrected-table]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2539023:ft0-corrected-table]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2539023:ft0-corrected-table]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2539023:ft0-corrected-table]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2539023:ft0-corrected-table]: 
+[2539023:ft0-corrected-table]: [11:13:52][STATE] Starting FairMQ state machine --> IDLE
+[2539062:tof-event-time]: [INFO] Instrumenting crash signals
+[2539008:pid-tpc-service]: [INFO] Spawning new device pid-tpc-service in process with pid 2539008
+[2539008:pid-tpc-service]: [11:13:52][INFO] 
+[2539008:pid-tpc-service]:       ______      _    _______  _________ 
+[2539008:pid-tpc-service]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2539008:pid-tpc-service]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2539008:pid-tpc-service]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2539008:pid-tpc-service]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2539008:pid-tpc-service]: 
+[2539356:internal-dpl-injected-dummy-sink]: [INFO] Instrumenting crash signals
+[2538997:eventselection-run3]: [11:13:52][STATE] IDLE ---> INITIALIZING DEVICE
+[2538997:eventselection-run3]: [11:13:52][INFO] Init CcdApi with UserAgentID: o2-analysis-eve/o2-analysis-event-selection-service@2538997 target/Linux_x86_64 init/1795083232225 id/alitrain@alihyperloop session/uMpuj1hd, Host: http://alice-ccdb.cern.ch/, Curl timeouts: upload:20 download:15
+[2538997:eventselection-run3]: [11:13:52][INFO] Init CcdApi with UserAgentID: o2-analysis-eve/o2-analysis-event-selection-service@2538997 target/Linux_x86_64 init/1795083232225 id/alitrain@alihyperloop session/uMpuj1hd, Host: http://alice-ccdb.cern.ch, Curl timeouts: upload:20 download:15
+[2538997:eventselection-run3]: [11:13:52][INFO] From metadata this data is from Run 3
+[2538997:eventselection-run3]: [11:13:52][INFO] Auto-enabling table: BcSels
+[2538997:eventselection-run3]: [11:13:52][INFO] Auto-enabling table: EvSels
+[2538997:eventselection-run3]: [11:13:52][INFO] Auto-disabling table: BcOccs
+[2538997:eventselection-run3]: [11:13:52][INFO] Auto-disabling table: BcOccsAll
+[2538997:eventselection-run3]: [11:13:52][INFO] BC Selection / Autodetection for aod::BcSels: subscription present, will generate.
+[2538997:eventselection-run3]: [11:13:52][INFO] From metadata this data is from MC
+[2538997:eventselection-run3]: [11:13:52][INFO] Auto-enabling table: EvSels
+[2538997:eventselection-run3]: [11:13:52][INFO] Auto-disabling table: BcOccs
+[2538997:eventselection-run3]: [11:13:52][INFO] Auto-disabling table: BcOccsAll
+[2538997:eventselection-run3]: [11:13:52][INFO] Event Selection / Autodetecting for aod::EvSels: subscription present, will generate.
+[2538997:eventselection-run3]: [11:13:52][INFO] From metadata this data is from MC
+[2538997:eventselection-run3]: [11:13:52][INFO] Autosetting the MC mode based on metadata (isMC? 1)
+[2538997:eventselection-run3]: [11:13:52][INFO] From metadata this data is from MC
+[2538997:eventselection-run3]: [11:13:52][INFO] Auto-disabling table: BcOccs
+[2538997:eventselection-run3]: [11:13:52][INFO] BC occupancy / Autodetecting for aod::BcOccs: not required, won't generate.
+[2538997:eventselection-run3]: [11:13:52][INFO] Auto-disabling table: BcOccsAll
+[2538997:eventselection-run3]: [11:13:52][INFO] BC occupancy (all BCs) / Autodetecting for aod::BcOccsAll: not required, won't generate.
+[2538997:eventselection-run3]: [11:13:52][INFO] Auto-enabling table: BcSels
+[2538997:eventselection-run3]: [11:13:52][INFO] Auto-enabling table: EvSels
+[2538997:eventselection-run3]: [11:13:52][INFO] Luminosity / Autodetection for aod::BcSels: subscription present, will generate.
+[2539332:internal-dpl-aod-writer]: [INFO] Instrumenting crash signals
+[2539008:pid-tpc-service]: [11:13:52][STATE] Starting FairMQ state machine --> IDLE
+[2539085:mc-pid-tof]: [INFO] Instrumenting crash signals
+[2539023:ft0-corrected-table]: [11:13:52][STATE] IDLE ---> INITIALIZING DEVICE
+[2539034:propagation-service]: [INFO] Spawning new device propagation-service in process with pid 2539034
+[2539023:ft0-corrected-table]: [11:13:52][INFO] Init CcdApi with UserAgentID: o2-analysis-ft0/o2-analysis-ft0-corrected-table@2539023 target/Linux_x86_64 init/1795083232406 id/alitrain@alihyperloop session/nJP6EQJN, Host: http://alice-ccdb.cern.ch/, Curl timeouts: upload:20 download:15
+[2539023:ft0-corrected-table]: [11:13:52][INFO] Init CcdApi with UserAgentID: o2-analysis-ft0/o2-analysis-ft0-corrected-table@2539023 target/Linux_x86_64 init/1795083232406 id/alitrain@alihyperloop session/nJP6EQJN, Host: http://alice-ccdb.cern.ch, Curl timeouts: upload:20 download:15
+[2539023:ft0-corrected-table]: [11:13:52][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2539023:ft0-corrected-table]: [11:13:52][STATE] INITIALIZED ---> BINDING
+[2539023:ft0-corrected-table]: [11:13:52][STATE] BINDING ---> BOUND
+[2538980:internal-dpl-aod-reader]: [11:13:52][STATE] INITIALIZING TASK ---> READY
+[INFO] Controller for internal-dpl-aod-reader now available.
+[2538980:internal-dpl-aod-reader]: [11:13:52][STATE] READY ---> RUNNING
+[2538980:internal-dpl-aod-reader]: [11:13:52][INFO] fair::mq::Device running...
+[2538980:internal-dpl-aod-reader]: [11:13:52][INFO] LHCPeriod is not available, using current month NOV
+[2538980:internal-dpl-aod-reader]: [11:13:52][INFO] Correctly handshaken websocket connection.
+[2539023:ft0-corrected-table]: [11:13:52][STATE] BOUND ---> CONNECTING
+[2539023:ft0-corrected-table]: [11:13:52][STATE] CONNECTING ---> DEVICE READY
+[2539023:ft0-corrected-table]: [11:13:52][STATE] DEVICE READY ---> INITIALIZING TASK
+[2539008:pid-tpc-service]: [11:13:52][STATE] IDLE ---> INITIALIZING DEVICE
+[2539008:pid-tpc-service]: [11:13:52][INFO] Init CcdApi with UserAgentID: o2-analysis-pid/o2-analysis-pid-tpc-service@2539008 target/Linux_x86_64 init/1795083232475 id/alitrain@alihyperloop session/rBiddciG, Host: http://alice-ccdb.cern.ch/, Curl timeouts: upload:20 download:15
+[2539008:pid-tpc-service]: [11:13:52][INFO] Init CcdApi with UserAgentID: o2-analysis-pid/o2-analysis-pid-tpc-service@2539008 target/Linux_x86_64 init/1795083232475 id/alitrain@alihyperloop session/rBiddciG, Host: http://alice-ccdb.cern.ch, Curl timeouts: upload:20 download:15
+[2539008:pid-tpc-service]: [11:13:52][INFO] ***************************************************
+[2539008:pid-tpc-service]: [11:13:52][INFO]  the skipTPConly flag has a value of -1! 
+[2539008:pid-tpc-service]: [11:13:52][INFO]  ---> autodetecting TPC-only track necessity now 
+[2539008:pid-tpc-service]: [11:13:52][INFO] ***************************************************
+[2539008:pid-tpc-service]: [11:13:52][INFO] Will search for #0 device requiring TPC PID for TPC only: photon-conversion-builder
+[2539008:pid-tpc-service]: [11:13:52][INFO] Will search for #1 device requiring TPC PID for TPC only: dalitz-selection
+[2539008:pid-tpc-service]: [11:13:52][INFO] Will search for #2 device requiring TPC PID for TPC only: photon-conversion-builder-tmptable
+[2539008:pid-tpc-service]: [11:13:52][INFO] ***************************************************
+[2539008:pid-tpc-service]: [11:13:52][INFO]  ---> propagation service detected, checking if photons enabled...
+[2539008:pid-tpc-service]: [11:13:52][INFO]  ---> propagation service: photons disabled, TPC PID not required for TPC-only tracks
+[2539008:pid-tpc-service]: [11:13:52][INFO] ***************************************************
+[2539008:pid-tpc-service]: [11:13:52][INFO] No need for TPC only information detected. Will not generate Nsigma for TPC only tracks
+[2539008:pid-tpc-service]: [11:13:52][INFO] If this is unexpected behaviour and a necessity was not identified, please add the
+[2539008:pid-tpc-service]: [11:13:52][INFO] corresponding task to the configurable 'devicesRequiringTPCOnlyPID' of this task
+[2539008:pid-tpc-service]: [11:13:52][INFO] To do that, please get in touch with core service wagon maintainers and ask:
+[2539008:pid-tpc-service]: [11:13:52][INFO] It is always best to use core service wagons instead of private copies
+[2539008:pid-tpc-service]: [11:13:52][INFO] ***************************************************
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-disabling table: DEdxsCorrected
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-disabling table: pidTPCFullEl
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-disabling table: pidTPCFullMu
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-enabling table: pidTPCFullPi
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-enabling table: pidTPCFullKa
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-enabling table: pidTPCFullPr
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-enabling table: pidTPCFullDe
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-enabling table: pidTPCFullTr
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-enabling table: pidTPCFullHe
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-enabling table: pidTPCFullAl
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-disabling table: pidTPCEl
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-disabling table: pidTPCMu
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-disabling table: pidTPCPi
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-disabling table: pidTPCKa
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-disabling table: pidTPCPr
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-disabling table: pidTPCDe
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-disabling table: pidTPCTr
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-disabling table: pidTPCHe
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-disabling table: pidTPCAl
+[2539008:pid-tpc-service]: [11:13:52][INFO] From metadata this data is from MC
+[2539008:pid-tpc-service]: [11:13:52][INFO] Auto-disabling table: mcTPCTuneOnData
+[2539008:pid-tpc-service]: [11:13:52][INFO] Automatically setting reco pass for TPC Response to  from AO2D
+[2539008:pid-tpc-service]: [11:13:52][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2539067:mult-cent-table]: [INFO] Spawning new device mult-cent-table in process with pid 2539067
+[2539067:mult-cent-table]: [11:13:52][INFO] 
+[2539067:mult-cent-table]:       ______      _    _______  _________ 
+[2539067:mult-cent-table]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2539067:mult-cent-table]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2539067:mult-cent-table]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2539067:mult-cent-table]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2539067:mult-cent-table]: 
+[2539034:propagation-service]: [11:13:52][INFO] 
+[2539034:propagation-service]:       ______      _    _______  _________ 
+[2539034:propagation-service]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2539034:propagation-service]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2539034:propagation-service]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2539034:propagation-service]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2539034:propagation-service]: 
+[2539008:pid-tpc-service]: [11:13:52][STATE] INITIALIZED ---> BINDING
+[2539008:pid-tpc-service]: [11:13:52][STATE] BINDING ---> BOUND
+[2539008:pid-tpc-service]: [11:13:52][STATE] BOUND ---> CONNECTING
+[2539008:pid-tpc-service]: [11:13:52][STATE] CONNECTING ---> DEVICE READY
+[2539008:pid-tpc-service]: [11:13:52][STATE] DEVICE READY ---> INITIALIZING TASK
+[2539034:propagation-service]: [11:13:52][STATE] Starting FairMQ state machine --> IDLE
+[2539117:hf-pid-creator]: [INFO] Spawning new device hf-pid-creator in process with pid 2539117
+[2539117:hf-pid-creator]: [11:13:52][INFO] 
+[2539117:hf-pid-creator]:       ______      _    _______  _________ 
+[2539117:hf-pid-creator]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2539117:hf-pid-creator]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2539117:hf-pid-creator]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2539117:hf-pid-creator]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2539117:hf-pid-creator]: 
+[2539117:hf-pid-creator]: [11:13:52][STATE] Starting FairMQ state machine --> IDLE
+[2539067:mult-cent-table]: [11:13:52][STATE] Starting FairMQ state machine --> IDLE
+[2539023:ft0-corrected-table]: [11:13:52][STATE] INITIALIZING TASK ---> READY
+[2539023:ft0-corrected-table]: [11:13:52][STATE] READY ---> RUNNING
+[2539023:ft0-corrected-table]: [11:13:52][INFO] fair::mq::Device running...
+[2539023:ft0-corrected-table]: [11:13:52][INFO] LHCPeriod is not available, using current month NOV
+[2539023:ft0-corrected-table]: [11:13:52][INFO] Correctly handshaken websocket connection.
+[2539034:propagation-service]: [11:13:52][STATE] IDLE ---> INITIALIZING DEVICE
+[2539117:hf-pid-creator]: [11:13:52][STATE] IDLE ---> INITIALIZING DEVICE
+[2539034:propagation-service]: [11:13:52][INFO] Init CcdApi with UserAgentID: o2-analysis-pro/o2-analysis-propagationservice@2539034 target/Linux_x86_64 init/1795083232820 id/alitrain@alihyperloop session/5KMeVmv6, Host: http://alice-ccdb.cern.ch/, Curl timeouts: upload:20 download:15
+[2539034:propagation-service]: [11:13:52][INFO] Init CcdApi with UserAgentID: o2-analysis-pro/o2-analysis-propagationservice@2539034 target/Linux_x86_64 init/1795083232820 id/alitrain@alihyperloop session/5KMeVmv6, Host: http://alice-ccdb.cern.ch, Curl timeouts: upload:20 download:15
+[2539034:propagation-service]: [11:13:52][INFO]  Track propagation table detection results:
+[2539034:propagation-service]: [11:13:52][INFO]  ---> Will generate Tracks table.
+[2539034:propagation-service]: [11:13:52][INFO]  ---> Will generate TracksCov table.
+[2539034:propagation-service]: [11:13:52][INFO] **************************************************************
+[2539034:propagation-service]: [11:13:52][INFO]  Warning: TracksCov has been requested due to a subscription!
+[2539034:propagation-service]: [11:13:52][INFO]  Please be mindful that generating track covariances requires
+[2539034:propagation-service]: [11:13:52][INFO]  a significant extra amount of CPU and memory. If not strictly
+[2539034:propagation-service]: [11:13:52][INFO]  necessary, requesting TracksCov should be avoided to save
+[2539034:propagation-service]: [11:13:52][INFO]  these additional resouces.
+[2539034:propagation-service]: [11:13:52][INFO] **************************************************************
+[2539117:hf-pid-creator]: [11:13:52][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2539117:hf-pid-creator]: [11:13:52][STATE] INITIALIZED ---> BINDING
+[2539117:hf-pid-creator]: [11:13:52][STATE] BINDING ---> BOUND
+[2539117:hf-pid-creator]: [11:13:52][STATE] BOUND ---> CONNECTING
+[2539117:hf-pid-creator]: [11:13:52][STATE] CONNECTING ---> DEVICE READY
+[2539117:hf-pid-creator]: [11:13:52][STATE] DEVICE READY ---> INITIALIZING TASK
+[2539008:pid-tpc-service]: [11:13:52][STATE] INITIALIZING TASK ---> READY
+[2539008:pid-tpc-service]: [11:13:52][STATE] READY ---> RUNNING
+[2539008:pid-tpc-service]: [11:13:52][INFO] fair::mq::Device running...
+[2539008:pid-tpc-service]: [11:13:52][INFO] LHCPeriod is not available, using current month NOV
+[2539008:pid-tpc-service]: [11:13:52][INFO] Correctly handshaken websocket connection.
+[2539117:hf-pid-creator]: [11:13:53][STATE] INITIALIZING TASK ---> READY
+[2539117:hf-pid-creator]: [11:13:53][STATE] READY ---> RUNNING
+[2539117:hf-pid-creator]: [11:13:53][INFO] fair::mq::Device running...
+[2539117:hf-pid-creator]: [11:13:53][INFO] LHCPeriod is not available, using current month NOV
+[2539117:hf-pid-creator]: [11:13:53][INFO] Correctly handshaken websocket connection.
+[2539007:tof-signal]: [INFO] Spawning new device tof-signal in process with pid 2539007
+[2539214:hf-correlator-dplus-dplus-reduced]: [INFO] Spawning new device hf-correlator-dplus-dplus-reduced in process with pid 2539214
+[2539007:tof-signal]: [11:13:53][INFO] 
+[2539007:tof-signal]:       ______      _    _______  _________ 
+[2539007:tof-signal]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2539007:tof-signal]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2539007:tof-signal]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2539007:tof-signal]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2539007:tof-signal]: 
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [INFO] Spawning new device hf-candidate-selector-dplus-to-pi-k-pi in process with pid 2539184
+[2539166:hf-candidate-creator-3prong-expressions]: [INFO] Spawning new device hf-candidate-creator-3prong-expressions in process with pid 2539166
+[2539007:tof-signal]: [11:13:53][STATE] Starting FairMQ state machine --> IDLE
+[2539140:hf-candidate-creator-3prong]: [INFO] Spawning new device hf-candidate-creator-3prong in process with pid 2539140
+[2539140:hf-candidate-creator-3prong]: [11:13:53][INFO] 
+[2539140:hf-candidate-creator-3prong]:       ______      _    _______  _________ 
+[2539140:hf-candidate-creator-3prong]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2539140:hf-candidate-creator-3prong]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2539140:hf-candidate-creator-3prong]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2539140:hf-candidate-creator-3prong]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2539140:hf-candidate-creator-3prong]: 
+[2539214:hf-correlator-dplus-dplus-reduced]: [11:13:53][INFO] 
+[2539214:hf-correlator-dplus-dplus-reduced]:       ______      _    _______  _________ 
+[2539214:hf-correlator-dplus-dplus-reduced]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2539214:hf-correlator-dplus-dplus-reduced]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2539214:hf-correlator-dplus-dplus-reduced]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2539214:hf-correlator-dplus-dplus-reduced]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2539214:hf-correlator-dplus-dplus-reduced]: 
+[2539214:hf-correlator-dplus-dplus-reduced]: [11:13:53][STATE] Starting FairMQ state machine --> IDLE
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:13:53][INFO] 
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]:       ______      _    _______  _________ 
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: 
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:13:53][STATE] Starting FairMQ state machine --> IDLE
+[2539166:hf-candidate-creator-3prong-expressions]: [11:13:53][INFO] 
+[2539166:hf-candidate-creator-3prong-expressions]:       ______      _    _______  _________ 
+[2539166:hf-candidate-creator-3prong-expressions]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2539166:hf-candidate-creator-3prong-expressions]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2539166:hf-candidate-creator-3prong-expressions]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2539166:hf-candidate-creator-3prong-expressions]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2539166:hf-candidate-creator-3prong-expressions]: 
+[2539166:hf-candidate-creator-3prong-expressions]: [11:13:53][STATE] Starting FairMQ state machine --> IDLE
+[2539140:hf-candidate-creator-3prong]: [11:13:53][STATE] Starting FairMQ state machine --> IDLE
+[2539007:tof-signal]: [11:13:53][STATE] IDLE ---> INITIALIZING DEVICE
+[2539007:tof-signal]: [11:13:53][INFO] Init CcdApi with UserAgentID: o2-analysis-hf-/o2-analysis-hf-mc-pid-tof@2539007 target/Linux_x86_64 init/1795083233264 id/alitrain@alihyperloop session/2sEtO9jv, Host: http://alice-ccdb.cern.ch/, Curl timeouts: upload:20 download:15
+[2539007:tof-signal]: [11:13:53][INFO] Table TOFSignal enabled!
+[2539007:tof-signal]: [11:13:53][INFO] Init CcdApi with UserAgentID: o2-analysis-hf-/o2-analysis-hf-mc-pid-tof@2539007 target/Linux_x86_64 init/1795083233264 id/alitrain@alihyperloop session/2sEtO9jv, Host: http://alice-ccdb.cern.ch, Curl timeouts: upload:20 download:15
+[2539007:tof-signal]: [11:13:53][INFO] Using parameter collection, starting from pass 'unanchored'
+[2539007:tof-signal]: [11:13:53][INFO] Loading exp. sigma parametrization from CCDB, using path: TOF/Calib/Params for timestamp -1
+[2539214:hf-correlator-dplus-dplus-reduced]: [11:13:53][STATE] IDLE ---> INITIALIZING DEVICE
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [INFO] Spawning new device internal-dpl-aod-global-analysis-file-sink in process with pid 2539273
+[2539214:hf-correlator-dplus-dplus-reduced]: [11:13:53][INFO] Init CcdApi with UserAgentID: o2-analysis-hf-/o2-analysis-hf-correlator-dplus-dplus-reduced@2539214 target/Linux_x86_64 init/1795083230626 id/alitrain@alihyperloop session/Xzm65wJn, Host: http://alice-ccdb.cern.ch/, Curl timeouts: upload:20 download:15
+[2539214:hf-correlator-dplus-dplus-reduced]: [11:13:53][INFO] Init CcdApi with UserAgentID: o2-analysis-hf-/o2-analysis-hf-correlator-dplus-dplus-reduced@2539214 target/Linux_x86_64 init/1795083230626 id/alitrain@alihyperloop session/Xzm65wJn, Host: http://alice-ccdb.cern.ch, Curl timeouts: upload:20 download:15
+[2539214:hf-correlator-dplus-dplus-reduced]: [11:13:53][FATAL] Input feature feature1 not available! Please check your configurables.
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:13:53][STATE] IDLE ---> INITIALIZING DEVICE
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:13:53][INFO] 
+[2539273:internal-dpl-aod-global-analysis-file-sink]:       ______      _    _______  _________ 
+[2539273:internal-dpl-aod-global-analysis-file-sink]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2539273:internal-dpl-aod-global-analysis-file-sink]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2539273:internal-dpl-aod-global-analysis-file-sink]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2539273:internal-dpl-aod-global-analysis-file-sink]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2539273:internal-dpl-aod-global-analysis-file-sink]: 
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:13:53][STATE] Starting FairMQ state machine --> IDLE
+[2539214:hf-correlator-dplus-dplus-reduced]: [11:13:53][ERROR] Exception caught while in Init: Fatal error. Exiting with 1.
+[2539214:hf-correlator-dplus-dplus-reduced]: Executable is /cvmfs/alice.cern.ch/el9-x86_64/Packages/O2Physics/daily-20261119-0000-1/bin/o2-analysis-hf-correlator-dplus-dplus-reduced
+[2539166:hf-candidate-creator-3prong-expressions]: [11:13:53][STATE] IDLE ---> INITIALIZING DEVICE
+[2539140:hf-candidate-creator-3prong]: [11:13:53][STATE] IDLE ---> INITIALIZING DEVICE
+[2539140:hf-candidate-creator-3prong]: [11:13:53][INFO] Init CcdApi with UserAgentID: o2-analysis-hf-/o2-analysis-hf-candidate-creator-3prong@2539140 target/Linux_x86_64 init/1795083233382 id/alitrain@alihyperloop session/AC15sNs7, Host: http://alice-ccdb.cern.ch/, Curl timeouts: upload:20 download:15
+[2539332:internal-dpl-aod-writer]: [INFO] Spawning new device internal-dpl-aod-writer in process with pid 2539332
+[2539356:internal-dpl-injected-dummy-sink]: [INFO] Spawning new device internal-dpl-injected-dummy-sink in process with pid 2539356
+[2539062:tof-event-time]: [INFO] Spawning new device tof-event-time in process with pid 2539062
+[2539062:tof-event-time]: [11:13:53][INFO] 
+[2539062:tof-event-time]:       ______      _    _______  _________ 
+[2539062:tof-event-time]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2539062:tof-event-time]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2539062:tof-event-time]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2539062:tof-event-time]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2539062:tof-event-time]: 
+[2539062:tof-event-time]: [11:13:53][STATE] Starting FairMQ state machine --> IDLE
+[2539332:internal-dpl-aod-writer]: [11:13:53][INFO] 
+[2539332:internal-dpl-aod-writer]:       ______      _    _______  _________ 
+[2539332:internal-dpl-aod-writer]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2539332:internal-dpl-aod-writer]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2539332:internal-dpl-aod-writer]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2539332:internal-dpl-aod-writer]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2539332:internal-dpl-aod-writer]: 
+[2539332:internal-dpl-aod-writer]: [11:13:53][STATE] Starting FairMQ state machine --> IDLE
+[2539356:internal-dpl-injected-dummy-sink]: [11:13:53][INFO] 
+[2539356:internal-dpl-injected-dummy-sink]:       ______      _    _______  _________ 
+[2539356:internal-dpl-injected-dummy-sink]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2539356:internal-dpl-injected-dummy-sink]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2539356:internal-dpl-injected-dummy-sink]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2539356:internal-dpl-injected-dummy-sink]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2539356:internal-dpl-injected-dummy-sink]: 
+[2539356:internal-dpl-injected-dummy-sink]: [11:13:53][STATE] Starting FairMQ state machine --> IDLE
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:13:53][STATE] IDLE ---> INITIALIZING DEVICE
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:13:53][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2539085:mc-pid-tof]: [INFO] Spawning new device mc-pid-tof in process with pid 2539085
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:13:53][STATE] INITIALIZED ---> BINDING
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:13:53][STATE] BINDING ---> BOUND
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:13:53][STATE] BOUND ---> CONNECTING
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:13:53][STATE] CONNECTING ---> DEVICE READY
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:13:53][STATE] DEVICE READY ---> INITIALIZING TASK
+[2539085:mc-pid-tof]: [11:13:53][INFO] 
+[2539085:mc-pid-tof]:       ______      _    _______  _________ 
+[2539085:mc-pid-tof]:      / ____/___ _(_)_______   |/  /_  __ \    version 1.11.0
+[2539085:mc-pid-tof]:     / /_  / __ `/ / ___/__  /|_/ /_  / / /    build RELWITHDEBINFO
+[2539085:mc-pid-tof]:    / __/ / /_/ / / /    _  /  / / / /_/ /     https://github.com/FairRootGroup/FairMQ
+[2539085:mc-pid-tof]:   /_/    \__,_/_/_/     /_/  /_/  \___\_\     LGPL-3.0  © 2012-2025 GSI
+[2539085:mc-pid-tof]: 
+[2539085:mc-pid-tof]: [11:13:53][STATE] Starting FairMQ state machine --> IDLE
+[2539062:tof-event-time]: [11:13:53][STATE] IDLE ---> INITIALIZING DEVICE
+[2539062:tof-event-time]: [11:13:53][INFO] Init CcdApi with UserAgentID: o2-analysis-hf-/o2-analysis-hf-mc-pid-tof@2539062 target/Linux_x86_64 init/1795083233677 id/alitrain@alihyperloop session/9TKfuGB7, Host: http://alice-ccdb.cern.ch/, Curl timeouts: upload:20 download:15
+[2539062:tof-event-time]: [11:13:53][INFO] Table TOFEvTime enabled!
+[2539062:tof-event-time]: [11:13:53][INFO] From metadata this data is from Run 3
+[2539062:tof-event-time]: [11:13:53][INFO] Configuring track sample for TOF ev. time: 0.5 < p < 2
+[2539062:tof-event-time]: [11:13:53][INFO] TOF event time will be computed for collisions that pass the event selection only!
+[2539062:tof-event-time]: [11:13:53][INFO] Init CcdApi with UserAgentID: o2-analysis-hf-/o2-analysis-hf-mc-pid-tof@2539062 target/Linux_x86_64 init/1795083233677 id/alitrain@alihyperloop session/9TKfuGB7, Host: http://alice-ccdb.cern.ch, Curl timeouts: upload:20 download:15
+[2539062:tof-event-time]: [11:13:53][INFO] Using parameter collection, starting from pass 'unanchored'
+[2539062:tof-event-time]: [11:13:53][INFO] Loading exp. sigma parametrization from CCDB, using path: TOF/Calib/Params for timestamp -1
+[2539332:internal-dpl-aod-writer]: [11:13:53][STATE] IDLE ---> INITIALIZING DEVICE
+[2539332:internal-dpl-aod-writer]: [11:13:53][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2539356:internal-dpl-injected-dummy-sink]: [11:13:53][STATE] IDLE ---> INITIALIZING DEVICE
+[2539356:internal-dpl-injected-dummy-sink]: [11:13:53][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2539332:internal-dpl-aod-writer]: [11:13:53][STATE] INITIALIZED ---> BINDING
+[2539332:internal-dpl-aod-writer]: [11:13:53][STATE] BINDING ---> BOUND
+[2539356:internal-dpl-injected-dummy-sink]: [11:13:53][STATE] INITIALIZED ---> BINDING
+[2539356:internal-dpl-injected-dummy-sink]: [11:13:53][STATE] BINDING ---> BOUND
+[2539356:internal-dpl-injected-dummy-sink]: [11:13:53][STATE] BOUND ---> CONNECTING
+[2539356:internal-dpl-injected-dummy-sink]: [11:13:53][STATE] CONNECTING ---> DEVICE READY
+[2539332:internal-dpl-aod-writer]: [11:13:53][STATE] BOUND ---> CONNECTING
+[2539356:internal-dpl-injected-dummy-sink]: [11:13:53][STATE] DEVICE READY ---> INITIALIZING TASK
+[2539332:internal-dpl-aod-writer]: [11:13:53][STATE] CONNECTING ---> DEVICE READY
+[2539332:internal-dpl-aod-writer]: [11:13:53][STATE] DEVICE READY ---> INITIALIZING TASK
+[2539356:internal-dpl-injected-dummy-sink]: [11:13:53][STATE] INITIALIZING TASK ---> READY
+[2539356:internal-dpl-injected-dummy-sink]: [11:13:53][STATE] READY ---> RUNNING
+[2539356:internal-dpl-injected-dummy-sink]: [11:13:53][INFO] fair::mq::Device running...
+[2539356:internal-dpl-injected-dummy-sink]: [11:13:53][INFO] LHCPeriod is not available, using current month NOV
+[2539356:internal-dpl-injected-dummy-sink]: [11:13:53][INFO] Correctly handshaken websocket connection.
+[2539085:mc-pid-tof]: [11:13:53][STATE] IDLE ---> INITIALIZING DEVICE
+[2539085:mc-pid-tof]: [11:13:53][INFO] Init CcdApi with UserAgentID: o2-analysis-hf-/o2-analysis-hf-mc-pid-tof@2539085 target/Linux_x86_64 init/1795083233868 id/alitrain@alihyperloop session/93Fzi9z9, Host: http://alice-ccdb.cern.ch/, Curl timeouts: upload:20 download:15
+[2539085:mc-pid-tof]: [11:13:53][INFO] Auto-disabling table: pidTOFPi
+[2539085:mc-pid-tof]: [11:13:53][INFO] Auto-enabling table: pidTOFFullPi
+[2539085:mc-pid-tof]: [11:13:53][INFO] Auto-disabling table: pidTOFKa
+[2539085:mc-pid-tof]: [11:13:53][INFO] Auto-enabling table: pidTOFFullKa
+[2539085:mc-pid-tof]: [11:13:53][INFO] Auto-disabling table: pidTOFPr
+[2539085:mc-pid-tof]: [11:13:53][INFO] Auto-enabling table: pidTOFFullPr
+[2539085:mc-pid-tof]: [11:13:53][INFO] Auto-disabling table: pidTOFDe
+[2539085:mc-pid-tof]: [11:13:53][INFO] Auto-enabling table: pidTOFFullDe
+[2539085:mc-pid-tof]: [11:13:53][INFO] Auto-disabling table: pidTOFTr
+[2539085:mc-pid-tof]: [11:13:53][INFO] Auto-enabling table: pidTOFFullTr
+[2539085:mc-pid-tof]: [11:13:53][INFO] Auto-disabling table: pidTOFHe
+[2539085:mc-pid-tof]: [11:13:53][INFO] Auto-enabling table: pidTOFFullHe
+[2539085:mc-pid-tof]: [11:13:53][INFO] Auto-disabling table: pidTOFAl
+[2539085:mc-pid-tof]: [11:13:53][INFO] Auto-enabling table: pidTOFFullAl
+[2539085:mc-pid-tof]: [11:13:53][INFO] From metadata this data is from Run 3
+[2539085:mc-pid-tof]: [11:13:53][INFO] Init CcdApi with UserAgentID: o2-analysis-hf-/o2-analysis-hf-mc-pid-tof@2539085 target/Linux_x86_64 init/1795083233868 id/alitrain@alihyperloop session/93Fzi9z9, Host: http://alice-ccdb.cern.ch, Curl timeouts: upload:20 download:15
+[2539085:mc-pid-tof]: [11:13:53][INFO] Using parameter collection, starting from pass 'unanchored'
+[2539085:mc-pid-tof]: [11:13:53][INFO] Loading exp. sigma parametrization from CCDB, using path: TOF/Calib/Params for timestamp -1
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:13:54][STATE] INITIALIZING TASK ---> READY
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:13:54][STATE] READY ---> RUNNING
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:13:54][INFO] fair::mq::Device running...
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:13:54][INFO] LHCPeriod is not available, using current month NOV
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:13:54][INFO] Correctly handshaken websocket connection.
+[2539332:internal-dpl-aod-writer]: [11:13:54][STATE] INITIALIZING TASK ---> READY
+[2539332:internal-dpl-aod-writer]: [11:13:54][STATE] READY ---> RUNNING
+[2539332:internal-dpl-aod-writer]: [11:13:54][INFO] fair::mq::Device running...
+[2539332:internal-dpl-aod-writer]: [11:13:54][INFO] LHCPeriod is not available, using current month NOV
+[2539332:internal-dpl-aod-writer]: [11:13:54][INFO] Correctly handshaken websocket connection.
+[2539214:hf-correlator-dplus-dplus-reduced]:     /cvmfs/alice.cern.ch/el9-x86_64/Packages/O2/daily-20261119-0000-1/lib/libO2Framework.so:     ?? ??:0
+[2539214:hf-correlator-dplus-dplus-reduced]:     /cvmfs/alice.cern.ch/el9-x86_64/Packages/FairLogger/v2.3.1-16/lib/libFairLogger.so.2.3: fair::Logger::~Logger()
+[2539214:hf-correlator-dplus-dplus-reduced]:     o2-analysis-hf-correlator-dplus-dplus-reduced() [0x51ee1b]:     o2::analysis::MlResponse<float>::cacheInputFeaturesIndices(std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > const&) at MlResponse.h:169 (discriminator 10)
+[2538997:eventselection-run3]: [11:13:58][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2538997:eventselection-run3]: [11:13:58][STATE] INITIALIZED ---> BINDING
+[2538997:eventselection-run3]: [11:13:58][STATE] BINDING ---> BOUND
+[2538997:eventselection-run3]: [11:13:58][STATE] BOUND ---> CONNECTING
+[2538997:eventselection-run3]: [11:13:58][STATE] CONNECTING ---> DEVICE READY
+[2538997:eventselection-run3]: [11:13:58][STATE] DEVICE READY ---> INITIALIZING TASK
+[2539067:mult-cent-table]: [11:13:58][STATE] IDLE ---> INITIALIZING DEVICE
+[2539067:mult-cent-table]: [11:13:58][INFO] Init CcdApi with UserAgentID: o2-analysis-mul/o2-analysis-multcenttable@2539067 target/Linux_x86_64 init/1795083238238 id/alitrain@alihyperloop session/LyXgFwTI, Host: http://alice-ccdb.cern.ch/, Curl timeouts: upload:20 download:15
+[2539067:mult-cent-table]: [11:13:58][INFO] Init CcdApi with UserAgentID: o2-analysis-mul/o2-analysis-multcenttable@2539067 target/Linux_x86_64 init/1795083238238 id/alitrain@alihyperloop session/LyXgFwTI, Host: http://alice-ccdb.cern.ch, Curl timeouts: upload:20 download:15
+[2539067:mult-cent-table]: [11:13:58][INFO] Configuring tables to generate
+[2539067:mult-cent-table]: [11:13:58][INFO] From metadata this data is from MC
+[2539067:mult-cent-table]: [11:13:58][INFO] Metadata information: isMC? 1
+[2539067:mult-cent-table]: [11:13:58][INFO] Device hf-candidate-creator-3prong has subscribed to PVMults (version 0)
+[2539067:mult-cent-table]: [11:13:58][INFO] Device hf-candidate-creator-3prong-expressions has subscribed to PVMults (version 0)
+[2539067:mult-cent-table]: [11:13:58][INFO] Device hf-candidate-creator-3prong-expressions has subscribed to MultMCExtras (version 1)
+[2539067:mult-cent-table]: [11:13:58][INFO]  -~> Table enabled: PVMults, requested by hf-candidate-creator-3prong hf-candidate-creator-3prong-expressions 
+[2539067:mult-cent-table]: [11:13:58][INFO]  -~> Table enabled: MultMCExtras, requested by hf-candidate-creator-3prong-expressions 
+[2539067:mult-cent-table]: [11:13:58][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2539067:mult-cent-table]: [11:13:58][STATE] INITIALIZED ---> BINDING
+[2539034:propagation-service]: [11:13:58][INFO] Checking if strangeness building is required
+[2539034:propagation-service]: [11:13:58][INFO] Strangeness building not required. Will suppress all functionality, including logs, from this point forward.
+[2539067:mult-cent-table]: [11:13:58][STATE] BINDING ---> BOUND
+[2539067:mult-cent-table]: [11:13:58][STATE] BOUND ---> CONNECTING
+[2539067:mult-cent-table]: [11:13:58][STATE] CONNECTING ---> DEVICE READY
+[2539067:mult-cent-table]: [11:13:58][STATE] DEVICE READY ---> INITIALIZING TASK
+[2539034:propagation-service]: [11:13:58][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2539034:propagation-service]: [11:13:58][STATE] INITIALIZED ---> BINDING
+[2539034:propagation-service]: [11:13:58][STATE] BINDING ---> BOUND
+[2539034:propagation-service]: [11:13:58][STATE] BOUND ---> CONNECTING
+[2539034:propagation-service]: [11:13:58][STATE] CONNECTING ---> DEVICE READY
+[2539034:propagation-service]: [11:13:58][STATE] DEVICE READY ---> INITIALIZING TASK
+[2538997:eventselection-run3]: [11:13:58][STATE] INITIALIZING TASK ---> READY
+[2538997:eventselection-run3]: [11:13:58][STATE] READY ---> RUNNING
+[2538997:eventselection-run3]: [11:13:58][INFO] fair::mq::Device running...
+[2538997:eventselection-run3]: [11:13:58][INFO] LHCPeriod is not available, using current month NOV
+[2538997:eventselection-run3]: [11:13:58][INFO] Correctly handshaken websocket connection.
+[2539067:mult-cent-table]: [11:13:58][STATE] INITIALIZING TASK ---> READY
+[2539067:mult-cent-table]: [11:13:58][STATE] READY ---> RUNNING
+[2539067:mult-cent-table]: [11:13:58][INFO] fair::mq::Device running...
+[2539067:mult-cent-table]: [11:13:58][INFO] LHCPeriod is not available, using current month NOV
+[2539067:mult-cent-table]: [11:13:58][INFO] Correctly handshaken websocket connection.
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:13:58][INFO] Init CcdApi with UserAgentID: o2-analysis-hf-/o2-analysis-hf-candidate-selector-dplus-to-pi-k-pi@2539184 target/Linux_x86_64 init/1795083230529 id/alitrain@alihyperloop session/2PvyiIpA, Host: http://alice-ccdb.cern.ch, Curl timeouts: upload:20 download:15
+[2539140:hf-candidate-creator-3prong]: [11:13:58][INFO] Init CcdApi with UserAgentID: o2-analysis-hf-/o2-analysis-hf-candidate-creator-3prong@2539140 target/Linux_x86_64 init/1795083233382 id/alitrain@alihyperloop session/AC15sNs7, Host: http://alice-ccdb.cern.ch, Curl timeouts: upload:20 download:15
+[2539140:hf-candidate-creator-3prong]: [11:13:58][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2539140:hf-candidate-creator-3prong]: [11:13:58][STATE] INITIALIZED ---> BINDING
+[2539166:hf-candidate-creator-3prong-expressions]: [11:13:58][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2539166:hf-candidate-creator-3prong-expressions]: [11:13:58][STATE] INITIALIZED ---> BINDING
+[2539166:hf-candidate-creator-3prong-expressions]: [11:13:58][STATE] BINDING ---> BOUND
+[2539166:hf-candidate-creator-3prong-expressions]: [11:13:58][STATE] BOUND ---> CONNECTING
+[2539166:hf-candidate-creator-3prong-expressions]: [11:13:58][STATE] CONNECTING ---> DEVICE READY
+[2539166:hf-candidate-creator-3prong-expressions]: [11:13:58][STATE] DEVICE READY ---> INITIALIZING TASK
+[2539034:propagation-service]: [11:13:58][STATE] INITIALIZING TASK ---> READY
+[2539034:propagation-service]: [11:13:58][STATE] READY ---> RUNNING
+[2539034:propagation-service]: [11:13:58][INFO] fair::mq::Device running...
+[2539034:propagation-service]: [11:13:58][INFO] LHCPeriod is not available, using current month NOV
+[2539034:propagation-service]: [11:13:58][INFO] Correctly handshaken websocket connection.
+[2539140:hf-candidate-creator-3prong]: [11:13:58][STATE] BINDING ---> BOUND
+[2539140:hf-candidate-creator-3prong]: [11:13:58][STATE] BOUND ---> CONNECTING
+[2539140:hf-candidate-creator-3prong]: [11:13:58][STATE] CONNECTING ---> DEVICE READY
+[2539140:hf-candidate-creator-3prong]: [11:13:58][STATE] DEVICE READY ---> INITIALIZING TASK
+[2539166:hf-candidate-creator-3prong-expressions]: [11:13:58][STATE] INITIALIZING TASK ---> READY
+[2539166:hf-candidate-creator-3prong-expressions]: [11:13:58][STATE] READY ---> RUNNING
+[2539166:hf-candidate-creator-3prong-expressions]: [11:13:58][INFO] fair::mq::Device running...
+[2539166:hf-candidate-creator-3prong-expressions]: [11:13:58][INFO] LHCPeriod is not available, using current month NOV
+[2539166:hf-candidate-creator-3prong-expressions]: [11:13:58][INFO] Correctly handshaken websocket connection.
+[2539140:hf-candidate-creator-3prong]: [11:13:58][STATE] INITIALIZING TASK ---> READY
+[2539140:hf-candidate-creator-3prong]: [11:13:58][STATE] READY ---> RUNNING
+[2539140:hf-candidate-creator-3prong]: [11:13:58][INFO] fair::mq::Device running...
+[2539140:hf-candidate-creator-3prong]: [11:13:58][INFO] LHCPeriod is not available, using current month NOV
+[2539140:hf-candidate-creator-3prong]: [11:13:58][INFO] Correctly handshaken websocket connection.
+[2538980:internal-dpl-aod-reader]: [11:13:59][INFO] Opening file: lfn=/home/alitrain/train-workdir/testdata/LFN/alice/cern.ch/user/a/alihyperloop/jobs/0601/hy_6016488/5063/AO2D.root,size=4790537
+[2539214:hf-correlator-dplus-dplus-reduced]:     o2-analysis-hf-correlator-dplus-dplus-reduced() [0x51f476]:     HfCorrelatorDplusDplusReduced::init(o2::framework::InitContext const&) at correlatorDplusDplusReduced.cxx:147 (discriminator 4)
+[2538988:internal-dpl-aod-spawner]: [11:13:59][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2538988:internal-dpl-aod-spawner]: [11:13:59][STATE] INITIALIZED ---> BINDING
+[2538988:internal-dpl-aod-spawner]: [11:13:59][STATE] BINDING ---> BOUND
+[2538988:internal-dpl-aod-spawner]: [11:13:59][STATE] BOUND ---> CONNECTING
+[2538988:internal-dpl-aod-spawner]: [11:13:59][STATE] CONNECTING ---> DEVICE READY
+[2538988:internal-dpl-aod-spawner]: [11:13:59][STATE] DEVICE READY ---> INITIALIZING TASK
+[2538988:internal-dpl-aod-spawner]: [11:13:59][STATE] INITIALIZING TASK ---> READY
+[2538988:internal-dpl-aod-spawner]: [11:13:59][STATE] READY ---> RUNNING
+[2538988:internal-dpl-aod-spawner]: [11:13:59][INFO] fair::mq::Device running...
+[2538988:internal-dpl-aod-spawner]: [11:13:59][INFO] LHCPeriod is not available, using current month NOV
+[2538988:internal-dpl-aod-spawner]: [11:13:59][INFO] Correctly handshaken websocket connection.
+[2538980:internal-dpl-aod-reader]: [11:14:00][INFO] Opening parent file /home/alitrain/train-workdir/testdata/LFN/alice/sim/2025/LHC25g1b/0/559423/AOD/5634/AO2D.root for DF DF_2402703892835520
+[2538980:internal-dpl-aod-reader]: [11:14:00][INFO] Opening file: lfn=/home/alitrain/train-workdir/testdata/LFN/alice/sim/2025/LHC25g1b/0/559423/AOD/5634/AO2D.root,size=3625222700
+[2539214:hf-correlator-dplus-dplus-reduced]:     o2-analysis-hf-correlator-dplus-dplus-reduced() [0x532b2a]:     std::__shared_ptr<HfCorrelatorDplusDplusReduced, (__gnu_cxx::_Lock_policy)2>::get() const at shared_ptr_base.h:1667
+[2539214:hf-correlator-dplus-dplus-reduced]:     o2-analysis-hf-correlator-dplus-dplus-reduced() [0x533a3d]:     std::function<void (o2::framework::ProcessingContext&)>::function<o2::framework::adaptAnalysisTask<HfCorrelatorDplusDplusReduced>(o2::framework::ConfigContext const&)::{lambda(o2::framework::InitContext&)#1}::operator()(o2::framework::InitContext&)::{lambda(o2::framework::ProcessingContext&)#1}, void>(o2::framework::adaptAnalysisTask<HfCorrelatorDplusDplusReduced>(o2::framework::ConfigContext const&)::{lambda(o2::framework::InitContext&)#1}::operator()(o2::framework::InitContext&)::{lambda(o2::framework::ProcessingContext&)#1}&&) at std_function.h:437
+[2539214:hf-correlator-dplus-dplus-reduced]:     /cvmfs/alice.cern.ch/el9-x86_64/Packages/O2/daily-20261119-0000-1/lib/libO2Framework.so: o2::framework::DataProcessingDevice::Init()
+[2539214:hf-correlator-dplus-dplus-reduced]:     /cvmfs/alice.cern.ch/el9-x86_64/Packages/FairMQ/v1.11.0-10/lib/libfairmq.so.1.11.0: fair::mq::Device::InitWrapper()
+[2539214:hf-correlator-dplus-dplus-reduced]:     /cvmfs/alice.cern.ch/el9-x86_64/Packages/FairMQ/v1.11.0-10/lib/libfairmq.so.1.11.0: boost::detail::function::void_function_obj_invoker<std::function<void (fair::mq::State)>, void, fair::mq::State>::invoke(boost::detail::function::function_buffer&, fair::mq::State)
+[2539214:hf-correlator-dplus-dplus-reduced]:     /cvmfs/alice.cern.ch/el9-x86_64/Packages/FairMQ/v1.11.0-10/lib/libfairmq.so.1.11.0: boost::signals2::detail::signal_impl<void (fair::mq::State), boost::signals2::optional_last_value<void>, int, std::less<int>, boost::function<void (fair::mq::State)>, boost::function<void (boost::signals2::connection const&, fair::mq::State)>, boost::signals2::mutex>::operator()(fair::mq::State)
+[2539214:hf-correlator-dplus-dplus-reduced]:     /cvmfs/alice.cern.ch/el9-x86_64/Packages/FairMQ/v1.11.0-10/lib/libfairmq.so.1.11.0: fair::mq::fsm::Machine_::ProcessWork()
+[2539214:hf-correlator-dplus-dplus-reduced]:     /cvmfs/alice.cern.ch/el9-x86_64/Packages/FairMQ/v1.11.0-10/lib/libfairmq.so.1.11.0: fair::mq::StateMachine::ProcessWork()
+[2539214:hf-correlator-dplus-dplus-reduced]:     /cvmfs/alice.cern.ch/el9-x86_64/Packages/FairMQ/v1.11.0-10/lib/libfairmq.so.1.11.0: fair::mq::DeviceRunner::Run()
+[2539214:hf-correlator-dplus-dplus-reduced]:     /cvmfs/alice.cern.ch/el9-x86_64/Packages/O2/daily-20261119-0000-1/lib/libO2Framework.so: doChild(int, char**, o2::framework::ServiceRegistry&, o2::framework::DanglingEdgesContext&, o2::framework::RunningWorkflowInfo const&, o2::framework::RunningDeviceRef, o2::framework::DriverConfig const&, o2::framework::ProcessingPolicies, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, uv_loop_s*)
+[2539214:hf-correlator-dplus-dplus-reduced]:     /cvmfs/alice.cern.ch/el9-x86_64/Packages/O2/daily-20261119-0000-1/lib/libO2Framework.so: runStateMachine(std::vector<o2::framework::DataProcessorSpec, std::allocator<o2::framework::DataProcessorSpec> > const&, WorkflowInfo const&, std::vector<o2::framework::DataProcessorInfo, std::allocator<o2::framework::DataProcessorInfo> > const&, o2::framework::CommandInfo const&, o2::framework::DriverControl&, o2::framework::DriverInfo&, o2::framework::DriverConfig&, std::vector<o2::framework::DeviceMetricsInfo, std::allocator<o2::framework::DeviceMetricsInfo> >&, std::vector<o2::framework::ConfigParamSpec, std::allocator<o2::framework::ConfigParamSpec> > const&, boost::program_options::variables_map&, std::vector<o2::framework::ServiceSpec, std::allocator<o2::framework::ServiceSpec> >&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)
+[2539214:hf-correlator-dplus-dplus-reduced]:     /cvmfs/alice.cern.ch/el9-x86_64/Packages/O2/daily-20261119-0000-1/lib/libO2Framework.so: doMain(int, char**, std::vector<o2::framework::DataProcessorSpec, std::allocator<o2::framework::DataProcessorSpec> > const&, std::vector<o2::framework::ChannelConfigurationPolicy, std::allocator<o2::framework::ChannelConfigurationPolicy> > const&, std::vector<o2::framework::CompletionPolicy, std::allocator<o2::framework::CompletionPolicy> > const&, std::vector<o2::framework::DispatchPolicy, std::allocator<o2::framework::DispatchPolicy> > const&, std::vector<o2::framework::ResourcePolicy, std::allocator<o2::framework::ResourcePolicy> > const&, std::vector<o2::framework::CallbacksPolicy, std::allocator<o2::framework::CallbacksPolicy> > const&, std::vector<o2::framework::SendingPolicy, std::allocator<o2::framework::SendingPolicy> > const&, std::vector<o2::framework::ConfigParamSpec, std::allocator<o2::framework::ConfigParamSpec> > const&, std::vector<o2::framework::ConfigParamSpec, std::allocator<o2::framework::ConfigParamSpec> > const&, o2::framework::ConfigContext&)
+[2539214:hf-correlator-dplus-dplus-reduced]:     o2-analysis-hf-correlator-dplus-dplus-reduced() [0x43a8ad]:     std::vector<o2::framework::ChannelConfigurationPolicy, std::allocator<o2::framework::ChannelConfigurationPolicy> >::~vector() at stl_vector.h:735
+[2539214:hf-correlator-dplus-dplus-reduced]:     /cvmfs/alice.cern.ch/el9-x86_64/Packages/O2/daily-20261119-0000-1/lib/libO2Framework.so: callMain(int, char**, int (*)(int, char**))
+[2539214:hf-correlator-dplus-dplus-reduced]:     o2-analysis-hf-correlator-dplus-dplus-reduced() [0x427c09]:     main at runDataProcessing.h:220
+[2539214:hf-correlator-dplus-dplus-reduced]:     /lib/x86_64-linux-gnu/libc.so.6:     ?? ??:0
+[2539214:hf-correlator-dplus-dplus-reduced]:     /lib/x86_64-linux-gnu/libc.so.6:     ?? ??:0
+[2539214:hf-correlator-dplus-dplus-reduced]:     o2-analysis-hf-correlator-dplus-dplus-reduced() [0x4293d5]:     _start at ??:?
+[ERROR] Workflow crashed - PID 2539214 (hf-correlator-dplus-dplus-reduced) did not exit correctly however it's not clear why. Exit code forced to 128.
+[INFO] Quit requested at Thu Nov 19 11:14:05 2026
+
+[2538988:internal-dpl-aod-spawner]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2538988:internal-dpl-aod-spawner]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2538988:internal-dpl-aod-spawner]: [11:14:05][INFO] New state requested. No timeout set, quitting immediately as per --completion-policy
+[2538990:internal-dpl-aod-index-builder]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2538990:internal-dpl-aod-index-builder]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2538990:internal-dpl-aod-index-builder]: [11:14:05][INFO] New state requested. No timeout set, quitting immediately as per --completion-policy
+[2539166:hf-candidate-creator-3prong-expressions]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2539166:hf-candidate-creator-3prong-expressions]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2539166:hf-candidate-creator-3prong-expressions]: [11:14:05][INFO] New state requested. No timeout set, quitting immediately as per --completion-policy
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:14:05][INFO] New state requested. No timeout set, quitting immediately as per --completion-policy
+[2539008:pid-tpc-service]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2539008:pid-tpc-service]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2539008:pid-tpc-service]: [11:14:05][INFO] New state requested. No timeout set, quitting immediately as per --completion-policy
+[2539062:tof-event-time]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2539062:tof-event-time]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2539062:tof-event-time]: [11:14:05][STATE] Transition COMPLETE INIT incoming, but another state transition is already ongoing.
+[2539085:mc-pid-tof]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2539085:mc-pid-tof]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2539085:mc-pid-tof]: [11:14:05][STATE] Transition COMPLETE INIT incoming, but another state transition is already ongoing.
+[2539140:hf-candidate-creator-3prong]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2539140:hf-candidate-creator-3prong]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2539140:hf-candidate-creator-3prong]: [11:14:05][INFO] New state requested. No timeout set, quitting immediately as per --completion-policy
+[2539332:internal-dpl-aod-writer]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2539332:internal-dpl-aod-writer]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2539332:internal-dpl-aod-writer]: [11:14:05][INFO] New state requested. No timeout set, quitting immediately as per --completion-policy
+[2538979:internal-dpl-clock]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2538979:internal-dpl-clock]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2538979:internal-dpl-clock]: [11:14:05][INFO] New state requested. No timeout set, quitting immediately as per --completion-policy
+[2538979:internal-dpl-clock]: [11:14:05][INFO] Sending end-of-stream message to channel from_internal-dpl-clock_to_internal-dpl-aod-reader
+[2539034:propagation-service]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2539034:propagation-service]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2539034:propagation-service]: [11:14:05][INFO] New state requested. No timeout set, quitting immediately as per --completion-policy
+[2539140:hf-candidate-creator-3prong]: [11:14:05][STATE] RUNNING ---> READY
+[2539140:hf-candidate-creator-3prong]: [11:14:05][STATE] READY ---> RESETTING TASK
+[2539140:hf-candidate-creator-3prong]: [11:14:05][STATE] RESETTING TASK ---> DEVICE READY
+[2539140:hf-candidate-creator-3prong]: [11:14:05][STATE] DEVICE READY ---> RESETTING DEVICE
+[2539140:hf-candidate-creator-3prong]: [11:14:05][STATE] RESETTING DEVICE ---> IDLE
+[2539140:hf-candidate-creator-3prong]: [11:14:05][STATE] IDLE ---> EXITING
+[2539140:hf-candidate-creator-3prong]: [11:14:05][STATE] Exiting FairMQ state machine
+[2539332:internal-dpl-aod-writer]: [11:14:05][STATE] RUNNING ---> READY
+[2539332:internal-dpl-aod-writer]: [11:14:05][STATE] READY ---> RESETTING TASK
+[2539332:internal-dpl-aod-writer]: [11:14:05][STATE] RESETTING TASK ---> DEVICE READY
+[2539332:internal-dpl-aod-writer]: [11:14:05][STATE] DEVICE READY ---> RESETTING DEVICE
+[2539332:internal-dpl-aod-writer]: [11:14:05][STATE] RESETTING DEVICE ---> IDLE
+[2539332:internal-dpl-aod-writer]: [11:14:05][STATE] IDLE ---> EXITING
+[2539332:internal-dpl-aod-writer]: [11:14:05][STATE] Exiting FairMQ state machine
+[2539023:ft0-corrected-table]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2539023:ft0-corrected-table]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2539023:ft0-corrected-table]: [11:14:05][INFO] New state requested. No timeout set, quitting immediately as per --completion-policy
+[2539117:hf-pid-creator]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2539117:hf-pid-creator]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2539117:hf-pid-creator]: [11:14:05][INFO] New state requested. No timeout set, quitting immediately as per --completion-policy
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:05][STATE] Transition COMPLETE INIT incoming, but another state transition is already ongoing.
+[2538988:internal-dpl-aod-spawner]: [11:14:05][STATE] RUNNING ---> READY
+[2538988:internal-dpl-aod-spawner]: [11:14:05][STATE] READY ---> RESETTING TASK
+[2538988:internal-dpl-aod-spawner]: [11:14:05][STATE] RESETTING TASK ---> DEVICE READY
+[2538988:internal-dpl-aod-spawner]: [11:14:05][STATE] DEVICE READY ---> RESETTING DEVICE
+[2538988:internal-dpl-aod-spawner]: [11:14:05][STATE] RESETTING DEVICE ---> IDLE
+[2538988:internal-dpl-aod-spawner]: [11:14:05][STATE] IDLE ---> EXITING
+[2538988:internal-dpl-aod-spawner]: [11:14:05][STATE] Exiting FairMQ state machine
+[2538990:internal-dpl-aod-index-builder]: [11:14:05][STATE] RUNNING ---> READY
+[2538990:internal-dpl-aod-index-builder]: [11:14:05][STATE] READY ---> RESETTING TASK
+[2538990:internal-dpl-aod-index-builder]: [11:14:05][STATE] RESETTING TASK ---> DEVICE READY
+[2538990:internal-dpl-aod-index-builder]: [11:14:05][STATE] DEVICE READY ---> RESETTING DEVICE
+[2538990:internal-dpl-aod-index-builder]: [11:14:05][STATE] RESETTING DEVICE ---> IDLE
+[2538990:internal-dpl-aod-index-builder]: [11:14:05][STATE] IDLE ---> EXITING
+[2538990:internal-dpl-aod-index-builder]: [11:14:05][STATE] Exiting FairMQ state machine
+[2538997:eventselection-run3]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2538997:eventselection-run3]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2538997:eventselection-run3]: [11:14:05][INFO] New state requested. No timeout set, quitting immediately as per --completion-policy
+[2538997:eventselection-run3]: [11:14:05][STATE] RUNNING ---> READY
+[2538997:eventselection-run3]: [11:14:05][STATE] READY ---> RESETTING TASK
+[2538997:eventselection-run3]: [11:14:05][STATE] RESETTING TASK ---> DEVICE READY
+[2538997:eventselection-run3]: [11:14:05][STATE] DEVICE READY ---> RESETTING DEVICE
+[2538997:eventselection-run3]: [11:14:05][STATE] RESETTING DEVICE ---> IDLE
+[2538997:eventselection-run3]: [11:14:05][STATE] IDLE ---> EXITING
+[2538997:eventselection-run3]: [11:14:05][STATE] Exiting FairMQ state machine
+[2539007:tof-signal]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2539007:tof-signal]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2539007:tof-signal]: [11:14:05][STATE] Transition COMPLETE INIT incoming, but another state transition is already ongoing.
+[2539008:pid-tpc-service]: [11:14:05][STATE] RUNNING ---> READY
+[2539008:pid-tpc-service]: [11:14:05][STATE] READY ---> RESETTING TASK
+[2539008:pid-tpc-service]: [11:14:05][STATE] RESETTING TASK ---> DEVICE READY
+[2539008:pid-tpc-service]: [11:14:05][STATE] DEVICE READY ---> RESETTING DEVICE
+[2539008:pid-tpc-service]: [11:14:05][STATE] RESETTING DEVICE ---> IDLE
+[2539008:pid-tpc-service]: [11:14:05][STATE] IDLE ---> EXITING
+[2539008:pid-tpc-service]: [11:14:05][STATE] Exiting FairMQ state machine
+[2539023:ft0-corrected-table]: [11:14:05][STATE] RUNNING ---> READY
+[2539023:ft0-corrected-table]: [11:14:05][STATE] READY ---> RESETTING TASK
+[2539023:ft0-corrected-table]: [11:14:05][STATE] RESETTING TASK ---> DEVICE READY
+[2539023:ft0-corrected-table]: [11:14:05][STATE] DEVICE READY ---> RESETTING DEVICE
+[2539023:ft0-corrected-table]: [11:14:05][STATE] RESETTING DEVICE ---> IDLE
+[2539023:ft0-corrected-table]: [11:14:05][STATE] IDLE ---> EXITING
+[2539023:ft0-corrected-table]: [11:14:05][STATE] Exiting FairMQ state machine
+[2539034:propagation-service]: [11:14:05][STATE] RUNNING ---> READY
+[2539034:propagation-service]: [11:14:05][STATE] READY ---> RESETTING TASK
+[2539034:propagation-service]: [11:14:05][STATE] RESETTING TASK ---> DEVICE READY
+[2539034:propagation-service]: [11:14:05][STATE] DEVICE READY ---> RESETTING DEVICE
+[2539034:propagation-service]: [11:14:05][STATE] RESETTING DEVICE ---> IDLE
+[2539034:propagation-service]: [11:14:05][STATE] IDLE ---> EXITING
+[2539034:propagation-service]: [11:14:05][STATE] Exiting FairMQ state machine
+[2539067:mult-cent-table]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2539067:mult-cent-table]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2539067:mult-cent-table]: [11:14:05][INFO] New state requested. No timeout set, quitting immediately as per --completion-policy
+[2539067:mult-cent-table]: [11:14:05][STATE] RUNNING ---> READY
+[2539067:mult-cent-table]: [11:14:05][STATE] READY ---> RESETTING TASK
+[2539067:mult-cent-table]: [11:14:05][STATE] RESETTING TASK ---> DEVICE READY
+[2539067:mult-cent-table]: [11:14:05][STATE] DEVICE READY ---> RESETTING DEVICE
+[2539067:mult-cent-table]: [11:14:05][STATE] RESETTING DEVICE ---> IDLE
+[2539067:mult-cent-table]: [11:14:05][STATE] IDLE ---> EXITING
+[2539067:mult-cent-table]: [11:14:05][STATE] Exiting FairMQ state machine
+[2539166:hf-candidate-creator-3prong-expressions]: [11:14:05][STATE] RUNNING ---> READY
+[2539166:hf-candidate-creator-3prong-expressions]: [11:14:05][STATE] READY ---> RESETTING TASK
+[2539166:hf-candidate-creator-3prong-expressions]: [11:14:05][STATE] RESETTING TASK ---> DEVICE READY
+[2539166:hf-candidate-creator-3prong-expressions]: [11:14:05][STATE] DEVICE READY ---> RESETTING DEVICE
+[2539166:hf-candidate-creator-3prong-expressions]: [11:14:05][STATE] RESETTING DEVICE ---> IDLE
+[2539166:hf-candidate-creator-3prong-expressions]: [11:14:05][STATE] IDLE ---> EXITING
+[2539166:hf-candidate-creator-3prong-expressions]: [11:14:05][STATE] Exiting FairMQ state machine
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:14:05][STATE] RUNNING ---> READY
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:14:05][STATE] READY ---> RESETTING TASK
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:14:05][STATE] RESETTING TASK ---> DEVICE READY
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:14:05][STATE] DEVICE READY ---> RESETTING DEVICE
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:14:05][STATE] RESETTING DEVICE ---> IDLE
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:14:05][STATE] IDLE ---> EXITING
+[2539273:internal-dpl-aod-global-analysis-file-sink]: [11:14:05][STATE] Exiting FairMQ state machine
+[2539356:internal-dpl-injected-dummy-sink]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2539356:internal-dpl-injected-dummy-sink]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2539356:internal-dpl-injected-dummy-sink]: [11:14:05][INFO] New state requested. No timeout set, quitting immediately as per --completion-policy
+[2538979:internal-dpl-clock]: [11:14:05][STATE] RUNNING ---> READY
+[2538979:internal-dpl-clock]: [11:14:05][STATE] READY ---> RESETTING TASK
+[2538979:internal-dpl-clock]: [11:14:05][STATE] RESETTING TASK ---> DEVICE READY
+[2538979:internal-dpl-clock]: [11:14:05][STATE] DEVICE READY ---> RESETTING DEVICE
+[2538979:internal-dpl-clock]: [11:14:05][STATE] RESETTING DEVICE ---> IDLE
+[2538979:internal-dpl-clock]: [11:14:05][STATE] IDLE ---> EXITING
+[2538979:internal-dpl-clock]: [11:14:05][STATE] Exiting FairMQ state machine
+[2539117:hf-pid-creator]: [11:14:05][STATE] RUNNING ---> READY
+[2539117:hf-pid-creator]: [11:14:05][STATE] READY ---> RESETTING TASK
+[2539117:hf-pid-creator]: [11:14:05][STATE] RESETTING TASK ---> DEVICE READY
+[2539117:hf-pid-creator]: [11:14:05][STATE] DEVICE READY ---> RESETTING DEVICE
+[2539117:hf-pid-creator]: [11:14:05][STATE] RESETTING DEVICE ---> IDLE
+[2539117:hf-pid-creator]: [11:14:05][STATE] IDLE ---> EXITING
+[2539117:hf-pid-creator]: [11:14:05][STATE] Exiting FairMQ state machine
+[2539356:internal-dpl-injected-dummy-sink]: [11:14:05][STATE] RUNNING ---> READY
+[2539356:internal-dpl-injected-dummy-sink]: [11:14:05][STATE] READY ---> RESETTING TASK
+[2539356:internal-dpl-injected-dummy-sink]: [11:14:05][STATE] RESETTING TASK ---> DEVICE READY
+[2539356:internal-dpl-injected-dummy-sink]: [11:14:05][STATE] DEVICE READY ---> RESETTING DEVICE
+[2539356:internal-dpl-injected-dummy-sink]: [11:14:05][STATE] RESETTING DEVICE ---> IDLE
+[2539356:internal-dpl-injected-dummy-sink]: [11:14:05][STATE] IDLE ---> EXITING
+[2539356:internal-dpl-injected-dummy-sink]: [11:14:05][STATE] Exiting FairMQ state machine
+[2538980:internal-dpl-aod-reader]: [11:14:05][INFO] Received device shutdown request (signal 15).
+[2538980:internal-dpl-aod-reader]: [11:14:05][INFO] Waiting for graceful device shutdown. Hit Ctrl-C again to abort immediately.
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: Info in <TJAlienConnectionManager>: Opening connection to JCentral. Please wait
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: Info in <TJAlienConnectionManager>: Opening connection to 128.142.249.61
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: Info in <TJAlienConnectionManager>: Successfully connected to 128.142.249.61
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: Info in <TJAlienFile::Open>: Accessing file /alice/data/CCDB/Users/b/belikov/models/Dplus_apass7_noNorm_pidNew/pt_0_1/06/38477/3b125fee-f84d-11f0-8d95-200114580301 in SE <ALICE::CERN::OCDB>
+[2539007:tof-signal]: Info in <TJAlienConnectionManager>: Opening connection to JCentral. Please wait
+[2539007:tof-signal]: Info in <TJAlienConnectionManager>: Opening connection to 128.142.249.29
+[2539062:tof-event-time]: Info in <TJAlienConnectionManager>: Opening connection to JCentral. Please wait
+[2539062:tof-event-time]: Info in <TJAlienConnectionManager>: Opening connection to 128.142.249.17
+[2539085:mc-pid-tof]: Info in <TJAlienConnectionManager>: Opening connection to JCentral. Please wait
+[2539085:mc-pid-tof]: Info in <TJAlienConnectionManager>: Opening connection to 128.142.249.60
+[2539062:tof-event-time]: Info in <TJAlienConnectionManager>: Successfully connected to 128.142.249.17
+[2539007:tof-signal]: Info in <TJAlienConnectionManager>: Successfully connected to 128.142.249.29
+[2539085:mc-pid-tof]: Info in <TJAlienConnectionManager>: Successfully connected to 128.142.249.60
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:10][INFO] ccdb reads http://alice-ccdb.cern.ch/Users/b/belikov/models/Dplus_apass7_noNorm_pidNew/pt_0_1/1/3b125fee-f84d-11f0-8d95-200114580301 for 1795083250547 (retrieve, agent_id: o2-analysis-hf-/o2-analysis-hf-candidate-selector-dplus-to-pi-k-pi@2539184 target/Linux_x86_64 init/1795083230529 id/alitrain@alihyperloop session/2PvyiIpA), 
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: Info in <TJAlienFile::Open>: Accessing file /alice/data/CCDB/Users/b/belikov/models/Dplus_apass7_noNorm_pidNew/pt_1_2/00/11484/7835e949-f84d-11f0-8d95-200114580301 in SE <ALICE::CERN::OCDB>
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:10][INFO] ccdb reads http://alice-ccdb.cern.ch/Users/b/belikov/models/Dplus_apass7_noNorm_pidNew/pt_1_2/1/7835e949-f84d-11f0-8d95-200114580301 for 1795083250698 (retrieve, agent_id: o2-analysis-hf-/o2-analysis-hf-candidate-selector-dplus-to-pi-k-pi@2539184 target/Linux_x86_64 init/1795083230529 id/alitrain@alihyperloop session/2PvyiIpA), 
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: Info in <TJAlienFile::Open>: Accessing file /alice/data/CCDB/Users/b/belikov/models/Dplus_apass7_noNorm_pidNew/pt_2_3/03/50023/a30753b7-f84d-11f0-8d95-200114580301 in SE <ALICE::CERN::OCDB>
+[2539062:tof-event-time]: Info in <TJAlienFile::Open>: Accessing file /alice/data/CCDB/TOF/Calib/Params/04/03248/28ac401f-ab56-11ef-b328-200114580202 in SE <ALICE::CERN::OCDB>
+[2539085:mc-pid-tof]: Info in <TJAlienFile::Open>: Accessing file /alice/data/CCDB/TOF/Calib/Params/04/03248/28ac401f-ab56-11ef-b328-200114580202 in SE <ALICE::CERN::OCDB>
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:10][INFO] ccdb reads http://alice-ccdb.cern.ch/Users/b/belikov/models/Dplus_apass7_noNorm_pidNew/pt_2_3/1/a30753b7-f84d-11f0-8d95-200114580301 for 1795083250766 (retrieve, agent_id: o2-analysis-hf-/o2-analysis-hf-candidate-selector-dplus-to-pi-k-pi@2539184 target/Linux_x86_64 init/1795083230529 id/alitrain@alihyperloop session/2PvyiIpA), 
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: Info in <TJAlienFile::Open>: Accessing file /alice/data/CCDB/Users/b/belikov/models/Dplus_apass7_noNorm_pidNew/pt_3_5/01/60574/e3dc30bf-f84d-11f0-b0a3-200114580301 in SE <ALICE::CERN::OCDB>
+[2539085:mc-pid-tof]: [11:14:10][INFO] ccdb reads http://alice-ccdb.cern.ch/TOF/Calib/Params/1/28ac401f-ab56-11ef-b328-200114580202 for 1795083250822 (retrieve, agent_id: o2-analysis-hf-/o2-analysis-hf-mc-pid-tof@2539085 target/Linux_x86_64 init/1795083233868 id/alitrain@alihyperloop session/93Fzi9z9), 
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for El not provided, using default 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for El is tofResTrack.El_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Mu not provided, using default 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Mu is tofResTrack.Mu_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Pi not provided, using default 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Pi is tofResTrack.Pi_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Ka not provided, using default 42.66*TMath::Power((TMath::Max(x-0.417,0.1))*(1-0.4235*y*y),-0.7145)
+[2539062:tof-event-time]: [11:14:10][INFO] ccdb reads http://alice-ccdb.cern.ch/TOF/Calib/Params/1/28ac401f-ab56-11ef-b328-200114580202 for 1795083250834 (retrieve, agent_id: o2-analysis-hf-/o2-analysis-hf-mc-pid-tof@2539062 target/Linux_x86_64 init/1795083233677 id/alitrain@alihyperloop session/9TKfuGB7), 
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for El not provided, using default 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for El is tofResTrack.El_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Mu not provided, using default 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Mu is tofResTrack.Mu_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Pi not provided, using default 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Pi is tofResTrack.Pi_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Ka not provided, using default 42.66*TMath::Power((TMath::Max(x-0.417,0.1))*(1-0.4235*y*y),-0.7145)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Ka is tofResTrack.Ka_Default with formula 42.66*TMath::Power((TMath::Max(x-0.417,0.1))*(1-0.4235*y*y),-0.7145)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Pr not provided, using default 99.46*TMath::Power((TMath::Max(x-0.447,0.1))*(1-0.4235*y*y),-0.8094)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Ka is tofResTrack.Ka_Default with formula 42.66*TMath::Power((TMath::Max(x-0.417,0.1))*(1-0.4235*y*y),-0.7145)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Pr not provided, using default 99.46*TMath::Power((TMath::Max(x-0.447,0.1))*(1-0.4235*y*y),-0.8094)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Pr is tofResTrack.Pr_Default with formula 99.46*TMath::Power((TMath::Max(x-0.447,0.1))*(1-0.4235*y*y),-0.8094)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Pr is tofResTrack.Pr_Default with formula 99.46*TMath::Power((TMath::Max(x-0.447,0.1))*(1-0.4235*y*y),-0.8094)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for De not provided, using default 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for De not provided, using default 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for De is tofResTrack.De_Default with formula 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for De is tofResTrack.De_Default with formula 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Tr not provided, using default 315*TMath::Power((TMath::Max(x-0.811,0.1))*(1-0.4235*y*y),-0.783)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Tr is tofResTrack.Tr_Default with formula 315*TMath::Power((TMath::Max(x-0.811,0.1))*(1-0.4235*y*y),-0.783)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Tr not provided, using default 315*TMath::Power((TMath::Max(x-0.811,0.1))*(1-0.4235*y*y),-0.783)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Tr is tofResTrack.Tr_Default with formula 315*TMath::Power((TMath::Max(x-0.811,0.1))*(1-0.4235*y*y),-0.783)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for He not provided, using default 157*TMath::Power((TMath::Max(x-0.556,0.1))*(1-0.4235*y*y),-0.783)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for He not provided, using default 157*TMath::Power((TMath::Max(x-0.556,0.1))*(1-0.4235*y*y),-0.783)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for He is tofResTrack.He_Default with formula 157*TMath::Power((TMath::Max(x-0.556,0.1))*(1-0.4235*y*y),-0.783)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for He is tofResTrack.He_Default with formula 157*TMath::Power((TMath::Max(x-0.556,0.1))*(1-0.4235*y*y),-0.783)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Al not provided, using default 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Al is tofResTrack.Al_Default with formula 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539062:tof-event-time]: [11:14:10][INFO] From metadata this data is from MC
+[2539062:tof-event-time]: [11:14:10][INFO] From metadata this data is from MC
+[2539062:tof-event-time]: [11:14:10][INFO] Parametrization at init time:
+[2539062:tof-event-time]: [11:14:10][INFO] Parameters 'TOFResoParamsV3'
+[2539062:tof-event-time]: [11:14:10][INFO] Parameter 0/12 time_resolution is 60
+[2539062:tof-event-time]: [11:14:10][INFO] Parameter 1/12 time_resolution is 60
+[2539062:tof-event-time]: [11:14:10][INFO] Parameter 2/12 time_resolution is 60
+[2539062:tof-event-time]: [11:14:10][INFO] Parameter 3/12 time_resolution is 60
+[2539062:tof-event-time]: [11:14:10][INFO] Parameter 4/12 time_resolution is 60
+[2539062:tof-event-time]: [11:14:10][INFO] Parameter 5/12 time_resolution is 60
+[2539062:tof-event-time]: [11:14:10][INFO] Parameter 6/12 time_resolution is 60
+[2539062:tof-event-time]: [11:14:10][INFO] Parameter 7/12 time_resolution is 60
+[2539062:tof-event-time]: [11:14:10][INFO] Parameter 8/12 time_resolution is 60
+[2539062:tof-event-time]: [11:14:10][INFO] Parameter 9/12 time_resolution is 60
+[2539062:tof-event-time]: [11:14:10][INFO] Parameter 10/12 time_resolution is 60
+[2539062:tof-event-time]: [11:14:10][INFO] Parameter 11/12 time_resolution is 60
+[2539062:tof-event-time]: [11:14:10][INFO] Parameter 12/12 time_resolution is 60
+[2539062:tof-event-time]: [11:14:10][INFO] TOF momentum shift parameters
+[2539062:tof-event-time]: [11:14:10][INFO] etaN: 0
+[2539062:tof-event-time]: [11:14:10][INFO] etaStart: 0
+[2539062:tof-event-time]: [11:14:10][INFO] etaStop: 0
+[2539062:tof-event-time]: [11:14:10][INFO] content size 0
+[2539062:tof-event-time]: [11:14:10][INFO] Using no time shift for Pos vs correction 0
+[2539062:tof-event-time]: [11:14:10][INFO] Using no time shift for Neg vs correction 0
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for El is tofResTrack.El_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Mu is tofResTrack.Mu_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Pi is tofResTrack.Pi_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Ka is tofResTrack.Ka_Default with formula 42.66*TMath::Power((TMath::Max(x-0.417,0.1))*(1-0.4235*y*y),-0.7145)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Pr is tofResTrack.Pr_Default with formula 99.46*TMath::Power((TMath::Max(x-0.447,0.1))*(1-0.4235*y*y),-0.8094)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for De is tofResTrack.De_Default with formula 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Tr is tofResTrack.Tr_Default with formula 315*TMath::Power((TMath::Max(x-0.811,0.1))*(1-0.4235*y*y),-0.783)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for He is tofResTrack.He_Default with formula 157*TMath::Power((TMath::Max(x-0.556,0.1))*(1-0.4235*y*y),-0.783)
+[2539062:tof-event-time]: [11:14:10][INFO] Resolution function for Al is tofResTrack.Al_Default with formula 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539062:tof-event-time]: [11:14:10][INFO] eventTimeContainer configuration:
+[2539062:tof-event-time]: [11:14:10][INFO]  maxNtracksInSet = 10
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Al not provided, using default 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Al is tofResTrack.Al_Default with formula 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539062:tof-event-time]: [11:14:10][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2539085:mc-pid-tof]: [11:14:10][INFO] From metadata this data is from MC
+[2539085:mc-pid-tof]: [11:14:10][INFO] From metadata this data is from MC
+[2539085:mc-pid-tof]: [11:14:10][INFO] Parametrization at init time:
+[2539085:mc-pid-tof]: [11:14:10][INFO] Parameters 'TOFResoParamsV3'
+[2539085:mc-pid-tof]: [11:14:10][INFO] Parameter 0/12 time_resolution is 60
+[2539085:mc-pid-tof]: [11:14:10][INFO] Parameter 1/12 time_resolution is 60
+[2539085:mc-pid-tof]: [11:14:10][INFO] Parameter 2/12 time_resolution is 60
+[2539085:mc-pid-tof]: [11:14:10][INFO] Parameter 3/12 time_resolution is 60
+[2539085:mc-pid-tof]: [11:14:10][INFO] Parameter 4/12 time_resolution is 60
+[2539085:mc-pid-tof]: [11:14:10][INFO] Parameter 5/12 time_resolution is 60
+[2539085:mc-pid-tof]: [11:14:10][INFO] Parameter 6/12 time_resolution is 60
+[2539085:mc-pid-tof]: [11:14:10][INFO] Parameter 7/12 time_resolution is 60
+[2539085:mc-pid-tof]: [11:14:10][INFO] Parameter 8/12 time_resolution is 60
+[2539085:mc-pid-tof]: [11:14:10][INFO] Parameter 9/12 time_resolution is 60
+[2539085:mc-pid-tof]: [11:14:10][INFO] Parameter 10/12 time_resolution is 60
+[2539085:mc-pid-tof]: [11:14:10][INFO] Parameter 11/12 time_resolution is 60
+[2539085:mc-pid-tof]: [11:14:10][INFO] Parameter 12/12 time_resolution is 60
+[2539085:mc-pid-tof]: [11:14:10][INFO] TOF momentum shift parameters
+[2539085:mc-pid-tof]: [11:14:10][INFO] etaN: 0
+[2539085:mc-pid-tof]: [11:14:10][INFO] etaStart: 0
+[2539085:mc-pid-tof]: [11:14:10][INFO] etaStop: 0
+[2539085:mc-pid-tof]: [11:14:10][INFO] content size 0
+[2539085:mc-pid-tof]: [11:14:10][INFO] Using no time shift for Pos vs correction 0
+[2539085:mc-pid-tof]: [11:14:10][INFO] Using no time shift for Neg vs correction 0
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for El is tofResTrack.El_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Mu is tofResTrack.Mu_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Pi is tofResTrack.Pi_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Ka is tofResTrack.Ka_Default with formula 42.66*TMath::Power((TMath::Max(x-0.417,0.1))*(1-0.4235*y*y),-0.7145)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Pr is tofResTrack.Pr_Default with formula 99.46*TMath::Power((TMath::Max(x-0.447,0.1))*(1-0.4235*y*y),-0.8094)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for De is tofResTrack.De_Default with formula 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Tr is tofResTrack.Tr_Default with formula 315*TMath::Power((TMath::Max(x-0.811,0.1))*(1-0.4235*y*y),-0.783)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for He is tofResTrack.He_Default with formula 157*TMath::Power((TMath::Max(x-0.556,0.1))*(1-0.4235*y*y),-0.783)
+[2539085:mc-pid-tof]: [11:14:10][INFO] Resolution function for Al is tofResTrack.Al_Default with formula 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539085:mc-pid-tof]: [11:14:10][INFO] ++ Enabled tables:
+[2539085:mc-pid-tof]: [11:14:10][INFO] ++  pidTOFFullPi is enabled
+[2539085:mc-pid-tof]: [11:14:10][INFO] ++  pidTOFFullKa is enabled
+[2539085:mc-pid-tof]: [11:14:10][INFO] ++  pidTOFFullPr is enabled
+[2539085:mc-pid-tof]: [11:14:10][INFO] ++  pidTOFFullDe is enabled
+[2539085:mc-pid-tof]: [11:14:10][INFO] ++  pidTOFFullTr is enabled
+[2539085:mc-pid-tof]: [11:14:10][INFO] ++  pidTOFFullHe is enabled
+[2539085:mc-pid-tof]: [11:14:10][INFO] ++  pidTOFFullAl is enabled
+[2539085:mc-pid-tof]: [11:14:10][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2539062:tof-event-time]: [11:14:10][STATE] INITIALIZED ---> RESETTING DEVICE
+[2539085:mc-pid-tof]: [11:14:10][STATE] INITIALIZED ---> RESETTING DEVICE
+[2539085:mc-pid-tof]: [11:14:10][STATE] RESETTING DEVICE ---> IDLE
+[2539085:mc-pid-tof]: [11:14:10][STATE] IDLE ---> EXITING
+[2539062:tof-event-time]: [11:14:10][STATE] RESETTING DEVICE ---> IDLE
+[2539062:tof-event-time]: [11:14:10][STATE] IDLE ---> EXITING
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:10][INFO] ccdb reads http://alice-ccdb.cern.ch/Users/b/belikov/models/Dplus_apass7_noNorm_pidNew/pt_3_5/1/e3dc30bf-f84d-11f0-b0a3-200114580301 for 1795083250950 (retrieve, agent_id: o2-analysis-hf-/o2-analysis-hf-candidate-selector-dplus-to-pi-k-pi@2539184 target/Linux_x86_64 init/1795083230529 id/alitrain@alihyperloop session/2PvyiIpA), 
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: Info in <TJAlienFile::Open>: Accessing file /alice/data/CCDB/Users/b/belikov/models/Dplus_apass7_noNorm_pidNew/pt_5_8/14/53616/0ed1332f-f84e-11f0-b0a3-200114580301 in SE <ALICE::CERN::OCDB>
+[2539007:tof-signal]: Info in <TJAlienFile::Open>: Accessing file /alice/data/CCDB/TOF/Calib/Params/04/03248/28ac401f-ab56-11ef-b328-200114580202 in SE <ALICE::CERN::OCDB>
+[2539062:tof-event-time]: [11:14:11][STATE] Exiting FairMQ state machine
+[2539085:mc-pid-tof]: [11:14:11][STATE] Exiting FairMQ state machine
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] ccdb reads http://alice-ccdb.cern.ch/Users/b/belikov/models/Dplus_apass7_noNorm_pidNew/pt_5_8/1/0ed1332f-f84e-11f0-b0a3-200114580301 for 1795083251025 (retrieve, agent_id: o2-analysis-hf-/o2-analysis-hf-candidate-selector-dplus-to-pi-k-pi@2539184 target/Linux_x86_64 init/1795083230529 id/alitrain@alihyperloop session/2PvyiIpA), 
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: Info in <TJAlienFile::Open>: Accessing file /alice/data/CCDB/Users/b/belikov/models/Dplus_apass7_noNorm_pidNew/pt_8_12/00/25844/2d504355-f84e-11f0-b0a3-200114580301 in SE <ALICE::CERN::OCDB>
+[2539007:tof-signal]: [11:14:11][INFO] ccdb reads http://alice-ccdb.cern.ch/TOF/Calib/Params/1/28ac401f-ab56-11ef-b328-200114580202 for 1795083251059 (retrieve, agent_id: o2-analysis-hf-/o2-analysis-hf-mc-pid-tof@2539007 target/Linux_x86_64 init/1795083233264 id/alitrain@alihyperloop session/2sEtO9jv), 
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for El not provided, using default 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] ccdb reads http://alice-ccdb.cern.ch/Users/b/belikov/models/Dplus_apass7_noNorm_pidNew/pt_8_12/1/2d504355-f84e-11f0-b0a3-200114580301 for 1795083251065 (retrieve, agent_id: o2-analysis-hf-/o2-analysis-hf-candidate-selector-dplus-to-pi-k-pi@2539184 target/Linux_x86_64 init/1795083230529 id/alitrain@alihyperloop session/2PvyiIpA), 
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: Info in <TJAlienFile::Open>: Accessing file /alice/data/CCDB/Users/b/belikov/models/Dplus_apass7_noNorm_pidNew/pt_12_16/11/24347/48dcab38-f84e-11f0-8d95-200114580301 in SE <ALICE::CERN::OCDB>
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for El is tofResTrack.El_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Mu not provided, using default 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Mu is tofResTrack.Mu_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Pi not provided, using default 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Pi is tofResTrack.Pi_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Ka not provided, using default 42.66*TMath::Power((TMath::Max(x-0.417,0.1))*(1-0.4235*y*y),-0.7145)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Ka is tofResTrack.Ka_Default with formula 42.66*TMath::Power((TMath::Max(x-0.417,0.1))*(1-0.4235*y*y),-0.7145)
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] ccdb reads http://alice-ccdb.cern.ch/Users/b/belikov/models/Dplus_apass7_noNorm_pidNew/pt_12_16/1/48dcab38-f84e-11f0-8d95-200114580301 for 1795083251126 (retrieve, agent_id: o2-analysis-hf-/o2-analysis-hf-candidate-selector-dplus-to-pi-k-pi@2539184 target/Linux_x86_64 init/1795083230529 id/alitrain@alihyperloop session/2PvyiIpA), 
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Pr not provided, using default 99.46*TMath::Power((TMath::Max(x-0.447,0.1))*(1-0.4235*y*y),-0.8094)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Pr is tofResTrack.Pr_Default with formula 99.46*TMath::Power((TMath::Max(x-0.447,0.1))*(1-0.4235*y*y),-0.8094)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for De not provided, using default 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: Info in <TJAlienFile::Open>: Accessing file /alice/data/CCDB/Users/b/belikov/models/Dplus_apass7_noNorm_pidNew/pt_16_50/13/56972/62de03e3-f84e-11f0-8d95-200114580301 in SE <ALICE::CERN::OCDB>
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for De is tofResTrack.De_Default with formula 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Tr not provided, using default 315*TMath::Power((TMath::Max(x-0.811,0.1))*(1-0.4235*y*y),-0.783)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Tr is tofResTrack.Tr_Default with formula 315*TMath::Power((TMath::Max(x-0.811,0.1))*(1-0.4235*y*y),-0.783)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for He not provided, using default 157*TMath::Power((TMath::Max(x-0.556,0.1))*(1-0.4235*y*y),-0.783)
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] ccdb reads http://alice-ccdb.cern.ch/Users/b/belikov/models/Dplus_apass7_noNorm_pidNew/pt_16_50/1/62de03e3-f84e-11f0-8d95-200114580301 for 1795083251192 (retrieve, agent_id: o2-analysis-hf-/o2-analysis-hf-candidate-selector-dplus-to-pi-k-pi@2539184 target/Linux_x86_64 init/1795083230529 id/alitrain@alihyperloop session/2PvyiIpA), 
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] --- ONNX-ML model ---
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Hyperloop test/Grid job detected! Number of cores = . Setting threads anyway to 1.
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for He is tofResTrack.He_Default with formula 157*TMath::Power((TMath::Max(x-0.556,0.1))*(1-0.4235*y*y),-0.783)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Al not provided, using default 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Al is tofResTrack.Al_Default with formula 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539007:tof-signal]: [11:14:11][INFO] From metadata this data is from MC
+[2539007:tof-signal]: [11:14:11][INFO] From metadata this data is from MC
+[2539007:tof-signal]: [11:14:11][INFO] Parametrization at init time:
+[2539007:tof-signal]: [11:14:11][INFO] Parameters 'TOFResoParamsV3'
+[2539007:tof-signal]: [11:14:11][INFO] Parameter 0/12 time_resolution is 60
+[2539007:tof-signal]: [11:14:11][INFO] Parameter 1/12 time_resolution is 60
+[2539007:tof-signal]: [11:14:11][INFO] Parameter 2/12 time_resolution is 60
+[2539007:tof-signal]: [11:14:11][INFO] Parameter 3/12 time_resolution is 60
+[2539007:tof-signal]: [11:14:11][INFO] Parameter 4/12 time_resolution is 60
+[2539007:tof-signal]: [11:14:11][INFO] Parameter 5/12 time_resolution is 60
+[2539007:tof-signal]: [11:14:11][INFO] Parameter 6/12 time_resolution is 60
+[2539007:tof-signal]: [11:14:11][INFO] Parameter 7/12 time_resolution is 60
+[2539007:tof-signal]: [11:14:11][INFO] Parameter 8/12 time_resolution is 60
+[2539007:tof-signal]: [11:14:11][INFO] Parameter 9/12 time_resolution is 60
+[2539007:tof-signal]: [11:14:11][INFO] Parameter 10/12 time_resolution is 60
+[2539007:tof-signal]: [11:14:11][INFO] Parameter 11/12 time_resolution is 60
+[2539007:tof-signal]: [11:14:11][INFO] Parameter 12/12 time_resolution is 60
+[2539007:tof-signal]: [11:14:11][INFO] TOF momentum shift parameters
+[2539007:tof-signal]: [11:14:11][INFO] etaN: 0
+[2539007:tof-signal]: [11:14:11][INFO] etaStart: 0
+[2539007:tof-signal]: [11:14:11][INFO] etaStop: 0
+[2539007:tof-signal]: [11:14:11][INFO] content size 0
+[2539007:tof-signal]: [11:14:11][INFO] Using no time shift for Pos vs correction 0
+[2539007:tof-signal]: [11:14:11][INFO] Using no time shift for Neg vs correction 0
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for El is tofResTrack.El_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Mu is tofResTrack.Mu_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Pi is tofResTrack.Pi_Default with formula 14.3*TMath::Power((TMath::Max(x-0.319,0.1))*(1-0.4235*y*y),-0.8467)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Ka is tofResTrack.Ka_Default with formula 42.66*TMath::Power((TMath::Max(x-0.417,0.1))*(1-0.4235*y*y),-0.7145)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Pr is tofResTrack.Pr_Default with formula 99.46*TMath::Power((TMath::Max(x-0.447,0.1))*(1-0.4235*y*y),-0.8094)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for De is tofResTrack.De_Default with formula 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Tr is tofResTrack.Tr_Default with formula 315*TMath::Power((TMath::Max(x-0.811,0.1))*(1-0.4235*y*y),-0.783)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for He is tofResTrack.He_Default with formula 157*TMath::Power((TMath::Max(x-0.556,0.1))*(1-0.4235*y*y),-0.783)
+[2539007:tof-signal]: [11:14:11][INFO] Resolution function for Al is tofResTrack.Al_Default with formula 216*TMath::Power((TMath::Max(x-0.647,0.1))*(1-0.4235*y*y),-0.76)
+[2539007:tof-signal]: [11:14:11][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2539007:tof-signal]: [11:14:11][STATE] INITIALIZED ---> RESETTING DEVICE
+[2539007:tof-signal]: [11:14:11][STATE] RESETTING DEVICE ---> IDLE
+[2539007:tof-signal]: [11:14:11][STATE] IDLE ---> EXITING
+[2539007:tof-signal]: [11:14:11][STATE] Exiting FairMQ state machine
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Input Nodes:
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	input : 1x10
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Output Nodes:
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	label : 1
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	probabilities : 1x3
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Model validity - From: 0, Until: 0
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] --- Model initialized! ---
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] --- ONNX-ML model ---
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Hyperloop test/Grid job detected! Number of cores = . Setting threads anyway to 1.
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Input Nodes:
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	input : 1x10
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Output Nodes:
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	label : 1
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	probabilities : 1x3
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Model validity - From: 0, Until: 0
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] --- Model initialized! ---
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] --- ONNX-ML model ---
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Hyperloop test/Grid job detected! Number of cores = . Setting threads anyway to 1.
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Input Nodes:
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	input : 1x10
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Output Nodes:
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	label : 1
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	probabilities : 1x3
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Model validity - From: 0, Until: 0
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] --- Model initialized! ---
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] --- ONNX-ML model ---
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Hyperloop test/Grid job detected! Number of cores = . Setting threads anyway to 1.
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Input Nodes:
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	input : 1x10
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Output Nodes:
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	label : 1
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	probabilities : 1x3
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Model validity - From: 0, Until: 0
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] --- Model initialized! ---
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] --- ONNX-ML model ---
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Hyperloop test/Grid job detected! Number of cores = . Setting threads anyway to 1.
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Input Nodes:
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	input : 1x10
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Output Nodes:
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	label : 1
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	probabilities : 1x3
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Model validity - From: 0, Until: 0
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] --- Model initialized! ---
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] --- ONNX-ML model ---
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Hyperloop test/Grid job detected! Number of cores = . Setting threads anyway to 1.
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Input Nodes:
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	input : 1x10
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Output Nodes:
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	label : 1
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	probabilities : 1x3
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Model validity - From: 0, Until: 0
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] --- Model initialized! ---
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] --- ONNX-ML model ---
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Hyperloop test/Grid job detected! Number of cores = . Setting threads anyway to 1.
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Input Nodes:
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	input : 1x10
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Output Nodes:
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	label : 1
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	probabilities : 1x3
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Model validity - From: 0, Until: 0
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] --- Model initialized! ---
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] --- ONNX-ML model ---
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Hyperloop test/Grid job detected! Number of cores = . Setting threads anyway to 1.
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Input Nodes:
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	input : 1x10
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Output Nodes:
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	label : 1
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] 	probabilities : 1x3
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] Model validity - From: 0, Until: 0
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][INFO] --- Model initialized! ---
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][STATE] INITIALIZING DEVICE ---> INITIALIZED
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][STATE] INITIALIZED ---> RESETTING DEVICE
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][STATE] RESETTING DEVICE ---> IDLE
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][STATE] IDLE ---> EXITING
+[2539184:hf-candidate-selector-dplus-to-pi-k-pi]: [11:14:11][STATE] Exiting FairMQ state machine
+[2538980:internal-dpl-aod-reader]: [11:14:12][INFO] New state requested. No timeout set, quitting immediately as per --completion-policy
+[2538980:internal-dpl-aod-reader]: [11:14:12][STATE] RUNNING ---> READY
+[2538980:internal-dpl-aod-reader]: [11:14:12][STATE] READY ---> RESETTING TASK
+[2538980:internal-dpl-aod-reader]: [11:14:12][STATE] RESETTING TASK ---> DEVICE READY
+[2538980:internal-dpl-aod-reader]: [11:14:12][STATE] DEVICE READY ---> RESETTING DEVICE
+[2538980:internal-dpl-aod-reader]: [11:14:12][INFO] Cleaning up for shared memory id '990d348b'...
+[2538980:internal-dpl-aod-reader]: [11:14:12][INFO] Found 0 unmanaged regions...
+[2538980:internal-dpl-aod-reader]: [11:14:12][INFO] Found 1 managed segments...
+[2538980:internal-dpl-aod-reader]: [11:14:12][INFO] Successfully removed 'fmq_990d348b_m_0'.
+[2538980:internal-dpl-aod-reader]: [11:14:12][INFO] Successfully removed 'fmq_990d348b_mng'.
+[2538980:internal-dpl-aod-reader]: [11:14:12][STATE] RESETTING DEVICE ---> IDLE
+[2538980:internal-dpl-aod-reader]: [11:14:12][STATE] IDLE ---> EXITING
+[2538980:internal-dpl-aod-reader]: [11:14:12][STATE] Exiting FairMQ state machine
+[INFO] Dumping performance metrics to performanceMetrics.json.json file
+[INFO] ## Processes completed. Run summary:
+[INFO] ### Devices started: 20
+[INFO]  - Device internal-dpl-clock: pid 2538979 (exit 0)
+[INFO]  - Device internal-dpl-aod-reader: pid 2538980 (exit 0)
+[INFO]  - Device internal-dpl-aod-spawner: pid 2538988 (exit 0)
+[INFO]  - Device internal-dpl-aod-index-builder: pid 2538990 (exit 0)
+[INFO]  - Device eventselection-run3: pid 2538997 (exit 0)
+[INFO]  - Device tof-signal: pid 2539007 (exit 0)
+[INFO]  - Device pid-tpc-service: pid 2539008 (exit 0)
+[INFO]  - Device ft0-corrected-table: pid 2539023 (exit 0)
+[INFO]  - Device propagation-service: pid 2539034 (exit 0)
+[INFO]  - Device tof-event-time: pid 2539062 (exit 0)
+[INFO]  - Device mult-cent-table: pid 2539067 (exit 0)
+[INFO]  - Device mc-pid-tof: pid 2539085 (exit 0)
+[INFO]  - Device hf-pid-creator: pid 2539117 (exit 0)
+[INFO]  - Device hf-candidate-creator-3prong: pid 2539140 (exit 0)
+[INFO]  - Device hf-candidate-creator-3prong-expressions: pid 2539166 (exit 0)
+[INFO]  - Device hf-candidate-selector-dplus-to-pi-k-pi: pid 2539184 (exit 0)
+[ERROR]  - Device hf-correlator-dplus-dplus-reduced: pid 2539214 (exit 128)
+[INFO]    - First error: [11:13:53][FATAL] Input feature feature1 not available! Please check your configurables.
+[INFO]    - Last error:     o2-analysis-hf-correlator-dplus-dplus-reduced() [0x4293d5]:     _start at ??:?
+[INFO]  - Device internal-dpl-aod-global-analysis-file-sink: pid 2539273 (exit 0)
+[INFO]  - Device internal-dpl-aod-writer: pid 2539332 (exit 0)
+[INFO]  - Device internal-dpl-injected-dummy-sink: pid 2539356 (exit 0)
+[INFO] ## Analysis Run Summary ##
+[INFO] ### Files opened stats ###
+[INFO] Last file opened: lfn=/home/alitrain/train-workdir/testdata/LFN/alice/sim/2025/LHC25g1b/0/559423/AOD/5634/AO2D.root,size=3625222700
+[INFO] Dumping used configuration in dpl-config.json
+[ERROR] SEVERE: Device hf-correlator-dplus-dplus-reduced (2539214) had at least one message above severity 7: Input feature feature1 not available! Please check your configurables.
+[ perf record: Woken up 1613 times to write data ]
+[ perf record: Captured and wrote 23.659 MB perf.data (2268 samples) ]
+
+
+O2 exited with 1
+
+Cleaning up...
+Cleaning up for shared memory id '990d348b'...
+Did not find 'fmq_990d348b_mng' management segment. No regions to cleanup.
+
+O2 job script ends at Thu Nov 19 11:14:13 AM CET 2026
+
+ERROR: O2 exit code is 1
+============= Test result ==============
+test_id = 808850
+test_exitcode = failed
+merge_exitcode = failed
+test_number_of_input_files = 2
+test_input_size = 9492958 B
+test_number_of_generated_events = -1
+test_avg_input_file_size = 4746479
+test_output_size = 0 B
+test_derived_output_size = 0 B
+test_average_timeframes_in_fly = 
+test_average_table-bytes-per-table (AOD only) = 0
+test_log_output_size = 0 B
+test_wall_time = 37
+test_end_time = 1795083258034
+
+Your test failed. If you would like to reproduce the issue locally, please follow the instructions here:
+https://aliceo2group.github.io/analysis-framework/docs/hyperloop/userdocumentation.html#reproducing-a-train-run-on-a-local-machine

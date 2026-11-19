@@ -63,10 +63,20 @@ FLOW_DBS = {
     # (state/s3/logs.db), which outlives the bucket's ~8-week retention, so it
     # travels in the state tarball and obeys the same pairing rule.
     "ci-failures": "ci-failures.db",
+    # Hyperloop wagon tests (alimonitor's public test folders): tests, wagons,
+    # metrics, errors. Its state dir holds the fetch cache (state/alimonitor/
+    # tests.db), restored with it.
+    "hyperloop": "hyperloop.db",
+    # Hyperloop wagon tests' resource metrics (performanceMetrics_processed.json):
+    # per workflow memory and CPU statistics. Its state dir holds its fetch cache
+    # (state/alimonitor/perf.db).
+    "hyperloop-perf": "hyperloop-perf.db",
 }
-# Flows whose published DB is reduced by sanitize.py: the CI logs come from a
-# private bucket and name the builders. Commits and PRs are public GitHub data.
-SANITIZED = {"ci-failures"}
+# Flows whose published DB is reduced by sanitize.py, and how: the CI logs come
+# from a private bucket and name the builders; the Hyperloop logs are public,
+# but their error text is not published either (the same rule), and a grid
+# user's login in a dataset path is hidden. Commits and PRs are public GitHub data.
+SANITIZED = {"ci-failures": "sanitize_db", "hyperloop": "sanitize_hl_db", "hyperloop-perf": "sanitize_hp_db"}
 RUN_ID_RE = re.compile(r"^\d{8}T\d{6}Z$")
 
 
@@ -353,7 +363,7 @@ def publish(root: Path, flows: list[str], run_id: str, keep: int, min_interval: 
             # (sanitize.py). An exception here fails the publish: nothing goes
             # out unsanitized, and the previous snapshot stays current.
             import sanitize
-            stats = sanitize.sanitize_db(out)
+            stats = getattr(sanitize, SANITIZED[f])(out)
             secrets = {k: v for k, v in stats.items() if k.startswith("secret:")}
             if secrets:
                 log(f"{f}: WARNING: secret-like text redacted before publishing, which the "
