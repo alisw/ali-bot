@@ -16,7 +16,7 @@ with the same text land close together. Here they land on the same vector, and
 searching for a stored text still finds it at distance 0. TEXTLOG keeps the
 texts as sent, prefixes included.
 """
-import hashlib, http.server, json, os, sys, time
+import hashlib, http.server, json, os, sys, threading, time
 
 import numpy as np
 
@@ -26,6 +26,11 @@ import embedtext  # noqa: E402
 PORT, LOG = int(sys.argv[1]), sys.argv[2]
 TEXTLOG = sys.argv[3] if len(sys.argv) > 3 else None
 DELAY = LOG + ".delay"   # if present: seconds to wait before answering (a slow aigw)
+#: FAKE_EMBED_RATE: texts per second the server embeds, one request after the
+#: other, like a saturated GPU: a request waits for every text queued before it,
+#: so its latency grows with the load the client puts on it.
+RATE = float(os.environ.get("FAKE_EMBED_RATE", "0"))
+_busy = threading.Lock()
 
 
 #: FAKE_EMBED_SALT: another, incompatible model -- the same text gets another
@@ -52,6 +57,9 @@ class H(http.server.BaseHTTPRequestHandler):
                 f.writelines(json.dumps(t) + "\n" for t in inputs)
         if os.path.exists(DELAY):
             time.sleep(float(open(DELAY).read()))
+        if RATE:
+            with _busy:
+                time.sleep(len(inputs) / RATE)
         out = {"object": "list", "model": body.get("model"),
                "data": [{"object": "embedding", "index": i, "embedding": vec(t)}
                         for i, t in enumerate(inputs)],
