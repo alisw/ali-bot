@@ -69,8 +69,12 @@ job "cocoindex-mcp" {
 
   update {
     max_parallel     = 1
+    # No canary (2026-11-19): it would download the whole snapshot (~1 GB) on
+    # every deploy, the old one's sticky disk being still in use, to save a gap
+    # of well under a minute. Worth it once more people depend on the server:
+    # canary = 1, auto_promote = true.
     health_check     = "checks"
-    min_healthy_time = "30s"
+    min_healthy_time = "10s"
     healthy_deadline = "15m"
     # The first start downloads the snapshot; a new version only goes live
     # once /healthz answers, so readers never hit a replica with no data.
@@ -653,7 +657,7 @@ job "cocoindex-mcp" {
           type     = "http"
           path     = "/healthz"
           port     = "http"
-          interval = "30s"
+          interval = "10s"
           timeout  = "5s"
         }
       }

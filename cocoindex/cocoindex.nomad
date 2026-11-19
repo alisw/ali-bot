@@ -46,8 +46,8 @@ job "cocoindex" {
   update {
     max_parallel = 1
     # Healthy = tasks have RUN this long. Long enough to get past the
-    # restore, which is where a broken spec fails.
-    min_healthy_time  = "3m"
+    # restore, which is where a broken spec fails (about a minute, 2026-11-19).
+    min_healthy_time  = "1m"
     healthy_deadline  = "30m"
     progress_deadline = "1h"
     # Never revert silently to a previous spec (same reasoning as the CI jobs).
