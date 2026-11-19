@@ -83,7 +83,14 @@ EMBED_TIMEOUT_S = float(os.environ.get("EMBED_TIMEOUT_S", "300"))
 # 2048 tokens, rather than truncating; code diffs run ~3-4 chars/token. Denser
 # text (hash-heavy squash logs) is retried shorter by embedtext.embed_doc.
 MAX_EMBED_CHARS = 5000
-MAX_CHUNKS_PER_FILE = 4
+# Diff chunks: the changed lines only (git -U0), one chunk per enclosing function
+# as git names it in the hunk header (diff=cpp/python/bash, DIFF_ATTRIBUTES),
+# each at most MAX_CHUNK_CHARS, at most MAX_DIFF_CHARS_PER_FILE of a file.
+# Measured on 1000 commits of 2025-26 (DESIGN.md, "Diff chunks"): MRR 0.474 ->
+# 0.579 against 5000-character slices of the raw diff, 23% fewer tokens.
+MAX_CHUNK_CHARS = 2500
+MAX_DIFF_CHARS_PER_FILE = 20000
+DIFF_ATTRIBUTES = pathlib.Path(__file__).resolve().with_name("diff-attributes")
 SKIP_DIFF_PATHS = re.compile(r"(\.(root|pdf|png|svg|json|csv|dat|txt)$)|(/data/)|(^\.github/)")
 
 # Key names are load-bearing: they are CocoIndex's stable identity for the
@@ -172,6 +179,72 @@ async def git(repo: str, *args: str) -> str:
     return out.decode("utf-8", errors="replace")
 
 
+HUNK = re.compile(r"^@@ -(\d+(?:,\d+)?) \+(\d+(?:,\d+)?) @@ ?(.*)$")
+
+
+def diff_groups(fdiff: str) -> list[tuple[str, str]]:
+    """One file's -U0 diff as [(function, changed lines)], one entry per
+    function git names in the hunk headers ("" outside any), in the order of
+    their first hunk. Each hunk keeps a short "@@ -a,b +c,d @@" line, so a
+    reader can still find the lines."""
+    groups: dict[str, list[str]] = {}
+    cur = None
+    for line in fdiff.split("\n"):
+        m = HUNK.match(line)
+        if m:
+            cur = groups.setdefault(m.group(3).strip().rstrip(":").rstrip(), [])
+            cur.append(f"@@ -{m.group(1)} +{m.group(2)} @@")
+        elif cur is not None and line.startswith(("+", "-")):
+            cur.append(line)
+    return [(fn, "\n".join(lines)) for fn, lines in groups.items()]
+
+
+def diff_pieces(fdiff: str, room: int = MAX_CHUNK_CHARS,
+                budget: int = MAX_DIFF_CHARS_PER_FILE) -> list[tuple[str, str]]:
+    """[(function, piece)]: each group of diff_groups cut at line boundaries
+    into pieces of at most `room` characters (a longer line is cut), until
+    `budget` characters of the file are used."""
+    out: list[tuple[str, str]] = []
+    for fn, body in diff_groups(fdiff):
+        piece = ""
+        for line in body.split("\n"):
+            while line:
+                if budget <= 0:
+                    break
+                sep = 1 if piece else 0
+                # A line that would fit a piece of its own starts one; a longer
+                # one fills this piece first.
+                if piece and (len(piece) + sep + len(line) > room and len(line) <= room
+                              or len(piece) + sep >= room):
+                    out.append((fn, piece))
+                    piece, sep = "", 0
+                take = line[:min(room - len(piece) - sep, budget - sep)]
+                piece = f"{piece}\n{take}" if sep else take
+                budget -= len(take) + sep
+                line = line[len(take):]
+        if piece:
+            out.append((fn, piece))
+        if budget <= 0:
+            break
+    return out
+
+
+MARK = re.compile(r"^@@ -\S+ \+\S+ @@$")
+
+
+def embed_body(piece: str) -> str:
+    """The text embedded for a piece: the "@@" lines dropped, "..." between
+    hunks. With them, MRR was 0.568 against 0.579, for 7% more tokens."""
+    out: list[str] = []
+    for line in piece.split("\n"):
+        if MARK.match(line):
+            if out and out[-1] != "...":
+                out.append("...")
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
 def split_patch(patch: str) -> dict[str, str]:
     files: dict[str, str] = {}
     for block in re.split(r"(?m)^(?=diff --git )", patch):
@@ -213,19 +286,22 @@ async def process_commit(sha: str, repo: str, tables: Tables) -> None:
     # Diff chunks: only for single-parent commits newer than DIFF_EMBED_SINCE.
     if len(parents.split()) != 1 or cd[:10] < DIFF_EMBED_SINCE:
         return
-    patch = await git(repo, "show", "--format=", "-p", "--no-renames", "--no-color", sha)
+    # A bare repository reads no .gitattributes from its tree: the diff drivers
+    # (which name the function in each hunk header) come from DIFF_ATTRIBUTES.
+    patch = await git(repo, "-c", f"core.attributesFile={DIFF_ATTRIBUTES}", "show", "--format=", "-p",
+                      "-U0", "--no-renames", "--no-color", sha)
     pieces = []
     for path, fdiff in split_patch(patch).items():
         if SKIP_DIFF_PATHS.search(path) or "Binary files" in fdiff[:500]:
             continue
-        for i in range(min(MAX_CHUNKS_PER_FILE, -(-len(fdiff) // MAX_EMBED_CHARS))):
-            pieces.append((path, i, fdiff[i * MAX_EMBED_CHARS:(i + 1) * MAX_EMBED_CHARS]))
+        pieces += [(path, i, fn, piece) for i, (fn, piece) in enumerate(diff_pieces(fdiff))]
     # Concurrent embed() calls are batched by CocoIndex (up to 64 texts/request).
     vecs = await asyncio.gather(*(
-        embedtext.embed_doc(embedder, f"{repo} {path}: {subject}\n{piece}"[:MAX_EMBED_CHARS])
-        for path, _, piece in pieces))
-    for (path, i, piece), vec in zip(pieces, vecs):
-        tables.chunks.declare_row(row=DiffChunk(repo, sha, path, i, commit_date, piece, vec))
+        embedtext.embed_doc(embedder, f"{repo} {path}{', in ' + fn if fn else ''}: {subject}\n{embed_body(piece)}")
+        for path, _, fn, piece in pieces))
+    for (path, i, fn, piece), vec in zip(pieces, vecs):
+        text = f"in {fn}:\n{piece}" if fn else piece
+        tables.chunks.declare_row(row=DiffChunk(repo, sha, path, i, commit_date, text, vec))
 
 
 @coco.fn(memo=True)
