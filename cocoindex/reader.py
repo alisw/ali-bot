@@ -64,6 +64,73 @@ INDEXES = {
     "prs.db": ["CREATE INDEX IF NOT EXISTS prs_created ON prs(created_at)",
                "CREATE INDEX IF NOT EXISTS prs_author ON prs(author COLLATE NOCASE, created_at)",
                "CREATE INDEX IF NOT EXISTS prs_state ON prs(state, created_at)"],
+    # hyperloop.db is published compact (hyperloop_flow.py): these views give the
+    # readable shape back -- names, bytes, seconds, the test's time, tag and state
+    # on every row, and the URLs -- under the names the MCP tools and sql users use.
+    "hyperloop.db": [
+        "CREATE INDEX IF NOT EXISTS hl_errors_sig ON hl_errors_data(sig_hash)",
+        "CREATE INDEX IF NOT EXISTS hl_errors_class ON hl_errors_data(class_hash)",
+        "CREATE INDEX IF NOT EXISTS hl_errors_template ON hl_errors_data(template_id, filler_hash)",
+        "CREATE INDEX IF NOT EXISTS hl_errors_filler ON hl_errors_data(filler_hash)",
+        "CREATE INDEX IF NOT EXISTS hl_wagons_wagon ON hl_test_wagons_data(wagon_id)",
+        "CREATE INDEX IF NOT EXISTS hl_metrics_wagon ON hl_metrics_data(wagon_id, test_id)",
+        "CREATE INDEX IF NOT EXISTS hl_tests_tag ON hl_tests_data(tag, end_time)",
+        "CREATE INDEX IF NOT EXISTS hl_error_days_sig ON hl_error_days(sig_hash, day)",
+        # The daily summary's test ids as rows, joinable like a table at no stored
+        # cost (a lookup by test_id scans the summary: fine for sql use).
+        """CREATE VIEW IF NOT EXISTS hl_error_tests AS
+           SELECT e.day, e.sig_hash, j.value AS test_id FROM hl_error_days e, json_each(e.test_ids) j""",
+        """CREATE VIEW IF NOT EXISTS hl_tests AS
+           SELECT t.test_id, t.end_time, t.tag, t.dataset, t.train_type, t.test_exit, t.merge_exit, t.wall_time,
+                  t.cpu_cores, t.n_inputs, t.input_bytes, t.output_bytes, t.derived_bytes, t.n_wagons,
+                  t.max_pss_kb * 1024 AS max_pss_bytes, t.cpu_ms / 1000.0 AS cpu_s, t.n_errors, t.n_distinct,
+                  t.infra_kinds, t.state,
+                  (SELECT value FROM hl_meta WHERE key = 'base') || printf('%04d/%08d/', t.test_id / 10000, t.test_id)
+                      AS folder_url,
+                  (SELECT value FROM hl_meta WHERE key = 'base') || printf('%04d/%08d/', t.test_id / 10000, t.test_id)
+                      || 'stdout.log' AS log_url
+           FROM hl_tests_data t""",
+        """CREATE VIEW IF NOT EXISTS hl_test_wagons AS
+           SELECT w.test_id, w.wagon_id, w.subwagon_id, coalesce(n.name, '') AS workflow_name
+           FROM hl_test_wagons_data w LEFT JOIN hl_names n ON n.name_id = w.workflow_id""",
+        """CREATE VIEW IF NOT EXISTS hl_metrics AS
+           SELECT m.test_id, wf.name AS workflow, coalesce(dv.name, '') AS device, m.wagon_id,
+                  m.cpu_ms / 1000.0 AS cpu_s, m.pss_kb * 1024 AS pss_bytes, t.end_time, t.tag
+           FROM hl_metrics_data m JOIN hl_tests_data t USING (test_id)
+                LEFT JOIN hl_names wf ON wf.name_id = m.workflow_id
+                LEFT JOIN hl_names dv ON dv.name_id = m.device_id""",
+        """CREATE VIEW IF NOT EXISTS hl_errors AS
+           SELECT e.test_id, e.log, e.sig_hash, e.rank, dv.name AS device, e.kind, e.infra, e.fatal, e.class_hash,
+                  e.file, e.count, e.line, t.end_time, t.tag, t.state, e.fingerprint, e.fingerprint_kind,
+                  e.fingerprint_src, e.template_id, e.filler_hash
+           FROM hl_errors_data e JOIN hl_tests_data t USING (test_id)
+                LEFT JOIN hl_names dv ON dv.name_id = e.device_id"""],
+    # hyperloop-perf.db, published compact (hyperloop_perf_flow.py): views with
+    # names, MB, seconds and percent, joined to the hyperloop flow's test (tag,
+    # time) when hyperloop.db is attached next to it (as "hl").
+    "hyperloop-perf.db": [
+        "CREATE INDEX IF NOT EXISTS hp_workflows_wagon ON hp_workflows_data(wagon_id, test_id)",
+        """CREATE VIEW IF NOT EXISTS hp_tests AS
+           SELECT test_id, processed_bytes, processed_files, timeframes, ccdb_time, total_ccdb_time,
+                  round(pss_p95_kb / 1024.0) AS pss_p95_mb, round(pss_max_kb / 1024.0) AS pss_max_mb,
+                  round(dirty_max_kb / 1024.0) AS dirty_max_mb, cpu_ms / 1000.0 AS cpu_s, n_workflows
+           FROM hp_tests_data""",
+        """CREATE VIEW IF NOT EXISTS hp_workflows AS
+           SELECT w.test_id, n.name AS workflow, w.wagon_id, w.n_samples,
+                  round(w.pss_mean_kb / 1024.0, 1) AS pss_mean_mb, round(w.pss_med_kb / 1024.0, 1) AS pss_med_mb,
+                  round(w.pss_p95_kb / 1024.0, 1) AS pss_p95_mb, round(w.pss_max_kb / 1024.0, 1) AS pss_max_mb,
+                  round(w.pss_slope_kb_min / 1024.0, 2) AS pss_slope_mb_min,
+                  round(w.dirty_med_kb / 1024.0, 1) AS dirty_med_mb, round(w.dirty_p95_kb / 1024.0, 1) AS dirty_p95_mb,
+                  round(w.dirty_max_kb / 1024.0, 1) AS dirty_max_mb, round(w.rss_max_kb / 1024.0, 1) AS rss_max_mb,
+                  round(w.vms_max_kb / 1024.0) AS vms_max_mb, w.cpu_ms / 1000.0 AS cpu_s,
+                  w.cpu_pct_med_x10 / 10.0 AS cpu_pct_med, w.cpu_pct_p95_x10 / 10.0 AS cpu_pct_p95, w.instructions,
+                  w.ccdb_hit, w.ccdb_miss, w.ccdb_fail, w.ccdb_bytes, w.ccdb_queries,
+                  round(w.out_bytes / 1048576.0, 1) AS out_mb, w.out_tables
+           FROM hp_workflows_data w LEFT JOIN hp_names n ON n.name_id = w.workflow_id""",
+        """CREATE VIEW IF NOT EXISTS hp_tables AS
+           SELECT t.test_id, n.name AS workflow, tn.name AS output_table, round(t.bytes / 1048576.0, 2) AS mb
+           FROM hp_tables_data t LEFT JOIN hp_names n ON n.name_id = t.workflow_id
+                LEFT JOIN hp_names tn ON tn.name_id = t.table_id"""],
     "ci-failures.db": ["CREATE INDEX IF NOT EXISTS ci_errors_sig ON ci_errors(sig_hash, uploaded_at)",
                        "CREATE INDEX IF NOT EXISTS ci_errors_class ON ci_errors(class_hash)",
                        "CREATE INDEX IF NOT EXISTS ci_errors_template ON ci_errors(template_id, filler_hash)",
@@ -175,7 +242,7 @@ def sync(max_age: float = 0) -> dict:
                     try:
                         c.execute(ddl)
                     except sqlite3.OperationalError as e:
-                        if "no such column" not in str(e):   # a snapshot older than the column
+                        if "no such column" not in str(e) and "no such table" not in str(e):  # older snapshot
                             raise
             c.close()
         # rename(): open connections keep reading the old inode until reopened.

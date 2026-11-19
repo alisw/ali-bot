@@ -253,7 +253,14 @@ def main():
     elog, tlog, glog, slog = WORK / "embed.log", WORK / "texts.jsonl", WORK / "github.log", WORK / "s3.log"
     for f in (elog, tlog, glog, slog):
         f.touch()
+    # Hyperloop: a copy of the fixture folders, all changed 10 minutes ago
+    hl_root = WORK / "alimonitor"
+    shutil.copytree(HERE / "fixtures" / "hyperloop", hl_root)
+    for p in [hl_root, *hl_root.rglob("*")]:
+        os.utime(p, (time.time() - 600, time.time() - 600))
+    hport, hlog = prs_test.free_port(), WORK / "alimonitor.log"
     procs = [subprocess.Popen([sys.executable, str(HERE / "fake_embedder.py"), str(eport), str(elog), str(tlog)]),
+             subprocess.Popen([sys.executable, str(HERE / "fake_alimonitor.py"), str(hport), str(hl_root), str(hlog)]),
              subprocess.Popen([sys.executable, str(HERE / "fake_github.py"), str(gport), str(glog), TOKEN]),
              subprocess.Popen([sys.executable, str(HERE / "fake_s3.py"), str(sport), str(WORK / "s3"), str(slog),
                                S3TOKEN, "7"])]
@@ -263,14 +270,15 @@ def main():
     time.sleep(1)
     base_env = dict(os.environ, OTLP_METRICS_URL=f"http://127.0.0.1:{mport}/otlp/v1/metrics",
                     OTLP_WRITE_TOKEN="gate", VENV=str(Path(sys.executable).parent.parent), SKIP_VENV="1", ONCE="1",
-                    STORE_URL=f"file://{WORK}/bucket", FLOWS="commits,prs,ci-failures",
+                    STORE_URL=f"file://{WORK}/bucket", FLOWS="commits,prs,ci-failures,hyperloop,hyperloop-perf",
                     OPENAI_API_BASE=f"http://127.0.0.1:{eport}/v1", OPENAI_API_KEY="fake",
                     COMMITS_REPOS=f"{prs_test.REPO}:master", DIFF_EMBED_SINCE="2026-09-01",
                     GIT_BASE_URL=f"file://{WORK}/origins",
                     GITHUB_GRAPHQL_URL=f"http://127.0.0.1:{gport}/graphql", GITHUB_TOKEN=TOKEN,
                     S3_ENDPOINT_URL=f"http://127.0.0.1:{sport}", AWS_ACCESS_KEY_ID=S3TOKEN,
                     PRS_PAGE_SIZE="4", PRS_NESTED="3", CIF_FETCH_THREADS="2",
-                    SRC_REPOS="AliceO2Group/AliceO2:dev", CIF_FILLER_KEY="cif-test-filler-key")
+                    SRC_REPOS="AliceO2Group/AliceO2:dev", CIF_FILLER_KEY="cif-test-filler-key",
+                    HL_BASE=f"http://127.0.0.1:{hport}/tests/", HL_RATE_PER_S="0")
     texts = lambda: [json.loads(x) for x in tlog.read_text().splitlines()]
     s3reqs = lambda: [json.loads(x) for x in slog.read_text().splitlines()]
     ghreqs = lambda: [json.loads(x) for x in glog.read_text().splitlines()]
@@ -284,12 +292,18 @@ def main():
         out = subprocess.run(["bash", str(RUNNER)], env=dict(base_env, COCO_ROOT=str(WORK / host), **extra),
                              capture_output=True, text=True)
         (WORK / f"pass-{label}.log").write_text(out.stdout + out.stderr)
-        check(out.returncode == 0 and "ci-failures: done" in out.stderr and "prs: done" in out.stderr,
-              f"[{label}] runner and the three flows exit 0")
+        check(out.returncode == 0 and "ci-failures: done" in out.stderr and "prs: done" in out.stderr
+              and "hyperloop: done" in out.stderr and "hyperloop-perf: done" in out.stderr,
+              f"[{label}] runner and the five flows exit 0")
         return out.stderr, texts()[t0:], s3reqs()[s0:], ghreqs()[g0:]
 
     def db(host="hostA"):
         c = sqlite3.connect(f"file:{WORK / host}/flows/ci-failures/ci-failures.db?mode=ro", uri=True)
+        c.row_factory = sqlite3.Row
+        return c
+
+    def hl_db(host="hostA"):
+        c = sqlite3.connect(f"file:{WORK / host}/flows/hyperloop/hyperloop.db?mode=ro", uri=True)
         c.row_factory = sqlite3.Row
         return c
 
@@ -317,9 +331,9 @@ def main():
                 texts_by_flow[a["flow"]] = texts_by_flow.get(a["flow"], 0) + v
             if n == "cocoindex_embed_tokens_count":
                 tokens_by_flow[a["flow"]] = tokens_by_flow.get(a["flow"], 0) + v
-        check(flows == {"commits", "prs", "ci-failures"} and {"cocoindex_flow_timed_out", "cocoindex_pass_seconds"} <= names,
+        check(flows == {"commits", "prs", "ci-failures", "hyperloop", "hyperloop-perf"} and {"cocoindex_flow_timed_out", "cocoindex_pass_seconds"} <= names,
               f"[1] metrics: each flow's duration and timeout, and the pass's ({sorted(flows)})")
-        check(set(texts_by_flow) == {"commits", "prs", "ci-failures"} and all(texts_by_flow.values())
+        check(set(texts_by_flow) == {"commits", "prs", "ci-failures", "hyperloop"} and all(texts_by_flow.values())
               and "cocoindex_embed_request_seconds_p95" in names,
               f"[1] metrics: embedding texts and request latency per flow ({texts_by_flow})")
         check(set(tokens_by_flow) == set(texts_by_flow)
@@ -330,9 +344,48 @@ def main():
               and any(n == "cocoindex_snapshot_signatures" and a.get("fingerprint") == "hash only" for n, a, _ in pts),
               "[1] metrics: the sync's counts, the publish, and signatures by fingerprint kind")
         attrs = {k for _, a, _ in pts for k in a}
-        check(attrs <= {"flow", "route", "position", "fingerprint"},
+        check(attrs <= {"flow", "route", "position", "fingerprint", "part"},
               f"[1] metrics carry only flows, routes and kinds as attributes ({sorted(attrs)})")
         conn = db()
+        hdb = hl_db()
+        hl = {t: hdb.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
+              for t in ("hl_tests_data", "hl_test_wagons_data", "hl_metrics_data", "hl_errors_data", "hl_signatures",
+                        "hl_names", "hl_meta")}
+        check(hl["hl_tests_data"] == 3 and hl["hl_test_wagons_data"] > 0 and hl["hl_metrics_data"] > 0
+              and hl["hl_errors_data"] > 0 and hl["hl_names"] > 0 and hl["hl_meta"] == 1,
+              f"[1] hyperloop flow: the 3 fixture tests in hyperloop.db, with wagons, metrics and errors ({hl})")
+        hl_sigs = {r[0] for r in hdb.execute("SELECT sig_hash FROM hl_errors_data")}
+        used = {r[0] for r in hdb.execute("SELECT workflow_id FROM hl_metrics_data UNION SELECT device_id "
+                                          "FROM hl_metrics_data WHERE device_id != 0 UNION SELECT workflow_id "
+                                          "FROM hl_test_wagons_data UNION SELECT device_id FROM hl_errors_data "
+                                          "WHERE device_id IS NOT NULL")}
+        named = {r[0] for r in hdb.execute("SELECT name_id FROM hl_names")}
+        check(used <= named, f"[1] hyperloop flow: every name id used is in hl_names ({len(used)} used, {len(named)})")
+        emb = {r[0] for r in hdb.execute("SELECT sig_hash FROM hl_signatures")}
+        check(hl_sigs == emb, f"[1] hyperloop flow: its errors are its embedded signatures ({len(emb)})")
+        check(not {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE name LIKE 'hl_%'")},
+              "[1] the CI index has no Hyperloop table: the flows are separate")
+        check("hyperloop: 3 tests" in err and "read 3 (2 failed)" in err, "[1] hyperloop flow: the sync's log line")
+        dsum = hdb.execute("SELECT count(*), sum(tests) FROM hl_days").fetchone()
+        esum = hdb.execute("SELECT count(*) FROM hl_error_days").fetchone()[0]
+        nsig = hdb.execute("SELECT count(*) FROM hl_signatures").fetchone()[0]
+        ids = {i for (js,) in hdb.execute("SELECT test_ids FROM hl_error_days") for i in json.loads(js)}
+        hlsz = {a.get("part", n): v for n, a, v in pts if n in ("cocoindex_hl_db_bytes", "cocoindex_hl_cache_bytes",
+                                                               "cocoindex_hl_summary_pairs")}
+        check({"detailed", "summary", "signatures", "cocoindex_hl_cache_bytes"} <= set(hlsz)
+              and hlsz["cocoindex_hl_cache_bytes"] > 0 and hlsz["cocoindex_hl_summary_pairs"] > 0,
+              f"[1] hyperloop flow: size gauges per part, cache, summary rows ({hlsz})")
+        check(dsum[1] == 3 and esum == nsig and esum > 0 and ids == {808999, 809000},
+              f"[1] hyperloop flow: the daily summary, 3 tests, one row per error and day ({dsum}, {esum})")
+        pdb = sqlite3.connect(f"file:{WORK / 'hostA'}/flows/hyperloop-perf/hyperloop-perf.db?mode=ro", uri=True)
+        hp = {t: pdb.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
+              for t in ("hp_tests_data", "hp_workflows_data", "hp_tables_data", "hp_names")}
+        used = {r[0] for r in pdb.execute("SELECT workflow_id FROM hp_workflows_data UNION "
+                                          "SELECT table_id FROM hp_tables_data")}
+        check(hp["hp_tests_data"] == 1 and hp["hp_workflows_data"] >= 8 and hp["hp_names"] >= len(used)
+              and used <= {r[0] for r in pdb.execute("SELECT name_id FROM hp_names")},
+              f"[1] hyperloop-perf flow: the passed fixture test's workflows, every name id in hp_names ({hp})")
+        check("read 1 metrics file(s), 2 test(s) without" in err, "[1] hyperloop-perf flow: the sync's log line")
         n_builds = conn.execute("SELECT count(*) FROM ci_builds").fetchone()[0]
         check(n_builds == 10, f"[1] one build per fullLog.txt key, the 'latest' copy skipped ({n_builds})")
         check(sum(r["op"] == "list" for r in s3r) >= 3, "[1] the listing pages through several ListObjectsV2 pages")
@@ -458,8 +511,12 @@ def main():
         ct = cif_texts(texts())
         nsig = conn.execute("SELECT count(*) FROM ci_signatures").fetchone()[0]
         want = conn.execute("SELECT count(DISTINCT sig_hash) FROM ci_errors WHERE state != 'success'").fetchone()[0]
-        check(len(ct) == nsig == want and len(set(ct)) == len(ct),
-              f"[2] one embedding per distinct failure signature, none twice ({len(ct)} texts, {nsig} signatures)")
+        # cif_texts() also holds the hyperloop flow's: it embeds its own signatures
+        # (none shared with CI in these fixtures, so no text twice)
+        n_hl = hl_db().execute("SELECT count(*) FROM hl_signatures").fetchone()[0]
+        check(len(ct) == nsig + n_hl and nsig == want and len(set(ct)) == len(ct),
+              f"[2] one embedding per distinct failure signature, none twice ({len(ct)} texts, "
+              f"{nsig} CI + {n_hl} Hyperloop signatures)")
         green_only = conn.execute("""SELECT count(*) FROM (SELECT sig_hash FROM ci_errors GROUP BY sig_hash
                                      HAVING max(state != 'success') = 0)""").fetchone()[0]
         check(conn.execute("SELECT count(*) FROM ci_signatures WHERE sig_hash IN (SELECT sig_hash FROM ci_errors "

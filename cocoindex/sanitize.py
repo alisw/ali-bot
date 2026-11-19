@@ -96,9 +96,10 @@ def _columns(c: sqlite3.Connection, table: str) -> list[str]:
     return [r[1] for r in c.execute(f'PRAGMA table_info("{table}")')]
 
 
-def restrict(c: sqlite3.Connection, stats) -> None:
+def restrict(c: sqlite3.Connection, stats, published: dict | None = None) -> None:
     """Drop every table, view, trigger and index, and every column, not in
-    PUBLISHED; then check that what is left is exactly PUBLISHED."""
+    PUBLISHED (or `published`); then check that what is left is exactly that."""
+    PUBLISHED = published if published is not None else globals()["PUBLISHED"]  # noqa: N806
     for name, kind in c.execute("SELECT name, type FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' "
                                 "AND type IN ('view', 'trigger', 'index')").fetchall():
         c.execute(f'DROP {kind.upper()} IF EXISTS "{name}"')
@@ -206,12 +207,13 @@ def compiler_fillers(exact: str) -> list[str]:
     return [q[1:-1] for q in logscan._QUOTED_RE.findall(first[i:] if i >= 0 else first)]
 
 
-def fingerprints(c: sqlite3.Connection, stats, templates=None) -> None:
+def fingerprints(c: sqlite3.Connection, stats, templates=None,
+                 tables: tuple[str, ...] = ("ci_errors", "ci_signatures")) -> None:
     """Add the FP_COLUMNS (the public part of each signature, or NULL) and
     withhold file paths that are not public, before restrict() drops the
     signature text. A published copy (no sig_exact any more) is left alone."""
     cache: dict[tuple, dict] = {}
-    for t in ("ci_errors", "ci_signatures"):
+    for t in tables:
         cols = _columns(c, t)
         if "sig_exact" not in cols:
             continue
@@ -280,6 +282,121 @@ def sanitize_db(path, templates="env") -> dict:
                   "WHERE b.build_id = ci_errors.build_id)")
     fingerprints(c, stats, templates)
     restrict(c, stats)
+    c.commit()
+    c.execute("VACUUM")
+    c.close()
+    return {k: v for k, v in stats.items() if v}
+
+
+# ---------------------------------------------------------------- hyperloop.db
+# Everything a published hyperloop.db may hold (hyperloop_flow.py). The test
+# folders are public on alimonitor; the rules are CI's all the same: errors by
+# hash and fingerprint, never their text, and a grid user's login in a dataset
+# path hidden.
+PUBLISHED_HL = {
+    "hl_tests_data": {
+        "test_id", "end_time", "tag", "dataset", "train_type", "test_exit", "merge_exit", "wall_time", "cpu_cores",
+        "n_inputs", "input_bytes", "output_bytes", "derived_bytes", "n_wagons", "max_pss_kb", "cpu_ms",
+        "n_errors", "n_distinct", "infra_kinds", "state"},
+    "hl_test_wagons_data": {"test_id", "wagon_id", "subwagon_id", "workflow_id"},
+    "hl_metrics_data": {"test_id", "workflow_id", "device_id", "wagon_id", "cpu_ms", "pss_kb"},
+    "hl_errors_data": {
+        "test_id", "log", "sig_hash", "rank", "device_id", "kind", "infra", "fatal", "class_hash", "file", "count",
+        "line", *FP_COLUMNS},
+    # The embedding stays: the MCP server searches with it and never returns it.
+    "hl_signatures": {"sig_hash", "class_hash", "kind", "infra", "file", "embedding", *FP_COLUMNS},
+    "hl_names": {"name_id", "name"},       # O2Physics workflow and DPL device names
+    "hl_meta": {"key", "value"},
+    "hl_error_days": {"day", "sig_hash", "tests", "wagons", "tags", "test_ids"},   # the daily summary
+    "hl_days": {"day", "tests", "failed"},
+}
+
+# A grid user's home in a dataset path (/alice/cern.ch/user/<l>/<login>/...) names a
+# person: published as /user/_/_/, except Hyperloop's own service account.
+HL_USER_RE = re.compile(r"/user/[a-z]/(?!alihyperloop/)[^/]+/")
+
+
+def sanitize_hl_db(path, templates="env") -> dict:
+    """Sanitize the hyperloop.db at path in place, as sanitize_db does a
+    ci-failures.db. Returns counts by kind."""
+    if templates == "env":
+        templates = srctemplates.load(os.environ.get("SRCTEMPLATES"), os.environ.get("CIF_FILLER_KEY"))
+    c = sqlite3.connect(path)
+    c.execute("PRAGMA secure_delete = ON")
+    stats: collections.Counter = collections.Counter()
+    s = Sanitizer(set())   # no builders here; any other *.cern.ch name and IP still go
+    tables = [t for (t,) in c.execute("SELECT name FROM sqlite_master WHERE type = 'table' "
+                                      "AND name NOT LIKE 'sqlite_%'")]
+    for t in tables:
+        cols = _text_columns(c, t)
+        if not cols:
+            continue
+        sel = ", ".join(f'"{x}"' for x in cols)
+        updates = []
+        for row in c.execute(f'SELECT rowid, {sel} FROM "{t}"'):
+            vals = row[1:]
+            new = [s.text(v, None, None, stats) if isinstance(v, str) else v for v in vals]
+            if new != list(vals):
+                updates.append((row[0], new))
+        for rowid, new in updates:
+            c.execute(f'UPDATE "{t}" SET ' + ", ".join(f'"{x}" = ?' for x in cols) + " WHERE rowid = ?",
+                      (*new, rowid))
+        stats[f"rows changed in {t}"] += len(updates)
+    if "hl_tests_data" in tables:
+        for rowid, ds in c.execute("SELECT rowid, dataset FROM hl_tests_data WHERE dataset LIKE '%/user/%'").fetchall():
+            new = HL_USER_RE.sub("/user/_/_/", ds)
+            if new != ds:
+                c.execute("UPDATE hl_tests_data SET dataset = ? WHERE rowid = ?", (new, rowid))
+                stats["hl_tests: user in dataset hidden"] += 1
+    fingerprints(c, stats, templates, tables=("hl_signatures",))
+    # hl_errors_data holds no text (hyperloop.rows): each error row takes the
+    # fingerprint and the (public or withheld) file of its signature.
+    if "hl_errors_data" in tables and "hl_signatures" in tables:
+        cols = _columns(c, "hl_errors_data")
+        for col in FP_COLUMNS:
+            if col not in cols:
+                c.execute(f'ALTER TABLE hl_errors_data ADD COLUMN "{col}" TEXT')
+        n = c.execute("UPDATE hl_errors_data SET " + ", ".join(
+            f'"{x}" = (SELECT s."{x}" FROM hl_signatures s WHERE s.sig_hash = hl_errors_data.sig_hash)'
+            for x in (*FP_COLUMNS, "file"))).rowcount
+        stats["hl_errors_data: fingerprint from its signature"] += n
+    restrict(c, stats, PUBLISHED_HL)
+    c.commit()
+    c.execute("VACUUM")
+    c.close()
+    return {k: v for k, v in stats.items() if v}
+
+
+# ---------------------------------------------------------------- hyperloop-perf.db
+# Everything a published hyperloop-perf.db may hold (hyperloop_perf_flow.py):
+# numbers, and workflow and table names (public O2Physics names).
+PUBLISHED_HP = {
+    "hp_tests_data": {"test_id", "processed_bytes", "processed_files", "timeframes", "ccdb_time", "total_ccdb_time",
+                      "pss_p95_kb", "pss_max_kb", "dirty_max_kb", "cpu_ms", "n_workflows"},
+    "hp_workflows_data": {
+        "test_id", "workflow_id", "wagon_id", "n_samples", "pss_mean_kb", "pss_med_kb", "pss_p95_kb", "pss_max_kb",
+        "pss_slope_kb_min", "dirty_med_kb", "dirty_p95_kb", "dirty_max_kb", "rss_max_kb", "vms_max_kb", "cpu_ms",
+        "cpu_pct_med_x10", "cpu_pct_p95_x10", "instructions", "ccdb_hit", "ccdb_miss", "ccdb_fail", "ccdb_bytes",
+        "ccdb_queries", "out_bytes", "out_tables"},
+    "hp_tables_data": {"test_id", "workflow_id", "table_id", "bytes"},
+    "hp_names": {"name_id", "name"},
+}
+
+
+def sanitize_hp_db(path, templates="env") -> dict:
+    """Sanitize the hyperloop-perf.db at path in place: the same text rules as
+    the other DBs (names are scrubbed like any text), then the publish list."""
+    c = sqlite3.connect(path)
+    c.execute("PRAGMA secure_delete = ON")
+    stats: collections.Counter = collections.Counter()
+    s = Sanitizer(set())
+    for (rowid, name) in c.execute("SELECT rowid, name FROM hp_names").fetchall() if c.execute(
+            "SELECT 1 FROM sqlite_master WHERE name = 'hp_names'").fetchone() else []:
+        new = s.text(name, None, None, stats)
+        if new != name:
+            c.execute("UPDATE hp_names SET name = ? WHERE rowid = ?", (new, rowid))
+            stats["hp_names: changed"] += 1
+    restrict(c, stats, PUBLISHED_HP)
     c.commit()
     c.execute("VACUUM")
     c.close()
