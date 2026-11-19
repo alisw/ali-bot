@@ -175,8 +175,10 @@ or fix been seen before", "which commit introduced this behaviour".
 
 Repository arguments accept the short name ("O2Physics") or owner/name. Dates
 are ISO (YYYY-MM-DD). Distances are cosine (0 = identical; < ~0.3 is close).
-Diff chunks are the indexed slices of each patch (at most 4 per file, data and
-generated files skipped), not the full diff: link to GitHub for the rest.
+Diff chunks are the changed lines of each patch, without context, one chunk per
+enclosing function as git names it ("in <function>:", "@@ -old +new @@" marks
+each hunk), up to ~20k characters per file, data and generated files skipped:
+not the full diff, link to GitHub for the rest.
 
 Pull requests are indexed when their author is a member or a past contributor
 of the repository; bot comments (CI reports, linters) are left out. PR titles,
@@ -1118,7 +1120,7 @@ async def search_commits(query: str, repo: str | None = None, since: str | None 
 async def search_diffs(query: str, repo: str | None = None, path_prefix: str | None = None,
                        since: str | None = None, k: int = 10, chunk_chars: int = 800) -> list[dict]:
     """Meaning-based search over code changes (indexed diff chunks), returning the
-    matching slice of each patch.
+    matching chunk of each patch (the changed lines of one function).
 
     query: describe the code change, e.g. "replace std::map with flat_map in track cache".
     path_prefix: optional, e.g. "Detectors/TPC/". chunk_chars: text returned per hit (<= 4000).

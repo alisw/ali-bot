@@ -30,6 +30,11 @@ EMBED_ROUTES=${EMBED_ROUTES:-aigw}
 EMBED_ROUTE=aigw
 PASS_TIMEOUT=${PASS_TIMEOUT:-50m}             # per flow per pass; SIGINT, then KILL
 PASS_KILL_GRACE=${PASS_KILL_GRACE:-2m}
+# Between passes, run again each flow that hit PASS_TIMEOUT, for as long as the
+# sleep leaves (at most PASS_TIMEOUT a run, at least CATCHUP_MIN_S): a bootstrap
+# then uses the idle hour, and the other flows keep their cadence.
+CATCHUP=${CATCHUP:-1}
+CATCHUP_MIN_S=${CATCHUP_MIN_S:-600}
 SNAPSHOT_KEEP=${SNAPSHOT_KEEP:-36}            # run ids kept in the bucket (up to one per flow and pass)
 SNAPSHOT_MIN_INTERVAL=${SNAPSHOT_MIN_INTERVAL:-0}
 MIRROR_FILTER=${MIRROR_FILTER-blob:none}      # empty = full mirrors
@@ -279,16 +284,17 @@ on_term() {
 }
 trap on_term TERM INT
 
+# run_flow FLOW [POSITION [TIMEOUT]]: POSITION 0 is a catch-up run.
 run_flow() {
-  local f=$1 d rc=0 var t0
+  local f=$1 d rc=0 var t0 limit=${3:-$PASS_TIMEOUT}
   t0=$(date +%s)
   d="$COCO_ROOT/flows/$f"
   mkdir -p "$d"
   var=${f//-/_}
   export "FLOW_SHA_$var=$(sha256sum "$CODE_DIR/$(flow_file "$f")" | cut -d' ' -f1)"
-  log "$f: cocoindex update (timeout $PASS_TIMEOUT)"
+  log "$f: cocoindex update$([ "${2:-}" = 0 ] && echo ", catching up") (timeout $limit)"
   COCOINDEX_DB="$d/state" FLOW_DB="$d/$(flow_db "$f")" COMMITS_MIRRORS="$COCO_ROOT/mirrors" \
-    timeout --signal=INT --kill-after="$PASS_KILL_GRACE" "$PASS_TIMEOUT" \
+    timeout --signal=INT --kill-after="$PASS_KILL_GRACE" "$limit" \
     "$VENV/bin/cocoindex" update -f "$CODE_DIR/$(flow_file "$f")" &
   child=$!
   # A trapped signal interrupts `wait`; wait again for the real exit status.
@@ -353,6 +359,42 @@ pass_order() {
   echo "${a[*]}"
 }
 
+# 50m -> 3000; a bare number is seconds, as for timeout(1).
+to_seconds() {
+  case $1 in
+    *d) echo $(( ${1%d} * 86400 )) ;;
+    *h) echo $(( ${1%h} * 3600 )) ;;
+    *m) echo $(( ${1%m} * 60 )) ;;
+    *s) echo "${1%s}" ;;
+    *)  echo "$1" ;;
+  esac
+}
+
+# catch_up UNTIL: the flows in `behind` (they hit PASS_TIMEOUT this pass), run
+# again in turn, each published after its run, until each completes or less
+# than CATCHUP_MIN_S is left before UNTIL (a minute is kept for the publish).
+behind=()
+catch_up() {
+  local until=$1 f left limit rc
+  [ "$CATCHUP" = 1 ] || return 0
+  limit=$(to_seconds "$PASS_TIMEOUT")
+  while [ "${#behind[@]}" -gt 0 ] && [ "$stopping" != 1 ]; do
+    left=$(( until - $(date +%s) - 60 ))
+    [ "$left" -ge "$CATCHUP_MIN_S" ] || { log "catch-up: ${left}s left; ${behind[*]} wait for the next pass"; return 0; }
+    f=${behind[0]}
+    behind=("${behind[@]:1}")
+    resolve_endpoints || true
+    choose_embed_route "$f"
+    run_flow "$f" 0 "$(( left < limit ? left : limit ))s"
+    [ "$stopping" = 1 ] && { log "$f: stopping before its snapshot"; exit 0; }
+    snapshot "$f"
+    reload_if_requested
+    rc=PASS_EXIT_${f//-/_}
+    if [ "${!rc}" = 124 ]; then behind+=("$f"); fi
+  done
+  return 0
+}
+
 # ---------------------------------------------------------------- main
 mkdir -p "$COCO_ROOT/flows"
 for f in ${FLOWS//,/ }; do
@@ -381,6 +423,7 @@ while :; do
   order=$(pass_order)
   log "pass order: $order"
   pos=0
+  behind=()
   for f in $order; do
     [ "$stopping" = 1 ] && break
     resolve_endpoints || true      # a long previous flow may have outlived the token window
@@ -392,12 +435,15 @@ while :; do
     [ "$stopping" = 1 ] && { log "$f: stopping before its snapshot"; exit 0; }
     snapshot "$f"
     reload_if_requested
+    rc=PASS_EXIT_${f//-/_}
+    if [ "${!rc}" = 124 ]; then behind+=("$f"); fi
   done
   [ "$stopping" = 1 ] && exit 0
   metric cocoindex_pass -- "seconds=$(( $(date +%s) - started ))"
   [ "$ONCE" = 1 ] && exit 0
   log "pass took $(( $(date +%s) - started ))s; sleeping ${PASS_SLEEP}s"
   until_next=$(( $(date +%s) + PASS_SLEEP ))
+  catch_up "$until_next"
   while [ "$stopping" != 1 ] && [ "$(date +%s)" -lt "$until_next" ]; do
     resolve_endpoints >/dev/null 2>&1 || true
     reload_if_requested

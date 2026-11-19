@@ -1,0 +1,17 @@
+# git attributes for the commits flow's diffs (commits_flow.py, core.attributesFile):
+# the built-in diff drivers that put the enclosing function in each hunk header.
+*.h	diff=cpp
+*.hh	diff=cpp
+*.hpp	diff=cpp
+*.hxx	diff=cpp
+*.inl	diff=cpp
+*.icc	diff=cpp
+*.inc	diff=cpp
+*.cxx	diff=cpp
+*.cpp	diff=cpp
+*.cc	diff=cpp
+*.C	diff=cpp
+*.cu	diff=cpp
+*.cuh	diff=cpp
+*.py	diff=python
+*.sh	diff=bash
