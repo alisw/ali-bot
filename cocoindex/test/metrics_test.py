@@ -88,5 +88,66 @@ try:
 finally:
     emb.terminate()
 
+# ---- a refused request: litellm's failure reaches embedtext's limit and the metrics
+script = r"""
+import asyncio, http.server, os, sys, threading
+sys.path.insert(0, sys.argv[1])
+import metrics, embedtext, litellm
+
+import json
+
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        n = len(json.loads(self.rfile.read(int(self.headers["Content-Length"])))["input"])
+        ok = self.path.startswith("/ok")
+        self.send_response(200 if ok else 503); self.send_header("Content-Type", "application/json"); self.end_headers()
+        self.wfile.write(json.dumps({"object": "list", "model": "m", "usage": {"prompt_tokens": n, "total_tokens": n},
+                                     "data": [{"object": "embedding", "index": i, "embedding": [0.5] * 4} for i in range(n)]}
+                                    if ok else {"error": {"message": "busy"}}).encode())
+    def log_message(self, *a): pass
+
+srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+metrics.install_litellm("commits")
+
+async def main():
+    lim = embedtext._limit()
+    try:
+        await litellm.aembedding(model="openai/embeddinggemma-300m", input=["a", "b"],
+                                 api_base=f"http://127.0.0.1:{srv.server_port}/v1", api_key="k", num_retries=0)
+    except Exception as e:
+        print("raised", type(e).__name__)
+    for _ in range(50):
+        if lim.limit < 64:
+            break
+        await asyncio.sleep(0.1)
+    print("limit", lim.limit)
+    await litellm.aembedding(model="openai/embeddinggemma-300m", input=["c", "d", "e"],
+                             api_base=f"http://127.0.0.1:{srv.server_port}/ok/v1", api_key="k", num_retries=0)
+    ok = failed = 0
+    for _ in range(50):
+        o, f = embedtext.take_health().get("alice-embed", (0, 0))
+        ok, failed = ok + o, failed + f
+        if ok:
+            break
+        await asyncio.sleep(0.1)
+    print("health", {"alice-embed": (ok, failed)})
+
+asyncio.run(main())
+"""
+n0 = len(bodies)
+r = subprocess.run([sys.executable, "-c", script, str(HERE.parent)], env=dict(env, EMBED_ROUTE="alice-embed"),
+                   capture_output=True, text=True, timeout=120)
+pts = fake_otlp.points(bodies[n0:])
+errs = [(a.get("code"), v) for n, a, v in pts if n == "cocoindex_embed_request_errors_count"]
+gauges = {n: v for n, a, v in pts if n.startswith("cocoindex_embed_inflight_")}
+check("limit 32.0" in r.stdout and "refused" in r.stderr,
+      f"a 503 from litellm cuts embedtext's limit 64 -> 32 and is logged ({r.stdout.strip()} | {r.stderr.strip()[-200:]})")
+check(("503", 1.0) in errs, f"the failed request is counted by status code ({errs})")
+check("health {'alice-embed': (3, 2)}" in r.stdout,
+      f"the route's health counts the texts a server embedded and those refused ({r.stdout.strip()})")
+check(gauges.get("cocoindex_embed_inflight_limit") == 32 and gauges.get("cocoindex_embed_inflight_texts") == 0,
+      f"the limit and the texts in flight are pushed as gauges ({gauges})")
+
 print(f"\n{len(failures)} failure(s)")
 sys.exit(1 if failures else 0)
