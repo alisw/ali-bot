@@ -135,6 +135,10 @@ async def exercise(client, label, cache):
                  "DELETE FROM commits",
                  "CREATE TEMP TABLE t(x)",
                  "SELECT load_extension('/tmp/x')",
+                 # address primitives (one form leaks a pointer, the other registers one)
+                 "SELECT fts3_tokenizer('simple')",
+                 "SELECT fts3_tokenizer('evil', x'4141414141414141')",
+                 "SELECT sqlite_compileoption_get(0)",
                  "SELECT 1; DELETE FROM commits",
                  "WITH RECURSIVE r(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM r) SELECT count(*) FROM r"]:
         r = payload(await client.call_tool("sql", {"query": evil}))
