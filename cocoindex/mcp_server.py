@@ -57,6 +57,15 @@ Environment (beyond reader.py's COCO_STORE / COCO_CACHE / EMBED_MODEL):
                          MCP_MAX_CONCURRENT slots: heavy SQL cannot hold them all.
                          A call waits at most SQL_TIMEOUT_S for its turn.
     SQL_TIMEOUT_S        wall-clock budget of one sql() call (default 10)
+    MCP_USER_MAX_CONCURRENT  tool calls one caller may have running (default 2,
+                         half of MCP_MAX_CONCURRENT): one runaway client cannot
+                         hold every slot. A call waits up to MCP_USER_WAIT_S (10)
+                         for its turn, then fails telling the client so. 0: no cap.
+    MCP_USER_RATE_PER_MIN  tool calls per caller per minute (default 60), in
+                         bursts of up to MCP_USER_BURST (30): a token bucket per
+                         caller; over it, the call fails with "retry in N s".
+                         0: no rate limit. Callers are the SSO user or the static
+                         token's name; stdio and MCP_ALLOW_ANONYMOUS have none.
     METRICS_ROUTE        HTTP only: the security-proxy route to MONIT (monit-otlp in
                          the job) for per-tool call counts, latencies, errors, slot
                          waits, embedding times, snapshot age and the number of
@@ -68,7 +77,10 @@ from __future__ import annotations
 
 import argparse
 import calendar
+import contextlib
+import contextvars
 import functools
+import math
 import hashlib
 import hmac
 import json
@@ -120,6 +132,10 @@ ROUTE_RETRY_S = 30
 ROUTE_CHECK_TICK_S = 5
 ROUTE_RECHECK_S = 600
 MAX_SQL = int(os.environ.get("MCP_MAX_SQL", "2"))
+USER_MAX_CONCURRENT = int(os.environ.get("MCP_USER_MAX_CONCURRENT", str(max(1, MAX_CONCURRENT // 2))))
+USER_WAIT_S = float(os.environ.get("MCP_USER_WAIT_S", "10"))
+USER_RATE_PER_MIN = float(os.environ.get("MCP_USER_RATE_PER_MIN", "60"))
+USER_BURST = float(os.environ.get("MCP_USER_BURST", "30"))
 MAX_K = 50
 MAX_SQL_ROWS = 500
 CELL_CHARS = 2000
@@ -272,13 +288,102 @@ _SQL_LIMIT = anyio.CapacityLimiter(MAX_SQL)
 M = metrics.Window()
 
 
+# ---------------------------------------------------------------- per-caller limits
+# The caller of the request being served: the SSO user or the static token's
+# name, set by BearerAuth. Stateless HTTP serves each request in its own task, so
+# the tool sees the value of its own request. None: stdio, or anonymous (tests).
+CALLER: contextvars.ContextVar[str | None] = contextvars.ContextVar("caller", default=None)
+
+
+class UserLimits:
+    """Per caller: at most `max_concurrent` tool calls running (a call waits up to
+    `wait_s` for its turn), and a token bucket of `burst` calls refilled at
+    `rate_per_min`. The MCP_MAX_CONCURRENT slots are shared by everyone: without
+    this, one client in a loop (an assistant retrying, a script) could hold them
+    all and every other search would queue behind it. In memory only; a caller
+    idle for an hour is forgotten."""
+
+    def __init__(self, max_concurrent=USER_MAX_CONCURRENT, wait_s=USER_WAIT_S,
+                 rate_per_min=USER_RATE_PER_MIN, burst=USER_BURST, clock=time.monotonic):
+        self.max_concurrent, self.wait_s, self.clock = max_concurrent, wait_s, clock
+        self.rate, self.burst = rate_per_min / 60.0, max(1.0, burst)
+        self._buckets: dict[str, list[float]] = {}   # caller -> [tokens, last refill]
+        self._running: dict[str, int] = {}
+        self._sems: dict[str, anyio.Semaphore] = {}
+
+    def take(self, user: str) -> float:
+        """Spend one call from user's bucket: 0 if allowed, else the seconds until
+        the next call is."""
+        if self.rate <= 0:
+            return 0.0
+        now = self.clock()
+        b = self._buckets.setdefault(user, [self.burst, now])
+        b[0] = min(self.burst, b[0] + (now - b[1]) * self.rate)
+        b[1] = now
+        if b[0] >= 1:
+            b[0] -= 1
+            return 0.0
+        return (1 - b[0]) / self.rate
+
+    @contextlib.asynccontextmanager
+    async def slot(self, user: str):
+        """One of user's max_concurrent slots, waited for up to wait_s."""
+        if self.max_concurrent <= 0:
+            yield
+            return
+        sem = self._sems.setdefault(user, anyio.Semaphore(self.max_concurrent))
+        try:
+            with anyio.fail_after(self.wait_s):
+                await sem.acquire()
+        except TimeoutError:
+            raise UserBusy(self._running.get(user, 0)) from None
+        self._running[user] = self._running.get(user, 0) + 1
+        try:
+            yield
+        finally:
+            self._running[user] -= 1
+            sem.release()
+
+    def prune(self, idle_s: float = 3600) -> None:
+        now = self.clock()
+        for u, (_, last) in list(self._buckets.items()):
+            if now - last > idle_s and not self._running.get(u):
+                self._buckets.pop(u, None)
+                self._running.pop(u, None)
+                self._sems.pop(u, None)
+
+
+class UserBusy(Exception):
+    def __init__(self, running: int):
+        self.running = running
+
+
+LIMITS = UserLimits()
+
+
 def timed(fn):
-    """Count a tool's calls by outcome (ok, bad_request, error) and time them."""
+    """Count a tool's calls by outcome (ok, bad_request, error) and time them;
+    apply the caller's limits (UserLimits) first."""
     @functools.wraps(fn)
     async def wrapper(*args, **kwargs):
         t0, outcome = time.monotonic(), "error"
         try:
-            out = await fn(*args, **kwargs)
+            user = CALLER.get()
+            if user is None:
+                out = await fn(*args, **kwargs)
+            else:
+                wait = LIMITS.take(user)
+                if wait:
+                    M.count("cocoindex_mcp_limited", reason="rate")
+                    raise BadRequest(f"rate limit: at most {USER_RATE_PER_MIN:g} calls a minute per user "
+                                     f"(bursts of {USER_BURST:g}); retry in {math.ceil(wait)} s")
+                try:
+                    async with LIMITS.slot(user):
+                        out = await fn(*args, **kwargs)
+                except UserBusy as e:
+                    M.count("cocoindex_mcp_limited", reason="concurrency")
+                    raise BadRequest(f"you already have {e.running} calls running (at most {USER_MAX_CONCURRENT} "
+                                     f"at once per user); wait for them to finish, then retry") from None
             outcome = "ok"
             return out
         except BadRequest:
@@ -1485,7 +1590,11 @@ class BearerAuth:
                                     [(b"www-authenticate", www)] if err.status == 401 else [])
         log.info("%s %s %s via=%s", name, scope["method"], scope["path"], via)
         _seen(name)
-        return await self.app(scope, receive, send)
+        tok = CALLER.set(name)
+        try:
+            return await self.app(scope, receive, send)
+        finally:
+            CALLER.reset(tok)
 
 
 # ---------------------------------------------------------------- metrics
@@ -1505,6 +1614,7 @@ def _levels(w: metrics.Window) -> None:
             _CALLERS.pop(k, None)
     w.gauge("cocoindex_mcp_callers_1h", sum(now - v <= 3600 for v in _CALLERS.values()))
     w.gauge("cocoindex_mcp_callers_24h", len(_CALLERS))
+    LIMITS.prune()
     man = SNAP.manifest
     if man:
         created = calendar.timegm(time.strptime(man["created"], "%Y-%m-%dT%H:%M:%SZ"))

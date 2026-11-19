@@ -131,7 +131,9 @@ async def main():
     tok_file = work / "tokens.json"
     tok_file.write_text(json.dumps({"ci-bot": hashlib.sha256(b"s3cret").hexdigest()}))
     env = dict(os.environ, COCO_STORE=T.STORE, OPENAI_API_BASE=f"http://127.0.0.1:{eport}/v1",
-               OPENAI_API_KEY="fake", SQL_TIMEOUT_S="2", PYTHONUNBUFFERED="1")
+               OPENAI_API_KEY="fake", SQL_TIMEOUT_S="2", PYTHONUNBUFFERED="1",
+               # one caller making every call in seconds: the per-user limits are limits_test.py's
+               MCP_USER_RATE_PER_MIN="0", MCP_USER_MAX_CONCURRENT="0")
     sso = dict(OIDC_ISSUER=iss.issuer, OIDC_AUDIENCE="some-other-client,cocoindex-test",
                OIDC_REQUIRED_ROLE="alice-member", OIDC_JWKS_MIN_REFRESH_S="2")
     minted = []
