@@ -204,6 +204,13 @@ def connect(main: str = "commits.db", attach: dict[str, str] | None = None) -> s
     conn.enable_load_extension(True)
     sqlite_vec.load(conn)
     conn.enable_load_extension(False)
+    # fts3_tokenizer(name, pointer) registers a tokenizer at an address the caller
+    # chooses: half of a known SQLite code-execution attack, and the one-argument
+    # form leaks a pointer. SQLite builds may leave it on (this image's 3.54 did,
+    # 2026-11-19); the index has no FTS tables. The sql tool's authorizer also
+    # refuses the function by name.
+    if hasattr(conn, "setconfig") and hasattr(sqlite3, "SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER"):
+        conn.setconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER, False)
     for alias, name in (attach or {}).items():
         if (CACHE / name).exists():
             conn.execute(f"ATTACH DATABASE ? AS {alias}", (_ro_uri(CACHE / name),))

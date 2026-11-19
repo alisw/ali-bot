@@ -1108,9 +1108,22 @@ _ALLOWED_ACTIONS = {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_F
                     sqlite3.SQLITE_RECURSIVE}
 
 
-def _authorizer(action, *_):
+# SQL functions refused by name: they register or reveal addresses in the
+# server's memory (fts3_tokenizer: half of a known SQLite code-execution attack;
+# it answered with a pointer on the live server, 2026-11-19), load code or touch
+# files, or describe the build. Everything an index query needs stays.
+_DENIED_FUNCTIONS = {"fts3_tokenizer", "fts5", "load_extension", "readfile", "writefile", "edit", "fsdir",
+                     "sqlite_compileoption_get", "sqlite_compileoption_used", "sqlite_offset", "zipfile",
+                     "sqlar_compress", "sqlar_uncompress", "shell_add_schema", "shell_escape_crnl",
+                     "shell_module_schema", "shell_putsnl"}
+
+
+def _authorizer(action, arg1, arg2, *_):
     # Belt and braces on top of mode=ro&immutable=1: no ATTACH of other files on
-    # this host, no PRAGMA, nothing but reading the tables already open.
+    # this host, no PRAGMA, nothing but reading the tables already open, and no
+    # function that reaches outside the query (SQLITE_FUNCTION's arg2 is its name).
+    if action == sqlite3.SQLITE_FUNCTION and (arg2 or "").lower() in _DENIED_FUNCTIONS:
+        return sqlite3.SQLITE_DENY
     return sqlite3.SQLITE_OK if action in _ALLOWED_ACTIONS else sqlite3.SQLITE_DENY
 
 

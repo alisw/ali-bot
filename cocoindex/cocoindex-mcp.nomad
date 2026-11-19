@@ -343,6 +343,12 @@ job "cocoindex-mcp" {
         # kv/data/cocoindex-mcp and kv/data/s3-services, read only. Not the
         # shared "nomad" role, which any job can use.
         role = "cocoindex"
+        # Only for the template below, which Nomad renders itself: the server
+        # never needs the token, so it gets none, neither as VAULT_TOKEN nor
+        # as secrets/vault_token. A flaw in a tool cannot read what is not there
+        # (that policy reaches the S3 and aigw keys).
+        env          = false
+        disable_file = true
       }
 
       user = "root"
