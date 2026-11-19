@@ -37,7 +37,7 @@
 # first when it answers faster (embedroute.py). Change the machine here; the
 # route keeps its name, alice-embed, in the code, the metrics and the logs.
 locals {
-  alice_embed_upstream = "http://pcapiserv12.cern.ch:8100"
+  alice_embed_upstream = "https://pcapiserv12.cern.ch:8100"
 
   # Query embeddings on CPU. Measured 2026-11-18 on alimetal01
   # (bench/embed-cpu-bench.nomad, 4 threads, on CPU shares next to the CI
@@ -248,9 +248,8 @@ job "cocoindex-mcp" {
       # JSON has no comments: explanations stay above, never inside the heredoc.
       # alice-embed: ALICE's embedding server (local.alice_embed_upstream), with
       # aigw's model, used when it answers first (embedroute.py: only while its
-      # vectors are aigw's). It offers no TLS, hence insecure_http_upstream:
-      # its key crosses the CERN network in clear text; the proxy warns about
-      # the route at startup.
+      # vectors are aigw's). HTTPS since 2026-11-19 (plain HTTP on the port is
+      # gone): a CERN Grid CA host certificate, verified with the CA bundle above.
       template {
         destination = "local/config.json"
         change_mode = "restart"
@@ -267,7 +266,7 @@ job "cocoindex-mcp" {
              "upstream": "https://aigw.cern.ch",
              "inject_headers": {"Authorization": {"ingest": "aigw-key"}}},
             {"name": "alice-embed", "prefix": "/alice-embed/",
-             "upstream": "${local.alice_embed_upstream}", "insecure_http_upstream": true,
+             "upstream": "${local.alice_embed_upstream}",
              "inject_headers": {"Authorization": {"ingest": "alice-embed-key"}}},
             {"name": "monit-otlp", "prefix": "/otlp/",
              "upstream": "https://monit-otlp.cern.ch:4319",
