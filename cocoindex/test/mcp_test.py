@@ -440,7 +440,9 @@ async def main():
     emb = subprocess.Popen([sys.executable, str(HERE / "fake_embedder.py"), str(eport), str(work / "embed.log"),
                             str(work / "embed-texts.log")])
     env = dict(os.environ, COCO_STORE=STORE, OPENAI_API_BASE=f"http://127.0.0.1:{eport}/v1",
-               OPENAI_API_KEY="fake", SQL_TIMEOUT_S="2", PYTHONUNBUFFERED="1")
+               OPENAI_API_KEY="fake", SQL_TIMEOUT_S="2", PYTHONUNBUFFERED="1",
+               # one caller making every call in seconds: the per-user limits are limits_test.py's
+               MCP_USER_RATE_PER_MIN="0", MCP_USER_MAX_CONCURRENT="0")
     try:
         time.sleep(0.5)
         # ---- stdio, as Claude Code on a Mac would start it
