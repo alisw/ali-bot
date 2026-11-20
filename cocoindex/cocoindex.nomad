@@ -454,7 +454,7 @@ job "cocoindex" {
         # names, rendered into DEPLOY_ENV, and reloads it between flows when
         # the variable changes; without the variable, from SHIPPED (the files
         # this jobspec ships). Ordinary code changes are deployed with
-        #   nomad-rw var put -force nomad/jobs/cocoindex ref=<sha>
+        #   nomad-admin var put -force nomad/jobs/cocoindex ref=<sha>
         # (effective at the next flow boundary, no flow lost). `nomad-rw job
         # run` only for what cannot wait or cannot go that way: an urgent fix
         # (set the variable first: the restart runs its ref), a change to this

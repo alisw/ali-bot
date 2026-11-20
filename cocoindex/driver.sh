@@ -3,8 +3,8 @@
 # variable names, and reloads it when the variable changes -- between flows or
 # while the runner sleeps, never in the middle of a flow.
 #
-#   nomad-rw var put -force nomad/jobs/cocoindex ref=<sha|branch>   # deploy
-#   nomad-rw var purge nomad/jobs/cocoindex                         # back to the jobspec's code
+#   nomad-admin var put -force nomad/jobs/cocoindex ref=<sha|branch>   # deploy
+#   nomad-admin var purge nomad/jobs/cocoindex                         # back to the jobspec's code
 #
 # The jobspec renders the variable into $DEPLOY_ENV ("DEPLOY_REF=<ref>", empty
 # when the variable does not exist) with change_mode "noop". Without a ref the
