@@ -12,6 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import sanitize  # noqa: E402
+os.environ["PUBLIC_FILLERS"] = "0"     # the review mode; the published one is tested below
 
 failures = []
 
@@ -166,7 +167,7 @@ c = sqlite3.connect(":memory:")
 c.execute("CREATE TABLE hl_signatures (sig_hash, fillers_public)")
 c.executemany("INSERT INTO hl_signatures VALUES (?, ?)", [("a", '["139", null]'), ("b", '["139"]'), ("c", None)])
 logged, st = [], collections.Counter()
-os.environ.pop("PUBLIC_FILLERS", None)
+os.environ["PUBLIC_FILLERS"] = "0"
 sanitize.fillers_review(c, "hl_signatures", st, logged.append)
 check(st["hl_signatures: fillers shown"] == 2 and st["hl_signatures: fillers withheld"] == 1
       and c.execute("SELECT count(fillers_public) FROM hl_signatures").fetchone()[0] == 0
@@ -176,7 +177,7 @@ c.execute("UPDATE hl_signatures SET fillers_public = '[\"7\"]'")
 os.environ["PUBLIC_FILLERS"] = "1"
 logged = []
 sanitize.fillers_review(c, "hl_signatures", collections.Counter(), logged.append)
-os.environ.pop("PUBLIC_FILLERS")
+os.environ["PUBLIC_FILLERS"] = "0"
 check(c.execute("SELECT count(fillers_public) FROM hl_signatures").fetchone()[0] == 3 and not logged,
       "PUBLIC_FILLERS=1: published, nothing logged")
 

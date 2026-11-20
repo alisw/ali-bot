@@ -235,8 +235,9 @@ def load_templates():
 
 
 # "1" publishes fillers_public; "0" publishes it NULL and logs what it would
-# show, for review. $PUBLIC_FILLERS overrides (tests).
-PUBLIC_FILLERS_DEFAULT = "0"
+# show, for review. $PUBLIC_FILLERS overrides (tests). On since 2026-11-20,
+# after an audit of every value it showed on the live data (DESIGN.md).
+PUBLIC_FILLERS_DEFAULT = "1"
 
 
 def public_fillers_on() -> bool:
