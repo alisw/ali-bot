@@ -82,8 +82,13 @@ ALIBUILDSRC = {
         '  dieOnError(err, "Error during %s %s for reference repo for %s." %\n'
         '             (scm.name.lower(), command[0], package))\n',
 }
+# alidist: recipes, whose package names are public (and whose echo lines are no templates)
+ALIDISTSRC = {
+    "vecgeom.sh": "package: VecGeom\nversion: v1\n---\necho \"Building the VecGeom package now please wait\"\n",
+    "hepmc3.sh": "package: HepMC3\nversion: v3\n---\n",
+}
 for repo, files in (("AliceO2Group/AliceO2", SRC), ("root-project/root", ROOTSRC), ("AliceO2Group/O2DPG", DPGSRC),
-                    ("alisw/alibuild", ALIBUILDSRC)):
+                    ("alisw/alibuild", ALIBUILDSRC), ("alisw/alidist", ALIDISTSRC)):
     d = work / repo.replace("/", "__")
     for rel, text in files.items():
         (d / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -92,7 +97,7 @@ for repo, files in (("AliceO2Group/AliceO2", SRC), ("root-project/root", ROOTSRC
     subprocess.run(["git", "-C", str(d), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(d), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "i"], check=True)
 
-REPOS = ["AliceO2Group/AliceO2", "root-project/root", "AliceO2Group/O2DPG", "alisw/alibuild"]
+REPOS = ["AliceO2Group/AliceO2", "root-project/root", "AliceO2Group/O2DPG", "alisw/alibuild", "alisw/alidist"]
 idx = S.build(str(work), REPOS)
 texts = {"".join("_" if p == S.HOLE else "" if p == S.CLS else p for p in t["pieces"]).strip() for t in idx["templates"]}
 print("   ", sorted(texts))
@@ -221,6 +226,26 @@ check(fp(T.match("error", "[ERROR] - Device o2-analysis-hf-task-d0_1: pid 7 (exi
       "a workflow's executable name and a numbered device")
 check(fp(T.match("error", "[ERROR] Aborting because of missing option cfgUseMl")) == ["cfgUseMl"],
       "an option name of the code")
+check(not any("VecGeom package" in t for t in texts), "alidist's recipes give no templates")
+g = T.match("git-fetch", "Git command for package 'VecGeom' failed.")
+check(fp(g) == ["Git", "'VecGeom'"], f"an alidist package name, and the version control's ({g})")
+check(fp(T.match("git-fetch", "Git command for package 'MySecretPkg' failed.")) == ["Git", None],
+      "a package alidist does not have: withheld")
+for v, want in [("PWGHF/D2H/Tasks/taskD0.cxx", True), ("O2Physics/PWGHF/D2H/Tasks/taskD0.cxx:12:3", True),
+                ("./PWGHF/D2H/Tasks/newTask.cxx", True), ("PWGHF/D2H/Tasks", True), ("CCDB/src", True),
+                ("MC/bin/o2dpg_sim_workflow.py", True),
+                ("PWGHF/D2H/Tasks/../../../secret.txt", False), ("NotATree/x.cxx", False),
+                ("hist/hist/src/THnBase.cxx", False)]:
+    got = T.public_filler(v)[0] is not None
+    check(got == want, f"relative path in the O2 trees {v!r}: {'shown' if got else 'withheld'}")
+for v, want in [("/home/meide/alice/O2Physics/PWGHF/D2H/Tasks/taskD0.cxx:12:3",
+                 "<path>/O2Physics/PWGHF/D2H/Tasks/taskD0.cxx:12:3"),
+                ("/sw/SOURCES/O2/v1/0/CCDB/src/CcdbApi.cxx", "<path>/CCDB/src/CcdbApi.cxx"),
+                ("'/build/x/PWGHF/D2H/Tasks'", "<path>/PWGHF/D2H/Tasks"),
+                ("/home/meide/private/notes.txt", None), ("/home/meide/CCDB", None),
+                ("/home/x/PWGHF/D2H/Tasks/meide.cxx", None)]:
+    got = T.public_filler(v)[0]
+    check(got == want, f"an absolute path cut to its public tail: {v!r} -> {got!r}")
 w = T.match("error", "[ERROR] Exception while running: <time>[FATAL] Fatal error cfgUseMl. Rethrowing.")
 check(fp(w) == ["Fatal error cfgUseMl"], f"a whole log line as a value: its time and severity prefix out ({w})")
 check(fp(T.match("error", "[ERROR] Aborting because of missing option riedel")) is None,

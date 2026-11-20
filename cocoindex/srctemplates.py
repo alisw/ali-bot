@@ -43,9 +43,10 @@ EXTS = (".cxx", ".cpp", ".cc", ".h", ".hpp", ".hxx", ".C", ".inl", ".icc")
 SH_EXTS, PY_EXTS = (".sh",), (".py",)
 SKIP_DIRS = {".git", "build", "doc", "docs", "tutorials", "roottest", "test_data", "interpreter"}
 INDEX = "templates.json"
-INDEX_VERSION = 6   # 2: signposts, ROOT-named calls read both ways; 3: shell, Python, ROOT class prefix;
+INDEX_VERSION = 7   # 2: signposts, ROOT-named calls read both ways; 3: shell, Python, ROOT class prefix;
                     # 4: no comments, no function definitions; 5: one template per line of a
-                    # message, Python's %r and <...log...>.write(); 6: the public vocabulary
+                    # message, Python's %r and <...log...>.write(); 6: the public vocabulary;
+                    # 7: alidist's package names, the O2 trees' relative paths
 
 CALL_RE = re.compile(
     r"\b(?P<log>LOG|LOGP|LOGF|LOG_IF|LOGP_IF|LOGF_IF|ILOG|QcInfoLogger::\w+|throw\s+(?:[\w:]+::)?"
@@ -380,6 +381,12 @@ def extract(repo: str, root: str) -> list[dict]:
 # string literals of every tree. Whole names, not the words in them: a surname
 # is a word of some identifier more often than one is a name. See public_filler().
 NAME_OWNERS = ("AliceO2Group/", "FairRootGroup/")
+# alidist: only its packages' names (a recipe's "package:"), not every word of
+# the recipes. The trees whose relative paths (directories and files) are
+# public as such: "PWGHF/D2H/Tasks/taskD0.cxx", never an absolute path.
+PACKAGE_REPO = "alisw/alidist"
+PATH_REPOS = ("AliceO2Group/AliceO2", "AliceO2Group/O2Physics", "AliceO2Group/O2DPG")
+_PACKAGE_RE = re.compile(r"(?m)^package:\s*([\w.+-]+)\s*$")
 MAX_LITERAL = 200
 _IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _PY_STR_RE = re.compile(r'"((?:[^"\\\n]|\\.)*)"|\'((?:[^\'\\\n]|\\.)*)\'')
@@ -392,10 +399,25 @@ def name_key(s: str) -> str:
     return s.replace("-", "").replace("_", "").lower()
 
 
-def vocabulary(repo: str, root: str, names: set, literals: set) -> None:
-    """Add root's names (NAME_OWNERS only, by name_key) and string literals."""
+def vocabulary(repo: str, root: str, names: set, literals: set, paths: set | None = None) -> None:
+    """Add root's names (NAME_OWNERS only, by name_key; alidist's package names),
+    string literals, and for PATH_REPOS its relative paths."""
     take_names = repo.startswith(NAME_OWNERS)
+    if repo == PACKAGE_REPO:
+        for f in os.listdir(root):
+            if f.endswith(".sh"):
+                m = _PACKAGE_RE.search(open(os.path.join(root, f), errors="replace").read(4096))
+                if m:
+                    names.add(name_key(m.group(1)))
+                    literals.add(m.group(1))
+        return
     for d, f in _walk(root):
+        if paths is not None and repo in PATH_REPOS:
+            rel = os.path.relpath(os.path.join(d, f), root)
+            paths.add(rel)
+            while "/" in rel:
+                rel = rel.rsplit("/", 1)[0]
+                paths.add(rel)
         cmake = f == "CMakeLists.txt" or f.endswith(".cmake")
         if not (cmake or f.endswith(EXTS + SH_EXTS + PY_EXTS)):
             continue
@@ -441,14 +463,15 @@ def build(sources: str, repos: list[str]) -> dict | None:
             return None
     except (OSError, ValueError):
         pass
-    t0, templates, names, literals = time.time(), [], set(), set()
+    t0, templates, names, literals, paths = time.time(), [], set(), set(), set()
     for r in heads:
         root = os.path.join(sources, r.replace("/", "__"))
-        templates += extract(r, root)
-        vocabulary(r, root, names, literals)
+        if r != PACKAGE_REPO:   # its recipes are build scripts, not code that prints errors
+            templates += extract(r, root)
+        vocabulary(r, root, names, literals, paths)
     idx = {"version": INDEX_VERSION, "heads": heads, "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
            "seconds": round(time.time() - t0, 1), "templates": templates,
-           "names": sorted(names), "literals": sorted(literals)}
+           "names": sorted(names), "literals": sorted(literals), "paths": sorted(paths)}
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
         json.dump(idx, f)
@@ -539,10 +562,15 @@ SOURCE_KINDS = ("error", "git-fetch")
 #            sizes, positions, timestamps, run numbers.
 #   literal  the whole value is a string literal of the public code.
 #   path     a path (alien://, a public service's URL, or bare) that is a
-#            production dataset (/alice/data, /alice/sim) or, its numeric parts
-#            out, a string literal of the public code (a CCDB path).
+#            production dataset (/alice/data, /alice/sim), or, its numeric parts
+#            out, a string literal of the public code (a CCDB path), or a
+#            relative path in O2, O2Physics or O2DPG (PATH_REPOS: a directory of
+#            theirs, or a file name in one; "O2Physics/" and the like in front,
+#            ":line:column" after allowed). An absolute path is cut to its
+#            longest tail that is one, shown as "<path>/<tail>"; the rest of
+#            it (home, work or build directory) is never shown.
 #   names    every name in it (split at spaces and punctuation, "::" and "."
-#            included) is a name of O2's code by name_key -- a device, task,
+#            included) is a name of O2's code or an alidist package by name_key -- a device, task,
 #            option, table or type name; "o2-analysis-" and "o2-" prefixes and
 #            numeric suffixes ("_1") aside --, a number, or one of FIXED_WORDS.
 #            A path never passes this way.
@@ -556,7 +584,7 @@ SOURCE_KINDS = ("error", "git-fetch")
 FIXED_WORDS = {"sigsegv", "sigabrt", "sigkill", "sigterm", "sigbus", "sigfpe", "sigill", "sigint", "sigpipe",
                "killed", "segmentation", "fault", "aborted", "terminated", "error", "fatal", "warning", "info",
                "debug", "alarm", "critical", "important", "host", "ip", "tmp", "time", "ptr", "true", "false",
-               "null", "nullptr", "nan", "inf", "yes", "no"}
+               "null", "nullptr", "nan", "inf", "yes", "no", "git", "sapling"}
 _PID_CTX_RE = re.compile(r"(?i)\bpids?\W{0,3}$")
 _PERSON_CTX_RE = re.compile(r"(?i)\b(?:user(?:name)?s?|uid|login|account|owner|e-?mail|author)\W{0,3}$")
 _PERSON_RE = re.compile(r"(?i)[@~]|\busers?\b|/home/|/afs/|/eos/user|/cern\.ch/user/|\$HOME|[^\x00-\x7f]")
@@ -568,6 +596,10 @@ _URL_RE = re.compile(r"^(?:alien://|file://|https?://(?:alice-ccdb|alimonitor|al
 _DATASET_RE = re.compile(r"^/alice/(?:data|sim)/\d{4}/")
 _PATH_NUMERIC_RE = re.compile(r"^(?:\d+|\d+[-_.]\d+.*|[0-9a-f-]{32,36})$")
 _WORD_RE = re.compile(r"[a-z]+")
+_LINECOL_RE = re.compile(r"(?::\d+){1,2}:?$")
+_REPO_PREFIXES = ("O2/", "AliceO2/", "O2Physics/", "O2DPG/")
+PATH_CUT = "<path>/"     # in front of a path whose private part was cut
+_FILENAME_RE = re.compile(r"[\w.+-]{1,120}")
 MAX_FILLER = 300
 FILLER_CTX = 24     # characters of the message before a filler, to read what it is
 
@@ -584,6 +616,7 @@ class Templates:
         self.people: set[str] | None = None     # set by the publisher: people()
         self.rules: dict[str, int] = {}          # fillers seen, by the rule that showed or withheld them
         self.literals: set[str] = set(idx.get("literals", ()))
+        self.paths: set[str] = set(idx.get("paths", ()))
         self.key = key
         self.by_key: dict[str, list[int]] = {}
         self.rx: dict[int, re.Pattern] = {}
@@ -745,7 +778,12 @@ class Templates:
             return None, "empty"
         if _PID_CTX_RE.search(before):
             return None, "pid"
-        if _PERSON_CTX_RE.search(before) or _PERSON_RE.search(v):
+        if _PERSON_CTX_RE.search(before):
+            return None, "person"
+        # An absolute path into a checkout of a public tree: its private part
+        # (home, work area, build directory) cut, the rest checked as any value.
+        v = self._cut_absolute(v) or v
+        if _PERSON_RE.search(v):
             return None, "person"
         if len(v) > MAX_FILLER:
             return None, "long"
@@ -772,6 +810,8 @@ class Templates:
         return k in self.names or name_key(_NAME_AFFIX_RE.sub("", tok)) in self.names
 
     def _public_path(self, p: str) -> bool:
+        if self._tree_path(p):
+            return True
         p = _URL_RE.sub("", p.split("?", 1)[0]).strip()
         if _DATASET_RE.match(p):
             return True
@@ -779,6 +819,38 @@ class Templates:
             p = p[2:]
         segs = [x for x in p.strip("/").split("/") if x and not _PATH_NUMERIC_RE.match(x)]
         return bool(segs) and ("/".join(segs) in self.literals or "/" + "/".join(segs) in self.literals)
+
+    def _cut_absolute(self, v: str) -> str | None:
+        """"<path>/" and the longest tail of an absolute path that is a path of
+        PATH_REPOS' trees (_tree_path), at least a directory and a name:
+        /home/x/alice/O2Physics/PWGHF/D2H/Tasks/taskD0.cxx:12 ->
+        <path>/O2Physics/PWGHF/D2H/Tasks/taskD0.cxx:12. None otherwise; a
+        production dataset path is left whole (it is public)."""
+        q = v.strip("'\"`")
+        if q.startswith("file://"):
+            q = q[len("file://"):]
+        if not q.startswith(("/", "~")) or _DATASET_RE.match(q):
+            return None
+        for i, ch in enumerate(q):
+            if ch == "/" and "/" in q[i + 1:] and self._tree_path(q[i + 1:]):
+                return PATH_CUT + q[i + 1:]
+        return None
+
+    def _tree_path(self, p: str) -> bool:
+        """A relative path in PATH_REPOS' trees: a directory of theirs, or a file
+        name in one of their directories ("<path>/" in front: _cut_absolute)."""
+        p = _LINECOL_RE.sub("", p.strip()).removeprefix(PATH_CUT)
+        if p.startswith("./"):
+            p = p[2:]
+        if not p or p.startswith(("/", "~")) or "\\" in p or ".." in p.split("/") or "//" in p:
+            return False
+        for cand in (p, *(p[len(x):] for x in _REPO_PREFIXES if p.startswith(x))):
+            if cand in self.paths:
+                return True
+            d, _, f = cand.rpartition("/")
+            if d in self.paths and _FILENAME_RE.fullmatch(f):
+                return True
+        return False
 
     def fillers_public(self, fillers: list[str], ctx: list[str] | None = None) -> str | None:
         """The fillers as a JSON list, each the value or null (withheld); None
