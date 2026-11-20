@@ -43,9 +43,9 @@ EXTS = (".cxx", ".cpp", ".cc", ".h", ".hpp", ".hxx", ".C", ".inl", ".icc")
 SH_EXTS, PY_EXTS = (".sh",), (".py",)
 SKIP_DIRS = {".git", "build", "doc", "docs", "tutorials", "roottest", "test_data", "interpreter"}
 INDEX = "templates.json"
-INDEX_VERSION = 5   # 2: signposts, ROOT-named calls read both ways; 3: shell, Python, ROOT class prefix;
+INDEX_VERSION = 6   # 2: signposts, ROOT-named calls read both ways; 3: shell, Python, ROOT class prefix;
                     # 4: no comments, no function definitions; 5: one template per line of a
-                    # message, Python's %r and <...log...>.write()
+                    # message, Python's %r and <...log...>.write(); 6: the public vocabulary
 
 CALL_RE = re.compile(
     r"\b(?P<log>LOG|LOGP|LOGF|LOG_IF|LOGP_IF|LOGF_IF|ILOG|QcInfoLogger::\w+|throw\s+(?:[\w:]+::)?"
@@ -373,6 +373,55 @@ def extract(repo: str, root: str) -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------- vocabulary
+# What a value (a filler) may be shown as: the names of the code of
+# NAME_OWNERS' repos -- whole identifiers, comments and string literals out, and
+# CMake's unquoted words (the workflows' targets) -- by name_key(), and whole
+# string literals of every tree. Whole names, not the words in them: a surname
+# is a word of some identifier more often than one is a name. See public_filler().
+NAME_OWNERS = ("AliceO2Group/", "FairRootGroup/")
+MAX_LITERAL = 200
+_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_PY_STR_RE = re.compile(r'"((?:[^"\\\n]|\\.)*)"|\'((?:[^\'\\\n]|\\.)*)\'')
+_HASH_COMMENT_RE = re.compile(r"(?m)#[^\n]*$")
+
+
+def name_key(s: str) -> str:
+    """A name as DPL may print it: HfTaskD0, hf-task-d0, hf_task_d0 -> hftaskd0
+    (DPL's task names are the struct's, kebab-cased, abbreviations folded)."""
+    return s.replace("-", "").replace("_", "").lower()
+
+
+def vocabulary(repo: str, root: str, names: set, literals: set) -> None:
+    """Add root's names (NAME_OWNERS only, by name_key) and string literals."""
+    take_names = repo.startswith(NAME_OWNERS)
+    for d, f in _walk(root):
+        cmake = f == "CMakeLists.txt" or f.endswith(".cmake")
+        if not (cmake or f.endswith(EXTS + SH_EXTS + PY_EXTS)):
+            continue
+        try:
+            src = open(os.path.join(d, f), errors="replace").read()
+        except OSError:
+            continue
+        if f.endswith(EXTS):
+            src = _uncomment(src)
+            lits = [m.group(1) for m in STR_RE.finditer(src)]
+            code = STR_RE.sub(" ", src)
+        else:
+            src = _HASH_COMMENT_RE.sub("", src)
+            lits = [a if a is not None else b for a, b in _PY_STR_RE.findall(src)]
+            code = _PY_STR_RE.sub(" ", src)
+        for x in lits:
+            x = _unescape(x).strip()
+            if 2 <= len(x) <= MAX_LITERAL and "\n" not in x:
+                literals.add(x)
+        if take_names:
+            # CMake: the unquoted arguments too (o2physics_add_dpl_workflow(hf-task-d0 ...))
+            for ident in set((re.findall(r"[A-Za-z][A-Za-z0-9_-]*", code) if cmake else _IDENT_RE.findall(code))):
+                if len(ident) >= 2:
+                    names.add(name_key(ident))
+
+
 def head(root: str) -> str | None:
     r = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True, text=True)
     return r.stdout.strip() if r.returncode == 0 else None
@@ -392,11 +441,14 @@ def build(sources: str, repos: list[str]) -> dict | None:
             return None
     except (OSError, ValueError):
         pass
-    t0, templates = time.time(), []
+    t0, templates, names, literals = time.time(), [], set(), set()
     for r in heads:
-        templates += extract(r, os.path.join(sources, r.replace("/", "__")))
+        root = os.path.join(sources, r.replace("/", "__"))
+        templates += extract(r, root)
+        vocabulary(r, root, names, literals)
     idx = {"version": INDEX_VERSION, "heads": heads, "built_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-           "seconds": round(time.time() - t0, 1), "templates": templates}
+           "seconds": round(time.time() - t0, 1), "templates": templates,
+           "names": sorted(names), "literals": sorted(literals)}
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
         json.dump(idx, f)
@@ -479,6 +531,47 @@ def message_of(sig_exact: str) -> str:
 SOURCE_KINDS = ("error", "git-fetch")
 
 
+# ---------------------------------------------------------------- public fillers
+# A filler is shown (fillers_public) when it cannot name a person, a machine or
+# a private file, by one of these rules, else it stays a NULL (its hash is in
+# filler_hash as before):
+#   number   only digits and the punctuation between them: exit codes, signals,
+#            sizes, positions, timestamps, run numbers.
+#   literal  the whole value is a string literal of the public code.
+#   path     a path (alien://, a public service's URL, or bare) that is a
+#            production dataset (/alice/data, /alice/sim) or, its numeric parts
+#            out, a string literal of the public code (a CCDB path).
+#   names    every name in it (split at spaces and punctuation, "::" and "."
+#            included) is a name of O2's code by name_key -- a device, task,
+#            option, table or type name; "o2-analysis-" and "o2-" prefixes and
+#            numeric suffixes ("_1") aside --, a number, or one of FIXED_WORDS.
+#            A path never passes this way.
+# Never, whatever the rule: a value after "pid" (it changes on every run and
+# says nothing), after "user", "uid", "login", "account", "owner" or "email",
+# holding "@", "~", a home or user directory, a letter outside ASCII, or a word
+# that names one of the people who commit to or open pull requests on the
+# indexed repositories (people(): their surnames, e-mail names, GitHub logins
+# and the CERN-style logins made from them). Without that list (no commits or
+# prs flow to read it from) only the number and dataset path rules apply.
+FIXED_WORDS = {"sigsegv", "sigabrt", "sigkill", "sigterm", "sigbus", "sigfpe", "sigill", "sigint", "sigpipe",
+               "killed", "segmentation", "fault", "aborted", "terminated", "error", "fatal", "warning", "info",
+               "debug", "alarm", "critical", "important", "host", "ip", "tmp", "time", "ptr", "true", "false",
+               "null", "nullptr", "nan", "inf", "yes", "no"}
+_PID_CTX_RE = re.compile(r"(?i)\bpids?\W{0,3}$")
+_PERSON_CTX_RE = re.compile(r"(?i)\b(?:user(?:name)?s?|uid|login|account|owner|e-?mail|author)\W{0,3}$")
+_PERSON_RE = re.compile(r"(?i)[@~]|\busers?\b|/home/|/afs/|/eos/user|/cern\.ch/user/|\$HOME|[^\x00-\x7f]")
+_NAME_SPLIT_RE = re.compile(r"[\s,;:()\[\]{}<>=\"'`|&*!?.+]+")
+_NAME_AFFIX_RE = re.compile(r"^(?:o2-analysis-|o2-)|(?:[-_:]\d+)+$")
+_NUMBER_RE = re.compile(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?%?(?:[\s,;:/()\[\]+-]+[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?%?)*"
+                        r"(?:\s*\(?(?:bytes?|[kKMG]i?B|s|ms|us|ns|MB/s)\)?)?")
+_URL_RE = re.compile(r"^(?:alien://|file://|https?://(?:alice-ccdb|alimonitor|alien|ccdb-test)\.cern\.ch(?::\d+)?)")
+_DATASET_RE = re.compile(r"^/alice/(?:data|sim)/\d{4}/")
+_PATH_NUMERIC_RE = re.compile(r"^(?:\d+|\d+[-_.]\d+.*|[0-9a-f-]{32,36})$")
+_WORD_RE = re.compile(r"[a-z]+")
+MAX_FILLER = 300
+FILLER_CTX = 24     # characters of the message before a filler, to read what it is
+
+
 class Templates:
     """The index and the trees it was built from; match() a signature's text."""
 
@@ -487,6 +580,10 @@ class Templates:
         idx = json.load(open(os.path.join(sources, INDEX)))
         self.heads: dict[str, str] = idx["heads"]
         self.t: list[dict] = idx["templates"]
+        self.names: set[str] = set(idx.get("names", ()))
+        self.people: set[str] | None = None     # set by the publisher: people()
+        self.rules: dict[str, int] = {}          # fillers seen, by the rule that showed or withheld them
+        self.literals: set[str] = set(idx.get("literals", ()))
         self.key = key
         self.by_key: dict[str, list[int]] = {}
         self.rx: dict[int, re.Pattern] = {}
@@ -526,7 +623,7 @@ class Templates:
             return None
         t = self.t[best[0]]
         text = "".join("_" if x == HOLE else "" if x == CLS else x for x in t["pieces"]).strip()
-        return text, t["repo"], t["path"], t["line"], list(self._regex(best[0]).match(msg).groups())
+        return (text, t["repo"], t["path"], t["line"], *_groups(self._regex(best[0]).match(msg), msg))
 
     # -- tests
     def _find(self, rel: str):
@@ -565,16 +662,16 @@ class Templates:
             line = next((i + 1 for i, l in enumerate(lines) if re.search(r"\b" + re.escape(names[-1]) + r"\b", l)), None)
             c = BOOST_CHECK_RE.match(m.group("rest"))
             if not c:       # difference{...} between ..., a message: the case, the rest a value
-                return f'{sev}: in "{case}": _', hit[0], hit[1], line, [m.group("rest")]
+                return f'{sev}: in "{case}": _', hit[0], hit[1], line, [m.group("rest")], [""]
             expr, vals, crit = c.group("expr"), (c.group("vals") or "").strip(), c.group("crit") or ""
             if expr in flat:
                 line = next((i + 1 for i, l in enumerate(lines) if expr in re.sub(r"\s+", " ", l)), line)
                 text = f'{sev}: in "{case}": {crit}check {expr} has failed' + (" [_]" if vals else "")
-                return text, hit[0], hit[1], line, [vals[1:-1]] if vals else []
+                return text, hit[0], hit[1], line, [vals[1:-1]] if vals else [], [""] if vals else []
             # The case is there but not this check: the test changed since the
             # log (the index is the branch head). The expression stays a value.
             text = f'{sev}: in "{case}": {crit}check _ has failed' + (" [_]" if vals else "")
-            return text, hit[0], hit[1], line, [expr] + ([vals[1:-1]] if vals else [])
+            return text, hit[0], hit[1], line, [expr] + ([vals[1:-1]] if vals else []), [""] * (2 if vals else 1)
         m = CTEST_RE.match(first)
         if m:
             name = m.group("name")
@@ -588,7 +685,7 @@ class Templates:
             for p in kept:
                 left = left.replace(p, " ")
             text = f"Test: {name} " + (" ".join(kept) if kept else "***Failed")
-            return text, hit[0] if hit else None, hit[1] if hit else None, None, [left.strip()]
+            return text, hit[0] if hit else None, hit[1] if hit else None, None, [left.strip()], [""]
         return None
 
     # -- the result
@@ -615,7 +712,7 @@ class Templates:
             for _name, rx, text in TOOLS:
                 t = rx.match(msg)
                 if t:
-                    r, fk = (text, None, None, None, list(t.groups())), "tool"
+                    r, fk = (text, None, None, None, *_groups(t, msg)), "tool"
                     break
         if r is None and kind in SOURCE_KINDS:
             r = self._source(message_of(sig_exact))
@@ -626,17 +723,118 @@ class Templates:
             # carries it. Two levels at most; the inner match is anchored on
             # the whole value, as every match is.
             for _ in range(2):
-                inner = next((self._source(f.strip()) for f in reversed(r[4]) if len(f.strip()) >= MIN_LITERAL),
+                # (its own severity prefix out: "- First error: [ERROR] ...")
+                inner = next((self._source(message_of(f)) for f in reversed(r[4]) if len(f.strip()) >= MIN_LITERAL),
                              None) if r else None
                 if not inner:
                     break
                 r = inner
         if r is None:
             return None
-        text, repo, path, line, fillers = r
+        text, repo, path, line, fillers, ctx = r
         tid = template_id(text)
         return {"fingerprint": text, "fingerprint_kind": fk, "fingerprint_src": self.permalink(repo, path, line),
-                "filler_hash": self.filler_hash(tid, fillers) if any(f.strip() for f in fillers) else None}
+                "filler_hash": self.filler_hash(tid, fillers) if any(f.strip() for f in fillers) else None,
+                "fillers_public": self.fillers_public(fillers, ctx)}
+
+    # -- the values that may be shown
+    def public_filler(self, v: str, before: str = "") -> tuple[str | None, str]:
+        """(v, rule) when v may be published (see FIXED_WORDS above), else (None, why)."""
+        v = v.strip()
+        if not v:
+            return None, "empty"
+        if _PID_CTX_RE.search(before):
+            return None, "pid"
+        if _PERSON_CTX_RE.search(before) or _PERSON_RE.search(v):
+            return None, "person"
+        if len(v) > MAX_FILLER:
+            return None, "long"
+        if _NUMBER_RE.fullmatch(v):
+            return v, "number"
+        if self.people is None:
+            return (v, "path") if _DATASET_RE.match(_URL_RE.sub("", v)) else (None, "no people list")
+        if any(w in self.people for w in _WORD_RE.findall(v.lower())):
+            return None, "person"
+        core = v.strip("'\"`")
+        if core in self.literals:
+            return v, "literal"
+        if "/" in core or "\\" in core:
+            return (v, "path") if self._public_path(core) else (None, "path")
+        toks = [x for x in _NAME_SPLIT_RE.split(core) if x]
+        if toks and all(self._name(x) for x in toks):
+            return v, "names"
+        return None, "names"
+
+    def _name(self, tok: str) -> bool:
+        if _NUMBER_RE.fullmatch(tok) or tok.lower() in FIXED_WORDS:
+            return True
+        k = name_key(tok)
+        return k in self.names or name_key(_NAME_AFFIX_RE.sub("", tok)) in self.names
+
+    def _public_path(self, p: str) -> bool:
+        p = _URL_RE.sub("", p.split("?", 1)[0]).strip()
+        if _DATASET_RE.match(p):
+            return True
+        if p.startswith("./"):
+            p = p[2:]
+        segs = [x for x in p.strip("/").split("/") if x and not _PATH_NUMERIC_RE.match(x)]
+        return bool(segs) and ("/".join(segs) in self.literals or "/" + "/".join(segs) in self.literals)
+
+    def fillers_public(self, fillers: list[str], ctx: list[str] | None = None) -> str | None:
+        """The fillers as a JSON list, each the value or null (withheld); None
+        when there are none or none may be shown."""
+        ctx = ctx or [""] * len(fillers)
+        out = []
+        for f, c in zip(fillers, ctx):
+            v, rule = self.public_filler(f, c)
+            k = f"{'shown' if v is not None else 'withheld'} {rule}"
+            self.rules[k] = self.rules.get(k, 0) + 1
+            out.append(v)
+        return json.dumps(out) if any(x is not None for x in out) else None
+
+
+def people(*dbs) -> set[str]:
+    """The words that name people, from the indexed commits (author names and
+    e-mail names) and pull requests (GitHub logins), lower case, ASCII: each
+    surname, e-mail name part and login part (3 letters or more), and the
+    CERN-style logins made of an initial and the surname (8 letters at most)."""
+    import sqlite3
+    import unicodedata
+    fold = lambda x: unicodedata.normalize("NFKD", x).encode("ascii", "ignore").decode().lower()
+    names, logins = set(), set()
+    for db in dbs:
+        if not db or not os.path.exists(db):
+            continue
+        c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        try:
+            tabs = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+            if "commits" in tabs:
+                for n, e in c.execute("SELECT DISTINCT author_name, author_email FROM commits"):
+                    names.add(fold(n or ""))
+                    logins.add(fold((e or "").split("@", 1)[0]))
+            if "prs" in tabs:
+                logins.update(fold(a) for (a,) in c.execute("SELECT DISTINCT author FROM prs") if a)
+        finally:
+            c.close()
+    out = set()
+    for n in names:
+        ws = _WORD_RE.findall(n)
+        if len(ws) >= 2:
+            out.add(ws[-1])
+            out.add((ws[0][0] + "".join(ws[1:]))[:8])
+            out.add((ws[0][0] + ws[-1])[:8])
+        out.update(w for w in ws[1:])
+    for l in logins:
+        out.add(re.sub(r"[^a-z]", "", l))
+        out.update(_WORD_RE.findall(l))
+    return {w for w in out if len(w) >= 3} - FIXED_WORDS
+
+
+def _groups(m: re.Match, msg: str) -> tuple[list[str], list[str]]:
+    """A match's groups (the fillers), and the text of msg just before each."""
+    n = len(m.groups())
+    return (list(m.groups()),
+            [msg[max(0, m.start(i) - FILLER_CTX):max(0, m.start(i))] if m.start(i) >= 0 else "" for i in range(1, n + 1)])
 
 
 def template_id(text: str) -> str:

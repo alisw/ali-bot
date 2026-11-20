@@ -363,6 +363,8 @@ def publish(root: Path, flows: list[str], run_id: str, keep: int, min_interval: 
             # (sanitize.py). An exception here fails the publish: nothing goes
             # out unsanitized, and the previous snapshot stays current.
             import sanitize
+            # Who must not be named in a published value (srctemplates.people)
+            os.environ.setdefault("PEOPLE_DBS", ",".join(str(flow_paths(root, x)[2]) for x in ("commits", "prs")))
             stats = getattr(sanitize, SANITIZED[f])(out)
             secrets = {k: v for k, v in stats.items() if k.startswith("secret:")}
             if secrets:

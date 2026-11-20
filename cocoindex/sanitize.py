@@ -28,6 +28,7 @@ In the copy:
   (public_part(): crash fingerprints, compiler diagnostic templates, and the
   format strings in public code that printed a runtime message, see
   srctemplates.py), the template_id and keyed filler_hash that group them,
+  the values of the template that are public (fillers_public, see FP_COLUMNS),
   file paths that pass logscan.public_path, and pointers into the logs
   (log_url, line: the logs themselves need CERN SSO) and into the code
   (fingerprint_src, a GitHub permalink). Never log text, no
@@ -38,6 +39,7 @@ In the copy:
 from __future__ import annotations
 
 import collections
+import json
 import pathlib
 import re
 import sqlite3
@@ -69,6 +71,13 @@ _IP_RE = re.compile(r"(?<![\w.])(?:128\.14[12]|137\.138|188\.18[45]|10\.\d{1,3}|
                     r"|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}(?![\w.])")
 MIN_SHORT = 6   # bare machine names shorter than this are left alone: too likely a word
 
+# The readable part of an error (public_part()), and fillers_public: the values
+# of its template that srctemplates.public_filler() finds public (numbers, names
+# of the public code), a JSON list with null for each one withheld. Computed at
+# every publish; published only with PUBLIC_FILLERS=1, else NULL, and the values
+# it would show are logged for review (fingerprints()).
+FP_COLUMNS = ("fingerprint", "fingerprint_kind", "fingerprint_src", "template_id", "filler_hash", "fillers_public")
+
 # Everything a published ci-failures.db may hold. Adding a column here is a
 # decision that its content is public (or a fingerprint, or a pointer).
 PUBLISHED = {
@@ -80,10 +89,10 @@ PUBLISHED = {
     "ci_errors": {
         "build_id", "sig_hash", "rank", "repo", "pr", "sha", "check_name", "host", "uploaded_at", "state",
         "kind", "infra", "fatal", "class_hash", "file", "package", "section", "in_pr_files", "count", "line",
-        *("fingerprint", "fingerprint_kind", "fingerprint_src", "template_id", "filler_hash")},
+        *FP_COLUMNS},
     # The embedding stays: the MCP server searches with it and never returns it.
     "ci_signatures": {"sig_hash", "class_hash", "kind", "infra", "file", "embedding",
-                      *("fingerprint", "fingerprint_kind", "fingerprint_src", "template_id", "filler_hash")},
+                      *FP_COLUMNS},
     "ci_repos": {"repo", "logs_in_bucket", "builds", "extracted", "pending", "oldest", "newest"},
 }
 
@@ -171,7 +180,6 @@ def _text_columns(c: sqlite3.Connection, table: str) -> list[str]:
             if r[2].upper() in ("TEXT", "") and r[1] != "host"]
 
 
-FP_COLUMNS = ("fingerprint", "fingerprint_kind", "fingerprint_src", "template_id", "filler_hash")
 
 
 def public_part(kind: str, exact: str, cls: str, file: str | None, templates) -> dict:
@@ -182,18 +190,20 @@ def public_part(kind: str, exact: str, cls: str, file: str | None, templates) ->
       source    the format string of the statement in public code that printed it
       test      a Boost.Test check or ctest name found in the public tree
     plus, for source/test, the permalink to that code, and for compiler, source,
-    test and tool the keyed hash of the normalised values (filler_hash). All
-    NULL: hash-only."""
+    test and tool the keyed hash of the normalised values (filler_hash) and
+    those of them that are public (fillers_public). All NULL: hash-only."""
     fp = logscan.public_fingerprint(kind, exact, cls, file)
     if fp:
         fk = {"crash": "crash", "cmake": "cmake"}.get(kind, "compiler")
-        out = {"fingerprint": fp, "fingerprint_kind": fk, "fingerprint_src": None, "filler_hash": None}
+        out = {"fingerprint": fp, "fingerprint_kind": fk, "fingerprint_src": None, "filler_hash": None,
+               "fillers_public": None}
         fillers = compiler_fillers(exact) if fk == "compiler" and templates else []
         if any(f.strip() for f in fillers):
             out["filler_hash"] = templates.filler_hash(srctemplates.template_id(fp), fillers)
+            out["fillers_public"] = templates.fillers_public(fillers)
     else:
         out = (templates.match(kind, exact) if templates else None) or dict.fromkeys(
-            ("fingerprint", "fingerprint_kind", "fingerprint_src", "filler_hash"))
+            ("fingerprint", "fingerprint_kind", "fingerprint_src", "filler_hash", "fillers_public"))
     out["template_id"] = srctemplates.template_id(out["fingerprint"]) if out["fingerprint"] else None
     return out
 
@@ -205,6 +215,60 @@ def compiler_fillers(exact: str) -> list[str]:
     first = exact.split("\n", 1)[0]
     i = first.find("error: ")
     return [q[1:-1] for q in logscan._QUOTED_RE.findall(first[i:] if i >= 0 else first)]
+
+
+_people: set | None = None
+
+
+def load_templates():
+    """The index under $SRCTEMPLATES with $CIF_FILLER_KEY, with the people list
+    from $PEOPLE_DBS (comma-separated: the commits and prs flows' DBs, set by
+    s3snap), read once per process."""
+    global _people
+    t = srctemplates.load(os.environ.get("SRCTEMPLATES"), os.environ.get("CIF_FILLER_KEY"))
+    dbs = [x for x in os.environ.get("PEOPLE_DBS", "").split(",") if x and os.path.exists(x)]
+    if t is not None and dbs:
+        if _people is None:
+            _people = srctemplates.people(*dbs)
+        t.people = _people
+    return t
+
+
+# "1" publishes fillers_public; "0" publishes it NULL and logs what it would
+# show, for review. $PUBLIC_FILLERS overrides (tests).
+PUBLIC_FILLERS_DEFAULT = "0"
+
+
+def public_fillers_on() -> bool:
+    return os.environ.get("PUBLIC_FILLERS", PUBLIC_FILLERS_DEFAULT) == "1"
+
+
+REVIEW_TOP = 40     # values logged for review while PUBLIC_FILLERS is off
+
+
+def fillers_review(c: sqlite3.Connection, t: str, stats, log=None) -> None:
+    """Count the signatures with values shown, and while PUBLIC_FILLERS is off
+    log the commonest values it would show (only values that pass the rules:
+    what would be public anyway), then blank the column. (The counts by rule,
+    withheld ones included, come from Templates.rules: fingerprints().)"""
+    vals: collections.Counter = collections.Counter()
+    for (fp,) in c.execute(f'SELECT fillers_public FROM "{t}" WHERE fillers_public IS NOT NULL'):
+        for v in json.loads(fp):
+            stats[f"{t}: fillers {'shown' if v is not None else 'withheld'}"] += 1
+            if v is not None:
+                vals[v] += 1
+    stats[f"{t}: rows with fillers shown"] += sum(1 for _ in c.execute(
+        f'SELECT 1 FROM "{t}" WHERE fillers_public IS NOT NULL'))
+    if public_fillers_on():
+        return
+    c.execute(f'UPDATE "{t}" SET fillers_public = NULL')
+    if vals and log:
+        log(f"{t}: PUBLIC_FILLERS is off; the {min(REVIEW_TOP, len(vals))} commonest of {len(vals)} distinct "
+            f"values it would show: " + json.dumps([v for v, _ in vals.most_common(REVIEW_TOP)]))
+
+
+def _log(*a):
+    print("sanitize:", *a, file=sys.stderr, flush=True)
 
 
 def fingerprints(c: sqlite3.Connection, stats, templates=None,
@@ -231,6 +295,14 @@ def fingerprints(c: sqlite3.Connection, stats, templates=None,
             stats[f"{t}: fingerprint {p['fingerprint_kind']}" if p["fingerprint"] else f"{t}: hash only"] += 1
             if file and not pub:
                 stats[f"{t}: file withheld"] += 1
+        if t.endswith("signatures"):     # the error rows repeat their signature's
+            fillers_review(c, t, stats, _log)
+            if templates is not None:   # per distinct signature (public_part is cached)
+                for k, n in templates.rules.items():
+                    stats[f"{t}: filler {k}"] += n
+                templates.rules.clear()
+        elif not public_fillers_on():
+            c.execute(f'UPDATE "{t}" SET fillers_public = NULL')
 
 
 def sanitize_db(path, templates="env") -> dict:
@@ -239,7 +311,7 @@ def sanitize_db(path, templates="env") -> dict:
     templates: a srctemplates.Templates, None, or "env": the index under
     $SRCTEMPLATES (runner.sh's $COCO_ROOT/sources), with $CIF_FILLER_KEY."""
     if templates == "env":
-        templates = srctemplates.load(os.environ.get("SRCTEMPLATES"), os.environ.get("CIF_FILLER_KEY"))
+        templates = load_templates()
     c = sqlite3.connect(path)
     c.execute("PRAGMA secure_delete = ON")
     stats: collections.Counter = collections.Counter()
@@ -320,7 +392,7 @@ def sanitize_hl_db(path, templates="env") -> dict:
     """Sanitize the hyperloop.db at path in place, as sanitize_db does a
     ci-failures.db. Returns counts by kind."""
     if templates == "env":
-        templates = srctemplates.load(os.environ.get("SRCTEMPLATES"), os.environ.get("CIF_FILLER_KEY"))
+        templates = load_templates()
     c = sqlite3.connect(path)
     c.execute("PRAGMA secure_delete = ON")
     stats: collections.Counter = collections.Counter()

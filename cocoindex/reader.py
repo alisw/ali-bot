@@ -59,6 +59,12 @@ EMBED_MODEL = os.environ.get("EMBED_MODEL", "openai/embeddinggemma-300m")
 # (SQLite refuses ALTER TABLE DROP COLUMN on an indexed column, which a
 # cocoindex schema change may issue), so each reader adds them to its verified
 # copy, before the rename() that makes it visible.
+# Columns a newer flow publishes, added (NULL) to an older snapshot so that the
+# views and the server's queries need not tell the two apart.
+ADD_COLUMNS = {
+    "hyperloop.db": {"hl_errors_data": ["fillers_public"], "hl_signatures": ["fillers_public"]},
+    "ci-failures.db": {"ci_errors": ["fillers_public"], "ci_signatures": ["fillers_public"]},
+}
 INDEXES = {
     "commits.db": ["CREATE INDEX IF NOT EXISTS commits_pr ON commits(repo, pr_number)"],
     "prs.db": ["CREATE INDEX IF NOT EXISTS prs_created ON prs(created_at)",
@@ -102,7 +108,7 @@ INDEXES = {
         """CREATE VIEW IF NOT EXISTS hl_errors AS
            SELECT e.test_id, e.log, e.sig_hash, e.rank, dv.name AS device, e.kind, e.infra, e.fatal, e.class_hash,
                   e.file, e.count, e.line, t.end_time, t.tag, t.state, e.fingerprint, e.fingerprint_kind,
-                  e.fingerprint_src, e.template_id, e.filler_hash
+                  e.fingerprint_src, e.template_id, e.filler_hash, e.fillers_public
            FROM hl_errors_data e JOIN hl_tests_data t USING (test_id)
                 LEFT JOIN hl_names dv ON dv.name_id = e.device_id"""],
     # hyperloop-perf.db, published compact (hyperloop_perf_flow.py): views with
@@ -236,9 +242,14 @@ def sync(max_age: float = 0) -> dict:
         if tmp.stat().st_size != db["size"] or _sha256(tmp) != db["sha256"]:
             tmp.unlink()
             raise RuntimeError(f"{run}/{db['name']} does not match latest.json; not using it")
-        if INDEXES.get(db["name"]):
+        if INDEXES.get(db["name"]) or ADD_COLUMNS.get(db["name"]):
             with sqlite3.connect(tmp) as c:
-                for ddl in INDEXES[db["name"]]:
+                for t, cols in ADD_COLUMNS.get(db["name"], {}).items():
+                    have = {r[1] for r in c.execute(f'PRAGMA table_info("{t}")')}
+                    for col in cols:
+                        if have and col not in have:
+                            c.execute(f'ALTER TABLE "{t}" ADD COLUMN "{col}" TEXT')
+                for ddl in INDEXES.get(db["name"], ()):
                     try:
                         c.execute(ddl)
                     except sqlite3.OperationalError as e:

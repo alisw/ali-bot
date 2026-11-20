@@ -3,6 +3,7 @@
     python test/sanitize_test.py
 """
 import collections
+import os
 import shutil
 import sqlite3
 import sys
@@ -105,11 +106,13 @@ check(c.execute("SELECT fingerprint, embedding FROM ci_signatures").fetchone() =
 objs = sorted(r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'"))
 check(objs == ["ci_builds", "ci_errors", "ci_signatures"], f"unlisted tables, views and indexes are dropped ({objs})")
 cols = {t: [r[1] for r in c.execute(f"PRAGMA table_info({t})")] for t in objs}
-FP = ["fingerprint", "fingerprint_kind", "fingerprint_src", "template_id", "filler_hash"]
+FP = ["fingerprint", "fingerprint_kind", "fingerprint_src", "template_id", "filler_hash", "fillers_public"]
 check(cols == {"ci_builds": ["build_id", "host", "log_url"],
                "ci_errors": ["build_id", "sig_hash", "host", "kind", "file", "line", *FP],
                "ci_signatures": ["sig_hash", "kind", "file", "embedding", *FP]},
       f"no log text, no signature text, no full allocation id ({cols})")
+check(c.execute("SELECT count(*) FROM ci_errors WHERE fillers_public IS NOT NULL").fetchone()[0] == 0,
+      "PUBLIC_FILLERS off: the public values are not published")
 c.close()
 check(stats.get("dropped column ci_errors.text") == 1 and stats.get("dropped column ci_errors.sig_exact") == 1
       and stats.get("dropped table scratch") == 1 and stats.get("ci_errors: file withheld") == 1,
@@ -156,6 +159,26 @@ check(sanitize.public_part("error", CRASH, CRASH, None, T)["filler_hash"] is Non
       and sanitize.public_part("error", "x.cxx: error: expected expression", "error: expected expression",
                                "x.cxx", T)["filler_hash"] is None,
       "a crash, or a diagnostic without names, has no filler")
+
+# fillers_public: computed, published only with PUBLIC_FILLERS=1, else counted,
+# logged for review, and blanked.
+c = sqlite3.connect(":memory:")
+c.execute("CREATE TABLE hl_signatures (sig_hash, fillers_public)")
+c.executemany("INSERT INTO hl_signatures VALUES (?, ?)", [("a", '["139", null]'), ("b", '["139"]'), ("c", None)])
+logged, st = [], collections.Counter()
+os.environ.pop("PUBLIC_FILLERS", None)
+sanitize.fillers_review(c, "hl_signatures", st, logged.append)
+check(st["hl_signatures: fillers shown"] == 2 and st["hl_signatures: fillers withheld"] == 1
+      and c.execute("SELECT count(fillers_public) FROM hl_signatures").fetchone()[0] == 0
+      and len(logged) == 1 and '["139"]' in logged[0],
+      f"PUBLIC_FILLERS off: counted, the values it would show logged, then blanked ({dict(st)}, {logged})")
+c.execute("UPDATE hl_signatures SET fillers_public = '[\"7\"]'")
+os.environ["PUBLIC_FILLERS"] = "1"
+logged = []
+sanitize.fillers_review(c, "hl_signatures", collections.Counter(), logged.append)
+os.environ.pop("PUBLIC_FILLERS")
+check(c.execute("SELECT count(fillers_public) FROM hl_signatures").fetchone()[0] == 3 and not logged,
+      "PUBLIC_FILLERS=1: published, nothing logged")
 
 shutil.rmtree(work)
 print(f"\n{len(failures)} failure(s)")

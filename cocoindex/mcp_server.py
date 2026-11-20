@@ -898,8 +898,17 @@ def _location(log_url, line):
     return f"{log_url}#L{line}" if line else log_url
 
 
+def _untrusted(fingerprint, fillers_public=None) -> dict:
+    """The log-derived part of an error: its fingerprint, and the values of its
+    template that are public (a list, null where withheld), when there are any."""
+    out = {"fingerprint": fingerprint}
+    if fillers_public:
+        out["fillers"] = json.loads(fillers_public)
+    return out
+
+
 _SIG_COLS = ("sig_hash, class_hash, kind, infra, file, fingerprint_kind, fingerprint_src, template_id, "
-             "filler_hash, embedding, fingerprint")
+             "filler_hash, fillers_public, embedding, fingerprint")
 
 
 def q_search_ci_failures(vec, repo, check, since, k):
@@ -924,7 +933,7 @@ def q_search_ci_failures(vec, repo, check, since, k):
                          AND (:since IS NULL OR uploaded_at >= :since)
                        GROUP BY sig_hash)""" + h_cte + r"""
            SELECT s.sig_hash, s.class_hash, s.kind, s.infra, s.file, s.fingerprint_kind, s.fingerprint_src,
-                  s.template_id, s.filler_hash,
+                  s.template_id, s.filler_hash, s.fillers_public,
                   round(vec_distance_cosine(s.embedding, :v), 4) AS distance, coalesce(f.builds, 0) AS builds,
                   coalesce(f.failed_builds, 0) AS failed_builds, coalesce(f.green_builds, 0) AS green_builds,
                   coalesce(f.prs, 0) AS prs, f.first_seen, f.last_seen, f.checks, """ +
@@ -942,7 +951,7 @@ def q_search_ci_failures(vec, repo, check, since, k):
     for r in rows:
         r["infra"] = bool(r["infra"])
         r["checks"] = sorted((r["checks"] or "").split(","))[:8]
-        r["untrusted"] = {"fingerprint": r.pop("fingerprint")}
+        r["untrusted"] = _untrusted(r.pop("fingerprint"), r.pop("fillers_public"))
         last = conn.execute("""SELECT b.log_url, e.line FROM cf.ci_errors e JOIN cf.ci_builds b USING (build_id)
                                WHERE e.sig_hash = ? ORDER BY e.uploaded_at DESC LIMIT 1""",
                             (r["sig_hash"],)).fetchone()
@@ -1085,7 +1094,8 @@ def q_ci_signature(sig, repo, max_prs, vec=None):
         raise BadRequest(f"no CI error matches {sig[:80]!r}" + (f" in {repo}" if repo else ""))
     ex = _rows(conn.execute(
         f"""SELECT e.sig_hash, e.class_hash, e.kind, e.infra, e.file, substr(e.fingerprint, 1, :n) AS fingerprint,
-                   e.fingerprint_kind, e.fingerprint_src, e.template_id, e.filler_hash, b.log_url, e.line
+                   e.fingerprint_kind, e.fingerprint_src, e.template_id, e.filler_hash, e.fillers_public,
+                   b.log_url, e.line
             FROM cf.ci_errors e JOIN cf.ci_builds b ON b.build_id = e.build_id
             WHERE {where} ORDER BY e.uploaded_at DESC LIMIT 1""",
         dict(p, n=CI_SIG_CHARS)))[0]
@@ -1122,7 +1132,7 @@ def q_ci_signature(sig, repo, max_prs, vec=None):
         "checks": count("e.check_name"), "hosts": count("e.host"), "per_week": per_week,
         "prs_list": prs, "prs_omitted": max(0, head["prs"] - len(prs)),
         "latest": {"log_url": ex["log_url"], "line": ex["line"], "location": _location(ex["log_url"], ex["line"])},
-        "untrusted": {"fingerprint": ex["fingerprint"]},
+        "untrusted": _untrusted(ex["fingerprint"], ex["fillers_public"]),
         "note": CI_UNTRUSTED_NOTE,
     }
     if col in ("class_hash", "template_id", "filler_hash"):
@@ -1136,7 +1146,7 @@ def _hl_only_signature(conn, match, col, val, hl):
     """ci_signature for an error seen in Hyperloop tests only."""
     ex = _rows(conn.execute(
         f"""SELECT sig_hash, class_hash, kind, infra, file, substr(fingerprint, 1, :n) AS fingerprint,
-                   fingerprint_kind, fingerprint_src, template_id, filler_hash
+                   fingerprint_kind, fingerprint_src, template_id, filler_hash, fillers_public
             FROM hl.hl_errors WHERE {col} = :val ORDER BY end_time DESC LIMIT 1""",
         dict(val=val, n=CI_SIG_CHARS)))[0]
     return {"match": match, "sig_hash": ex["sig_hash"] if col == "sig_hash" else None,
@@ -1145,7 +1155,8 @@ def _hl_only_signature(conn, match, col, val, hl):
             "fingerprint_kind": ex["fingerprint_kind"], "fingerprint_src": ex["fingerprint_src"],
             "kind": ex["kind"], "infra": bool(ex["infra"]), "file": ex["file"],
             "builds": 0, "prs": 0, "note_ci": "not seen in CI builds; only in Hyperloop tests",
-            "hyperloop": hl, "untrusted": {"fingerprint": ex["fingerprint"]}, "note": CI_UNTRUSTED_NOTE}
+            "hyperloop": hl, "untrusted": _untrusted(ex["fingerprint"], ex["fillers_public"]),
+            "note": CI_UNTRUSTED_NOTE}
 
 
 def q_ci_hyperloop(test_id, wagon_id, max_tests, errors_per_test):
@@ -1314,14 +1325,14 @@ def q_ci_pr_builds(repo, pr, errors_per_build, max_builds=20, since=None, curren
                           AND e2.uploaded_at >= strftime('%Y-%m-%dT%H:%M:%S', e.uploaded_at, '-{CI_WINDOW_DAYS} days')
                           AND e2.uploaded_at <= strftime('%Y-%m-%dT%H:%M:%S', e.uploaded_at, '+{CI_WINDOW_DAYS} days')
                        ) AS other_prs_3d,
-                       e.line, e.template_id, e.filler_hash, e.fingerprint_kind, e.fingerprint_src,
+                       e.line, e.template_id, e.filler_hash, e.fillers_public, e.fingerprint_kind, e.fingerprint_src,
                        substr(e.fingerprint, 1, :t) AS fingerprint
                 FROM cf.ci_errors e WHERE e.build_id = :b ORDER BY e.rank LIMIT :n""",
             dict(b=b["build_id"], t=300, n=errors_per_build)))
         for e in errs:
             e["infra"] = bool(e["infra"])
             e["location"] = _location(b["log_url"], e["line"])
-            e["untrusted"] = {"fingerprint": e.pop("fingerprint")}
+            e["untrusted"] = _untrusted(e.pop("fingerprint"), e.pop("fillers_public"))
         b["top_errors"] = errs
     by_state: dict[str, int] = {}
     infra: dict[str, int] = {}
@@ -1688,7 +1699,7 @@ async def sql(query: str, max_rows: int = 100) -> dict:
           -- host: alloc-<first 8 of the Nomad allocation>, the CI worker; machine names are not published
       ci_errors(build_id, sig_hash, rank, repo, pr, sha, check_name, host, uploaded_at, state, kind, infra,
           fatal, class_hash, fingerprint, fingerprint_kind, fingerprint_src, template_id, filler_hash,
-          file, package, section, in_pr_files, count, line)
+          fillers_public, file, package, section, in_pr_files, count, line)
           -- distinct errors per build; same sig_hash = same error; class_hash = same message template
           -- no log text: line is where in the build's log_url the error is (NULL: not recorded)
           -- no error text: errors are sig_hash (same error) and class_hash (same message template);
@@ -1703,8 +1714,12 @@ async def sql(query: str, max_rows: int = 100) -> dict:
           --   tool      a build tool's own message (ninja, make, ld, ctest, configure, recc), values '_'
           -- template_id = same fingerprint text; filler_hash = same template with the same
           -- (normalised) values, keyed so the values cannot be guessed back
+          -- fillers_public = the values of the '_' in fingerprint that are public, as a JSON list
+          --   in order, null where withheld (NULL: none shown): numbers, names from the public
+          --   code (devices, options, tables), production dataset and CCDB paths
+          --   (json_extract(fillers_public, '$[0]'))
       ci_signatures(sig_hash, class_hash, kind, infra, fingerprint, fingerprint_kind, fingerprint_src,
-          template_id, filler_hash, file, embedding)
+          template_id, filler_hash, fillers_public, file, embedding)
       ci_repos(repo, logs_in_bucket, builds, extracted, pending, oldest, newest)
       (CI tables live in the attached database "cf"; join to prs on (repo, pr = number).)
       hl_tests(test_id, end_time, tag, dataset, train_type, test_exit, merge_exit, wall_time, cpu_cores,
@@ -1714,7 +1729,8 @@ async def sql(query: str, max_rows: int = 100) -> dict:
       hl_metrics(test_id, workflow, device, wagon_id, cpu_s, pss_bytes, end_time, tag)
           -- per DPL device, from status.json (per workflow statistics: hp.hp_workflows)
       hl_errors(test_id, log, sig_hash, rank, device, kind, infra, fatal, class_hash, file, count, line,
-          end_time, tag, state, fingerprint, fingerprint_kind, fingerprint_src, template_id, filler_hash)
+          end_time, tag, state, fingerprint, fingerprint_kind, fingerprint_src, template_id, filler_hash,
+          fillers_public)
           -- same sig_hash as ci_errors: one error in CI and Hyperloop; line is in <folder_url><log>.log
       hl_signatures(sig_hash, class_hash, kind, infra, file, embedding, fingerprint, ...)
       hl_error_days(day, sig_hash, tests, wagons, tags, test_ids)   -- daily summary, months back (the rest:
