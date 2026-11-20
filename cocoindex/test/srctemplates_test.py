@@ -48,6 +48,13 @@ SRC = {
     "CCDB/CMakeLists.txt": "o2_add_test(CcdbApiHeaders SOURCES test/testCcdbApiHeaders.cxx)\n",
     "CCDB/test/testCcdbApiHeaders.cxx": "int main() {}\n",
     "interpreter/llvm/Big.cxx": 'LOG(error) << "never indexed: a skipped directory";\n',
+    # An analysis task, its workflow, a CCDB path and the DPL messages naming them.
+    "PWGHF/D2H/Tasks/taskD0.cxx": 'struct HfTaskD0 { Configurable<int> cfgUseMl{"cfgUseMl", 1}; int riedel; };\n'
+                                  'auto p = "Analysis/PID/TPC/Response";\n',
+    "PWGHF/D2H/Tasks/CMakeLists.txt": "o2physics_add_dpl_workflow(hf-task-d0 SOURCES taskD0.cxx COMPONENT_NAME Analysis)\n",
+    "Framework/Core/src/runner.cxx": 'LOGP(error, "- Device {}: pid {} (exit {})", name, pid, code);\n'
+                                     'LOGP(error, "Aborting because of missing option {}", opt);\n'
+                                     'LOGP(error, "Cannot open {} owned by user {}", f, u);\n',
 }
 ROOTSRC = {
     "hist/hist/src/THnBase.cxx": 'Error("SetTitle", "Trying to assign a title to axis %d for a %d-dimensional '
@@ -190,6 +197,51 @@ check(g and g["fingerprint"] == "_ command for package _ failed." and g["fingerp
       and "alisw/alibuild" in g["fingerprint_src"] and "workarea.py#L1" in g["fingerprint_src"]
       and g["filler_hash"],
       f"logscan's git-fetch (aliBuild could not update a mirror) gets aliBuild's own template ({g})")
+
+# ---- fillers_public: the values that may be shown
+import json  # noqa: E402
+import sqlite3  # noqa: E402
+fp = lambda m: m and m["fillers_public"] and json.loads(m["fillers_public"])  # noqa: E731
+T = S.load(str(work), key.decode())
+check(fp(T.match("error", "[ERROR] - Device hf-task-d0: pid 4242 (exit 139)")) == [None, None, "139"],
+      "without the people list only numbers are shown, and never a pid")
+pdb = work / "people.db"
+c = sqlite3.connect(pdb)
+c.execute("CREATE TABLE commits (author_name, author_email)")
+c.executemany("INSERT INTO commits VALUES (?, ?)", [("Martin Eide", "meide@cern.ch"), ("Anton Riedel", "anton.riedel@x")])
+c.execute("CREATE TABLE prs (author)")
+c.execute("INSERT INTO prs VALUES ('aalkin')")
+c.commit()
+c.close()
+T.people = S.people(str(pdb))
+check({"eide", "meide", "riedel", "aalkin"} <= T.people, f"people: surnames, e-mail names, logins ({sorted(T.people)})")
+m = T.match("error", "[ERROR] - Device hf-task-d0: pid 4242 (exit 139)")
+check(fp(m) == ["hf-task-d0", None, "139"], f"a DPL device: the task's name, its exit code; not the pid ({m})")
+check(fp(T.match("error", "[ERROR] - Device o2-analysis-hf-task-d0_1: pid 7 (exit 0)"))[0] == "o2-analysis-hf-task-d0_1",
+      "a workflow's executable name and a numbered device")
+check(fp(T.match("error", "[ERROR] Aborting because of missing option cfgUseMl")) == ["cfgUseMl"],
+      "an option name of the code")
+check(fp(T.match("error", "[ERROR] Aborting because of missing option riedel")) is None,
+      "a name in the code that is also a person's: withheld")
+check(fp(T.match("error", "[ERROR] Aborting because of missing option Kučera")) is None, "a letter outside ASCII: withheld")
+check(fp(T.match("error", "[ERROR] Aborting because of missing option secretThing")) is None,
+      "a name not in the code: withheld")
+check(fp(T.match("error", "[ERROR] Cannot open AO2D_1.root owned by user eide")) is None,
+      "a value after 'user': withheld")
+m = T.match("error", "[FATAL] Got nullptr from CCDB for path Users/m/meide/Tests/A and timestamp 1500")
+check(fp(m) == [None, "1500"] and "meide" not in str(m), f"a user's CCDB path: withheld, the timestamp shown ({m})")
+m = T.match("error", "[FATAL] Got nullptr from CCDB for path Analysis/PID/TPC/Response and timestamp 1500")
+check(fp(m) == ["Analysis/PID/TPC/Response", "1500"], f"a CCDB path of the code ({m})")
+m = T.match("error", "[ERROR] Exception while running: [ERROR] Requested resource does not exist: "
+                     "http://alice-ccdb.cern.ch/Analysis/PID/TPC/Response/1712345678901. Rethrowing.")
+check(m and m["fingerprint"] == "Requested resource does not exist: _"
+      and fp(m) == ["http://alice-ccdb.cern.ch/Analysis/PID/TPC/Response/1712345678901"],
+      f"a wrapped message with its own severity prefix, and a CCDB URL of the code ({m})")
+m = T.match("error", "[FATAL] Got nullptr from CCDB for path "
+                     "alien:///alice/data/2023/LHC23zzh/544122/apass4/0310/AO2D.root and timestamp 1")
+check(fp(m)[0].startswith("alien:///alice/data/2023/"), "a production dataset path")
+m = T.match("error", "[FATAL] Got nullptr from CCDB for path alien:///alice/cern.ch/user/a/aalkin/x.root and timestamp 1")
+check(fp(m)[0] is None, "a grid user's path: withheld")
 
 shutil.rmtree(work)
 print(f"\n{len(failures)} failure(s)")
