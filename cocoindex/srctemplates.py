@@ -786,6 +786,10 @@ class Templates:
         ctx = ctx or [""] * len(fillers)
         out = []
         for f, c in zip(fillers, ctx):
+            # A whole log line carried as a value ("- First error: <time>[FATAL] ...",
+            # its message without a template): its time and severity prefix out.
+            if SEV_RE.match(f):
+                f = message_of(f)
             v, rule = self.public_filler(f, c)
             k = f"{'shown' if v is not None else 'withheld'} {rule}"
             self.rules[k] = self.rules.get(k, 0) + 1

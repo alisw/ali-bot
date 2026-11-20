@@ -221,6 +221,8 @@ check(fp(T.match("error", "[ERROR] - Device o2-analysis-hf-task-d0_1: pid 7 (exi
       "a workflow's executable name and a numbered device")
 check(fp(T.match("error", "[ERROR] Aborting because of missing option cfgUseMl")) == ["cfgUseMl"],
       "an option name of the code")
+w = T.match("error", "[ERROR] Exception while running: <time>[FATAL] Fatal error cfgUseMl. Rethrowing.")
+check(fp(w) == ["Fatal error cfgUseMl"], f"a whole log line as a value: its time and severity prefix out ({w})")
 check(fp(T.match("error", "[ERROR] Aborting because of missing option riedel")) is None,
       "a name in the code that is also a person's: withheld")
 check(fp(T.match("error", "[ERROR] Aborting because of missing option Kučera")) is None, "a letter outside ASCII: withheld")
