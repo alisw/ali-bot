@@ -53,8 +53,8 @@ A `nomad job run` stops the running pass; on 2026-11-18 four passes in a row wer
 While the variable is set, a `job run` restarts the driver, which then runs **the variable's** ref, not the files the jobspec ships. So an immediate code fix is: push it to master, set the variable to it, then `nomad-rw job run cocoindex.nomad` (the restart picks it up at once instead of at the next flow boundary). A jobspec or image change with the variable set runs the variable's code on the new jobspec; purge the variable first if the jobspec's own files are what should run.
 
 ```sh
-nomad-rw var put -force nomad/jobs/cocoindex ref=<sha or branch>   # deploy
-nomad-rw var purge nomad/jobs/cocoindex                             # back to the jobspec's code
+nomad-admin var put -force nomad/jobs/cocoindex ref=<sha or branch>   # deploy
+nomad-admin var purge nomad/jobs/cocoindex                             # back to the jobspec's code
 ```
 
 - A `template` renders the variable's `ref` into `local/deploy.env` (`change_mode = "noop"`); a job reads its own `nomad/jobs/<job>` variables without an ACL policy. No variable: an empty file.
