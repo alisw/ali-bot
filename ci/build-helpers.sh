@@ -371,6 +371,18 @@ function general_timeout () {
                   "host=$(hostname -s)" "cmd=$short_cmd" "timeout_retcode=$ret" \
                   "called_from=$(basename "${BASH_SOURCE[1]}"):${BASH_LINENO[1]}" \
                   -- "timeout=$1"
+    # ...and to Mimir, as report_state does, when the job exported
+    # OTLP_METRICS_URL (the Linux and macOS PR builders have InfluxDB off, so
+    # without this an overrun left no trace). One gauge, ci_timeout_overrun_timeout,
+    # the limit in seconds that was hit; the tags are bounded by the call sites.
+    # Never fatal, and it must not change $ret.
+    if [ -n "$OTLP_METRICS_URL" ]; then
+      otlp-push.py ci_timeout_overrun \
+                   "host=$(hostname -s)" "cmd=$short_cmd" "timeout_retcode=$ret" \
+                   "called_from=$(basename "${BASH_SOURCE[1]}"):${BASH_LINENO[1]}" \
+                   -- "timeout=$1" ||
+        echo "general_timeout: OTLP push failed, continuing" >&2
+    fi
   fi
   return $ret
 }
