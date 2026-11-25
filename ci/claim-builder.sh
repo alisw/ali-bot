@@ -361,7 +361,15 @@ while true; do
   fi
 
   # The *.env files, from ali-bot@master exactly as the builders use.
-  reset_git_repository ali-bot https://github.com/alisw/ali-bot || :
+  #
+  # --branch master, so the checkout is fetched every round whatever state it is
+  # in. Without it reset_git_repository leaves a DETACHED checkout alone, and
+  # the override below detaches it: one round with ALIBOT_OVERRIDE set froze the
+  # config for good. All four arm Macs were found like that on 2026-11-24,
+  # reading a repo-config still pinning aliBuild v1.17.44 (master: v1.17.48)
+  # and blind to every *.env change pushed since -- the pushd/popd lines in the
+  # log with no "HEAD is now at" between them are the tell.
+  reset_git_repository ali-bot https://github.com/alisw/ali-bot --branch master || :
 
   # ...unless this worker is testing a candidate ali-bot, in which case the
   # config comes from the SAME ref as the code below. A PR is one thing: if it
@@ -375,9 +383,10 @@ while true; do
   if [ -n "$ALIBOT_OVERRIDE" ]; then
     (
       cd ali-bot || exit 1
-      # Detached, so reset_git_repository above leaves it alone from now on
-      # (it only resets when HEAD is on a branch) and this block owns the
-      # checkout. Re-fetched every round, so pushes to the PR are picked up.
+      # Applied over the master checkout above, every round: the reset puts
+      # master back first, so dropping ALIBOT_OVERRIDE returns the worker to
+      # master's config on its next round. Re-fetched every round, so pushes
+      # to the PR are picked up.
       short_timeout git fetch -f "https://github.com/${ALIBOT_OVERRIDE%@*}" \
                     "+${ALIBOT_OVERRIDE#*@}:refs/ab" &&
         git checkout -f refs/ab && git clean -fxd
