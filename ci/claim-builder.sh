@@ -866,11 +866,41 @@ EOF
     # nothing, every round, for as long as the job has existed. That is how
     # alimetal05 reached 1.3 TB in one work area and started failing other
     # people's builds with "ld: final link failed: No space left on device".
+    #
+    # -o: one line per work area it looked at, "env seconds symlinks
+    # bytes_freed bytes_free_before". A file and not stdout, because aliBuild's
+    # doClean prints there too. continuous-builder.sh pushed these as the
+    # `cleanup` table; the claim loop dropped them along with the cleanup step
+    # itself, so reinstating the step brought back the cleaning but not the
+    # numbers. Pushed the same way report_state does: InfluxDB while
+    # INFLUXDB_WRITE_URL is set, and Mimir (cleanup_<field>) when ROUND_SETUP
+    # has wired OTLP up. kib_avail is the space BEFORE cleaning, so a dashboard
+    # sees how close the disk came to full; after = kib_avail + kib_freed_approx.
+    _cleanup_metrics=$(mktemp "${TMPDIR:-/tmp}/cleanup-metrics.XXXXXX") || _cleanup_metrics=
     "$_cleanup_py" "$_cleanup_script" \
                -t "${CLEANUP_MAX_AGE_DAYS:-2}" -f "${CLEANUP_MIN_FREE_GIB:-50}" \
+               ${_cleanup_metrics:+-o "$_cleanup_metrics"} \
                -r "$_container" "$_role" "$_container$ALIBOT_CONFIG_SUFFIX" || true
+    [ -n "$_cleanup_metrics" ] &&
+    while read -r _env _sec _nsym _freed _avail; do (
+      # A subshell per line: source_env_files leaves the check's whole config
+      # behind, and the next build must not inherit it.
+      # shellcheck disable=SC2030,SC2031
+      MESOS_ROLE=$_role CUR_CONTAINER=$_container
+      source_env_files "$_env" > /dev/null 2>&1 || exit 0
+      set -- "host=$(hostname -s)" "os=$(uname -s | tr '[:upper:]' '[:lower:]')" \
+             "checkname=${CHECK_NAME:-$_env}" "repo=${PR_REPO:-unknown}" \
+             -- "duration_sec=$_sec" "num_symlinks_deleted=$_nsym" \
+             "kib_freed_approx=$((_freed / 1024))" "kib_avail=$((_avail / 1024))"
+      influxdb_push cleanup "$@"
+      if [ -n "${OTLP_METRICS_URL:-}" ]; then
+        otlp-push.py cleanup "$@" ||
+          echo "cleanup: OTLP push failed, continuing" >&2
+      fi
+    ); done < "$_cleanup_metrics"
+    [ -z "$_cleanup_metrics" ] || rm -f "$_cleanup_metrics"
   done
-  unset _entry _role _container _py _cleanup_py _cleanup_script
+  unset _entry _role _container _py _cleanup_py _cleanup_script _cleanup_metrics
 
   # A pass that built nothing AND skipped something only because it was cooling
   # is the one case the cooldown must never cause: the worker would sit idle on
