@@ -321,9 +321,10 @@ toolchain_broken () {
 # running, and a busy worker is nearly always mid-round. So an operator asks
 # instead, and the worker exits at its next gap between rounds:
 #
-#   nomad-rw var put ci/claims/_restart/<full alloc id> requested_by=$USER at=$(date +%s)
+#   nomad-admin var put ci/claims/_restart/<full alloc id> requested_by=$USER at=$(date +%s)
 #
-# (requested_by is the item read, so a request without it is ignored; ci-jobs'
+# (nomad-admin, not nomad-rw: the rw token cannot write Nomad variables.
+# requested_by is the item read, so a request without it is ignored; ci-jobs'
 # restart-between-rounds.py --graceful does this and waits for the restart.)
 #
 # Under $CLAIM_PREFIX because ci-claims.policy.hcl already grants the workers
