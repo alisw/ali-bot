@@ -559,7 +559,31 @@ fi
 # Off for the invocation only; aliBuild's own log is unaffected, and the trace
 # resumes immediately after.
 set +x
+# The credentials reach aliBuild through its ENVIRONMENT, never as -e NAME=VALUE.
+# aliBuild logs the docker run command it builds, every -e NAME=VALUE included,
+# under --debug ("Build command: ..."), and v1.17.48 -- still the default for the
+# slc9, aarch64, ubuntu2204 and slc7 pools -- does not redact it. On 2026-11-27
+# that put the JAliEn token's private key and the CCDB gate tokens into half
+# the workers' Nomad logs (and, through the same output, the uploaded build
+# logs). So: the values are set in aliBuild's environment only for this call,
+# and docker is told just their NAMES (`docker run -e NAME` copies NAME from
+# the environment docker inherits, which both aliBuild 1.17 and 2.0 pass on
+# unchanged). Native builds (macOS) inherit them the same way, as before.
+secret_vars=()
+[ -n "$jalien_token_cert" ]       && secret_vars+=(JALIEN_TOKEN_CERT)
+[ -n "$jalien_token_key" ]        && secret_vars+=(JALIEN_TOKEN_KEY)
+[ -n "$ALICEO2_CCDB_AUTH_TOKENS" ] && secret_vars+=(ALICEO2_CCDB_AUTH_TOKENS)
+[ -n "$ALICEO2_CCDB_AUTH_TOKEN" ]  && secret_vars+=(ALICEO2_CCDB_AUTH_TOKEN)
+docker_secret_args=
+for v in ${secret_vars[@]+"${secret_vars[@]}"}; do docker_secret_args="$docker_secret_args -e $v"; done
 build_rc=0
+# A subshell, so the exports end with the call; only non-empty values, so a
+# round without a token does not hand native builds an empty JALIEN_TOKEN_KEY.
+(
+[ -n "$jalien_token_cert" ] && export JALIEN_TOKEN_CERT="$jalien_token_cert"
+[ -n "$jalien_token_key" ]  && export JALIEN_TOKEN_KEY="$jalien_token_key"
+[ -n "$ALICEO2_CCDB_AUTH_TOKENS" ] && export ALICEO2_CCDB_AUTH_TOKENS
+[ -n "$ALICEO2_CCDB_AUTH_TOKEN" ]  && export ALICEO2_CCDB_AUTH_TOKEN
 clean_env long_timeout $BUILD_CMD build "$PACKAGE"             \
      -j "${JOBS:-$(nproc)}" -z "$build_identifier"           \
      --defaults "$ALIBUILD_DEFAULTS"                         \
@@ -577,19 +601,17 @@ clean_env long_timeout $BUILD_CMD build "$PACKAGE"             \
      -e "ALIBUILD_XJALIENFS_TESTS=$ALIBUILD_XJALIENFS_TESTS" \
      -e "ALIBUILD_HEAD_HASH=$PR_HASH"                        \
      -e "ALIBUILD_BASE_HASH=$base_hash"                      \
-     ${jalien_token_cert:+-e "JALIEN_TOKEN_CERT=$jalien_token_cert"} \
-     ${jalien_token_key:+-e "JALIEN_TOKEN_KEY=$jalien_token_key"} \
      ${ALICEO2_CCDB_HOST:+-e "ALICEO2_CCDB_HOST=$ALICEO2_CCDB_HOST"} \
      ${ALICEO2_CCDB_PRODUCTION_HOST:+-e "ALICEO2_CCDB_PRODUCTION_HOST=$ALICEO2_CCDB_PRODUCTION_HOST"} \
-     ${ALICEO2_CCDB_AUTH_TOKENS:+-e "ALICEO2_CCDB_AUTH_TOKENS=$ALICEO2_CCDB_AUTH_TOKENS"} \
-     ${ALICEO2_CCDB_AUTH_TOKEN:+-e "ALICEO2_CCDB_AUTH_TOKEN=$ALICEO2_CCDB_AUTH_TOKEN"} \
      ${DPL_CONDITION_BACKEND:+-e "DPL_CONDITION_BACKEND=$DPL_CONDITION_BACKEND"} \
      ${use_docker:+--architecture "$ARCHITECTURE"}           \
      ${use_docker:+--docker-image "$CONTAINER_IMAGE"}        \
-     ${use_docker:+--docker-extra-args="$DOCKER_EXTRA_ARGS"} \
+     ${use_docker:+--docker-extra-args="$DOCKER_EXTRA_ARGS$docker_secret_args"} \
      ${ALIBUILD_STORAGE:+--storage "$ALIBUILD_STORAGE"}      \
      ${ALIBUILD_EXTRA_ARGS:+$ALIBUILD_EXTRA_ARGS}            \
-     --fetch-repos --debug --no-auto-cleanup || build_rc=$?
+     --fetch-repos --debug --no-auto-cleanup
+) || build_rc=$?
+unset secret_vars docker_secret_args v
 set -x
 if [ "$build_rc" -eq 0 ]
 then
